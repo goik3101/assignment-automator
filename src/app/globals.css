@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* 기획서 12번 디자인 원칙: 그라디언트/이모지/화려한 카드 그림자 지양,
+   중성적인 색상 + 정돈된 산세리프, 여백을 넉넉히 쓰는 차분한 톤. */
+:root {
+  --background: #fafaf9;
+  --surface: #ffffff;
+  --foreground: #1c1c1a;
+  --muted: #6b6b66;
+  --border: #e7e5e1;
+  --accent: #2f6f5e;
+  --accent-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #171715;
+    --surface: #1f1f1c;
+    --foreground: #ececea;
+    --muted: #9b9b94;
+    --border: #302f2b;
+    --accent: #6fb3a0;
+    --accent-foreground: #10231d;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo",
+    "Malgun Gothic", system-ui, sans-serif;
+}

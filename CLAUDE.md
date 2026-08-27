@@ -1,9 +1,168 @@
-## Agent skills
+# studed
 
-### Issue tracker
+전국 고등학생 대상 수행평가 자동화 서비스. 수행평가 안내문 사진을 올리면
+산출물 종류(글로 그대로 제출 가능한 것 / 외부 툴로 제작해야 하는 것)를 자동 판별해
+완성된 원고 또는 실행 계획을 실제 검색 출처와 함께 생성한다.
 
-Issues live in this repo's GitHub Issues (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+핵심 차별점: 전국 단위로 학생들의 결과물이 소수 소재로 쏠리지 않도록
+임베딩 기반으로 자동 분산시키고, AI 특유의 문체를 제거하고, 지어낸 출처가 아닌
+실시간 검색 기반 실제 출처를 제공한다.
 
-### Domain docs
+전체 기획 배경과 의사결정 근거는 `docs/planning.md`를 참고할 것
+(기술적으로 애매한 부분이 있으면 그 문서의 해당 챕터를 먼저 확인).
 
-Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+## 기술 스택
+
+| 영역 | 선택 |
+|---|---|
+| 프론트엔드 | Next.js (App Router, TypeScript, Tailwind CSS v4) |
+| 백엔드 | Next.js Route Handlers (`src/app/api/**/route.ts`) |
+| DB + 인증 | Supabase (PostgreSQL + pgvector + 매직링크 인증) |
+| AI | Gemini API (`@google/genai` SDK) — 모델 이름은 전부 `.env`로 분리 |
+| 봇 방지 | Cloudflare Turnstile (M4에서 연동) |
+| 호스팅 | Vercel Pro |
+
+이 조합을 고른 이유: 1인 개발 + MVP 단계라 프론트-백엔드-DB-인증-호스팅을
+최대한 하나의 생태계로 묶어 관리 부담을 줄이는 것이 최우선이었음.
+
+## 코딩 컨벤션
+
+- **두 종류의 임베딩을 절대 같은 함수/변수/컬럼에 섞지 말 것** — 이 프로젝트에서 가장
+  중요한 규칙. `과제 임베딩`(안내문 core_task_info 기반, 클러스터 매칭 전용, DB에 영구
+  저장하지 않음)과 `결과물 임베딩`/`content_embedding`(학생이 실제로 받은 완성원고·
+  계획서 기반, `task_embeddings`에 영구 저장, 겹침방지·MMR용)은 이름부터 명확히
+  구분한다. 함수명은 `embedForClustering(...)` vs `embedForDiversity(...)`처럼
+  구분해서 짓는다. (배경: `docs/planning.md` 6-0, 10, 19번 챕터)
+- `user_histories`(개인정보 O)와 `task_embeddings`(개인정보 X)는 **FK로 절대 연결하지
+  않는다**. 두 값에 같은 `submission_id`가 존재하더라도 코드에서 JOIN하거나 나란히
+  조회하는 로직을 만들지 않는다.
+- Gemini 모델 이름은 하드코딩하지 않고 항상 `src/lib/gemini/client.ts`의
+  `GEMINI_MODELS`를 통해 가져온다 (`.env`의 `GEMINI_MODEL_*` 값 사용). 모델이
+  바뀌면 코드가 아니라 환경변수만 바꾸면 되게 유지할 것.
+- AI 생성 프롬프트(완성 원고/실행 계획)에는 항상 `src/lib/gemini/prompts.ts`의
+  `ANTI_AI_TONE_RULES`(AI 말투 방지)를 포함시킨다. 새 문체 규칙이 필요하면
+  이 파일 하나만 고치면 전체에 반영되게 유지한다.
+- Gemini Search Grounding의 `groundingSupports[].segment` 오프셋은 **UTF-8 바이트
+  단위**다. 한글이 섞인 문자열에 삽입할 때는 반드시 `Buffer`로 바이트 단위 삽입을
+  하고(`src/lib/gemini/citations.ts` 참고), JS 문자열 인덱스로 다루지 않는다.
+- 서버 전용 비밀키(`GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY` 등)는 `NEXT_PUBLIC_`
+  접두사를 붙이지 않는다. 클라이언트 컴포넌트에서 직접 Gemini를 호출하지 않는다 —
+  항상 Route Handler를 거친다.
+- 코드 주석은 "왜"가 비직관적일 때만 짧게 남긴다 ("무엇"은 코드 자체로 설명되게).
+
+## 폴더 구조
+
+```
+src/
+  app/
+    page.tsx                    -- M1: 단일 플로우 페이지 (업로드→확인폼→결과)
+    api/tasks/
+      analyze/route.ts          -- F1~F3: 안내문 분석
+      generate/essay/route.ts   -- F4: 완성 원고 생성
+      generate/plan/route.ts    -- F5: 실행 계획 생성
+      [submissionId]/regenerate/route.ts -- F6: 재생성 (로그인 하루 1회, user_histories에서 원본 조회)
+      expected-questions/route.ts -- 9-3: 예상 질문 (구술·발표형만, 로그인/제한 없음)
+    histories/[id]/memo-note/route.ts -- F8/9-2: 암기노트 (생성 후 user_histories.memo_note에 캐시)
+    admin/
+      login/route.ts             -- F12: 관리자 코드 로그인 (실패 반복 시 IP 잠금)
+      logout/route.ts
+      stats/route.ts             -- 관리자 통계 (11-6)
+  admin/
+    login/page.tsx                -- 관리자 코드 입력 화면
+    page.tsx                      -- 관리자 대시보드 (Server Component, 쿠키 직접 검증)
+  components/
+    AssignmentFlow.tsx          -- M1 핵심 플로우 (클라이언트 컴포넌트)
+    ResultPanel.tsx             -- 원고/계획 결과 렌더링
+    Logo.tsx                     -- 워드마크/아이콘 로고. public/studed_logo_*.png,
+                                     public/studed_icon_black_transparent.png 사용.
+                                     라이트/다크는 prefers-color-scheme로 자동 전환
+                                     (아이콘은 흰색 에셋이 없어 dark:invert로 대체 —
+                                     흰색 아이콘 받으면 워드마크처럼 별도 파일로 교체할 것)
+  lib/
+    gemini/
+      client.ts                 -- Gemini 클라이언트 + 모델 이름 (환경변수 기반)
+      prompts.ts                -- AI 말투 방지 / 저작권 규칙 (공유 프롬프트 조각)
+      analyze.ts                -- 이미지·텍스트 → 구조화 분석 (Flash-Lite)
+      generate-essay.ts         -- 완성 원고 생성 (Flash + 검색 그라운딩)
+      generate-plan.ts          -- 실행 계획 생성 (2단계: 그라운딩 텍스트 → JSON 변환)
+      citations.ts              -- 출처 각주 삽입, 출처 목록 구성
+      embeddings.ts             -- 과제 임베딩(embedForClustering) / 결과물 임베딩(embedForDiversity) — 절대 혼용 금지
+    clusters/
+      core-task-text.ts         -- core_task_info → 과제 임베딩용 텍스트 직렬화
+      identify-cluster.ts       -- M2: 클러스터 식별 (생성 이전에 반드시 먼저 호출)
+      avoidance.ts               -- M3: 비율 기반 억제 (라플라스 스무딩 + 3개월 롤링윈도우)
+      save-result-embedding.ts  -- M2/M3: 결과물 임베딩 저장 + 재생성 시 버전 관리(is_current)
+    links/
+      validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
+    admin/
+      session.ts                  -- 관리자 세션 쿠키 서명/검증 (HMAC, ADMIN_LOGIN_CODE를 키로 재사용)
+      lockout.ts                  -- 로그인 실패 반복 시 IP 잠금
+      stats.ts                    -- 대시보드 집계 쿼리
+    supabase/
+      service-client.ts         -- service_role 키 서버 전용 클라이언트 (clusters/task_embeddings/usage_events용, RLS 무시)
+      server-client.ts          -- 세션이 실린 서버 클라이언트 (user_histories용, RLS 그대로 적용)
+      browser-client.ts         -- 클라이언트 컴포넌트용 (로그인/로그아웃 트리거)
+      use-auth.ts                -- 로그인 상태 구독 훅
+    auth/
+      identity.ts                -- 요청이 로그인 사용자인지 게스트인지 판별 (게스트 쿠키 발급 포함)
+    usage/
+      throttle.ts                 -- N3(전체 상한)·N4(비로그인 1회)·11-3(로그인 하루 2회) 검사
+    turnstile/
+      verify.ts                   -- Cloudflare Turnstile 서버 검증
+    histories/
+      save-history.ts             -- user_histories 저장 (반드시 세션 클라이언트로 호출)
+  types/
+    task.ts                     -- 도메인 타입 (AnalyzeResult, EssayResult, PlanResult 등)
+supabase/
+  migrations/
+    0001_init.sql                -- clusters / cluster_match_logs / task_embeddings / user_histories / user_settings
+    0002_match_cluster.sql       -- 클러스터 최근접 매칭 RPC (pgvector 코사인 유사도)
+    0003_cluster_saturation.sql  -- 클러스터 쏠림도 계산 RPC (avg() 집계, 6-2 비율 억제용)
+    0004_usage_events.sql        -- 접근 제한용 사용 기록 (M4)
+docs/
+  planning.md                    -- 원본 기획서 전문 (의사결정 근거)
+```
+
+## 자주 헷갈릴 수 있는 부분
+
+- `core_task_info`(핵심정보)와 `administrative_info`(행정정보)는 이미지 분석
+  단계에서부터 물리적으로 분리 추출한다. 후자는 화면 표시 외 다른 로직에 쓰이지 않는다.
+- 완성 원고 경로는 검색 그라운딩 후 **한 번에 전체 응답**을 받아 각주를 바이트
+  단위로 정확히 삽입한다 (토큰 스트리밍이 아님 — 이유는 `generate-essay.ts` 상단 주석
+  참고). 실행 계획 경로는 1차 그라운딩 텍스트 → 2차 JSON 변환의 2단계이며, 2차
+  변환에서는 URL을 새로 짓지 않고 1차에서 확보한 출처 목록의 번호(`source_n`)만
+  고르게 한다 (환각 방지).
+- Supabase(PostgREST)는 pgvector `vector` 컬럼을 읽어올 때 JSON 배열이 아니라
+  `"[0.1,0.2,...]"` 형태의 **문자열**로 내려준다. 항상
+  `src/lib/supabase/service-client.ts`의 `parsePgVector()`로 파싱할 것. 반대로
+  **쓸 때는** 그냥 평범한 `number[]` 배열을 넘기면 된다 (문자열로 직접 바꿀 필요 없음).
+- pgvector는 벡터 간 요소별(element-wise) 연산(`+`, `-`, `*`)은 지원하지만 벡터×스칼라
+  연산은 지원하지 않는다. 그래서 `clusters.centroid_vector` 이동평균 갱신은 SQL이
+  아니라 `identify-cluster.ts`에서 JS 배열 연산으로 직접 계산한다.
+- 이 프로젝트의 Next.js 버전(16)은 `middleware.ts`가 `src/proxy.ts`로 이름이 바뀌었고
+  (export 함수명도 `middleware` → `proxy`), Node 런타임이 기본값이다. 세션 갱신
+  로직은 `src/proxy.ts`에 있다.
+- `user_histories`는 반드시 `server-client.ts`(세션 실린 클라이언트, RLS 적용)로만
+  쓴다. `service-client.ts`(service_role)로 건드리면 RLS를 그냥 우회해버려서
+  "본인 것만 보인다"는 보장이 깨진다 — `clusters`/`task_embeddings`/`usage_events`는
+  반대로 service-client 전용(RLS 정책이 아예 없음).
+
+## 에이전트 스킬
+
+### 이슈 트래커
+
+이슈는 이 저장소의 GitHub Issues(`gh` CLI)에 있다. `docs/agents/issue-tracker.md` 참고.
+
+### 도메인 문서
+
+싱글 컨텍스트 구조: 저장소 루트의 `CONTEXT.md` + `docs/adr/`. `docs/agents/domain.md` 참고.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
