@@ -108,6 +108,11 @@ export async function addStage(
  * 이전 단계들을 프롬프트에 넣을 텍스트 블록으로 직렬화한다. 모델에게 "기억해서
  * 참고하라"고 하지 않고, 매 호출마다 이 함수로 DB에서 다시 읽어온 값을 그대로
  * 다시 박아 넣는 방식 — 요청하신 "명시적으로 다시 넣어주는 방식"에 해당.
+ *
+ * 각주 표기([1], [2] 등)는 일부러 지우고 넣는다 — 안 그러면 이번 호출에서는
+ * 실제로 검색을 안 했는데도 모델이 이전 단계에 있던 각주 "모양"만 흉내 내서
+ * 근거 없는 각주를 답는 문제가 실제로 발견됐다 (source 0개인데 [1][2][3]이
+ * 본문에 붙는 케이스). 각주는 각 단계 자신의 그라운딩 결과에만 붙어야 한다.
  */
 export function serializePriorStages(stages: TaskSessionStage[]): string {
   if (stages.length === 0) return "";
@@ -116,7 +121,43 @@ export function serializePriorStages(stages: TaskSessionStage[]): string {
       const facts = Object.keys(s.output_facts).length
         ? `\n확정된 사실: ${JSON.stringify(s.output_facts)}`
         : "";
-      return `[${s.stage_order}단계: ${s.stage_name} — 이미 확정됨, 절대 바꾸지 말 것]\n${s.output_text}${facts}`;
+      const textWithoutCitations = s.output_text.replace(/\[\d+\]/g, "");
+      return `[${s.stage_order}단계: ${s.stage_name} — 이미 확정됨, 절대 바꾸지 말 것]\n${textWithoutCitations}${facts}`;
     })
     .join("\n\n");
+}
+
+/** 여러 단계에 걸쳐 같은 키가 나오면, 가장 최근(나중) 단계의 값을 "확정된 값"으로 본다. */
+export function mergeEstablishedFacts(stages: TaskSessionStage[]): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const s of stages) Object.assign(merged, s.output_facts);
+  return merged;
+}
+
+function normalizeForCompare(s: string): string {
+  return s.replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * 새로 생성된 output_facts가 이미 확정된 사실과 어긋나는 게 있는지 확인한다
+ * (9-5/사후 검증). 완전히 똑같은 문자열이 아니어도, 한쪽이 다른 쪽을 포함하면
+ * 같은 값으로 본다 (예: "새는 알에서 나오려고 투쟁한다" vs "...알에서 나오려고
+ * 사투를 벌인다"처럼 표현만 다른 경우까지 전부 "불일치"로 잡으면 오탐이 너무
+ * 많아진다 — 완전히 다른 값(다른 책 제목 등)만 잡아내는 게 목적).
+ */
+export function findFactMismatches(
+  newFacts: Record<string, string>,
+  establishedFacts: Record<string, string>
+): { key: string; expected: string; got: string }[] {
+  const mismatches: { key: string; expected: string; got: string }[] = [];
+  for (const [key, gotValue] of Object.entries(newFacts)) {
+    const expected = establishedFacts[key];
+    if (!expected) continue;
+    const a = normalizeForCompare(expected);
+    const b = normalizeForCompare(gotValue);
+    if (a !== b && !a.includes(b) && !b.includes(a)) {
+      mismatches.push({ key, expected, got: gotValue });
+    }
+  }
+  return mismatches;
 }
