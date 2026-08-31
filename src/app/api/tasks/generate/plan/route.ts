@@ -4,6 +4,7 @@ import { generatePlan } from "@/lib/gemini/generate-plan";
 import { identifyCluster } from "@/lib/clusters/identify-cluster";
 import { buildAvoidanceInstruction } from "@/lib/clusters/avoidance";
 import { saveResultEmbedding, planResultToText } from "@/lib/clusters/save-result-embedding";
+import { buildRecommendationGuidance, recordRecommendation } from "@/lib/recommendations/recommendation-diversity";
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
@@ -51,12 +52,16 @@ export async function POST(req: NextRequest) {
     // 생성(3단계)보다 먼저 일어나야 그 결과를 프롬프트에 반영할 수 있다.
     const cluster = await identifyCluster(coreTaskInfo);
     const avoidanceInstruction = await buildAvoidanceInstruction(cluster.clusterId);
+    // generate-essay.ts의 recentBookGuidance와 같은 역할, 카테고리만 다름 —
+    // 새 회피 로직을 따로 안 만들고 recommendation-diversity.ts를 재사용.
+    const statGuidance = await buildRecommendationGuidance("statistic", { userId: identity.userId ?? undefined });
 
     const result = await generatePlan({
       subject,
       coreTaskInfo,
       instructions,
       avoidanceInstruction: avoidanceInstruction ?? undefined,
+      recentStatGuidance: statGuidance?.instructionText,
     });
 
     const response =
@@ -69,6 +74,18 @@ export async function POST(req: NextRequest) {
               resultText: planResultToText(result),
             });
             await recordGeneration(identity, "generate", !!avoidanceInstruction);
+
+            for (const itemName of result.verifiedItemNames ?? []) {
+              await recordRecommendation({
+                category: "statistic",
+                itemName,
+                userId: identity.userId,
+                guestId: identity.guestId,
+                clusterId: cluster.clusterId,
+                topic: coreTaskInfo.topic,
+                submissionId,
+              });
+            }
 
             if (identity.userId) {
               const element = coreTaskInfo.task_elements.find(

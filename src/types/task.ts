@@ -123,6 +123,10 @@ export interface PlanResult {
   latency_ms: number;
   /** 로그인 사용자의 결과에만 붙는다 — F6 재생성 시 이 값으로 /api/tasks/{id}/regenerate 호출 */
   submissionId?: string;
+  /** 이 생성에서 실제로 검증에 성공한 통계/사례 항목의 식별 문구(검색
+   * 키워드 기반) 목록 — 추천 다양성 시스템(recommendation-diversity.ts)이
+   * 이력을 기록할 때 쓴다. */
+  verifiedItemNames?: string[];
 }
 
 export interface InsufficientDataResult {

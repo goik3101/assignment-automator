@@ -59,6 +59,12 @@ export interface GeneratePlanInput {
   revisionInstructions?: string;
   /** F6 재생성 시 이전 버전의 실제 결과 텍스트 (generate-essay.ts와 동일한 목적). */
   previousOutputText?: string;
+  /**
+   * 추천 다양성 시스템(5단계) — generate-essay.ts의 recentBookGuidance와 같은
+   * 역할이지만 카테고리가 statistic/case_example이다. 새 회피 로직을 따로
+   * 만들지 않고 recommendation-diversity.ts를 그대로 재사용한다.
+   */
+  recentStatGuidance?: string;
 }
 
 function buildStepAPrompt(input: GeneratePlanInput): string {
@@ -91,6 +97,7 @@ ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된
 [이 요소에 대한 설명] ${element?.description ?? ""}
 ${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
+${input.recentStatGuidance ? `\n${input.recentStatGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -249,6 +256,11 @@ ${sourceListText}
   const MAX_PLAN_VERIFICATIONS = 1;
   let nextSourceN = sources.reduce((max, s) => Math.max(max, s.n), 0) + 1;
   let verificationSuccesses = 0;
+  // 5단계: 검증 성공한 항목의 식별 문구(검색 키워드)를 모아뒀다가 이 함수
+  // 끝에서 반환한다 — 실제 기록(recordRecommendation)은 라우트가 사용자
+  // 식별 정보(userId/guestId/clusterId)와 함께 한다(essay 경로와 동일한
+  // 책임 분리: 이 함수는 사용자 신원을 몰라도 됨).
+  const verifiedItemNames: string[] = [];
   for (const step of stepsNeedingVerification.slice(0, MAX_PLAN_VERIFICATIONS)) {
     const result = await verifyExcerpt(
       { name: step.search_keywords.join(" ") },
@@ -259,6 +271,7 @@ ${sourceListText}
       const n = nextSourceN++;
       sources.push({ n, title: result.source.title, url: result.source.url, url_valid: null });
       step.source_n = n;
+      verifiedItemNames.push(step.search_keywords.join(" "));
     }
   }
   console.log(
@@ -296,5 +309,6 @@ ${sourceListText}
     steps: finalSteps,
     sources: validatedSources,
     latency_ms: Date.now() - start,
+    verifiedItemNames,
   };
 }

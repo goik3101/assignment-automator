@@ -1864,6 +1864,51 @@ curl로 2가지 시나리오 호출:
 **변경 파일**: [excerpt-verification.ts](src/lib/verification/excerpt-verification.ts)
 (`verifyExcerpt()`의 각도 재시도 루프화, `MAX_ANGLE_RETRIES` 상수).
 
+## 이어서: 추천 다양성 시스템 — 5단계: generate-plan.ts 적용 (2026-08-31, 이어서)
+
+`feature/recommendation-diversity` 브랜치, 5단계.
+
+### 구현
+
+generate-plan.ts(PPT/포스터 등 실행계획)는 책처럼 "후보 중 1개를 코드가
+선택"하는 구조가 없다 — 스텝별로 필요하면 `verifyExcerpt()`를 돌려 통계/사례
+출처를 검증할 뿐이라, 3단계 같은 사전 후보 선택 단계는 만들지 않고 essay
+경로와 같은 얕은 연결만 추가:
+- `GeneratePlanInput.recentStatGuidance?: string` 추가(essay의
+  `recentBookGuidance`와 같은 역할, 카테고리만 `statistic`) —
+  `buildStepAPrompt()`의 `avoidanceInstruction` 블록 바로 뒤에 interpolate.
+- `generatePlan()`이 이미 하던 검증 루프(`stepsNeedingVerification`)에서
+  실제로 검증에 성공한 스텝의 `search_keywords`를 모아
+  `PlanResult.verifiedItemNames`(신규)로 반환 — 이 함수는 essay 경로와
+  같은 이유로 사용자 신원을 몰라도 되게 유지(책임 분리: 기록은 라우트가 함).
+- [plan/route.ts](src/app/api/tasks/generate/plan/route.ts): `identifyCluster`
+  직후 `buildRecommendationGuidance("statistic", { userId })` 호출 → 입력에
+  전달. 생성 성공 후 `verifiedItemNames` 각각에 대해 `recordRecommendation()`
+  호출(카테고리 `statistic`) — essay 경로와 동일하게 다른 부수 기록과
+  나란히, await함.
+- 새 회피 로직을 따로 만들지 않고 1단계 모듈(`recommendation-diversity.ts`)
+  을 그대로 재사용.
+
+### 검증
+
+관리자 세션 쿠키로 실제 `/api/tasks/generate/plan`을 curl로 호출(청소년
+스마트폰 과의존 실태 포스터 과제) — HTTP 200. 로그에
+`[recommendation-diversity] 이력 조회 실패`(테이블 미생성, 예상대로)가
+남아서 `buildRecommendationGuidance("statistic", ...)` 호출이 파이프라인에
+실제로 연결됐음을 확인. 이번 실행은 stageA 자체 검색이 이미 좋은 출처를
+찾아서(`인용 검증 요약: 대상=0건`) 별도 검증 루프가 발동하지 않아
+`verifiedItemNames`는 빈 배열로 나왔음(정상 — 기록할 대상 자체가 없었음).
+`verifiedItemNames.push()`는 기존에 이미 검증돼 동작 확인된
+`sources.push()`와 같은 `if` 분기 안에 있어서(둘 다 정확히 같은 성공
+조건에 묶여 있음) 별도 재현 없이도 동작을 신뢰할 수 있다고 판단.
+`npx tsc --noEmit`/`npx eslint src/` 클린.
+
+**변경 파일**: [generate-plan.ts](src/lib/gemini/generate-plan.ts)
+(`recentStatGuidance` 입력 필드+프롬프트 반영, `verifiedItemNames` 결과
+노출), [types/task.ts](src/types/task.ts)(`PlanResult.verifiedItemNames`),
+[plan/route.ts](src/app/api/tasks/generate/plan/route.ts)(가이던스 조회+
+생성 후 기록 연결).
+
 ## 다음에 할 일
 
 1. `supabase/migrations/0008_drop_task_sessions.sql`,
