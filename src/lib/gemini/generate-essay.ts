@@ -960,6 +960,14 @@ export async function generateEssay(
     attempt = { ...attempt, sections: narrativeCleanedSections };
   }
 
+  // 재시도까지 거치고도 상투구("힘내자!" 등)가 남을 수 있다는 게 실측으로
+  // 확인됐다(6·7단계 실제 테스트) — 모델에게 또 묻지 않고 그 문장을 통째로
+  // 제거한다(stripCliches() 설명 참고).
+  const { sections: clicheCleanedSections, strippedLabels: clicheStrippedLabels } = stripCliches(attempt.sections);
+  if (clicheStrippedLabels.length > 0) {
+    attempt = { ...attempt, sections: clicheCleanedSections };
+  }
+
   // summary_lines(전체 요약)도 본문과 마찬가지로 학생의 분석/의견 문장에
   // 검색 각주가 잘못 붙는 오탐이 있었다("관계를 억지로 좁히기보다... 태도의
   // 필요성을 분석했습니다[1]") — 위 stripUnjustifiedNarrativeCitations는
@@ -1641,4 +1649,65 @@ function detectCliches(sections: RawSection[]): string[] {
     }
   }
   return Array.from(found);
+}
+
+/** 매치 지점을 포함하는 "문장 전체"의 [시작, 끝) 범위를 찾는다 — 마침표/
+ * 느낌표/물음표/개행을 문장 경계로 본다(끝 경계는 그 문장부호까지 포함해서
+ * 자른다). sentenceBefore()가 매치 "앞" 문맥만 보는 것과 달리, 이 함수는
+ * 매치를 포함하는 문장 전체 범위를 구해서 통째로 제거하는 데 쓴다. */
+function sentenceBoundsAround(content: string, matchStart: number, matchEnd: number): { start: number; end: number } {
+  const before = content.slice(0, matchStart);
+  const start = Math.max(before.lastIndexOf("."), before.lastIndexOf("!"), before.lastIndexOf("?"), before.lastIndexOf("\n")) + 1;
+  const rest = content.slice(matchEnd);
+  const relativeEnd = rest.search(/[.!?\n]/);
+  const end = relativeEnd === -1 ? content.length : matchEnd + relativeEnd + 1;
+  return { start, end };
+}
+
+/** 패턴에 매치되는 문장을 통째로 한 번 제거한다(못 찾으면 그대로 반환). */
+function removeSentenceMatching(content: string, pattern: RegExp): { content: string; removed: boolean } {
+  const re = new RegExp(pattern.source, pattern.flags.replace("g", ""));
+  const m = re.exec(content);
+  if (!m) return { content, removed: false };
+  const { start, end } = sentenceBoundsAround(content, m.index, m.index + m[0].length);
+  const newContent = (content.slice(0, start) + content.slice(end)).replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  // 제거하고 나면 남는 내용이 거의 없어질 정도면(예: 섹션 전체가 상투구
+  // 한 문장뿐이었던 극단적인 경우) 차라리 그 문장을 남기는 게 낫다 —
+  // 빈 섹션을 내보내는 것보다 상투구 하나 남는 게 훨씬 덜 나쁘다.
+  if (newContent.length < 10) return { content, removed: false };
+  return { content: newContent, removed: true };
+}
+
+/**
+ * 최종 안전망 — 실제로 발견된 문제: `detectCliches()`가 걸어둔 1회 재시도로도
+ * 상투구가 100% 안 걸러질 수 있다(6·7단계 실측에서 "언제든 답답할 때 같이
+ * 이야기하자. 힘내자!"로 끝나는 최종 결과를 실제로 확인 — 정규식 자체는
+ * 정상 매치되는 걸 확인했으니 "패턴 누락"이 아니라 "재시도 1회가 완벽한
+ * 보장이 아님"이었다). 재시도 횟수를 늘리는 대신, 이 프로젝트에서 반복
+ * 써온 패턴대로(stripWeaklySourcedQuotes/stripUnjustifiedNarrativeCitations
+ * 와 동일한 철학 — "모델에게 또 묻지 않고 코드가 결정론적으로 확정 처리")
+ * 재시도 후에도 남은 상투구는 그 문장을 통째로 제거한다. "다른 표현으로
+ * 치환"하려면 결국 LLM 호출이 또 필요해서 결정론적 최종 안전망이라는 목적과
+ * 안 맞는다 — 그 상투적 마무리 문장이 없어도 앞 문장까지만으로 글이
+ * 자연스럽게 끝나므로(애초에 "덧붙는 상투적 결어"라는 게 이 패턴들의 공통
+ * 특징) 제거만으로 충분하다.
+ */
+function stripCliches(sections: RawSection[]): { sections: RawSection[]; strippedLabels: string[] } {
+  const strippedLabels = new Set<string>();
+  const newSections = sections.map((s) => {
+    let content = s.content;
+    for (const { label, pattern } of CLICHE_PATTERNS) {
+      // 같은 패턴이 한 섹션에 여러 번 걸릴 가능성은 낮지만, 방어적으로
+      // 최대 3회까지 반복 제거한다(무한 루프 방지용 상한일 뿐).
+      for (let i = 0; i < 3; i++) {
+        const result = removeSentenceMatching(content, pattern);
+        if (!result.removed) break;
+        content = result.content;
+        strippedLabels.add(label);
+        console.warn(`[generateEssay] 최종 안전장치: 재시도 후에도 남은 상투구 문장을 통째로 제거함 label="${s.label}" pattern="${label}"`);
+      }
+    }
+    return content === s.content ? s : { ...s, content };
+  });
+  return { sections: newSections, strippedLabels: Array.from(strippedLabels) };
 }
