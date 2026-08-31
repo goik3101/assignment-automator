@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getServerSupabase } from "@/lib/supabase/server-client";
+import DeleteHistoryButton from "@/components/DeleteHistoryButton";
 
 // F7: 과거 히스토리 조회 (로그인 사용자). RLS 덕분에 이 쿼리는 자동으로 본인 것만
 // 가져온다 — user_id로 따로 필터링할 필요가 없다 (server-client.ts, RLS 정책 참고).
@@ -34,11 +35,11 @@ export default async function HistoriesPage() {
 
       <ul className="space-y-2">
         {histories?.map((h) => (
-          <li key={h.id}>
-            <Link
-              href={`/histories/${h.id}`}
-              className="block rounded-md border border-border bg-surface p-4 transition-colors hover:border-accent"
-            >
+          <li
+            key={h.id}
+            className="flex items-center gap-2 rounded-md border border-border bg-surface p-4 transition-colors hover:border-accent"
+          >
+            <Link href={`/histories/${h.id}`} className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">{h.title || h.subject}</span>
                 <span className="shrink-0 text-xs text-muted">
@@ -51,6 +52,7 @@ export default async function HistoriesPage() {
                 <span>{new Date(h.created_at).toLocaleDateString("ko-KR")}</span>
               </div>
             </Link>
+            <DeleteHistoryButton id={h.id} />
           </li>
         ))}
       </ul>

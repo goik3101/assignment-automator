@@ -9,6 +9,11 @@ import {
 import { buildSourceList } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
+import {
+  verifyExcerpt,
+  isWeakQuoteSource,
+  STATISTIC_OR_NEWS_QUERY_TEMPLATES,
+} from "@/lib/verification/excerpt-verification";
 import type { CoreTaskInfo, PlanResult, InsufficientDataResult } from "@/types/task";
 
 // 기획서 5-1: 실행 계획(PPT 구성안 등)은 JSON 구조화가 필수라서 2단계로 나눈다.
@@ -93,6 +98,14 @@ ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물
 확인이 안 되면 지어내지 말 것. 오늘 당장 할 일부터 순서대로,
 각 단계마다 예상 소요시간과 검색해야 할 키워드를 함께 자연스러운 글로 정리해줘.
 슬라이드/섹션 구성이 필요하면 몇 번째 슬라이드에 무엇을 넣을지도 구체적으로 언급해줘.
+
+【통계·사례·원문 검색은 한 번의 포괄적 검색으로 뭉뚱그리지 말 것 — 매우 중요】
+구체적인 통계 수치나 사례를 인용할 단계가 있다면, "키워드 + 통계/사례" 정도로
+한 번만 검색하고 멈추지 말고 서로 다른 각도로 여러 번 시도할 것 — 예를 들어:
+${STATISTIC_OR_NEWS_QUERY_TEMPLATES.map((q, i) => `  ${i + 1}. ${q({ name: "<검색 키워드>", attribution: "<기관명>" })}`).join("\n")}
+위키형 페이지(나무위키, 위키백과 등)나 동영상 자막만으로 확인하고 끝내지 말고,
+가능하면 보도자료 원문·공공기관 발표자료·논문처럼 원자료 자체를 보여주는
+페이지를 우선 찾을 것.
 ${ANTI_AI_TONE_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${PERSPECTIVE_RULE}
@@ -200,18 +213,87 @@ ${sourceListText}
     }>;
   };
 
+  // 책 처방전 경로(generate-essay.ts)에서 검증된 excerpt-verification.ts를
+  // 그대로 가져와 연결한다 — 출처가 없거나(source_n=0) 위키/동영상뿐인
+  // 단계를 최대 1건(라우트 60초 제한 고려, essay 경로와 동일한 이유)만 골라
+  // 통계/뉴스 각도의 쿼리로 별도 검증을 시도하고, 성공하면 검증된 출처를 새
+  // 번호로 추가해 그 단계에 바로 연결한다. essay 경로와 달리 PlanStep은
+  // 자유 텍스트가 아니라 구조화된 source_n 참조라서, "재생성해서 다시
+  // 검색"할 필요 없이 이 자리에서 바로 값만 바꾸면 된다 — 그래서 essay
+  // 경로에서 관찰됐던 "재생성이 우리가 확인해준 출처 대신 자기 검색으로
+  // 위키를 다시 골라버리는" 문제 자체가 이 경로에는 구조적으로 생기지 않는다.
+  // "PPT 템플릿 찾기"처럼 검색 키워드는 있어도 검증할 "사실 주장"이 없는
+  // 순수 실행 단계까지 검증 대상으로 잡으면 헛수고다(실제 테스트에서 관찰됨)
+  // — 통계/사례/자료 등 사실 인용 느낌이 나는 단계만 골라낸다.
+  // "발표"는 거의 모든 PPT/포스터 단계에 등장해서(발표 대본, 발표 리허설 등)
+  // 너무 자주 걸림 — 실제 테스트에서 확인되어 뺐다. 나머지도 완벽하진 않지만
+  // (예: "통계 자료 시각화"처럼 이미 수집한 데이터를 다루는 단계까지 걸릴 수
+  // 있음), 검증 1건 상한(MAX_PLAN_VERIFICATIONS)과 안전장치 때문에 걸려도
+  // 큰 해는 없다 — 완벽한 분류보다 "PPT 템플릿 찾기" 같은 명백한 오탐만
+  // 줄이는 선에서 타협함.
+  const FACTUAL_CLAIM_HINT_PATTERN = /통계|수치|%|퍼센트|사례|자료|조사|보고서|논문|기사|뉴스|데이터|현황/;
+  function needsFactVerification(task: string, keywords: string[]): boolean {
+    return FACTUAL_CLAIM_HINT_PATTERN.test(task) || keywords.some((k) => FACTUAL_CLAIM_HINT_PATTERN.test(k));
+  }
+
+  const rawSourceByN = new Map(sources.map((s) => [s.n, s]));
+  const stepsNeedingVerification = parsed.steps.filter((s) => {
+    const src = rawSourceByN.get(s.source_n);
+    return (
+      (!src || isWeakQuoteSource(src.url)) &&
+      s.search_keywords.length > 0 &&
+      needsFactVerification(s.task, s.search_keywords)
+    );
+  });
+
+  const MAX_PLAN_VERIFICATIONS = 1;
+  let nextSourceN = sources.reduce((max, s) => Math.max(max, s.n), 0) + 1;
+  let verificationSuccesses = 0;
+  for (const step of stepsNeedingVerification.slice(0, MAX_PLAN_VERIFICATIONS)) {
+    const result = await verifyExcerpt(
+      { name: step.search_keywords.join(" ") },
+      STATISTIC_OR_NEWS_QUERY_TEMPLATES
+    );
+    if (result.verified && result.source) {
+      verificationSuccesses++;
+      const n = nextSourceN++;
+      sources.push({ n, title: result.source.title, url: result.source.url, url_valid: null });
+      step.source_n = n;
+    }
+  }
+  console.log(
+    `[generatePlan] 인용 검증 요약: 대상=${stepsNeedingVerification.length}건 ` +
+      `시도=${Math.min(stepsNeedingVerification.length, MAX_PLAN_VERIFICATIONS)}건 성공=${verificationSuccesses}건`
+  );
+
   const validatedSources = await validateSources(sources);
   const sourceByN = new Map(validatedSources.map((s) => [s.n, s]));
 
-  return {
-    type: "plan",
-    steps: parsed.steps.map((s) => ({
+  // 최종 안전장치(essay 경로의 stripWeaklySourcedQuotes와 같은 역할) — 검증을
+  // 못 거쳤거나 검증에도 실패해서 여전히 위키/동영상 출처만 남은 "사실 인용"
+  // 단계는, 모델에게 다시 묻지 않고 코드가 그 단계의 출처 연결 자체를
+  // 제거한다(약한 근거를 정식 출처인 것처럼 보여주지 않기 위함). "PPT 템플릿
+  // 찾기"처럼 사실 인용이 아닌 순수 실행 단계는 위키/동영상이 오히려 정상
+  // 참고자료일 수 있어 건드리지 않는다.
+  const finalSteps = parsed.steps.map((s) => {
+    const src = sourceByN.get(s.source_n);
+    const isFactualClaim = needsFactVerification(s.task, s.search_keywords);
+    const keep = !!src && (!isFactualClaim || !isWeakQuoteSource(src.url));
+    if (src && !keep) {
+      console.warn(`[generatePlan] 최종 안전장치: 약한 출처 연결을 제거함 step=${s.order} url=${src.url}`);
+    }
+    return {
       order: s.order,
       task: s.task,
       estimated_minutes: s.estimated_minutes,
       search_keywords: s.search_keywords,
-      source_n: sourceByN.has(s.source_n) ? s.source_n : null,
-    })),
+      source_n: keep ? s.source_n : null,
+    };
+  });
+
+  return {
+    type: "plan",
+    steps: finalSteps,
     sources: validatedSources,
     latency_ms: Date.now() - start,
   };

@@ -76,6 +76,7 @@ export async function getCurrentHistoryBySubmission(supabase: SupabaseClient, su
         admin_info: AdministrativeInfo | null;
         instructions: string | null;
         raw_text_result: string;
+        share_token: string | null;
       }
     | null;
 }

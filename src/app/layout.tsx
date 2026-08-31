@@ -10,7 +10,20 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ko" className="h-full antialiased">
+    <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
+      <head>
+        {/* 라이트/다크 선택을 hydration 전에 미리 반영해서 깜빡임(FOUC)을 막는다. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{" +
+              "var t=localStorage.getItem('studed-theme');" +
+              "if(t!=='light'&&t!=='dark'){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}" +
+              "document.documentElement.setAttribute('data-theme',t);" +
+              "}catch(e){}})();",
+          }}
+        />
+      </head>
       <body className="min-h-full bg-background text-foreground md:flex">
         <Sidebar />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">

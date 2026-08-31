@@ -5,18 +5,56 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
 
+// N6/N8: 검색 출처가 하나도 없으면(그라운딩이 안 됐거나 모델이 검색을 안 쓴 경우)
+// 하단에 작은 문구로 조용히 알리는 정도로는 눈에 잘 안 띈다 — 책 제목/저자/인용구처럼
+// "실제로 존재하는지 검증이 꼭 필요한" 정보가 검증 안 된 채로 나올 수 있으니, 카드
+// 맨 위에 눈에 띄게 강조해서 보여준다. result.noSourcesWarning(서버가 계산)은
+// 출처가 0개라는 것만이 아니라 "애초에 검증이 필요한 사실 주장이 있었는지"까지
+// 함께 확인된 값이다 — 실제로 발견된 버그: 책 언급·직접 인용·통계 등이 전혀
+// 없는 순수 격려 편지 섹션에도 이 배너가 뜬 적이 있었다(검증할 대상 자체가
+// 없으면 출처가 0개인 게 정상이라 경고할 이유가 없다).
+function NoSourcesWarning() {
+  return (
+    <div className="mb-4 rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950">
+      <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+        ⚠ 이 내용은 검색으로 검증되지 않았어요
+      </p>
+      <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+        책 제목·저자·인용구 같은 구체적 사실이 있다면, 실제로 존재하는 내용인지 학생이
+        직접 검색해서 확인한 뒤 제출하세요.
+      </p>
+    </div>
+  );
+}
+
+// 분량 기준(예: "800자 내외")을 재시도까지 거치고도 못 맞췄을 때만 뜬다 —
+// 조용히 기준 미달 상태를 최종본인 척 내보내지 않고 정직하게 알리기 위함.
+function LengthWarning({ message }: { message: string }) {
+  return (
+    <div className="mb-4 rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950">
+      <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">⚠ {message}</p>
+    </div>
+  );
+}
+
+// 책 저자를 검색으로 대조했는데(단순히 출처가 없는 게 아니라, 실제로 다른
+// 저자로 확인된 경우) 재시도 후에도 못 고쳤을 때만 뜬다 — NoSourcesWarning
+// (출처 자체가 없음)이나 LengthWarning(분량 미달)보다 한 단계 더 확실한
+// "확인된 오류"라서 빨간 톤으로 구분한다(실제 사례: 『내가 원하는 것을 나도
+// 모를 때』를 "김나이"로 잘못 표기 — 각주는 붙어 있었는데도 저자가 틀렸음).
+function AuthorWarning({ message }: { message: string }) {
+  return (
+    <div className="mb-4 rounded-md border-2 border-red-400 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
+      <p className="text-sm font-semibold text-red-900 dark:text-red-200">⚠ {message}</p>
+      <p className="mt-1 text-xs text-red-800 dark:text-red-300">
+        제출 전에 학생이 직접 검색해서 저자를 확인해주세요.
+      </p>
+    </div>
+  );
+}
+
 function SourceList({ sources }: { sources: SourceRef[] }) {
-  if (sources.length === 0) {
-    // N6/N8: 출처가 없으면 조용히 숨기지 말고 명확히 알린다 — 검색이 실패했거나
-    // 이번 응답에서 모델이 그라운딩을 쓰지 않은 것일 수 있다.
-    return (
-      <div className="mt-6 border-t border-border pt-4">
-        <p className="text-xs text-amber-700 dark:text-amber-400">
-          이번 생성에서는 검색 출처를 찾지 못했어요. 내용을 학생이 직접 한 번 더 확인해보는 걸 권해요.
-        </p>
-      </div>
-    );
-  }
+  if (sources.length === 0) return null;
   return (
     <div className="mt-6 border-t border-border pt-4">
       <h4 className="text-sm font-medium text-muted mb-2">출처</h4>
@@ -109,6 +147,47 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
   );
 }
 
+// 결과 공유 링크. submissionId가 있는(=로그인 상태에서 저장된) 결과에만 붙는다.
+// 클릭하면 공유 토큰을 발급받아(이미 있으면 재사용) 그 링크를 클립보드에 복사한다.
+function ShareButton({ submissionId }: { submissionId: string }) {
+  const [state, setState] = useState<"idle" | "loading" | "copied" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  async function handleShare() {
+    setState("loading");
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`/api/histories/${submissionId}/share`, { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error ?? "공유 링크 생성에 실패했습니다.");
+      const { shareToken } = (await res.json()) as { shareToken: string };
+      const url = `${window.location.origin}/share/${shareToken}`;
+      await navigator.clipboard.writeText(url);
+      setState("copied");
+      setTimeout(() => setState("idle"), 2500);
+    } catch (err) {
+      setState("error");
+      setErrorMessage(err instanceof Error ? err.message : "공유 링크 생성에 실패했습니다.");
+    }
+  }
+
+  return (
+    <div className="mt-6 border-t border-border pt-4">
+      <button
+        onClick={handleShare}
+        disabled={state === "loading"}
+        className="text-xs text-muted underline underline-offset-2 hover:text-foreground disabled:opacity-40"
+      >
+        {state === "loading"
+          ? "링크 만드는 중..."
+          : state === "copied"
+            ? "링크가 복사됐어요 (로그인 없이도 읽을 수 있어요)"
+            : "링크 공유"}
+      </button>
+      {state === "error" && <p className="mt-1 text-xs text-red-600">{errorMessage}</p>}
+    </div>
+  );
+}
+
 // 9-3: 예상 질문 생성 (구술·발표형 과제일 때만 조건부 노출). 로그인/횟수 제한 없음.
 function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText: string }) {
   const [open, setOpen] = useState(false);
@@ -181,11 +260,15 @@ export function EssayPanel({
       <div className="mb-4">
         <h3 className="text-base font-semibold">{label} — 완성 원고</h3>
       </div>
+      {result.noSourcesWarning && <NoSourcesWarning />}
+      {result.authorWarning && <AuthorWarning message={result.authorWarning} />}
+      {result.lengthWarning && <LengthWarning message={result.lengthWarning} />}
       <article className="prose prose-sm max-w-none prose-neutral dark:prose-invert">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.markdown}</ReactMarkdown>
       </article>
       <SourceList sources={result.sources} />
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
+      {result.submissionId && <ShareButton submissionId={result.submissionId} />}
       {showExpectedQuestions && topic && (
         <ExpectedQuestionsBox topic={topic} resultText={result.markdown} />
       )}
@@ -211,6 +294,7 @@ export function PlanPanel({
       <div className="mb-4">
         <h3 className="text-base font-semibold">{label} — 실행 계획</h3>
       </div>
+      {result.sources.length === 0 && <NoSourcesWarning />}
       <ol className="space-y-4">
         {result.steps
           .sort((a, b) => a.order - b.order)
@@ -246,6 +330,7 @@ export function PlanPanel({
       </ol>
       <SourceList sources={result.sources} />
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
+      {result.submissionId && <ShareButton submissionId={result.submissionId} />}
       {showExpectedQuestions && topic && (
         <ExpectedQuestionsBox
           topic={topic}

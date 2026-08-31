@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Tailwind v4의 기본 dark: variant는 OS의 prefers-color-scheme만 본다. 이 앱은
+   수동 라이트/다크 토글(ThemeToggle.tsx)이 있어서, dark:가 <html data-theme="dark">
+   하나만 보고 판단하도록 재정의한다 — layout.tsx의 인라인 스크립트가 최초 방문
+   시점에 OS 설정을 읽어 localStorage에 저장하고 data-theme을 곧바로 반영해두기
+   때문에, "명시적 선택 없음" 상태가 남지 않는다(그래서 미디어쿼리 폴백이 따로
+   필요 없다). 이 한 줄 덕분에 컴포넌트에 흩어진 기존 dark: 클래스들도 전부
+   이 토글 하나로 함께 전환된다. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* 기획서 12번 디자인 원칙: 그라디언트/이모지/화려한 카드 그림자 지양,
    중성적인 색상 + 정돈된 산세리프, 여백을 넉넉히 쓰는 차분한 톤. */
 :root {
@@ -23,16 +32,16 @@
   --color-accent-foreground: var(--accent-foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #171715;
-    --surface: #1f1f1c;
-    --foreground: #ececea;
-    --muted: #9b9b94;
-    --border: #302f2b;
-    --accent: #6fb3a0;
-    --accent-foreground: #10231d;
-  }
+/* 라이트/다크 수동 토글 (ThemeToggle.tsx): layout.tsx의 인라인 스크립트가
+   방문 즉시 data-theme을 확정해서 넣어주므로, 여기서는 그 값만 보면 된다. */
+:root[data-theme="dark"] {
+  --background: #171715;
+  --surface: #1f1f1c;
+  --foreground: #ececea;
+  --muted: #9b9b94;
+  --border: #302f2b;
+  --accent: #6fb3a0;
+  --accent-foreground: #10231d;
 }
 
 body {

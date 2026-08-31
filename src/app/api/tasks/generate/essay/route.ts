@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
             await recordGeneration(identity, "generate", !!avoidanceInstruction);
 
             if (identity.userId) {
-              const element = coreTaskInfo.task_elements.find((e) => e.type === "text_submission");
+              const textElements = coreTaskInfo.task_elements.filter((e) => e.type === "text_submission");
               await saveHistory(supabase, {
                 userId: identity.userId,
                 clusterId: cluster.clusterId,
@@ -82,7 +82,9 @@ export async function POST(req: NextRequest) {
                 // 보여줄 수 있게 한다 — plan 쪽과 저장 방식을 통일.
                 rawTextResult: JSON.stringify(result),
                 subject,
-                title: element?.label ?? coreTaskInfo.topic,
+                // 완성 원고 요소가 여러 개(다단계 과제)면 요소 하나의 이름 대신
+                // 과제 전체 주제를 제목으로 쓴다 — 히스토리 목록에서 더 알아보기 쉽다.
+                title: textElements.length > 1 ? coreTaskInfo.topic : (textElements[0]?.label ?? coreTaskInfo.topic),
                 coreTaskInfo,
                 adminInfo: adminInfo ?? null,
                 instructions,

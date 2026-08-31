@@ -26,6 +26,9 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
   let result: EssayResult | PlanResult | null = null;
   try {
     result = JSON.parse(history.raw_text_result);
+    // 저장된 원본 JSON에는 submissionId가 없다(생성 시점엔 API 응답에만 따로
+    // 얹혔음) — 공유 링크 버튼이 뜨려면 필요하므로 DB 컬럼값으로 채워 넣는다.
+    if (result) result.submissionId = history.submission_id;
   } catch {
     result = null;
   }

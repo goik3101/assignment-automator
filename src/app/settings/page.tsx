@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { useAuth } from "@/lib/supabase/use-auth";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const SCHOOL_TYPES = ["일반고", "특성화고", "특목고", "자율고", "기타"];
 
@@ -76,6 +77,10 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-2xl space-y-8 px-6 py-12">
       <h1 className="text-lg font-semibold tracking-tight">설정</h1>
 
+      <section className="rounded-md border border-border bg-surface p-5">
+        <ThemeToggle />
+      </section>
+
       {!user ? (
         <p className="text-sm text-muted">개인화 정보 설정은 로그인 후 이용할 수 있어요.</p>
       ) : (
@@ -141,7 +146,7 @@ export default function SettingsPage() {
         </>
       )}
 
-      <section className="space-y-3 rounded-md border border-border bg-surface p-5">
+      <section id="feedback" className="space-y-3 rounded-md border border-border bg-surface p-5 scroll-mt-6">
         <h2 className="text-sm font-medium">문의·피드백</h2>
         <textarea
           value={feedback}

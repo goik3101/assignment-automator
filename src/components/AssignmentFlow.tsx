@@ -26,7 +26,27 @@ interface LatestHistory {
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
-type Step = "input" | "analyzing" | "confirm" | "generating" | "result";
+// 매번 같은 예시 하나만 보여주면 학생들이 실제로 쓸 수 있는 지침의 폭을 잘
+// 못 느낀다 — 새로고침하거나 "새 수행평가 시작하기"를 누를 때마다 이 중
+// 하나를 무작위로 보여준다(고정 문구 대신 로테이션).
+const INSTRUCTION_PLACEHOLDER_EXAMPLES = [
+  "예: 발표는 5분 내외로, 개인적인 경험을 넣어서",
+  "예: 친구 이름은 [이름]으로 표시해줘",
+  "예: 형식은 편지가 아니라 대화체로 써줘",
+  "예: 너무 무거운 톤 말고 담백하게 써줘",
+];
+
+function randomInstructionPlaceholder(): string {
+  return INSTRUCTION_PLACEHOLDER_EXAMPLES[Math.floor(Math.random() * INSTRUCTION_PLACEHOLDER_EXAMPLES.length)];
+}
+
+type Step = "input" | "analyzing" | "confirm" | "result";
+
+interface TextStageRef {
+  element: TaskElement;
+  /** coreTaskInfo.task_elements 안에서의 인덱스 — items 배열 인덱싱용. */
+  idx: number;
+}
 
 type GeneratedItem =
   | { element: TaskElement; status: "loading" }
@@ -58,6 +78,20 @@ export default function AssignmentFlow() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [topicText, setTopicText] = useState("");
   const [instructions, setInstructions] = useState("");
+  // 서버 렌더링과 클라이언트 첫 렌더링이 똑같은 값을 내야 hydration mismatch가
+  // 안 난다 — useState(랜덤값)으로 즉시 무작위를 뽑으면 SSR과 클라이언트가
+  // 서로 다른 값을 뽑아버려서(Math.random()이 서버/클라이언트에서 각각
+  // 따로 평가됨) React가 hydration 에러를 낸다(실제로 콘솔에서 확인됨).
+  // 그래서 초기값은 고정된 첫 예시로 두고, 마운트 후(useEffect, 클라이언트
+  // 에서만 실행됨)에만 무작위로 바꾼다.
+  const [instructionPlaceholder, setInstructionPlaceholder] = useState(INSTRUCTION_PLACEHOLDER_EXAMPLES[0]);
+  useEffect(() => {
+    // 마운트 시점에 한 번만, 클라이언트에서만 실행되는 의도된 동기화다(SSR
+    // 값과 다르게 만드는 게 목적) — 일반적으로 경계하는 "effect 안 setState로
+    // 인한 연쇄 렌더링" 문제와는 다른, hydration-safe 랜덤화의 표준 패턴이다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setInstructionPlaceholder(randomInstructionPlaceholder());
+  }, []);
 
   // 확인 폼 단계 (F3) — analyze 결과를 편집 가능한 상태로 보관
   const [subject, setSubject] = useState("");
@@ -66,15 +100,15 @@ export default function AssignmentFlow() {
 
   // 결과 단계
   const [items, setItems] = useState<GeneratedItem[]>([]);
+  // 완성 원고 결과의 상단 3줄 요약 — 여러 단계여도 전체를 아우르는 하나의
+  // 요약이라 요소별 카드 안이 아니라 카드들 위에 한 번만 보여준다.
+  const [essaySummaryLines, setEssaySummaryLines] = useState<string[]>([]);
 
   // 최근 히스토리 다시 불러오기 (로그인 사용자에게만 노출)
   const [latestHistory, setLatestHistory] = useState<LatestHistory | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      setLatestHistory(null);
-      return;
-    }
+    if (!user) return;
     fetch("/api/histories/latest")
       .then((res) => res.json())
       .then((data) => setLatestHistory(data))
@@ -82,7 +116,7 @@ export default function AssignmentFlow() {
   }, [user]);
 
   function handleUseLatest() {
-    if (!latestHistory) return;
+    if (!user || !latestHistory) return;
     setSubject(latestHistory.subject);
     setCoreTaskInfo(latestHistory.core_task_info);
     setAdminInfo(latestHistory.admin_info);
@@ -129,52 +163,123 @@ export default function AssignmentFlow() {
     }
   }
 
-  async function handleGenerate() {
-    if (!coreTaskInfo) return;
-    setErrorMessage(null);
-    setStep("generating");
-    const initial: GeneratedItem[] = coreTaskInfo.task_elements.map((element) => ({
-      element,
-      status: "loading",
-    }));
-    setItems(initial);
+  function setItemDone(idx: number, element: TaskElement, result: EssayResult | PlanResult) {
+    setItems((prev) => {
+      const next = [...prev];
+      next[idx] = { element, status: "done", result };
+      return next;
+    });
+  }
+  function setItemError(idx: number, element: TaskElement, err: unknown) {
+    setItems((prev) => {
+      const next = [...prev];
+      next[idx] = {
+        element,
+        status: "error",
+        message: err instanceof Error ? err.message : "생성 중 오류가 발생했습니다.",
+      };
+      return next;
+    });
+  }
+  function setItemInsufficient(idx: number, element: TaskElement, reason: string) {
+    setItems((prev) => {
+      const next = [...prev];
+      next[idx] = { element, status: "insufficient", reason };
+      return next;
+    });
+  }
 
+  // 외부 툴로 별도 제작해야 하는 요소(PPT/포스터 등)는 기존 단발성 생성을 그대로 쓴다.
+  async function generatePlanElements(planElements: TextStageRef[]) {
     await Promise.all(
-      coreTaskInfo.task_elements.map(async (element, idx) => {
-        const endpoint =
-          element.type === "text_submission" ? "/api/tasks/generate/essay" : "/api/tasks/generate/plan";
+      planElements.map(async ({ element, idx }) => {
         try {
-          const res = await fetch(endpoint, {
+          const res = await fetch("/api/tasks/generate/plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ subject, coreTaskInfo, adminInfo, instructions, turnstileToken }),
           });
           if (!res.ok) throw new Error((await res.json()).error ?? "생성에 실패했습니다.");
           const result: EssayResult | PlanResult | InsufficientDataResult = await res.json();
-
-          setItems((prev) => {
-            const next = [...prev];
-            next[idx] =
-              result.type === "insufficient_data"
-                ? { element, status: "insufficient", reason: result.reason }
-                : { element, status: "done", result };
-            return next;
-          });
+          if (result.type === "insufficient_data") setItemInsufficient(idx, element, result.reason);
+          else setItemDone(idx, element, result);
         } catch (err) {
-          setItems((prev) => {
-            const next = [...prev];
-            next[idx] = {
-              element,
-              status: "error",
-              message: err instanceof Error ? err.message : "생성 중 오류가 발생했습니다.",
-            };
-            return next;
-          });
+          setItemError(idx, element, err);
         }
       })
     );
+  }
 
+  // 완성 원고로 제출 가능한 요소(고민쓰기→친구의 고민 분석→책처방전→편지처럼
+  // 이어지는 서술형)를 전부 한 번의 호출로 생성한다 — 같은 컨텍스트 안에서 한
+  // 번에 쓰기 때문에, 등장인물 이름·책 정보 같은 사실이 요소 사이에서 어긋날
+  // 수가 구조적으로 없다 (여러 번 나눠 부르면 서로의 확정된 사실을 몰라서
+  // 매번 다르게 지어내는 문제가 있었다 — PROGRESS.md 참고). "이번 과제 한정
+  // 지침" 필드에 학생이 입력한 내용(예: 무작위로 뽑은 친구의 실제 고민 원문)도
+  // 이 한 번의 호출에 그대로 실려서 반영된다.
+  async function generateTextElements(textStages: TextStageRef[]) {
+    try {
+      const res = await fetch("/api/tasks/generate/essay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, coreTaskInfo, adminInfo, instructions, turnstileToken }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "생성에 실패했습니다.");
+      const result: EssayResult | PlanResult | InsufficientDataResult = await res.json();
+
+      if (result.type === "insufficient_data") {
+        for (const { element, idx } of textStages) setItemInsufficient(idx, element, result.reason);
+        return;
+      }
+      if (result.type !== "essay") return;
+
+      setEssaySummaryLines(result.summaryLines ?? []);
+
+      if (result.sections && result.sections.length === textStages.length) {
+        textStages.forEach(({ element, idx }, i) => {
+          const section = result.sections![i];
+          setItemDone(idx, element, {
+            type: "essay",
+            markdown: section.markdown,
+            sources: section.sources,
+            lengthWarning: section.lengthWarning,
+            authorWarning: section.authorWarning,
+            noSourcesWarning: section.noSourcesWarning,
+            latency_ms: result.latency_ms,
+            submissionId: result.submissionId,
+          });
+        });
+      } else {
+        // 요소가 하나뿐이거나(섹션 분리 불필요) 어떤 이유로든 개수가 안 맞으면,
+        // 전체 결과를 첫 요소에 그대로 보여준다.
+        const [first, ...rest] = textStages;
+        setItemDone(first.idx, first.element, result);
+        for (const { element, idx } of rest) {
+          setItemError(idx, element, new Error("이 단계는 별도로 표시되지 않았어요 — 위 결과를 확인해주세요."));
+        }
+      }
+    } catch (err) {
+      for (const { element, idx } of textStages) setItemError(idx, element, err);
+    }
+  }
+
+  function handleGenerate() {
+    if (!coreTaskInfo) return;
+    setErrorMessage(null);
+    const initial: GeneratedItem[] = coreTaskInfo.task_elements.map((element) => ({
+      element,
+      status: "loading",
+    }));
+    setItems(initial);
+    setEssaySummaryLines([]);
     setStep("result");
+
+    const withIndex = coreTaskInfo.task_elements.map((element, idx) => ({ element, idx }));
+    const textStages = withIndex.filter(({ element }) => element.type === "text_submission");
+    const planElements = withIndex.filter(({ element }) => element.type === "external_production");
+
+    void generatePlanElements(planElements);
+    if (textStages.length > 0) void generateTextElements(textStages);
   }
 
   async function handleRegenerate(idx: number, revisionInstructions: string) {
@@ -195,11 +300,32 @@ export default function AssignmentFlow() {
       throw new Error(result.reason || "자료가 부족해 재생성이 어려웠어요.");
     }
 
-    setItems((prev) => {
-      const next = [...prev];
-      next[idx] = { element: item.element, status: "done", result };
-      return next;
-    });
+    // 완성 원고는 요소 여러 개가 한 번에 재생성되므로(같은 submissionId를 공유),
+    // 이 결과를 클릭한 패널 하나가 아니라 완성 원고 요소 전체에 다시 나눠 반영한다.
+    if (result.type === "essay" && result.sections && coreTaskInfo) {
+      setEssaySummaryLines(result.summaryLines ?? []);
+      const textStages = coreTaskInfo.task_elements
+        .map((element, i) => ({ element, idx: i }))
+        .filter(({ element }) => element.type === "text_submission");
+      if (result.sections.length === textStages.length) {
+        textStages.forEach(({ element, idx: i }, sIdx) => {
+          const section = result.sections![sIdx];
+          setItemDone(i, element, {
+            type: "essay",
+            markdown: section.markdown,
+            sources: section.sources,
+            lengthWarning: section.lengthWarning,
+            authorWarning: section.authorWarning,
+            noSourcesWarning: section.noSourcesWarning,
+            latency_ms: result.latency_ms,
+            submissionId: result.submissionId,
+          });
+        });
+        return;
+      }
+    }
+
+    setItemDone(idx, item.element, result);
   }
 
   function updateElement(index: number, patch: Partial<TaskElement>) {
@@ -231,7 +357,7 @@ export default function AssignmentFlow() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <label className="block text-sm font-medium">수행평가 안내문 사진</label>
-                {latestHistory && (
+                {user && latestHistory && (
                   <button
                     onClick={handleUseLatest}
                     className="text-xs text-accent underline underline-offset-2 hover:no-underline"
@@ -275,11 +401,11 @@ export default function AssignmentFlow() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium">이번 과제 한정 지침 (선택)</label>
+              <label className="mb-2 block text-sm font-medium">상세 설명 (선택)</label>
               <textarea
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
-                placeholder="예: 발표는 5분 내외로, 개인적인 경험을 넣어서"
+                placeholder={instructionPlaceholder}
                 rows={3}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               />
@@ -397,14 +523,18 @@ export default function AssignmentFlow() {
         </div>
       )}
 
-      {step === "generating" && (
-        <div className="py-16 text-center text-sm text-muted">
-          검색하고 원고를 구성하는 중이에요... (완성 원고는 몇 초, 실행 계획은 조금 더 걸릴 수 있어요)
-        </div>
-      )}
-
       {step === "result" && (
         <div className="space-y-6">
+          {essaySummaryLines.length > 0 && (
+            <div className="rounded-md border border-border bg-surface p-4">
+              <p className="mb-2 text-xs font-medium text-muted">전체 요약</p>
+              <ul className="list-disc space-y-1 pl-5 text-sm">
+                {essaySummaryLines.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {items.map((item, idx) => {
             if (item.status === "loading") {
               return (
@@ -456,8 +586,10 @@ export default function AssignmentFlow() {
               setImagePreview(null);
               setTopicText("");
               setInstructions("");
+              setInstructionPlaceholder(randomInstructionPlaceholder());
               setCoreTaskInfo(null);
               setItems([]);
+              setEssaySummaryLines([]);
             }}
             className="w-full rounded-md border border-border px-4 py-2.5 text-sm font-medium"
           >
