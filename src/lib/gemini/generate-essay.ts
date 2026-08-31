@@ -45,6 +45,14 @@ export interface GenerateEssayInput {
   instructions?: string;
   /** M2에서 클러스터 겹침 방지 로직이 채워 넣을 회피 지시. */
   avoidanceInstruction?: string;
+  /**
+   * recommendation-diversity.ts가 채워 넣는, 최근 자주 추천된 책 목록 기반
+   * 안내 텍스트. avoidanceInstruction(클러스터 결과물 전체의 의미적 쏠림 회피)
+   * 과는 다른 축이다 — 이건 "똑같은 책 제목이 문자 그대로 반복되는지"만 본다.
+   * 이름을 분리해서 절대 섞이지 않게 함(둘 다 "다양성"이라는 말을 쓰지만
+   * 서로 다른 메커니즘).
+   */
+  recentBookGuidance?: string;
   /** 설정 탭 개인화 정보 (M4 이후 연동) */
   personalization?: string;
   /** F6 재생성 시 학생이 입력하는 "이번엔 이렇게 고쳐줘" 방향 (9-5) */
@@ -228,6 +236,7 @@ ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된
 ${sectionsBlock}
 ${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
+${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -896,6 +905,11 @@ export async function generateEssay(
     sources: attempt.sources,
     summaryLines: attempt.summaryLines,
     noSourcesWarning: attempt.sources.length === 0 && attempt.sections.some((s) => sectionHasVerifiableClaim(s)),
+    // 추천 다양성 시스템(recommendation-diversity.ts)이 이 생성에서 실제로
+    // 어떤 책이 최종 확정됐는지 기록할 수 있도록 노출한다. 책이 정확히 1권일
+    // 때만 채운다(여러 권이면 어느 책을 "그 과제의 추천 항목"으로 기록해야
+    // 할지 모호해서 — finalBookMentions는 위에서 이미 같은 기준으로 계산해둠).
+    recommendedBookTitle: finalBookMentions.length === 1 ? finalBookMentions[0].title : undefined,
     latency_ms: Date.now() - start,
   };
 }

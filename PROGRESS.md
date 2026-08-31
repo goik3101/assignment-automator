@@ -1723,6 +1723,55 @@ HTTP 상태 확인)에 한 번 통과시키지만, 2라운드 전에 만든
 (신설), [recommendation-diversity.ts](src/lib/recommendations/recommendation-diversity.ts)
 (신설), [generate-essay.ts](src/lib/gemini/generate-essay.ts)(`normalizeBookTitleKey` export).
 
+## 이어서: 추천 다양성 시스템 — 2단계: 책 추천 기능에 연결 (2026-08-31, 이어서)
+
+`feature/recommendation-diversity` 브랜치, 2단계.
+
+### 구현
+
+1. `GenerateEssayInput`에 `recentBookGuidance?: string` 필드 추가 — 기존
+   `avoidanceInstruction`(클러스터 결과물 전체의 의미적 쏠림 회피)과 이름을
+   분리(서로 다른 축, 절대 안 섞이게).
+2. [generate-essay.ts](src/lib/gemini/generate-essay.ts) `buildPrompt()`:
+   `avoidanceInstruction` 블록 바로 뒤에 `recentBookGuidance`를 그대로
+   interpolate(이 필드 자체가 이미 사용자가 준 4원칙 텍스트 — "최근 추천
+   이력에 존재하는 항목은 우선순위를 낮춰라... 단, 주제와의 적합성이 압도적으로
+   높은 경우에는 동일 항목을 다시 추천할 수 있다..." — 를 담은 완성된 블록을
+   반환하도록 1단계에서 이미 만들어뒀음).
+3. `generateEssay()`가 이미 계산해둔 `finalBookMentions`(단일 진실 소스 책
+   제목)를 재사용해서 `EssayResult.recommendedBookTitle`로 노출(책이 정확히
+   1권일 때만).
+4. [src/app/api/tasks/generate/essay/route.ts](src/app/api/tasks/generate/essay/route.ts):
+   `identifyCluster` 직후 `buildRecommendationGuidance("book", { userId })`
+   호출 → `generateEssay()` 입력에 전달. 생성 성공 후, 다른 부수 기록
+   (`saveResultEmbedding`/`recordGeneration`/`saveHistory`)과 나란히
+   `recordRecommendation()` 호출 — `itemName`은 `normalizeBookTitleKey()`로
+   정규화해서 저장(겹낫표/공백 차이로 같은 책이 다른 항목처럼 집계되는 걸
+   방지 — 이 표는 표시용이 아니라 빈도 집계용이라 정규화를 우선함). Vercel
+   서버리스 함수 특성상 응답 후 비동기 작업이 보장 안 되므로(이 함수의
+   다른 부수 기록들과 동일하게) `await`함(`void`로 fire-and-forget 안 함).
+
+### 검증
+
+Turnstile 캡차 없이 테스트하려고 `ADMIN_LOGIN_CODE`로 관리자 세션 쿠키를
+직접 서명해서(코드와 동일한 HMAC 로직) 실제 `/api/tasks/generate/essay`
+라우트를 curl로 직접 호출(임시 우회, 프로덕션 코드는 안 건드림) — 관리자는
+모든 제한에서 예외라 반복 테스트에도 적합. 실제 호출 결과: HTTP 200,
+`recommendedBookTitle: "데미안"`(공교롭게도 사용자가 보고한 문제의 그 책)이
+응답에 정확히 노출됨을 확인. 로그에 `[recommendation-diversity] 이력 조회
+실패`/`이력 기록 실패`(`PGRST205`, 마이그레이션 미실행)가 남아서 회피
+안내 조회와 기록 시도가 실제로 파이프라인에 연결됐음을 확인 — 둘 다 에러를
+삼키고 생성 자체는 정상 완료(HTTP 200)됨. **"최근 추천 회피"가 실제로
+동작하는지(반복 억제 효과)는 0010 마이그레이션을 실행해야 검증 가능** —
+지금은 이력이 계속 비어 있어서 회피 지시 자체가 매번 생략되는 상태(정상
+동작이지만, 효과 검증은 6단계 실측 테스트 전에 마이그레이션이 필요).
+`npx tsc --noEmit`/`npx eslint src/` 클린.
+
+**변경 파일**: [generate-essay.ts](src/lib/gemini/generate-essay.ts)
+(`recentBookGuidance` 입력 필드+프롬프트 반영, `recommendedBookTitle` 결과
+노출), [types/task.ts](src/types/task.ts)(`EssayResult.recommendedBookTitle`),
+[route.ts](src/app/api/tasks/generate/essay/route.ts)(가이던스 조회+생성 후 기록 연결).
+
 ## 다음에 할 일
 
 1. `supabase/migrations/0008_drop_task_sessions.sql`,

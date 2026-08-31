@@ -101,6 +101,10 @@ export interface EssayResult {
   /** 위 sections와 별개로 단일 단계 케이스에 쓰는 "검증할 사실 주장은 있는데
    * 출처가 없음" 경고(위 참고). */
   noSourcesWarning?: boolean;
+  /** 이 생성에서 최종 확정된 책 제목(정확히 1권일 때만) — 추천 다양성 시스템
+   * (recommendation-diversity.ts)이 이력을 기록할 때 쓴다. 책이 없거나
+   * 여러 권이면 undefined. */
+  recommendedBookTitle?: string;
 }
 
 export interface PlanStep {

@@ -4,6 +4,8 @@ import { generateEssay } from "@/lib/gemini/generate-essay";
 import { identifyCluster } from "@/lib/clusters/identify-cluster";
 import { buildAvoidanceInstruction } from "@/lib/clusters/avoidance";
 import { saveResultEmbedding, essayResultToText } from "@/lib/clusters/save-result-embedding";
+import { buildRecommendationGuidance, recordRecommendation } from "@/lib/recommendations/recommendation-diversity";
+import { normalizeBookTitleKey } from "@/lib/gemini/generate-essay";
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
@@ -51,12 +53,17 @@ export async function POST(req: NextRequest) {
     // 생성(3단계)보다 먼저 일어나야 그 결과를 프롬프트에 반영할 수 있다.
     const cluster = await identifyCluster(coreTaskInfo);
     const avoidanceInstruction = await buildAvoidanceInstruction(cluster.clusterId);
+    // avoidanceInstruction(클러스터 결과물 전체의 의미적 쏠림)과는 다른 축 —
+    // "똑같은 책 제목이 문자 그대로 반복되는지"를 본다(추천 다양성 시스템,
+    // PROGRESS.md 참고). 실패해도(테이블 미생성 등) null을 반환할 뿐 여기를 막지 않는다.
+    const bookGuidance = await buildRecommendationGuidance("book", { userId: identity.userId ?? undefined });
 
     const result = await generateEssay({
       subject,
       coreTaskInfo,
       instructions,
       avoidanceInstruction: avoidanceInstruction ?? undefined,
+      recentBookGuidance: bookGuidance?.instructionText,
     });
 
     const response =
@@ -69,6 +76,23 @@ export async function POST(req: NextRequest) {
               resultText: essayResultToText(result),
             });
             await recordGeneration(identity, "generate", !!avoidanceInstruction);
+
+            if (result.recommendedBookTitle) {
+              // 정규화된 값으로 저장 — 겹낫표/공백 차이로 같은 책이 다른 항목처럼
+              // 카운트되는 걸 막기 위함(표시용이 아니라 빈도 집계용 테이블이라 우선함).
+              // await하는 이유: Vercel 서버리스 함수는 응답을 보내고 나면 남은
+              // 비동기 작업을 계속 보장하지 않는다 — 이 함수 내 다른 부수 기록
+              // (saveResultEmbedding/recordGeneration/saveHistory)도 전부 await함.
+              await recordRecommendation({
+                category: "book",
+                itemName: normalizeBookTitleKey(result.recommendedBookTitle),
+                userId: identity.userId,
+                guestId: identity.guestId,
+                clusterId: cluster.clusterId,
+                topic: coreTaskInfo.topic,
+                submissionId,
+              });
+            }
 
             if (identity.userId) {
               const textElements = coreTaskInfo.task_elements.filter((e) => e.type === "text_submission");
