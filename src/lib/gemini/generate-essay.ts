@@ -22,6 +22,7 @@ import {
   BOOK_EXCERPT_QUERY_TEMPLATES,
   type VerificationResult,
 } from "@/lib/verification/excerpt-verification";
+import { queryRecommendations, summarizeItemFrequency } from "@/lib/recommendations/recommendation-diversity";
 import type { CoreTaskInfo, EssayResult, InsufficientDataResult, SourceRef } from "@/types/task";
 
 // 기획서 5-1: 완성 원고 경로는 그라운딩 켠 상태로 마크다운을 바로 받는다.
@@ -53,6 +54,13 @@ export interface GenerateEssayInput {
    * 서로 다른 메커니즘).
    */
   recentBookGuidance?: string;
+  /**
+   * 후보 생성 ↔ 검증 분리(3단계): 이 값이 있으면 본문 생성(stageA)이 책을
+   * "쓰면서" 즉흥적으로 고르지 않고, 이미 다양성을 고려해 선택된 이 책을
+   * 그대로 처방/언급하도록 고정한다. `generateEssay()`가 `selectBookCandidate()`
+   * 로 미리 계산해서 채운다 — 호출자가 직접 채울 일은 없다.
+   */
+  presetBook?: { title: string; author?: string };
   /** 설정 탭 개인화 정보 (M4 이후 연동) */
   personalization?: string;
   /** F6 재생성 시 학생이 입력하는 "이번엔 이렇게 고쳐줘" 방향 (9-5) */
@@ -235,6 +243,7 @@ ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된
 [작성해야 할 단계들]
 ${sectionsBlock}
 ${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${input.presetBook ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${input.presetBook.title}』${input.presetBook.author ? ` (저자: ${input.presetBook.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
@@ -360,6 +369,140 @@ ${PERSPECTIVE_RULE}
 ${REAL_PERSON_NAME_RULE}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
 `.trim();
+}
+
+// 과제 설명에 책 관련 키워드가 있을 때만 후보 선택 단계를 돌린다 — 책 추천이
+// 없는 과제(개인 경험 에세이 등)까지 매번 그라운딩 호출을 추가하면 헛수고다.
+// generate-plan.ts의 needsFactVerification()과 같은 종류의 판별(완벽하지
+// 않아도 명백한 신호만 잡는 수준으로 충분).
+const BOOK_TASK_HINT_PATTERN = /책|도서|서적|독서/;
+
+function needsBookCandidateSelection(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): boolean {
+  if (BOOK_TASK_HINT_PATTERN.test(input.coreTaskInfo.topic)) return true;
+  if (input.coreTaskInfo.requirements.some((r) => BOOK_TASK_HINT_PATTERN.test(r))) return true;
+  return elements.some((e) => BOOK_TASK_HINT_PATTERN.test(e.description) || BOOK_TASK_HINT_PATTERN.test(e.label));
+}
+
+interface BookCandidate {
+  title: string;
+  author?: string;
+  reason?: string;
+}
+
+const BOOK_CANDIDATES_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    candidates: {
+      type: Type.ARRAY,
+      description: "제안한 책 후보 목록(3~5권).",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING, description: "책 제목(겹낫표 등 부호는 빼고)." },
+          author: { type: Type.STRING, description: "저자. 모르면 빈 문자열." },
+          reason: { type: Type.STRING, description: "이 주제에 어울리는 이유 한 줄." },
+        },
+        required: ["title"],
+      },
+    },
+  },
+  required: ["candidates"],
+};
+
+/**
+ * 후보 생성 ↔ 검증 분리(3단계) — 실제로 발견된 버그: 본문 생성(stageA)이
+ * 책을 "쓰면서" 한 번에 고르다 보니, 검증하기 쉬운 소수의 유명한 책으로
+ * 수렴하는 편향이 있었다(서로 다른 주제인데도 계속 『데미안』이 나옴). 이
+ * 함수는 본문을 쓰기 전에 후보 3~5권을 먼저 제안받고, "최근 추천 빈도가
+ * 낮은 후보"를 코드가 결정적으로 고른다(추가 LLM 호출 없이) — 완전히 새
+ * 검증 단계가 아니라, 기존 인용구 검증(quoteVerificationByTitle) 앞에 놓이는
+ * 사전 단계일 뿐이다. 여기서 하는 "검증 가능성" 판단은 모델의 자체 추정일
+ * 뿐 진짜 검증이 아니다 — 실제 검증은 지금까지처럼 본문 생성 이후
+ * verifyExcerpt()/verifyAuthorAttribution()가 한다(순서 변경 없음).
+ *
+ * 실패(응답 파싱 실패, 후보 0개 등)하면 null을 반환한다 — 이 경우
+ * generateEssay()는 이 단계가 아예 없었던 것처럼 기존 동작(본문 생성이 책을
+ * 직접 고름)으로 자연스럽게 폴백한다.
+ */
+async function selectBookCandidate(input: GenerateEssayInput): Promise<{ title: string; author?: string } | null> {
+  const ai = getGeminiClient();
+  const topic = input.coreTaskInfo.topic;
+  const prompt = `
+너는 고등학생 수행평가의 "책 처방/추천" 단계를 위해 후보 책을 제안하는
+리서처다. 최종 선택은 네가 하지 않는다 — 후보를 제안하는 것까지만 한다.
+
+[과제 주제] ${topic}
+${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
+${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
+
+이 주제/고민에 실제로 어울리는 실존하는 책 후보를 3~5권 제안할 것 — 반드시
+실시간 웹 검색 도구를 최소 한 번 이상 실제로 호출해서 각 후보가 실존하는
+책인지 확인할 것(지어낸 책 금지). 온라인에서 원문 발췌(전자책 미리보기,
+서점의 "책속으로" 등)를 찾기 쉬워 보이는지도 대략 판단해서 언급할 것 — 단,
+이건 다음 단계에서 실제로 검증할 것이므로 여기서는 예비 판단일 뿐이다.
+
+후보 다양성을 위해, 같은 저자나 거의 같은 소재로만 몰지 말고 서로 다른
+각도의 책을 섞어서 제안할 것. 각 후보마다 책 제목, 저자, 이 주제에 어울리는
+이유를 자유 서술로 밝힐 것.
+`.trim();
+
+  try {
+    const investigation = await withGeminiRetry(
+      () =>
+        ai.models.generateContent({
+          model: GEMINI_MODELS.flash,
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: { tools: [{ googleSearch: {} }] },
+        }),
+      "generateEssay:selectBookCandidate:investigate"
+    );
+    const investigationText = investigation.text;
+    if (!investigationText) return null;
+
+    const extraction = await withGeminiRetry(
+      () =>
+        ai.models.generateContent({
+          model: GEMINI_MODELS.flashLite,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: `아래는 어떤 조사자가 책 후보를 제안하며 남긴 메모다. 이 메모에서 실제로 제안된 책 후보들을 구조화해서 뽑아줘.\n\n[메모]\n${investigationText}`,
+                },
+              ],
+            },
+          ],
+          config: { responseMimeType: "application/json", responseSchema: BOOK_CANDIDATES_SCHEMA },
+        }),
+      "generateEssay:selectBookCandidate:extract"
+    );
+    const raw = extraction.text;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { candidates: BookCandidate[] };
+    if (!parsed.candidates || parsed.candidates.length === 0) return null;
+
+    // 코드가 결정(추가 LLM 호출 없음): 최근 전체 사용자 기준 빈도가 낮은
+    // 후보를 우선한다 — 완전 배제가 아니라 안정 정렬(stable sort)이라, 전부
+    // 빈도 0이면 모델의 원래 1순위가 그대로 유지된다.
+    const globalRecords = await queryRecommendations("book", { sinceDays: 90 });
+    const frequency = summarizeItemFrequency(globalRecords);
+    const scored = parsed.candidates.map((c, i) => ({
+      candidate: c,
+      freq: frequency.get(normalizeBookTitleKey(c.title)) ?? 0,
+      originalIndex: i,
+    }));
+    scored.sort((a, b) => a.freq - b.freq || a.originalIndex - b.originalIndex);
+
+    const picked = scored[0].candidate;
+    console.log(
+      `[generateEssay] selectBookCandidate: 후보=${JSON.stringify(scored.map((s) => ({ title: s.candidate.title, freq: s.freq })))} 선택="${picked.title}"`
+    );
+    return { title: picked.title, author: picked.author || undefined };
+  } catch (err) {
+    console.error("[generateEssay] selectBookCandidate 실패(본문 생성이 직접 고르도록 폴백)", err);
+    return null;
+  }
 }
 
 interface Attempt {
@@ -528,6 +671,16 @@ export async function generateEssay(
 ): Promise<EssayResult | InsufficientDataResult> {
   const start = Date.now();
   const elements = input.coreTaskInfo.task_elements.filter((e) => e.type === "text_submission");
+
+  // 3단계: 후보 생성 ↔ 검증 분리. F6 재생성(previousOutputText 있음)은
+  // 이전 버전에서 이미 책이 확정돼 있으므로 다시 고르지 않는다(안 그러면
+  // "이미 정해진 사실은 바꾸지 말라"는 지시와 충돌할 수 있음). presetBook을
+  // input에 얹어서 이 아래 모든 generateOnce() 호출(초회+재시도)에 자연스럽게
+  // 전달되게 한다.
+  if (!input.previousOutputText && needsBookCandidateSelection(input, elements)) {
+    const presetBook = await selectBookCandidate(input);
+    if (presetBook) input = { ...input, presetBook };
+  }
 
   let attempt: Attempt;
   try {

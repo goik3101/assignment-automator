@@ -1772,6 +1772,64 @@ Turnstile 캡차 없이 테스트하려고 `ADMIN_LOGIN_CODE`로 관리자 세�
 노출), [types/task.ts](src/types/task.ts)(`EssayResult.recommendedBookTitle`),
 [route.ts](src/app/api/tasks/generate/essay/route.ts)(가이던스 조회+생성 후 기록 연결).
 
+## 이어서: 추천 다양성 시스템 — 3단계: 후보 생성 ↔ 검증 분리 (2026-08-31, 이어서)
+
+`feature/recommendation-diversity` 브랜치, 3단계 — 가장 구조적인 변경.
+
+### 구현
+
+지금까지는 본문 생성(stageA)이 책을 "쓰면서" 즉흥적으로 골랐다(프롬프트
+안내가 있어도 결국 모델의 최초 선택 경향에 좌우됨). 새 사전 단계
+`selectBookCandidate(input)`([generate-essay.ts](src/lib/gemini/generate-essay.ts))
+추가:
+1. 그라운딩 켠 자유 서술 호출로 실존 책 후보 3~5권 제안(각자 제목/저자/이유,
+   "온라인 원문 발췌를 찾기 쉬워 보이는지"는 모델의 예비 판단일 뿐 — 진짜
+   검증은 그대로 기존 파이프라인이 함).
+2. 그라운딩 없는 구조화 추출로 후보 목록 파싱.
+3. **코드가 결정(추가 LLM 호출 없음)**: `queryRecommendations("book")` +
+   `summarizeItemFrequency()`로 최근 90일 전체 빈도를 구하고, 후보를 빈도
+   오름차순으로 안정 정렬(stable sort) — 전부 빈도 0이면 모델의 원래 1순위가
+   그대로 유지되고, 과다 사용 후보만 자연스럽게 밀려남(완전 배제 아님).
+4. 선택된 책을 `GenerateEssayInput.presetBook`(신규 필드)으로 `buildPrompt()`
+   에 "반드시 이 책을 처방/언급할 것" 지시로 고정 전달.
+
+`needsBookCandidateSelection()`(정규식 휴리스틱, generate-plan.ts의
+`needsFactVerification()`과 같은 부류)로 과제 설명에 책 관련 키워드가 있을
+때만 이 사전 단계를 돌린다 — 책 추천이 없는 과제(개인 경험 에세이 등)에
+매번 그라운딩 호출을 추가하는 낭비를 막음. F6 재생성(`previousOutputText`
+있음)은 이전 버전에서 이미 책이 확정돼 있으므로 다시 고르지 않음(안 그러면
+"이미 정해진 사실은 바꾸지 말라"는 지시와 충돌 위험).
+
+**순서 확인(사용자 우려 사항)**: `presetBook`은 `input`에 얹혀서 그 아래
+모든 `generateOnce()` 호출(초회+품질 재시도)에 자연스럽게 전달될 뿐, 기존
+`extractDistinctBookMentions`→`quoteVerificationByTitle`(인용구 1회 검증)→
+`applyCanonicalQuotes()`(전 섹션 통일) 파이프라인은 순서·로직 변경 없이
+그대로 — 새 단계는 "어떤 책을 쓸지"를 앞으로 당길 뿐 인용구 검증·통일
+순서에는 개입하지 않음.
+
+### 검증
+
+Turnstile 우회용 관리자 세션 쿠키로 실제 `/api/tasks/generate/essay`를
+curl로 2가지 시나리오 호출:
+- **책 추천 과제**(진로 고민): 로그에 `selectBookCandidate: 후보=[...]
+  선택="뭐가 되고 싶냐는 어른들의 질문에 대답하는 법"`이 정확히 남음(전부
+  빈도 0이라 모델 1순위 유지 확인). 최종 결과의 책처방전·편지 두 섹션 모두
+  이 책(알랭 드 보통, 인생학교)을 정확히 동일하게 사용, 각각 실제 서점 출처
+  (kyobobook.co.kr/trevari.co.kr, `url_valid: true`)까지 정상 확인됨 —
+  presetBook이 실제로 본문에 반영되고 기존 검증·출처 파이프라인이 정상
+  작동함을 확인.
+- **책 추천이 없는 과제**(감각적 수필 쓰기): `selectBookCandidate` 로그가
+  전혀 새로 안 남음(직전 호출 로그 그대로) — `needsBookCandidateSelection()`
+  이 정확히 스킵함을 확인. 결과의 `recommendedBookTitle: undefined`,
+  본문도 책과 무관한 순수 감각적 수필로 정상 생성됨.
+
+`npx tsc --noEmit`/`npx eslint src/` 클린.
+
+**변경 파일**: [generate-essay.ts](src/lib/gemini/generate-essay.ts)
+(`selectBookCandidate()`/`needsBookCandidateSelection()`/`BOOK_CANDIDATES_SCHEMA`
+신설, `GenerateEssayInput.presetBook` 추가+프롬프트 반영, `generateEssay()`
+시작부에 후보 선택 연결).
+
 ## 다음에 할 일
 
 1. `supabase/migrations/0008_drop_task_sessions.sql`,
