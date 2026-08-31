@@ -332,6 +332,19 @@ async function judge(investigation: Investigation): Promise<VerificationResult> 
   };
 }
 
+// 4단계(검증 재시도 강화): 실제로 발견된 문제 — 덜 유명한 항목이 "검색은
+//했는데 한 번 못 찾았다"는 이유만으로 바로 실패 처리되면, 후보 선택
+// (selectBookCandidate)이 다양성을 고려해 골라준 의미가 없어진다("검증
+// 가능성 때문에 다양성이 희생되는" 문제). 그래서 "검색은 했는데 실패"한
+// 경우엔 최대 2회 더(총 3회) 각도를 바꿔가며 시도한 뒤에만 최종 실패로
+// 처리한다 — BOOK_EXCERPT_QUERY_TEMPLATES의 5개 각도를 더 넉넉히 소진하려는
+// 목적. 존재하지 않는 출처를 지어내게 유도하는 게 아니라 "진짜 있을 수도
+// 있는 원문을 못 찾고 포기하는" 쪽을 줄이는 것뿐이라 judge()의 이중
+// 안전장치(그라운딩 출처 필수, 위키/동영상/블로그·마케팅 카피 배제)는
+// 그대로 유지된다. "검색 자체를 한 번도 안 함"(모델이 지시를 무시)은 각도
+// 문제가 아니라 순응 문제라 기존처럼 1회 강한 재지시만 한다.
+const MAX_ANGLE_RETRIES = Number(process.env.VERIFY_EXCERPT_MAX_ANGLE_RETRIES ?? 2);
+
 /**
  * 인용 대상의 원문이 실제로 노출된 페이지를 찾아 검증한다. generate-essay.ts의
  * 메인 생성 호출과 같은 2단계 패턴을 쓴다 — ①그라운딩 켠 자유 서술 조사 →
@@ -339,10 +352,10 @@ async function judge(investigation: Investigation): Promise<VerificationResult> 
  *
  * 1차 시도가 실패하면 반드시 "다른 검색"으로 재시도한다(같은 쿼리 반복 금지):
  * - 검색 도구 자체를 한 번도 안 불렀으면(기억만으로 답함) 같은 쿼리 목록을
- *   더 강하게 요구하며 재시도.
- * - 실제로 검색은 했는데 못 찾았으면, 쿼리 목록의 순서를 돌려서(rotate) 아직
- *   앞서 시도 안 했을 가능성이 높은 각도부터 다시 조사 — "재시도 = 다른 검색
- *   시도"가 되도록.
+ *   더 강하게 요구하며 1회 재시도.
+ * - 실제로 검색은 했는데 못 찾았으면, 쿼리 목록의 순서를 매번 다르게 돌려서
+ *   (rotate) 아직 앞서 시도 안 했을 가능성이 높은 각도부터 최대
+ *   MAX_ANGLE_RETRIES회 더 조사한다.
  */
 export async function verifyExcerpt(
   target: VerificationTarget,
@@ -356,41 +369,46 @@ export async function verifyExcerpt(
     const firstResult = await judge(firstInvestigation);
     if (firstResult.verified) return firstResult;
 
-    let retryPrompt: string;
-    let retryTemplates: QueryTemplate[];
+    const queriesTried: string[] = [...firstInvestigation.queriesTried];
+
     if (firstInvestigation.queriesTried.length === 0) {
       console.warn(`[verifyExcerpt] 검색 도구를 한 번도 호출 안 함 — 강하게 재지시하여 1회 재시도`);
-      retryTemplates = queryTemplates;
-      retryPrompt = buildInvestigationPrompt(
+      const retryPrompt = buildInvestigationPrompt(
         target,
-        retryTemplates,
+        queryTemplates,
         `【다시 한번 강조 — 반드시 지킬 것】 방금 검색 도구를 한 번도 호출하지 않고 답하려 했다. ` +
           `이번에는 반드시 아래 검색어 중 최소 하나를 실제로 호출한 뒤에만 결론을 내릴 것.`
       );
-    } else {
+      const retryInvestigation = await runInvestigation(retryPrompt);
+      const retryResult = await judge(retryInvestigation);
+      queriesTried.push(...retryInvestigation.queriesTried);
+      if (retryResult.verified) return { ...retryResult, queriesTried };
+      console.warn(`[verifyExcerpt] 재시도 후에도 검증 실패 — 시도한 검색어 전체: ${JSON.stringify(queriesTried)}`);
+      return { verified: false, queriesTried };
+    }
+
+    for (let attempt = 1; attempt <= MAX_ANGLE_RETRIES; attempt++) {
       console.warn(
-        `[verifyExcerpt] 1차 조사 실패(검색은 했음, 각도를 바꿔 1회 재시도) — 1차 검색어: ${JSON.stringify(firstInvestigation.queriesTried)}`
+        `[verifyExcerpt] 조사 실패(검색은 했음, 각도를 바꿔 ${attempt}/${MAX_ANGLE_RETRIES}차 재시도) — ` +
+          `지금까지 시도한 검색어: ${JSON.stringify(queriesTried)}`
       );
-      retryTemplates = rotate(queryTemplates, Math.ceil(queryTemplates.length / 2));
-      retryPrompt = buildInvestigationPrompt(
+      const retryTemplates = rotate(queryTemplates, Math.ceil((queryTemplates.length * attempt) / (MAX_ANGLE_RETRIES + 1)));
+      const retryPrompt = buildInvestigationPrompt(
         target,
         retryTemplates,
-        `【재시도 — 반드시 다른 검색으로 시도할 것】 방금 이 검색어들로 조사했지만(${firstInvestigation.queriesTried
+        `【재시도 — 반드시 다른 검색으로 시도할 것】 방금 이 검색어들로 조사했지만(${queriesTried
           .map((q) => `'${q}'`)
           .join(", ")}) 원문을 찾지 못했다. 이번에는 같은 검색어를 반복하지 말고, 아래 새로운 순서의 ` +
           `검색어부터 다른 각도로 다시 조사할 것.`
       );
+      const retryInvestigation = await runInvestigation(retryPrompt);
+      const retryResult = await judge(retryInvestigation);
+      queriesTried.push(...retryInvestigation.queriesTried);
+      if (retryResult.verified) return { ...retryResult, queriesTried };
     }
 
-    const retryInvestigation = await runInvestigation(retryPrompt);
-    const retryResult = await judge(retryInvestigation);
-    const combinedQueriesTried = [...firstInvestigation.queriesTried, ...retryInvestigation.queriesTried];
-
-    if (!retryResult.verified) {
-      console.warn(`[verifyExcerpt] 재시도 후에도 검증 실패 — 시도한 검색어 전체: ${JSON.stringify(combinedQueriesTried)}`);
-      return { verified: false, queriesTried: combinedQueriesTried };
-    }
-    return { ...retryResult, queriesTried: combinedQueriesTried };
+    console.warn(`[verifyExcerpt] ${MAX_ANGLE_RETRIES}회 각도 재시도 후에도 검증 실패 — 시도한 검색어 전체: ${JSON.stringify(queriesTried)}`);
+    return { verified: false, queriesTried };
   } catch (err) {
     console.error("[verifyExcerpt] 검증 호출 실패", err);
     return { verified: false, queriesTried: [] };

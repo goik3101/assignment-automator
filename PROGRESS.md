@@ -1830,6 +1830,40 @@ curl로 2가지 시나리오 호출:
 신설, `GenerateEssayInput.presetBook` 추가+프롬프트 반영, `generateEssay()`
 시작부에 후보 선택 연결).
 
+## 이어서: 추천 다양성 시스템 — 4단계: 검증 재시도 강화 (2026-08-31, 이어서)
+
+`feature/recommendation-diversity` 브랜치, 4단계.
+
+### 구현
+
+[excerpt-verification.ts](src/lib/verification/excerpt-verification.ts)의
+`verifyExcerpt()`가 "검색은 했는데 원문을 못 찾음" 경우 기존엔 최대 1회만
+각도를 바꿔 재시도(총 2회)하고 포기했다 — 덜 유명한 항목이 검증 실패를
+한 번 했다는 이유만으로 후보 선택(3단계)이 다양성을 고려해 골라준 의미가
+사라질 수 있는 문제. `MAX_ANGLE_RETRIES`(기본 2, `.env`로 조정 가능)로
+바꿔서 최대 2회 더(총 3회) 각도를 돌려가며 시도한 뒤에만 최종 실패로
+처리하도록 강화. "검색 자체를 한 번도 안 함"(모델이 지시를 무시)은 각도
+문제가 아니라 순응 문제라 기존처럼 1회 강한 재지시만 유지(변경 없음).
+`judge()`의 이중 안전장치(그라운딩 출처 필수, 위키/동영상/블로그·마케팅
+카피 배제)는 그대로라 "존재하지 않는 출처를 지어내게 유도"하는 방향으로는
+전혀 안 바뀜 — 진짜 있을 수도 있는 원문을 더 찾아보고 포기하는 것뿐.
+
+### 검증
+
+임시 라우트(검증 후 삭제)로 `verifyExcerpt()`를 직접 호출:
+- 완전히 지어낸 가상의 책: 기존과 동일하게 "검색 자체를 안 함" 경로로 빠져
+  1회 재시도 후 정직하게 실패 처리됨(변경 없음, 회귀 없음 확인).
+- 실존하지만 검증하기 어려운 인용구(우종영, 『숲에서 우주를 보다』 + 지어낸
+  가짜 인용 문장)로 재시도: `queriesTried`에 검색어 8건이 3개 배치로
+  뚜렷하게 나뉘어 남음(1차 3건 + 2차 3건 + 3차 2건) — 각도 재시도가 정확히
+  2회 더(총 3회) 실행됨을 확인. 최종적으로는 정직하게 `verified: false` 반환
+  (지어낸 인용구라 못 찾는 게 맞는 결과 — 안전장치가 여전히 정상 작동).
+
+`npx tsc --noEmit`/`npx eslint src/` 클린.
+
+**변경 파일**: [excerpt-verification.ts](src/lib/verification/excerpt-verification.ts)
+(`verifyExcerpt()`의 각도 재시도 루프화, `MAX_ANGLE_RETRIES` 상수).
+
 ## 다음에 할 일
 
 1. `supabase/migrations/0008_drop_task_sessions.sql`,
