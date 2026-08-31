@@ -1663,13 +1663,78 @@ HTTP 상태 확인)에 한 번 통과시키지만, 2라운드 전에 만든
 (`applyCanonicalQuotes()`를 비동기로 전환하고 새로 추가하는 출처를
 `validateSources()`로 검증).
 
+## 이어서: 추천 다양성 시스템 — 1단계: 공용 모듈 (2026-08-31, 이어서)
+
+사용자가 발견한 문제: 서로 다른 주제("진로 고민", "친구가 없어 느끼는
+고립감")에 연속으로 헤르만 헤세의 『데미안』이 추천됨. 검증(grounding)
+시스템이 강화되면서 검증하기 쉬운 소수의 유명한 항목으로 추천이 수렴하는
+구조적 편향으로 추정. 목표는 특정 책 금지가 아니라 추천 이력을 시스템적으로
+추적·활용해 반복 추천 비율을 구조적으로 낮추는 것. 범위가 커서 사용자 요청대로
+단계별로 나눠 진행(1→2→3→4→5→6→7, 단계마다 커밋)하며,
+**`feature/recommendation-diversity` 브랜치**에서 작업(main은 캐치업 커밋
+상태로 보존, 전체 완료·검증 후 사용자 확인받고 merge 예정).
+
+### 설계 근거
+
+기존 `clusters`/`task_embeddings`(M2/M3, `src/lib/clusters/`)를 먼저 확인함
+— "안내문 임베딩 기반 클러스터당 결과물 전체 유사도"를 다루는 시스템이라
+이번 문제(문자 그대로 같은 책 제목이 반복)와는 다른 축임을 확인, 새 테이블이
+필요하다는 결론(`docs/planning.md` 6-0/10/19번도 항목별 이력을 다루지 않음).
+`identifyCluster()`가 이미 계산하는 `cluster_id`를 "주제" 필드로 재사용하기로
+했지만, 이건 "안내문 형식" 단위라 "진로 고민" vs "외로움" 같은 학생별 세부
+차이는 못 잡는다 — 그래서 이 버그의 핵심 방어선은 클러스터/주제 단위가 아니라
+**category 전체(전 사용자, 전 주제) 기준 최근 빈도**로 설계함(실제 사고가
+서로 다른 주제에서 반복된 것이었기 때문).
+
+### 구현
+
+1. [0010_recommendation_history.sql](supabase/migrations/0010_recommendation_history.sql)
+   신설 — `recommendation_history` 테이블(category/item_name/user_id/guest_id/
+   cluster_id/topic/source/submission_id). `usage_events`(0004)와 동일한
+   RLS 패턴(서비스 롤 전용, 정책 없음) — user_id를 담지만 클라이언트가 직접
+   쿼리할 이유가 없어서.
+2. [recommendation-diversity.ts](src/lib/recommendations/recommendation-diversity.ts)
+   신설. 함수명에 "diversity"를 단독으로 안 쓰고 `recommendation`/`item`
+   접두어를 붙여서 기존 `embedForDiversity`(완전히 다른 메커니즘 — 결과물
+   임베딩)와 헷갈리지 않게 파일 상단에 명시적으로 구분해뒀다. 6개 조회
+   요구사항을 소수의 조합 가능한 함수로 커버: `recordRecommendation()`(기록),
+   `queryRecommendations()`(원시 조회 — 최근 N건/N일/개인별/전체을 옵션
+   하나로 커버), `summarizeItemFrequency()`(순수 JS 집계, DB 왕복 없음),
+   `buildRecommendationGuidance()`(`avoidance.ts`의 `buildAvoidanceInstruction()`
+   과 병렬 구조 — 프롬프트에 바로 넣을 안내 텍스트 생성, 이력이 적으면 null).
+3. `generate-essay.ts`의 `normalizeBookTitleKey()`를 export해서 2단계에서
+   책 제목 정규화를 이 모듈과 공유할 수 있게 함.
+4. **모든 DB 접근은 실패해도 조용히 안전한 기본값(빈 배열/null)으로 넘어가고
+   경고만 로그로 남긴다** — `validate-sources.ts`의 `logValidations()`와 같은
+   이유. 특히 이번엔 마이그레이션을 아직 안 돌린 상태로 배포될 게 거의
+   확실해서(아래 "다음에 할 일" 참고, 0008/0009도 아직 미실행) 이 방어가
+   실전에서 바로 검증됨(아래).
+
+### 검증
+
+임시 라우트(검증 후 삭제)로 `recordRecommendation`/`queryRecommendations`/
+`buildRecommendationGuidance`를 실제로 호출 — 예상대로 테이블이 아직 없어서
+(`PGRST205: Could not find the table 'public.recommendation_history'`) 전부
+실패했지만, 각 함수가 에러를 삼키고 빈 배열/`null`을 정상 반환함을 확인(HTTP
+200, 요청 자체는 안 깨짐) — 로그에도 `[recommendation-diversity] 이력
+기록/조회 실패`가 정확히 남음. `npx tsc --noEmit`/`npx eslint src/` 클린.
+
+**변경 파일**: [0010_recommendation_history.sql](supabase/migrations/0010_recommendation_history.sql)
+(신설), [recommendation-diversity.ts](src/lib/recommendations/recommendation-diversity.ts)
+(신설), [generate-essay.ts](src/lib/gemini/generate-essay.ts)(`normalizeBookTitleKey` export).
+
 ## 다음에 할 일
 
-1. `supabase/migrations/0008_drop_task_sessions.sql`과
-   `supabase/migrations/0009_history_delete_and_share.sql`을 **둘 다** Supabase
+1. `supabase/migrations/0008_drop_task_sessions.sql`,
+   `supabase/migrations/0009_history_delete_and_share.sql`,
+   `supabase/migrations/0010_recommendation_history.sql`을 **모두** Supabase
    대시보드 SQL Editor에서 실행할 것. 0009를 실행해야 히스토리 삭제·공유 링크
-   기능이 실제로 동작함(지금은 API가 안전하게 에러만 반환하는 상태).
-   실행 후 알려주면 실제 로그인해서 삭제/공유 흐름을 끝까지 검증하고 증명하겠음.
+   기능이 실제로 동작함(지금은 API가 안전하게 에러만 반환하는 상태). 0010을
+   실행해야 추천 다양성 시스템(진행 중, `feature/recommendation-diversity`
+   브랜치)의 이력 기록/조회가 실제로 동작함 — 지금은 테이블이 없어서 매번
+   조용히 빈 결과로 넘어가는 상태(코드는 이미 이 상황을 정상적으로 견디도록
+   만들어져 있어서 생성 자체는 안 깨짐). 실행 후 알려주면 실제 로그인해서
+   삭제/공유 흐름 + 추천 이력 기록 둘 다 끝까지 검증하고 증명하겠음.
 2. `src/lib/gemini/citations.ts`의 괄호 없는 각주 버그 — 오늘 작업과 무관한
    기존 버그로, 별도 백그라운드 task로 분리해둠(task_52f9381f).
 3. `generate-plan.ts`의 "사실 인용 판별" 휴리스틱(`FACTUAL_CLAIM_HINT_PATTERN`)이

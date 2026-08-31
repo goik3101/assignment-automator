@@ -920,7 +920,7 @@ function normalizeForCompare(s: string): string {
  * 대조 결과가 재시도 이후 섹션에 조용히 적용되지 않는 문제가 실제로 있었다.
  * 화면에 보여줄 표시용 제목은 항상 원본(mentionedBookTitle 결과)을 그대로
  * 쓰고, 이 정규화는 오직 "같은 책인지 비교"할 때만 쓴다. */
-function normalizeBookTitleKey(title: string): string {
+export function normalizeBookTitleKey(title: string): string {
   return title.replace(/[《》『』"'"'`]/g, "").replace(/\s+/g, "").toLowerCase();
 }
 
