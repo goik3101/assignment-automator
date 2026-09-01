@@ -730,6 +730,12 @@ export async function generateEssay(
   //    (서지정보 갖춘 텍스트 페이지가 검색 후보에 있었을 수 있는데도 유튜브만
   //    단독 채택된 경우 — 실제 리포트된 버그).
   const cliches = detectCliches(attempt.sections);
+  // 실제로 발견된 버그: 요약 문장에 아랍 문자가 섞여 나온 사례("ف친구가
+  // 겪는...") — 본문/요약 둘 다 확인한다(요약은 사고가 실제로 일어난 곳).
+  const corruptedSections = [
+    ...detectForeignScriptCorruption(attempt.sections),
+    ...(attempt.summaryLines.some((l) => hasForeignScriptCorruption(l)) ? ["전체 요약"] : []),
+  ];
   const uncitedBookMentions = detectUncitedBookMentions(attempt.sections);
   // unverifiedQuotes/soleVideoSourceBooks는 더 이상 여기서 직접 교정 지시를
   // 만드는 데 안 쓴다 — 둘 다 "이 섹션엔 검증된 직접 인용이 없다"는 신호의
@@ -776,13 +782,14 @@ export async function generateEssay(
 
   if (
     cliches.length > 0 ||
+    corruptedSections.length > 0 ||
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
     lengthIssues.length > 0 ||
     authorMismatches.length > 0
   ) {
     console.warn(
-      `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
+      `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} corruptedSections=${JSON.stringify(corruptedSections)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
     );
     try {
       const correctionParts: string[] = [];
@@ -793,6 +800,14 @@ export async function generateEssay(
             `반복해서 나왔다. 이번에는 이 표현들을 절대 쓰지 말고, 마무리를 완전히 다른 방식으로 쓸 것 — ` +
             `예를 들어 구체적인 다음 계획을 제안하며 끝내거나, 질문을 던지며 끝내거나, 앞서 언급한 ` +
             `구체적인 디테일을 다시 살짝 언급하며 자연스럽게 끝내는 식으로.`
+        );
+      }
+      if (corruptedSections.length > 0) {
+        correctionParts.push(
+          `[문자 오류 정정 지시 — 반드시 지킬 것] 방금 쓴 글의 다음 부분에 한글/영문/숫자/일반 문장부호가 ` +
+            `아닌 이상한 문자(아랍 문자 등 전혀 다른 문자 체계)가 실수로 섞여 나왔다: ${corruptedSections.join(", ")}. ` +
+            `이번에는 처음부터 끝까지 한국어 문장(필요하면 영문·숫자·일반 문장부호만)으로만 다시 쓸 것 — ` +
+            `한글이나 영문이 아닌 다른 문자 체계의 글자는 단 하나도 쓰지 말 것.`
         );
       }
       for (const issue of lengthIssues) {
@@ -901,6 +916,10 @@ export async function generateEssay(
         );
       } else if (retryAttempt.insufficientReasons.length === 0) {
         const stillHasCliches = detectCliches(retryAttempt.sections);
+        const stillHasCorruption = [
+          ...detectForeignScriptCorruption(retryAttempt.sections),
+          ...(retryAttempt.summaryLines.some((l) => hasForeignScriptCorruption(l)) ? ["전체 요약"] : []),
+        ];
         const stillHasUncitedBooks = detectUncitedBookMentions(retryAttempt.sections);
         const stillNeedsVerification = extractBookMentionsNeedingVerification(retryAttempt.sections, retryAttempt.sources);
         const stillHasLengthIssues = checkLengthCompliance(retryAttempt.sections, elements);
@@ -913,13 +932,14 @@ export async function generateEssay(
         });
         if (
           stillHasCliches.length > 0 ||
+          stillHasCorruption.length > 0 ||
           stillHasUncitedBooks.length > 0 ||
           stillNeedsVerification.length > 0 ||
           stillHasLengthIssues.length > 0 ||
           stillHasAuthorMismatches.length > 0
         ) {
           console.warn(
-            `[generateEssay] 재시도 후에도 품질 문제 남음(그대로 진행): cliches=${JSON.stringify(stillHasCliches)} uncitedBookMentions=${JSON.stringify(stillHasUncitedBooks)} stillNeedsVerification=${JSON.stringify(stillNeedsVerification)} stillHasLengthIssues=${JSON.stringify(stillHasLengthIssues)} stillHasAuthorMismatches=${JSON.stringify(stillHasAuthorMismatches)}`
+            `[generateEssay] 재시도 후에도 품질 문제 남음(그대로 진행): cliches=${JSON.stringify(stillHasCliches)} corruptedSections=${JSON.stringify(stillHasCorruption)} uncitedBookMentions=${JSON.stringify(stillHasUncitedBooks)} stillNeedsVerification=${JSON.stringify(stillNeedsVerification)} stillHasLengthIssues=${JSON.stringify(stillHasLengthIssues)} stillHasAuthorMismatches=${JSON.stringify(stillHasAuthorMismatches)}`
           );
         }
         attempt = retryAttempt;
@@ -968,6 +988,15 @@ export async function generateEssay(
     attempt = { ...attempt, sections: clicheCleanedSections };
   }
 
+  // 재시도까지 거치고도 이상 문자(다른 문자 체계)가 남을 수 있다 — 코드가
+  // 확정적으로 제거한다(stripForeignScriptCorruption() 설명 참고).
+  const { sections: scriptCleanedSections, strippedLabels: scriptStrippedLabels } = stripForeignScriptCorruption(
+    attempt.sections
+  );
+  if (scriptStrippedLabels.length > 0) {
+    attempt = { ...attempt, sections: scriptCleanedSections };
+  }
+
   // summary_lines(전체 요약)도 본문과 마찬가지로 학생의 분석/의견 문장에
   // 검색 각주가 잘못 붙는 오탐이 있었다("관계를 억지로 좁히기보다... 태도의
   // 필요성을 분석했습니다[1]") — 위 stripUnjustifiedNarrativeCitations는
@@ -977,6 +1006,14 @@ export async function generateEssay(
   );
   if (summaryStrippedCount > 0) {
     attempt = { ...attempt, summaryLines: cleanedSummaryLines };
+  }
+
+  // 실제로 보고된 사고가 정확히 이 필드(summary_lines)에서 일어났다 — 문장
+  // 맨 앞에 아랍 문자 하나가 끼어든 사례. 본문과 같은 최종 안전망 적용.
+  const { summaryLines: scriptCleanedSummaryLines, strippedCount: scriptSummaryStrippedCount } =
+    stripForeignScriptFromSummary(attempt.summaryLines);
+  if (scriptSummaryStrippedCount > 0) {
+    attempt = { ...attempt, summaryLines: scriptCleanedSummaryLines };
   }
 
   // 실제로 발견된 버그: 전체 요약(summary_lines)에 본문과 다른 책 제목이
@@ -1710,4 +1747,90 @@ function stripCliches(sections: RawSection[]): { sections: RawSection[]; strippe
     return content === s.content ? s : { ...s, content };
   });
   return { sections: newSections, strippedLabels: Array.from(strippedLabels) };
+}
+
+// 실제로 발견된 버그: 요약(summary_lines) 문장 맨 앞에 아랍 문자 "ف"가
+// 통째로 끼어든 사례("ف친구가 겪는 소심함의 원인을...") — 오타가 아니라
+// 전혀 다른 문자 체계가 섞여 나온 것으로, analyze.ts에서 이미 겪은 "정수
+// 필드에 숫자가 무한 반복되는 토큰 결함"과 같은 계열의 모델 출력 이상
+// 현상으로 보인다. 화이트리스트 방식으로 판별한다 — 한글 음절/자모, 영문,
+// 숫자, 일반 문장부호·기호(코드 유닛 하나하나가 아니라 유니코드 카테고리
+// \p{P}(구두점)·\p{S}(기호)로 판별해서 『』《》「」…—· 같은 것도 전부
+// 안전하게 허용)만 통과시키고, 그 외 문자 체계(아랍어, 키릴 문자, 태국어
+// 등)는 전부 이상 문자로 본다 — "허용 목록에 없는 걸 잡는" 게 아니라
+// "알려진 정상 범위만 통과시키는" 방향이 더 안전하다(새로운 이상 문자
+// 유형이 나와도 놓치지 않음).
+const ALLOWED_TEXT_PATTERN = /[가-힣ᄀ-ᇿ㄰-㆏a-zA-Z0-9\p{P}\p{S}\s]/u;
+
+/** 코드포인트 단위로 순회한다(서로게이트 쌍이 섞여도 안전) — 문자열 인덱스
+ * 기반 순회는 이모지 등에서 반쪽 문자를 만들 수 있어서 피한다. */
+function findForeignScriptChars(text: string): string[] {
+  const found: string[] = [];
+  for (const ch of text) {
+    if (!ALLOWED_TEXT_PATTERN.test(ch)) found.push(ch);
+  }
+  return found;
+}
+
+function hasForeignScriptCorruption(text: string): boolean {
+  for (const ch of text) {
+    if (!ALLOWED_TEXT_PATTERN.test(ch)) return true;
+  }
+  return false;
+}
+
+function detectForeignScriptCorruption(sections: RawSection[]): string[] {
+  return sections.filter((s) => hasForeignScriptCorruption(s.content)).map((s) => s.label);
+}
+
+/** 허용 목록 밖 문자를 전부 제거한다(치환이 아니라 삭제 — 신뢰할 수 없는
+ * 문자라 대체할 근거가 없고, 붙어 나온 사례처럼 애초에 있으면 안 되는
+ * 글자라 지우는 게 자연스럽다). 삭제 후 생기는 이중 공백만 정리한다. */
+function stripForeignScriptCharsFromText(text: string): { text: string; strippedChars: string[] } {
+  const strippedChars = findForeignScriptChars(text);
+  if (strippedChars.length === 0) return { text, strippedChars };
+  let result = "";
+  for (const ch of text) {
+    if (ALLOWED_TEXT_PATTERN.test(ch)) result += ch;
+  }
+  result = result.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
+  return { text: result, strippedChars };
+}
+
+/**
+ * 최종 안전망 — 재시도까지 거치고도 남을 수 있는 이상 문자(다른 문자 체계)를
+ * 코드가 확정적으로 제거한다. 1~2글자가 문장에 끼어든 정도(실제 보고된
+ * 사례)는 이 정리만으로 충분히 해결되고, 만에 하나 전체가 심하게 깨진
+ * 경우라도 최소한 이상 문자만큼은 남지 않는 상태로 보정된다(위에서 이미
+ * 품질 재시도가 한 번 더 새로 써볼 기회를 줬으므로, 이 함수는 그 이후에도
+ * 남는 것만 처리하는 마지막 방어선).
+ */
+function stripForeignScriptCorruption(sections: RawSection[]): { sections: RawSection[]; strippedLabels: string[] } {
+  const strippedLabels: string[] = [];
+  const newSections = sections.map((s) => {
+    const { text, strippedChars } = stripForeignScriptCharsFromText(s.content);
+    if (strippedChars.length === 0) return s;
+    strippedLabels.push(s.label);
+    console.warn(
+      `[generateEssay] 최종 안전장치: 이상 문자(다른 문자 체계) 제거함 label="${s.label}" chars=${JSON.stringify(strippedChars)}`
+    );
+    return { ...s, content: text };
+  });
+  return { sections: newSections, strippedLabels };
+}
+
+/** summary_lines(전체 요약)도 본문과 같은 검사를 거친다 — 실제 보고된 사고가
+ * 바로 이 필드에서 일어났다. */
+function stripForeignScriptFromSummary(summaryLines: string[]): { summaryLines: string[]; strippedCount: number } {
+  let strippedCount = 0;
+  const newLines = summaryLines.map((line) => {
+    const { text, strippedChars } = stripForeignScriptCharsFromText(line);
+    if (strippedChars.length === 0) return line;
+    strippedCount += strippedChars.length;
+    return text;
+  });
+  if (strippedCount > 0) {
+    console.warn(`[generateEssay] 최종 안전장치: 전체 요약(summary_lines)의 이상 문자 ${strippedCount}개 제거함`);
+  }
+  return { summaryLines: newLines, strippedCount };
 }
