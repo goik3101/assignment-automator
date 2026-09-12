@@ -2108,6 +2108,78 @@ select/insert 정상 동작, `task_sessions` 정상 삭제됨, `user_histories.s
 `stripForeignScriptCorruption`/`stripForeignScriptFromSummary` 신설, 품질교정
 재시도 트리거 및 최종 안전망 파이프라인에 연결).
 
+## 이어서: text_submission ↔ external_production 인물/대상 혼입 버그 수정 (2026-09-13, 이어서)
+
+사용자 리포트(실제 사고 사례): "인권 선구자의 업적 탐구를 통한 저널 제작"
+과제(1차시 자료 수집=완성 원고, 2차시 신문 제작=실행 계획)에서, 완성 원고는
+마틴 루터 킹 주니어를 선정해 다뤘는데 신문 제작 실행 계획은 완전히 다른
+인물(전태일 — 바보회, 삼동회, 청계피복노조 등)로 만들어짐.
+
+**근본 원인**: [AssignmentFlow.tsx](src/components/AssignmentFlow.tsx)의
+`handleGenerate()`가 완성 원고(`/api/tasks/generate/essay`)와 실행 계획
+(`/api/tasks/generate/plan`)을 `void` 처리해 **병렬로 독립 호출**하고
+있었다. "인권 선구자"처럼 안내문이 인물/대상을 특정하지 않고 자유롭게
+선정하도록 요구하는 과제에서는, 두 호출이 서로의 존재를 몰라 각자 다른
+검색 그라운딩 결과를 바탕으로 완전히 다른 인물을 골라버릴 수 있는 구조였다
+— 여러 요소를 한 번의 호출로 묶어 이 문제를 원천 차단한 완성 원고 내부
+(text_submission 요소 여러 개)와 달리, essay↔plan 사이에는 이 보장이 아예
+없었다.
+
+### 구현
+
+1. [generate-essay.ts](src/lib/gemini/generate-essay.ts): stage B의
+   `SECTIONS_SCHEMA`에 `confirmed_subject`(문자열) 필드 신설 — 이 과제가
+   인물/사건 등을 자유롭게 선정하는 유형이면 그 대상 이름을 뽑아준다
+   (선정할 필요가 없는 과제면 빈 문자열). `Attempt`/`EssayResult`에
+   `confirmedSubject`로 노출.
+2. [generate-plan.ts](src/lib/gemini/generate-plan.ts): `GeneratePlanInput`에
+   `fixedSubject?: string` 추가. 값이 있으면 `buildStepAPrompt()`가 "이
+   대상 하나만 다루고, 다른 인물/사건을 새로 선정하거나 '~을 선택했다면'
+   같은 조건문도 쓰지 말라"는 절대 규칙을 프롬프트 최상단에 삽입. 1차
+   생성 결과에 `fixedSubject` 이름이 아예 등장하지 않으면(다른 대상으로
+   새로 선정했다는 신호) 강하게 재지시해서 1회 재시도 — `generate-essay.ts`
+   의 "검색 스킵 감지 재시도"와 같은 패턴.
+3. [route.ts(plan)](src/app/api/tasks/generate/plan/route.ts): 요청 바디의
+   `fixedSubject`를 그대로 `generatePlan()`에 전달.
+4. [AssignmentFlow.tsx](src/components/AssignmentFlow.tsx): `handleGenerate()`
+   가 text_submission과 external_production 요소가 **함께** 있는 과제일
+   때만 순서를 바꾼다 — 완성 원고를 먼저 생성해 `confirmedSubject`를 받은
+   뒤, 그 값을 실행 계획 생성 요청에 `fixedSubject`로 실어 보낸다. 한쪽
+   요소만 있는 과제(기존 대다수 케이스)는 그대로 병렬 처리라 회귀 없음.
+   완성 원고가 끝날 때까지 실행 계획 생성이 늦게 시작되는 지연 증가는
+   있지만(직렬화), 사용자가 명시한 "일관성이 최우선" 요구에 따른 의도된
+   트레이드오프.
+5. `EssayResult`(task.ts)에 `confirmedSubject?: string` 필드 추가.
+
+### 검증
+
+관리자 세션으로 실제 안내문 그대로(자료 수집=text_submission, 신문
+제작=external_production, 인권 선구자 자유 선정) `/api/tasks/generate/essay`
+→ `/api/tasks/generate/plan`을 연달아 5회 실제 호출(스크래치패드
+`test_subject_consistency.js`):
+
+| # | confirmedSubject | 신문 제작 계획이 같은 인물만 다뤘는가 |
+|---|---|---|
+| 1 | 마틴 루터 킹 주니어 | ✅ |
+| 2 | 마틴 루서 킹 주니어 | ✅ |
+| 3 | 엘리너 루스벨트 | ✅ |
+| 4 | 엘리너 루스벨트 | ✅ |
+| 5 | 르네 카생 | ✅ |
+
+**5/5 전부 완전히 일관됨** — 모델이 매번 다른 인물을 자유롭게 골랐음에도
+(마틴 루터 킹, 엘리너 루스벨트, 르네 카생 등 세계인권선언·미국 민권운동
+관련 인물이 골고루 나옴) 신문 제작 실행 계획의 모든 단계·검색어·통계가
+예외 없이 같은 인물만 다뤘고, 다른 인물이 섞이거나 "~을 선택했다면" 식
+조건문이 등장한 사례는 0건. 실제 응답 전문을
+`subject_consistency_results.jsonl`에 저장해 직접 대조함.
+
+`npx tsc --noEmit`/`npx eslint src/` 클린.
+
+**변경 파일**: [generate-essay.ts](src/lib/gemini/generate-essay.ts),
+[generate-plan.ts](src/lib/gemini/generate-plan.ts),
+[route.ts(plan)](src/app/api/tasks/generate/plan/route.ts),
+[AssignmentFlow.tsx](src/components/AssignmentFlow.tsx), [task.ts](src/types/task.ts).
+
 ## 다음에 할 일
 
 1. ~~`0008`/`0009`/`0010` 마이그레이션 실행~~ — **2026-09-01에 사용자가
@@ -2163,6 +2235,15 @@ select/insert 정상 동작, `task_sessions` 정상 삭제됨, `user_histories.s
     `stripForeignScriptCorruption`/`stripForeignScriptFromSummary`로 실제
     제거됐는지, 아니면 재시도 트리거만 발동하고 strip 전에 무언가 놓쳤는지
     확인할 것.
+12. **(2026-09-13 신규, 알려진 한계)** 인물/대상 혼입 수정(바로 위 "이어서"
+    항목)은 text_submission이 있는 과제에서만 대상을 확정해 external_production
+    쪽에 넘긴다. text_submission 요소가 하나도 없이 **external_production
+    요소가 여러 개**이면서 그중 하나가 인물/자료를 자유롭게 선정해야 하는
+    과제(예: PPT+포스터 둘 다 제작, 인물은 자유 선정)는 이번 수정 범위 밖 —
+    각 plan 호출이 여전히 독립적으로 자기 대상을 고를 수 있다. 이런 과제
+    리포트가 오면 essay와 마찬가지로 "첫 번째 external_production 호출이
+    confirmedSubject를 확정하고 나머지가 그 값을 fixedSubject로 받는" 구조로
+    확장할 것.
 
 **참고 — 사용자가 매 세션 시작 시 습관적으로 남기는 두 확인 항목에 대한 현재
 상태**: (1) "결과 공유 링크 버튼" — 위 1번 항목과 동일한 건, 코드는 이미

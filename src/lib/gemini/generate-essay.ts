@@ -97,6 +97,13 @@ const SECTIONS_SCHEMA: Schema = {
         "글 맨 앞에 있던 불릿 3줄 요약을 그대로 배열 원소 3개로 옮겨줘(불릿 기호 자체는 빼고 텍스트만). " +
         "요약이 없었으면 빈 배열.",
     },
+    confirmed_subject: {
+      type: Type.STRING,
+      description:
+        "이 과제가 '인물/사건/자료 등을 자유롭게 선정'하는 유형이라 글쓴이가 특정 대상을 하나 골라서 " +
+        "다뤘다면(예: 인권 선구자 한 명, 역사적 사건 하나, 추천 도서 한 권 등) 그 대상의 이름만 간단히 " +
+        "적을 것(예: '마틴 루터 킹 주니어'). 안내문에 이미 대상이 정해져 있어 고를 필요가 없었다면 빈 문자열.",
+    },
     sections: {
       type: Type.ARRAY,
       description:
@@ -512,6 +519,10 @@ interface Attempt {
   insufficientReasons: string[];
   /** 글 맨 위 불릿 3줄 요약. stage B가 못 뽑았으면 빈 배열. */
   summaryLines: string[];
+  /** 이 과제가 인물/사건 등을 자유롭게 선정한 유형이면 그 대상 이름. 선정할
+   * 필요가 없었거나 stage B가 못 뽑았으면 빈 문자열 — FINAL_PERSON 일관성
+   * 강제(신문 제작 등 external_production 단계에 그대로 넘겨 고정시키는 용도). */
+  confirmedSubject: string;
 }
 
 async function generateOnce(
@@ -599,6 +610,8 @@ async function generateOnce(
                 text: `
 아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
 요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
+이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
+그 대상 이름을 뽑아줘(스키마 설명 참고).
 그다음 "## 단계이름" 제목을 기준으로 각 단계 본문을 분리해줘. 제목 줄 자체는
 빼고, 본문(각주 표기 [1][2] 등과 "[자료부족...]" 표기 포함)은 다듬지 말고
 그대로 옮겨줘. 분리해야 할 단계 이름: ${labels.join(", ")}.
@@ -623,6 +636,7 @@ ${annotated}
   if (!raw) throw new Error("단계 분리 응답이 비어 있습니다.");
   const parsed = JSON.parse(raw) as {
     summary_lines?: string[];
+    confirmed_subject?: string;
     sections: { label: string; content: string; cited_book_title?: string; cited_book_author?: string; cited_book_quote?: string }[];
   };
 
@@ -663,7 +677,13 @@ ${annotated}
     return { label, content, citedBook };
   });
 
-  return { sections, sources: validatedSources, insufficientReasons, summaryLines: parsed.summary_lines ?? [] };
+  return {
+    sections,
+    sources: validatedSources,
+    insufficientReasons,
+    summaryLines: parsed.summary_lines ?? [],
+    confirmedSubject: parsed.confirmed_subject ?? "",
+  };
 }
 
 export async function generateEssay(
@@ -1108,6 +1128,7 @@ export async function generateEssay(
     // 때만 채운다(여러 권이면 어느 책을 "그 과제의 추천 항목"으로 기록해야
     // 할지 모호해서 — finalBookMentions는 위에서 이미 같은 기준으로 계산해둠).
     recommendedBookTitle: finalBookMentions.length === 1 ? finalBookMentions[0].title : undefined,
+    confirmedSubject: attempt.confirmedSubject || undefined,
     latency_ms: Date.now() - start,
   };
 }

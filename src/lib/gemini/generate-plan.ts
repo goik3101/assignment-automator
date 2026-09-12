@@ -65,6 +65,15 @@ export interface GeneratePlanInput {
    * 만들지 않고 recommendation-diversity.ts를 그대로 재사용한다.
    */
   recentStatGuidance?: string;
+  /**
+   * 인물 혼입 버그 방지: 같은 수행평가에 text_submission(완성 원고) 요소가
+   * 함께 있고, 거기서 이미 인물/사건 등을 자유롭게 선정해 확정했다면
+   * (generate-essay.ts의 EssayResult.confirmedSubject) 그 값을 그대로 받아
+   * 실행 계획도 같은 대상만 다루도록 고정한다. essay와 plan은 서로 다른
+   * API 호출로 독립 생성되기 때문에, 이 값이 없으면 각자 다른 인물/자료를
+   * 자유롭게 골라버려서 완전히 다른 내용이 섞이는 문제가 실제로 있었다.
+   */
+  fixedSubject?: string;
 }
 
 function buildStepAPrompt(input: GeneratePlanInput): string {
@@ -95,6 +104,17 @@ ${continuityBlock}너는 한국 고등학생의 수행평가 준비를 돕는 �
 [요구사항]
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [이 요소에 대한 설명] ${element?.description ?? ""}
+${
+  input.fixedSubject
+    ? `
+【절대 규칙 — 반드시 지킬 것】 이 과제는 이미 이전 단계에서 다음 대상 하나로
+확정되었다: "${input.fixedSubject}". 이 계획의 모든 단계는 반드시 이 대상
+하나만 다룬다. 다른 인물·사건·자료를 새로 선정하거나 검토 대상으로 언급하지
+않는다. "만약 다른 X를 선택했다면", "X 대신 Y를 고른다면"처럼 다른 대상을
+전제로 한 조건문도 절대 쓰지 않는다. 검색어와 통계·자료도 전부 "${input.fixedSubject}"와
+직접 관련된 것만 쓴다.`
+    : ""
+}
 ${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentStatGuidance ? `\n${input.recentStatGuidance}\n` : ""}
@@ -127,17 +147,20 @@ export async function generatePlan(
   const ai = getGeminiClient();
 
   // 1차: 검색 그라운딩 켠 자유 텍스트 생성
-  let stepA;
-  try {
-    stepA = await withGeminiRetry(
+  const runStepA = (p: string) =>
+    withGeminiRetry(
       () =>
         ai.models.generateContent({
           model: GEMINI_MODELS.flash,
-          contents: [{ role: "user", parts: [{ text: buildStepAPrompt(input) }] }],
+          contents: [{ role: "user", parts: [{ text: p }] }],
           config: { tools: [{ googleSearch: {} }] },
         }),
       "generatePlan:stepA"
     );
+
+  let stepA;
+  try {
+    stepA = await runStepA(buildStepAPrompt(input));
   } catch (err) {
     console.error("[generatePlan] 1차 생성 재시도 후에도 실패", err);
     return {
@@ -146,9 +169,34 @@ export async function generatePlan(
     };
   }
 
-  const freeText = stepA.text;
+  let freeText = stepA.text;
   if (!freeText) {
     return { type: "insufficient_data", reason: "AI가 빈 응답을 반환했습니다." };
+  }
+
+  // 인물 혼입 안전장치: fixedSubject가 있는데도 1차 결과에 그 이름이 한 번도
+  // 등장하지 않으면, essay 쪽에서 확정한 대상을 무시하고 다른 대상으로 계획을
+  // 짰을 가능성이 높다(실제 사고 사례: 마틴 루터 킹 주니어를 선정했는데 신문
+  // 제작 계획은 전태일 내용으로 만들어짐). 1회 강하게 재지시해서 재시도한다.
+  if (input.fixedSubject && !freeText.includes(input.fixedSubject)) {
+    console.warn(
+      `[generatePlan] fixedSubject="${input.fixedSubject}"가 1차 결과에 등장하지 않음 — 강하게 재지시하여 1회 재시도`
+    );
+    try {
+      const forcedPrompt =
+        buildStepAPrompt(input) +
+        `\n\n【다시 한번 강조 — 반드시 지킬 것】 방금 쓴 계획에 "${input.fixedSubject}"가 전혀 언급되지 않았다. ` +
+        `이 과제의 대상은 오직 "${input.fixedSubject}" 하나뿐이다. 처음부터 끝까지 이 대상만 다뤄서 다시 쓸 것.`;
+      const retryStepA = await runStepA(forcedPrompt);
+      if (retryStepA.text?.includes(input.fixedSubject)) {
+        stepA = retryStepA;
+        freeText = retryStepA.text;
+      } else {
+        console.warn("[generatePlan] 재지시에도 fixedSubject가 등장하지 않음 — 원래 응답으로 그대로 진행");
+      }
+    } catch (err) {
+      console.error("[generatePlan] fixedSubject 재시도 실패(원래 응답으로 진행)", err);
+    }
   }
 
   const grounding = stepA.candidates?.[0]?.groundingMetadata;

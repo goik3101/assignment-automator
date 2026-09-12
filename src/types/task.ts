@@ -105,6 +105,13 @@ export interface EssayResult {
    * (recommendation-diversity.ts)이 이력을 기록할 때 쓴다. 책이 없거나
    * 여러 권이면 undefined. */
   recommendedBookTitle?: string;
+  /** 이 과제가 인물/사건 등을 자유롭게 선정하는 유형이라 이 생성에서 대상을
+   * 하나 확정했다면 그 이름(예: "마틴 루터 킹 주니어"). 선정할 필요가 없는
+   * 과제거나 못 뽑았으면 undefined. text_submission과 external_production
+   * 요소가 함께 있는 과제에서, 두 종류가 서로 다른 API 호출로 독립 생성되면서
+   * 각자 다른 대상을 골라버리는 인물 혼입 버그를 막기 위해 essay 쪽에서 먼저
+   * 확정한 값을 plan 생성(generate-plan.ts의 fixedSubject)에 그대로 넘긴다. */
+  confirmedSubject?: string;
 }
 
 export interface PlanStep {

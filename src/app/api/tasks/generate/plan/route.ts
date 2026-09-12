@@ -20,12 +20,15 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken } = body as {
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject } = body as {
       subject: string;
       coreTaskInfo: CoreTaskInfo;
       adminInfo?: AdministrativeInfo;
       instructions?: string;
       turnstileToken?: string;
+      /** 같은 과제의 완성 원고(text_submission)가 먼저 생성되어 인물/사건 등을
+       * 확정했다면 그 값(EssayResult.confirmedSubject) — 인물 혼입 방지용. */
+      fixedSubject?: string;
     };
 
     if (!subject || !coreTaskInfo) {
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
       instructions,
       avoidanceInstruction: avoidanceInstruction ?? undefined,
       recentStatGuidance: statGuidance?.instructionText,
+      fixedSubject,
     });
 
     const response =
