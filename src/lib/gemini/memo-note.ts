@@ -25,7 +25,7 @@ const MEMO_NOTE_SCHEMA = {
 
 function resultToPlainText(result: EssayResult | PlanResult): string {
   if (result.type === "essay") return result.markdown;
-  return result.steps.map((s) => `${s.order}. ${s.task}`).join("\n");
+  return result.content;
 }
 
 export async function generateMemoNote(result: EssayResult | PlanResult): Promise<MemoNote> {

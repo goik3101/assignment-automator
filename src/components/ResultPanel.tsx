@@ -292,50 +292,38 @@ export function PlanPanel({
   return (
     <section className="rounded-lg border border-border bg-surface p-6">
       <div className="mb-4">
-        <h3 className="text-base font-semibold">{label} — 실행 계획</h3>
+        <h3 className="text-base font-semibold">{label} — 완성된 글</h3>
       </div>
       {result.sources.length === 0 && <NoSourcesWarning />}
-      <ol className="space-y-4">
-        {result.steps
-          .sort((a, b) => a.order - b.order)
-          .map((step) => {
-            const source = step.source_n ? result.sources.find((s) => s.n === step.source_n) : null;
-            return (
-              <li key={step.order} className="border border-border rounded-md p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="font-medium">
-                    {step.order}. {step.task}
-                  </p>
-                  <span className="text-xs text-muted whitespace-nowrap">약 {step.estimated_minutes}분</span>
-                </div>
-                {step.search_keywords.length > 0 && (
-                  <p className="mt-2 text-sm text-muted">
-                    검색어: {step.search_keywords.join(", ")}
-                  </p>
-                )}
-                {source && (
-                  <a
-                    href={source.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-block text-sm text-accent underline underline-offset-2 break-all"
-                  >
-                    참고 출처: {source.title}
-                    {source.url_valid === false ? " (연결 확인 안 됨)" : ""}
-                  </a>
-                )}
-              </li>
-            );
-          })}
-      </ol>
+      <article className="prose prose-sm max-w-none prose-neutral dark:prose-invert">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.content}</ReactMarkdown>
+      </article>
       <SourceList sources={result.sources} />
+      {result.productionSteps.length > 0 && (
+        <div className="mt-6 border-t border-border pt-4">
+          <p className="mb-3 text-xs font-medium text-muted">
+            위 글 외에 학생이 직접 손으로 만들어야 하는 부분
+          </p>
+          <ol className="space-y-3">
+            {result.productionSteps
+              .sort((a, b) => a.order - b.order)
+              .map((step) => (
+                <li key={step.order} className="border border-border rounded-md p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium">
+                      {step.order}. {step.task}
+                    </p>
+                    <span className="text-xs text-muted whitespace-nowrap">약 {step.estimated_minutes}분</span>
+                  </div>
+                </li>
+              ))}
+          </ol>
+        </div>
+      )}
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
       {result.submissionId && <ShareButton submissionId={result.submissionId} />}
       {showExpectedQuestions && topic && (
-        <ExpectedQuestionsBox
-          topic={topic}
-          resultText={result.steps.map((s) => s.task).join("\n")}
-        />
+        <ExpectedQuestionsBox topic={topic} resultText={result.content} />
       )}
     </section>
   );

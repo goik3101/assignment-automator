@@ -2180,6 +2180,101 @@ select/insert 정상 동작, `task_sessions` 정상 삭제됨, `user_histories.s
 [route.ts(plan)](src/app/api/tasks/generate/plan/route.ts),
 [AssignmentFlow.tsx](src/components/AssignmentFlow.tsx), [task.ts](src/types/task.ts).
 
+## 이어서: external_production 경로를 "실행 계획"에서 "완성된 글쓰기"로 재설계 (2026-09-13, 이어서)
+
+사용자 요청: "신문제작에 실행계획으로 나옴 걍 계획짜는걸 없애고 걍 창의적인것도
+다 글쓰는거면 걍 써주는걸로 하자 계획만하지말고" — PPT/포스터/신문처럼 외부
+툴·물리적 제작이 필요한 산출물이라도, 글로 쓸 수 있는 부분(신문 기사문, 슬라이드
+문구, 포스터 헤드라인, 사설/칼럼 등)은 "무엇을 조사·작성할지"만 안내하는
+계획으로 그치지 말고 실제로 완성해서 달라는 요청. 학생이 정말 손으로 직접
+해야 하는 물리적 작업(그림 그리기, 배치, 오려붙이기, 색칠, 인쇄)만 안내로
+남기면 된다는 것.
+
+### 설계
+
+`docs/planning.md` 5-1은 원래 "완성 원고"와 "실행 계획"을 요소 단위로 완전히
+분기했었다(외부 제작 산출물은 AI가 대신 만들 수 없으니 계획만 준다는 전제) —
+하지만 실제로는 "물리적으로 만들 수 없다"와 "글로 쓸 수 없다"가 같은 말이
+아니었다. 신문의 기사·사설, PPT의 슬라이드 문구, 포스터의 헤드라인·본문은
+전부 텍스트라 AI가 완성해서 줄 수 있고, 정말 AI가 대신할 수 없는 건 그림을
+손으로 그리거나 오려붙이거나 배치하는 물리적 행위뿐이다. 그래서
+`generate-plan.ts`를 "완성 원고 생성(essay 경로와 같은 방식: 그라운딩 켠
+자유 텍스트 + 바이트 단위 각주 삽입) + 물리적 제작 체크리스트(짧은 목록)"
+구조로 재설계했다. 예전의 "1차 자유 텍스트 → 2차 JSON 변환" 2단계 구조도
+이번에 함께 없앴다 — 두 부분(완성된 글 / 직접 만들어야 할 것) 모두 모델이
+지정된 "## 제목" 아래 자연스러운 텍스트로 쓰게 하고, 코드가 순수 문자열
+처리로 나눈다(정수인 예상 소요시간도 JSON 필드가 아니라 "N분" 원문 텍스트를
+정규식으로 그대로 읽음 — analyze.ts에서 구조화 정수 필드가 드물게 토큰
+반복 루프에 빠졌던 사고 이후 확립한 원칙, "다음에 할 일" 8번 참고). JSON
+변환 호출 자체가 없어지면서 레이턴시도 줄었다(2단계 호출 → 1단계 호출).
+
+### 구현
+
+- [generate-plan.ts](src/lib/gemini/generate-plan.ts) 전면 재작성:
+  - 프롬프트가 "계획만 세우지 말고 글로 쓸 수 있는 건 지금 완성해서 써라"로
+    바뀌고, `"## 완성된 글"`/`"## 직접 만들어야 할 것"` 두 제목으로만 나눠
+    쓰게 지시.
+  - `splitContentAndPhysicalText()` — annotated(각주 삽입된 원문)에서 두
+    제목을 기준으로 순수 slice(모델 재입력 없음, 글자 손실 불가능).
+  - **실측 중 발견한 문제**: 모델이 지정한 제목을 정확히 안 쓰고 "## 완성된
+    시대저널"처럼 꾸며 쓰는 경우가 실제로 있었음(프롬프트에 "정확히 이 글자
+    그대로"를 강조해도 100% 보장 안 되는, 이 프로젝트에서 반복 확인된 패턴)
+    — 정확 일치가 실패하면 핵심 단어(`완성`/`직접`+`만들`) 기반 완화 매칭
+    (`CONTENT_HEADING_FUZZY`/`PHYSICAL_HEADING_FUZZY`)으로 한 번 더 시도하는
+    안전장치를 추가해서 해결.
+  - `parseProductionSteps()` — "번호. (N분) 할 일" 형식 줄을 정규식으로 파싱.
+  - 인용 검증: 기존엔 PlanStep 단위로 통계/사례를 검증했는데, 이제 content가
+    essay처럼 하나의 이어진 글이라 `findUnverifiedStatClaim()`(통계/수치
+    주장인데 각주가 없는 곳 탐지, essay의 `detectUnverifiedQuotes`와 같은
+    발상)로 찾아 `verifyExcerpt()`로 검증 후 성공하면 그 자리에 직접 `[n]`을
+    끼워 넣는 방식으로 재구현(추천 다양성 시스템의 `verifiedItemNames` 계속
+    지원).
+  - 최종 안전장치: 출처가 있는데 전부 위키/동영상 같은 약한 매체뿐이면
+    각주를 통째로 지움(기존 로직과 같은 철학, continuous text에 맞게 재구현).
+  - 지난 라운드에서 추가한 `fixedSubject`(인물 혼입 방지) 로직은 그대로 유지.
+- [task.ts](src/types/task.ts): `PlanStep` 삭제, `ProductionStep`
+  (`order`/`task`/`estimated_minutes`만) 신설. `PlanResult`가
+  `steps: PlanStep[]` 대신 `content: string`(완성된 글) +
+  `productionSteps: ProductionStep[]`(물리적 체크리스트)를 가짐.
+- [ResultPanel.tsx](src/components/ResultPanel.tsx)의 `PlanPanel`을
+  `EssayPanel`과 같은 방식(마크다운 렌더링)으로 재작성, 물리적 체크리스트는
+  하단에 짧은 목록으로 별도 표시.
+- `save-result-embedding.ts`/`memo-note.ts`/`regenerate/route.ts`의
+  `planResultToText`/`resultToPlainText` 등 `PlanResult`를 문자열로 바꾸던
+  모든 지점을 `result.content` 기준으로 갱신.
+
+### 검증
+
+1. **단독 생성 실측**: "인권 선구자 신문 제작"(text_submission 없이
+   external_production만) 실제 호출 — `content`에 실제 기사 전문(헤드라인+
+   본문, [1][2] 각주 포함)이 나오고, `productionSteps`에는 "신문 제호를
+   손글씨로 쓰기", "인물 초상화를 손그림으로 그리기", "본문을 레이아웃에
+   맞춰 옮겨 적기", "일러스트를 색칠하기"처럼 정말 손으로 할 일만 남음 —
+   예전처럼 "검색해서 조사하고 정리하기"류 계획 문구는 0건.
+2. **지난 라운드 인물 일관성 재검증**: essay(자료 수집) → plan(신문 제작)
+   연속 4회 실제 호출 — 매번 다른 인물(소파 방정환, 송기인, 마틴 루서 킹
+   주니어, 앙리 뒤낭)을 자유 선정했음에도 새 아키텍처에서도 **4/4 전부**
+   plan의 완성된 글이 essay가 확정한 인물과 정확히 일치함을 확인 — 이번
+   재설계가 지난 라운드의 fixedSubject 안전장치를 깨뜨리지 않았음을 확인.
+
+`npx tsc --noEmit`/`npx eslint src/` 클린.
+
+**알려진 한계**: 예전 PlanStep 단위 검증은 요청받은 통계/사례마다 최대
+1건까지 자동 재확인을 시도했지만, 이번 재설계에서는 문서 전체에서 미검증
+통계 주장 1건만 찾아 검증한다(essay 경로와 동일한 상한 — 라우트 60초 제한
+고려). 여러 통계 주장이 섞인 긴 글에서는 일부만 검증되고 나머지는 안전장치
+(전부 약한 출처일 때만 각주 제거) 수준에서 그칠 수 있음 — 재발하면 상한을
+올리는 방향 고려. 또한 기존 저장된 히스토리(`user_histories`, `output_type:
+"plan"`)의 `raw_text_result`는 예전 `steps` 형태 그대로라 새 `PlanPanel`로
+다시 열면 깨진다 — 사전 출시 단계(실 사용자 데이터 없음)라 마이그레이션은
+하지 않기로 함.
+
+**변경 파일**: [generate-plan.ts](src/lib/gemini/generate-plan.ts),
+[task.ts](src/types/task.ts), [ResultPanel.tsx](src/components/ResultPanel.tsx),
+[save-result-embedding.ts](src/lib/clusters/save-result-embedding.ts),
+[memo-note.ts](src/lib/gemini/memo-note.ts),
+[excerpt-verification.ts](src/lib/verification/excerpt-verification.ts)(주석만).
+
 ## 다음에 할 일
 
 1. ~~`0008`/`0009`/`0010` 마이그레이션 실행~~ — **2026-09-01에 사용자가

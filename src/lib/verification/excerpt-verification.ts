@@ -58,9 +58,9 @@ export const BOOK_EXCERPT_QUERY_TEMPLATES: QueryTemplate[] = [
   (t) => `"${t.name}" ${t.attribution ?? ""} 원문`.trim(),
 ];
 
-// 통계/뉴스/논문 등 실행계획(generate-plan.ts) 경로에서 쓰는 프리셋 — 책의
-// "책속으로/발췌/명언" 각도와 같은 역할을 한다. target.name에는 그 사실을
-// 대표하는 검색 키워드(예: PlanStep.search_keywords를 이어붙인 문자열)가 온다.
+// 통계/뉴스/논문 등 generate-plan.ts 경로에서 쓰는 프리셋 — 책의
+// "책속으로/발췌/명언" 각도와 같은 역할을 한다. target.name에는 검증할
+// 통계·사실 주장이 담긴 문장(또는 그 핵심 키워드)이 온다.
 export const STATISTIC_OR_NEWS_QUERY_TEMPLATES: QueryTemplate[] = [
   (t) => `"${t.name}" 통계 원문`,
   (t) => `"${t.name}" 보도자료`,

@@ -114,25 +114,32 @@ export interface EssayResult {
   confirmedSubject?: string;
 }
 
-export interface PlanStep {
+/** 학생이 AI 대신 직접 손으로 해야 하는 물리적 제작 단계만 담는다(그림
+ * 그리기, 배치, 오려붙이기, 색칠, 인쇄 등) — 글로 쓸 수 있는 부분은 이제
+ * PlanResult.content에 직접 완성해서 담기 때문에 여기엔 포함하지 않는다. */
+export interface ProductionStep {
   order: number;
   task: string;
   estimated_minutes: number;
-  search_keywords: string[];
-  /** sources 배열의 n 값 (없으면 null) */
-  source_n: number | null;
 }
 
 export interface PlanResult {
   type: "plan";
-  steps: PlanStep[];
+  /** 이 산출물(PPT/포스터/신문 등)에 들어갈, 글로 쓸 수 있는 부분을 실제로
+   * 완성한 결과(기사문·사설·헤드라인·슬라이드 문구·발표 대본 등, [n] 각주
+   * 포함 마크다운) — EssayResult.markdown과 같은 역할. 예전엔 "무엇을
+   * 조사/작성할지"만 안내하는 계획이었지만, 사용자 요청(2026-09-13)에 따라
+   * 글로 쓸 수 있는 부분은 계획만 세우지 않고 여기서 전부 완성해서 준다. */
+  content: string;
+  /** 위 content로 대신할 수 없는, 학생이 직접 손으로 해야 하는 단계만 남긴
+   * 짧은 체크리스트. */
+  productionSteps: ProductionStep[];
   sources: SourceRef[];
   latency_ms: number;
   /** 로그인 사용자의 결과에만 붙는다 — F6 재생성 시 이 값으로 /api/tasks/{id}/regenerate 호출 */
   submissionId?: string;
-  /** 이 생성에서 실제로 검증에 성공한 통계/사례 항목의 식별 문구(검색
-   * 키워드 기반) 목록 — 추천 다양성 시스템(recommendation-diversity.ts)이
-   * 이력을 기록할 때 쓴다. */
+  /** 이 생성에서 실제로 검증에 성공한 통계/사례 항목의 식별 문구 목록 —
+   * 추천 다양성 시스템(recommendation-diversity.ts)이 이력을 기록할 때 쓴다. */
   verifiedItemNames?: string[];
 }
 

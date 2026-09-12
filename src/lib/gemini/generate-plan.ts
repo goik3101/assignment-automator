@@ -1,4 +1,3 @@
-import { Type, type Schema } from "@google/genai";
 import { getGeminiClient, GEMINI_MODELS } from "./client";
 import {
   ANTI_AI_TONE_RULES,
@@ -6,48 +5,28 @@ import {
   PERSPECTIVE_RULE,
   MULTI_DELIVERABLE_SEPARATION_RULE,
 } from "./prompts";
-import { buildSourceList } from "./citations";
+import { buildSourceList, insertCitationMarkers } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
-import {
-  verifyExcerpt,
-  isWeakQuoteSource,
-  STATISTIC_OR_NEWS_QUERY_TEMPLATES,
-} from "@/lib/verification/excerpt-verification";
-import type { CoreTaskInfo, PlanResult, InsufficientDataResult } from "@/types/task";
+import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
+import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
 
-// 기획서 5-1: 실행 계획(PPT 구성안 등)은 JSON 구조화가 필수라서 2단계로 나눈다.
-// 1차: 그라운딩 켠 상태로 자유 텍스트 생성 (인용 메타데이터를 살리기 위해)
-// 2차: 그 텍스트를 구조화된 JSON으로 변환 (그라운딩 없이, 순수 포맷 변환만)
-//
-// 2차 변환에서 모델이 URL을 새로 지어내는 걸 막기 위해, 각 스텝은 URL 문자열이
-// 아니라 1차 결과에서 확보한 출처 목록의 번호(source_n)만 고르게 한다.
-// N2: 이 경로의 실제 레이턴시를 M1에서 최우선으로 실측한다 (8~12초 가능성).
-
-const PLAN_SCHEMA: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    steps: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          order: { type: Type.INTEGER },
-          task: { type: Type.STRING, description: "오늘 당장 할 일 (구체적으로)" },
-          estimated_minutes: { type: Type.INTEGER },
-          search_keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-          source_n: {
-            type: Type.INTEGER,
-            description:
-              "이 스텝과 관련된 출처 번호. 아래 [출처 목록]에 있는 번호만 쓸 것. 관련 출처가 없으면 0.",
-          },
-        },
-        required: ["order", "task", "estimated_minutes", "search_keywords", "source_n"],
-      },
-    },
-  },
-  required: ["steps"],
-};
+// 사용자 요청(2026-09-13): 예전엔 이 경로가 "무엇을 조사/작성할지"만 안내하는
+// 실행 계획(할 일 목록)을 만들었다 — PPT/포스터/신문처럼 외부 툴이나 물리적
+// 제작이 필요한 산출물이라도, 글로 쓸 수 있는 부분(기사문, 슬라이드 문구,
+// 포스터 헤드라인, 사설/칼럼, 발표 대본 등)은 실제로 완성해서 주지 않고
+// "이런 걸 조사해서 써라"는 계획만 줬다. 이제는 글로 쓸 수 있는 부분은 전부
+// 지금 완성해서 주고(완성 원고 경로와 동일한 방식: 그라운딩 켠 자유 텍스트 +
+// 바이트 단위 각주 삽입), 학생이 정말 손으로 직접 해야 하는 물리적 제작
+// 단계(그림 그리기, 배치, 오려붙이기, 색칠, 인쇄 등)만 짧은 체크리스트로
+// 남긴다. 이렇게 바꾸면서 예전에 필요했던 "1차 자유 텍스트 → 2차 JSON 변환"
+// 2단계 구조도 함께 없앴다 — 두 섹션 모두 모델이 지정된 "## 제목" 아래
+// 자연스러운 텍스트/번호목록으로 쓰게 하고, 코드가 순수 문자열 처리로
+// 나눠 담는다(완성 원고 경로에서 "모델이 텍스트를 그대로 옮겨 적다가 글자를
+// 빠뜨리는" 사고를 겪은 뒤 확립한 원칙 — splitAnnotatedIntoSections 참고 —
+// 을 그대로 적용: annotated 텍스트에서 직접 슬라이스하고, 물리적 제작
+// 체크리스트의 예상 소요시간(정수)도 모델이 낸 JSON 필드가 아니라 원문에
+// "N분"으로 쓰인 걸 정규식으로 그대로 읽어서 파싱한다).
 
 export interface GeneratePlanInput {
   subject: string;
@@ -76,6 +55,9 @@ export interface GeneratePlanInput {
   fixedSubject?: string;
 }
 
+const CONTENT_HEADING = "## 완성된 글";
+const PHYSICAL_HEADING = "## 직접 만들어야 할 것";
+
 function buildStepAPrompt(input: GeneratePlanInput): string {
   const element = input.coreTaskInfo.task_elements.find(
     (e) => e.type === "external_production"
@@ -96,8 +78,13 @@ ${input.previousOutputText}
 
   return `
 ${continuityBlock}너는 한국 고등학생의 수행평가 준비를 돕는 도우미다.
-아래 과제는 PPT/포스터/모형처럼 외부 툴이나 물리적 제작이 필요한 산출물이라,
-학생이 직접 만들 수 있도록 "실행 계획"을 세워줘야 한다 (완성물을 대신 만들어주지 않는다).
+아래 과제는 PPT/포스터/신문처럼 외부 툴이나 물리적 제작이 필요한 산출물이다.
+글로 쓸 수 있는 내용(기사문, 슬라이드에 들어갈 문구, 포스터 헤드라인·본문,
+사설·칼럼, 발표 대본 등)은 "이런 걸 조사해서 써라"는 계획만 세우지 말고,
+지금 실제로 전부 완성해서 써줘 — 학생이 그대로 옮겨 적거나 인쇄해서 쓸 수
+있는 수준으로. 오직 학생이 직접 손으로 해야 하는 부분(그림 그리기, 사진
+배치, 오려붙이기, 색칠, 인쇄, 발표 리허설 등 글로 대신할 수 없는 물리적
+작업)만 별도로 안내해줘 — 이런 물리적 작업까지 대신 써주지 마라.
 
 [과목] ${input.subject}
 [과제 주제] ${input.coreTaskInfo.topic}
@@ -108,10 +95,10 @@ ${
   input.fixedSubject
     ? `
 【절대 규칙 — 반드시 지킬 것】 이 과제는 이미 이전 단계에서 다음 대상 하나로
-확정되었다: "${input.fixedSubject}". 이 계획의 모든 단계는 반드시 이 대상
-하나만 다룬다. 다른 인물·사건·자료를 새로 선정하거나 검토 대상으로 언급하지
-않는다. "만약 다른 X를 선택했다면", "X 대신 Y를 고른다면"처럼 다른 대상을
-전제로 한 조건문도 절대 쓰지 않는다. 검색어와 통계·자료도 전부 "${input.fixedSubject}"와
+확정되었다: "${input.fixedSubject}". 이 글은 반드시 이 대상 하나만 다룬다.
+다른 인물·사건·자료를 새로 선정하거나 검토 대상으로 언급하지 않는다. "만약
+다른 X를 선택했다면", "X 대신 Y를 고른다면"처럼 다른 대상을 전제로 한
+조건문도 절대 쓰지 않는다. 검색어와 통계·자료도 전부 "${input.fixedSubject}"와
 직접 관련된 것만 쓴다.`
     : ""
 }
@@ -122,22 +109,136 @@ ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여�
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
 필요한 사실(통계, 사례, 원문 정보 등)은 반드시 실시간 검색으로 확인하고,
-확인이 안 되면 지어내지 말 것. 오늘 당장 할 일부터 순서대로,
-각 단계마다 예상 소요시간과 검색해야 할 키워드를 함께 자연스러운 글로 정리해줘.
-슬라이드/섹션 구성이 필요하면 몇 번째 슬라이드에 무엇을 넣을지도 구체적으로 언급해줘.
+확인이 안 되면 지어내지 말 것.
 
 【통계·사례·원문 검색은 한 번의 포괄적 검색으로 뭉뚱그리지 말 것 — 매우 중요】
-구체적인 통계 수치나 사례를 인용할 단계가 있다면, "키워드 + 통계/사례" 정도로
+구체적인 통계 수치나 사례를 인용할 계획이라면, "키워드 + 통계/사례" 정도로
 한 번만 검색하고 멈추지 말고 서로 다른 각도로 여러 번 시도할 것 — 예를 들어:
 ${STATISTIC_OR_NEWS_QUERY_TEMPLATES.map((q, i) => `  ${i + 1}. ${q({ name: "<검색 키워드>", attribution: "<기관명>" })}`).join("\n")}
 위키형 페이지(나무위키, 위키백과 등)나 동영상 자막만으로 확인하고 끝내지 말고,
 가능하면 보도자료 원문·공공기관 발표자료·논문처럼 원자료 자체를 보여주는
 페이지를 우선 찾을 것.
+
+【출력 형식 — 반드시 아래 두 제목을 정확히 이 글자 그대로(토씨 하나 바꾸거나
+꾸미지 말고) 써서 나눌 것. 이 두 개 외에 다른 "## " 제목은 쓰지 말 것】
+
+${CONTENT_HEADING}
+(여기에 실제로 완성된 글 전체를 써줘. 검색으로 확인한 사실에는 각주를 붙여줘.
+여러 부분(예: 헤드라인/기사/사설, 또는 슬라이드별)이 있으면 자연스러운
+소제목으로 구분해도 되지만 "## "는 쓰지 말 것.)
+
+${PHYSICAL_HEADING}
+(여기에는 학생이 손으로 직접 해야 하는 작업만, "번호. (예상 N분) 할 일" 형식으로
+한 줄씩 써줘 — 예: "1. (40분) 신문 1면에 들어갈 인물 초상화를 손그림으로
+그리기". 조사나 글쓰기는 이미 위에서 다 끝났으니 여기에 다시 넣지 말 것.)
+
+위 두 제목 줄은 반드시 "${CONTENT_HEADING}"과 "${PHYSICAL_HEADING}"을 한
+글자도 바꾸지 않고 그대로 써야 한다("완성된 시대저널"처럼 꾸미지 말 것) —
+코드가 이 줄을 기준으로 텍스트를 기계적으로 나누기 때문이다.
 ${ANTI_AI_TONE_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${PERSPECTIVE_RULE}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
 `.trim();
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// 실제로 관찰된 문제: 모델이 지정한 제목을 정확히 안 쓰고 "## 완성된
+// 시대저널"처럼 꾸며 쓰는 경우가 있었다(프롬프트에 "정확히 이 글자 그대로"를
+// 강조해도 100% 보장은 안 된다는, 이 프로젝트에서 반복 확인된 패턴). 그래서
+// 정확히 일치하는 제목이 없으면, 그 제목을 대표하는 핵심 단어가 들어간
+// "## "로 시작하는 줄을 대신 찾는 완화된 매칭으로 한 번 더 시도한다.
+const CONTENT_HEADING_FUZZY = /^##.*완성.*$/m;
+const PHYSICAL_HEADING_FUZZY = /^##.*(직접|손으로).*(만들|제작|작업).*$/m;
+
+/** annotated(각주까지 삽입된 원문)에서 CONTENT_HEADING/PHYSICAL_HEADING 두
+ * 제목을 기준으로 순수 문자열 slice만 한다 — 모델에게 다시 옮겨 적으라고
+ * 시키지 않으므로 글자 손실이 구조적으로 불가능하다(generate-essay.ts의
+ * splitAnnotatedIntoSections와 같은 이유). */
+function splitContentAndPhysicalText(annotated: string): { content: string; physicalText: string } {
+  const contentRe = new RegExp(`^${escapeRegExp(CONTENT_HEADING)}[ \\t]*$`, "m");
+  const physicalRe = new RegExp(`^${escapeRegExp(PHYSICAL_HEADING)}[ \\t]*$`, "m");
+
+  const contentMatch = contentRe.exec(annotated) ?? CONTENT_HEADING_FUZZY.exec(annotated);
+  const physicalMatch = physicalRe.exec(annotated) ?? PHYSICAL_HEADING_FUZZY.exec(annotated);
+
+  if (!contentMatch) {
+    // 모델이 지정된 제목을 못 지켰으면(드물게라도) 전체를 완성된 글로 취급하고
+    // 물리적 체크리스트는 비워둔다 — 조용히 빈 결과를 내보내는 것보다 낫다.
+    console.warn(`[generatePlan] "${CONTENT_HEADING}" 제목을 찾지 못함 — 전체를 완성된 글로 취급`);
+    return { content: annotated.trim(), physicalText: "" };
+  }
+
+  const contentStart = contentMatch.index + contentMatch[0].length;
+  const contentEnd = physicalMatch ? physicalMatch.index : annotated.length;
+  const content = annotated.slice(contentStart, contentEnd).trim();
+
+  if (!physicalMatch) {
+    console.warn(`[generatePlan] "${PHYSICAL_HEADING}" 제목을 찾지 못함 — 물리적 체크리스트 없이 진행`);
+    return { content, physicalText: "" };
+  }
+
+  const physicalText = annotated.slice(physicalMatch.index + physicalMatch[0].length).trim();
+  return { content, physicalText };
+}
+
+const PHYSICAL_STEP_LINE_PATTERN = /^\s*\d+[.)]\s*(?:\((\d+)\s*분\)\s*)?(.+)$/;
+const DEFAULT_PHYSICAL_STEP_MINUTES = 20;
+
+/** 물리적 제작 체크리스트를 정규식으로 파싱한다 — 예상 소요시간(정수)을
+ * 모델이 낸 구조화 필드가 아니라 "N분" 형태의 원문 텍스트에서 그대로
+ * 읽어온다(정수 계산을 모델에게 맡기면 드물게 토큰 반복 루프에 빠지는
+ * 사고를 analyze.ts에서 겪은 뒤 확립한 원칙, PROGRESS.md 참고). */
+function parseProductionSteps(physicalText: string): ProductionStep[] {
+  const lines = physicalText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const steps: ProductionStep[] = [];
+  let order = 1;
+  for (const line of lines) {
+    const m = PHYSICAL_STEP_LINE_PATTERN.exec(line);
+    if (!m) continue;
+    steps.push({
+      order: order++,
+      task: m[2].trim(),
+      estimated_minutes: m[1] ? Number(m[1]) : DEFAULT_PHYSICAL_STEP_MINUTES,
+    });
+  }
+  return steps;
+}
+
+// 완성된 글에 등장하는 통계/수치 주장에 각주가 없으면 검증 없이 지어낸
+// 것으로 의심한다 — generate-essay.ts의 detectUnverifiedQuotes와 같은
+// 발상이지만, 여기서는 책의 직접 인용이 아니라 통계·수치 주장을 본다.
+const STAT_CLAIM_PATTERN = /\d[\d,]*(?:\.\d+)?\s?(?:%|퍼센트|명|건|원|배|위|개)/g;
+
+function findUnverifiedStatClaim(
+  content: string,
+  sourceById: Map<number, SourceRef>
+): { afterEnd: number; sentence: string } | null {
+  STAT_CLAIM_PATTERN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = STAT_CLAIM_PATTERN.exec(content))) {
+    const afterEnd = m.index + m[0].length;
+    const trailingWindow = content.slice(afterEnd, afterEnd + 60);
+    const citedNs = Array.from(trailingWindow.matchAll(/\[(\d+)\]/g), (mm) => Number(mm[1]));
+    const hasTrustworthyCitation = citedNs.some((n) => {
+      const src = sourceById.get(n);
+      return src && !isWeakQuoteSource(src.url);
+    });
+    if (!hasTrustworthyCitation) {
+      const sentenceStart = content.lastIndexOf(".", m.index) + 1;
+      const rest = content.slice(afterEnd);
+      const endRel = rest.search(/[.!?\n]/);
+      const sentenceEnd = endRel === -1 ? content.length : afterEnd + endRel + 1;
+      return { afterEnd, sentence: content.slice(sentenceStart, sentenceEnd).trim() };
+    }
+  }
+  return null;
 }
 
 export async function generatePlan(
@@ -146,7 +247,6 @@ export async function generatePlan(
   const start = Date.now();
   const ai = getGeminiClient();
 
-  // 1차: 검색 그라운딩 켠 자유 텍스트 생성
   const runStepA = (p: string) =>
     withGeminiRetry(
       () =>
@@ -165,7 +265,7 @@ export async function generatePlan(
     console.error("[generatePlan] 1차 생성 재시도 후에도 실패", err);
     return {
       type: "insufficient_data",
-      reason: "지금 검색 서비스가 불안정해서 계획을 만들지 못했어요. 잠시 후 다시 시도해주세요.",
+      reason: "지금 검색 서비스가 불안정해서 콘텐츠를 만들지 못했어요. 잠시 후 다시 시도해주세요.",
     };
   }
 
@@ -175,9 +275,9 @@ export async function generatePlan(
   }
 
   // 인물 혼입 안전장치: fixedSubject가 있는데도 1차 결과에 그 이름이 한 번도
-  // 등장하지 않으면, essay 쪽에서 확정한 대상을 무시하고 다른 대상으로 계획을
-  // 짰을 가능성이 높다(실제 사고 사례: 마틴 루터 킹 주니어를 선정했는데 신문
-  // 제작 계획은 전태일 내용으로 만들어짐). 1회 강하게 재지시해서 재시도한다.
+  // 등장하지 않으면, essay 쪽에서 확정한 대상을 무시하고 다른 대상으로 글을
+  // 썼을 가능성이 높다(실제 사고 사례: 마틴 루터 킹 주니어를 선정했는데
+  // 신문 제작 결과는 전태일 내용으로 만들어짐). 1회 강하게 재지시해서 재시도한다.
   if (input.fixedSubject && !freeText.includes(input.fixedSubject)) {
     console.warn(
       `[generatePlan] fixedSubject="${input.fixedSubject}"가 1차 결과에 등장하지 않음 — 강하게 재지시하여 1회 재시도`
@@ -185,7 +285,7 @@ export async function generatePlan(
     try {
       const forcedPrompt =
         buildStepAPrompt(input) +
-        `\n\n【다시 한번 강조 — 반드시 지킬 것】 방금 쓴 계획에 "${input.fixedSubject}"가 전혀 언급되지 않았다. ` +
+        `\n\n【다시 한번 강조 — 반드시 지킬 것】 방금 쓴 글에 "${input.fixedSubject}"가 전혀 언급되지 않았다. ` +
         `이 과제의 대상은 오직 "${input.fixedSubject}" 하나뿐이다. 처음부터 끝까지 이 대상만 다뤄서 다시 쓸 것.`;
       const retryStepA = await runStepA(forcedPrompt);
       if (retryStepA.text?.includes(input.fixedSubject)) {
@@ -200,161 +300,57 @@ export async function generatePlan(
   }
 
   const grounding = stepA.candidates?.[0]?.groundingMetadata;
-  const { sources } = buildSourceList(grounding?.groundingChunks);
-  const sourceListText = sources.length
-    ? sources.map((s) => `${s.n}. ${s.title} — ${s.url}`).join("\n")
-    : "(검색된 출처 없음)";
-
-  // 2차: 구조화된 JSON으로 변환 (그라운딩 없이, 포맷 변환만)
-  let stepB;
-  try {
-    stepB = await withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flash,
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `
-다음 실행 계획 글을 JSON 스키마에 맞춰 단계별로 구조화해줘.
-
-[원문]
-${freeText}
-
-[출처 목록]
-${sourceListText}
-
-규칙:
-- source_n은 반드시 위 [출처 목록]에 있는 번호만 쓸 것. 새로운 URL이나 번호를 만들어내지 말 것.
-- 관련 출처가 없는 단계는 source_n을 0으로 둘 것.
-- task는 "오늘 당장 할 일"처럼 구체적인 행동으로 쓸 것.
-`.trim(),
-                },
-              ],
-            },
-          ],
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: PLAN_SCHEMA,
-          },
-        }),
-      "generatePlan:stepB"
-    );
-  } catch (err) {
-    console.error("[generatePlan] 2차 구조화 재시도 후에도 실패", err);
-    return {
-      type: "insufficient_data",
-      reason: "실행계획을 정리하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.",
-    };
-  }
-
-  // 생성 소요시간은 개발자 확인용 로그로만 남기고, 화면에는 노출하지 않는다.
-  console.log(`[generatePlan] latency_ms=${Date.now() - start}`);
-
-  const raw = stepB.text;
-  if (!raw) {
-    return { type: "insufficient_data", reason: "실행계획 구조화 응답이 비어 있습니다." };
-  }
-
-  const parsed = JSON.parse(raw) as {
-    steps: Array<{
-      order: number;
-      task: string;
-      estimated_minutes: number;
-      search_keywords: string[];
-      source_n: number;
-    }>;
-  };
-
-  // 책 처방전 경로(generate-essay.ts)에서 검증된 excerpt-verification.ts를
-  // 그대로 가져와 연결한다 — 출처가 없거나(source_n=0) 위키/동영상뿐인
-  // 단계를 최대 1건(라우트 60초 제한 고려, essay 경로와 동일한 이유)만 골라
-  // 통계/뉴스 각도의 쿼리로 별도 검증을 시도하고, 성공하면 검증된 출처를 새
-  // 번호로 추가해 그 단계에 바로 연결한다. essay 경로와 달리 PlanStep은
-  // 자유 텍스트가 아니라 구조화된 source_n 참조라서, "재생성해서 다시
-  // 검색"할 필요 없이 이 자리에서 바로 값만 바꾸면 된다 — 그래서 essay
-  // 경로에서 관찰됐던 "재생성이 우리가 확인해준 출처 대신 자기 검색으로
-  // 위키를 다시 골라버리는" 문제 자체가 이 경로에는 구조적으로 생기지 않는다.
-  // "PPT 템플릿 찾기"처럼 검색 키워드는 있어도 검증할 "사실 주장"이 없는
-  // 순수 실행 단계까지 검증 대상으로 잡으면 헛수고다(실제 테스트에서 관찰됨)
-  // — 통계/사례/자료 등 사실 인용 느낌이 나는 단계만 골라낸다.
-  // "발표"는 거의 모든 PPT/포스터 단계에 등장해서(발표 대본, 발표 리허설 등)
-  // 너무 자주 걸림 — 실제 테스트에서 확인되어 뺐다. 나머지도 완벽하진 않지만
-  // (예: "통계 자료 시각화"처럼 이미 수집한 데이터를 다루는 단계까지 걸릴 수
-  // 있음), 검증 1건 상한(MAX_PLAN_VERIFICATIONS)과 안전장치 때문에 걸려도
-  // 큰 해는 없다 — 완벽한 분류보다 "PPT 템플릿 찾기" 같은 명백한 오탐만
-  // 줄이는 선에서 타협함.
-  const FACTUAL_CLAIM_HINT_PATTERN = /통계|수치|%|퍼센트|사례|자료|조사|보고서|논문|기사|뉴스|데이터|현황/;
-  function needsFactVerification(task: string, keywords: string[]): boolean {
-    return FACTUAL_CLAIM_HINT_PATTERN.test(task) || keywords.some((k) => FACTUAL_CLAIM_HINT_PATTERN.test(k));
-  }
-
-  const rawSourceByN = new Map(sources.map((s) => [s.n, s]));
-  const stepsNeedingVerification = parsed.steps.filter((s) => {
-    const src = rawSourceByN.get(s.source_n);
-    return (
-      (!src || isWeakQuoteSource(src.url)) &&
-      s.search_keywords.length > 0 &&
-      needsFactVerification(s.task, s.search_keywords)
-    );
-  });
-
-  const MAX_PLAN_VERIFICATIONS = 1;
-  let nextSourceN = sources.reduce((max, s) => Math.max(max, s.n), 0) + 1;
-  let verificationSuccesses = 0;
-  // 5단계: 검증 성공한 항목의 식별 문구(검색 키워드)를 모아뒀다가 이 함수
-  // 끝에서 반환한다 — 실제 기록(recordRecommendation)은 라우트가 사용자
-  // 식별 정보(userId/guestId/clusterId)와 함께 한다(essay 경로와 동일한
-  // 책임 분리: 이 함수는 사용자 신원을 몰라도 됨).
-  const verifiedItemNames: string[] = [];
-  for (const step of stepsNeedingVerification.slice(0, MAX_PLAN_VERIFICATIONS)) {
-    const result = await verifyExcerpt(
-      { name: step.search_keywords.join(" ") },
-      STATISTIC_OR_NEWS_QUERY_TEMPLATES
-    );
-    if (result.verified && result.source) {
-      verificationSuccesses++;
-      const n = nextSourceN++;
-      sources.push({ n, title: result.source.title, url: result.source.url, url_valid: null });
-      step.source_n = n;
-      verifiedItemNames.push(step.search_keywords.join(" "));
-    }
-  }
   console.log(
-    `[generatePlan] 인용 검증 요약: 대상=${stepsNeedingVerification.length}건 ` +
-      `시도=${Math.min(stepsNeedingVerification.length, MAX_PLAN_VERIFICATIONS)}건 성공=${verificationSuccesses}건`
+    `[generatePlan] 그라운딩 진단: webSearchQueries=${JSON.stringify(grounding?.webSearchQueries ?? [])} ` +
+      `groundingChunks=${grounding?.groundingChunks?.length ?? 0}`
   );
 
-  const validatedSources = await validateSources(sources);
-  const sourceByN = new Map(validatedSources.map((s) => [s.n, s]));
+  const { sources, chunkIndexToN } = buildSourceList(grounding?.groundingChunks);
+  const annotated = insertCitationMarkers(freeText, grounding?.groundingSupports, chunkIndexToN);
+  let validatedSources = await validateSources(sources);
 
-  // 최종 안전장치(essay 경로의 stripWeaklySourcedQuotes와 같은 역할) — 검증을
-  // 못 거쳤거나 검증에도 실패해서 여전히 위키/동영상 출처만 남은 "사실 인용"
-  // 단계는, 모델에게 다시 묻지 않고 코드가 그 단계의 출처 연결 자체를
-  // 제거한다(약한 근거를 정식 출처인 것처럼 보여주지 않기 위함). "PPT 템플릿
-  // 찾기"처럼 사실 인용이 아닌 순수 실행 단계는 위키/동영상이 오히려 정상
-  // 참고자료일 수 있어 건드리지 않는다.
-  const finalSteps = parsed.steps.map((s) => {
-    const src = sourceByN.get(s.source_n);
-    const isFactualClaim = needsFactVerification(s.task, s.search_keywords);
-    const keep = !!src && (!isFactualClaim || !isWeakQuoteSource(src.url));
-    if (src && !keep) {
-      console.warn(`[generatePlan] 최종 안전장치: 약한 출처 연결을 제거함 step=${s.order} url=${src.url}`);
+  const { content: rawContent, physicalText } = splitContentAndPhysicalText(annotated);
+  let content = rawContent;
+  const productionSteps = parseProductionSteps(physicalText);
+
+  // 5단계(추천 다양성): 검증 성공한 통계/사례를 최대 1건(라우트 60초 제한
+  // 고려, essay 경로와 동일한 이유) 골라 검색으로 재확인하고, 성공하면 그
+  // 자리에 새 각주를 직접 끼워 넣는다. 기존(개편 전) 코드는 이 검증을
+  // PlanStep 단위로 했지만, 이제 content가 essay처럼 하나의 이어진 글이라
+  // essay 경로처럼 본문 문자열에 직접 [n]을 삽입하는 방식으로 바꿨다.
+  const verifiedItemNames: string[] = [];
+  const sourceById = new Map(validatedSources.map((s) => [s.n, s]));
+  const claim = findUnverifiedStatClaim(content, sourceById);
+  if (claim) {
+    const result = await verifyExcerpt({ name: claim.sentence }, STATISTIC_OR_NEWS_QUERY_TEMPLATES);
+    if (result.verified && result.source) {
+      const n = validatedSources.reduce((max, s) => Math.max(max, s.n), 0) + 1;
+      const newSource: SourceRef = { n, title: result.source.title, url: result.source.url, url_valid: null };
+      validatedSources = [...validatedSources, newSource];
+      content = `${content.slice(0, claim.afterEnd)}[${n}]${content.slice(claim.afterEnd)}`;
+      verifiedItemNames.push(claim.sentence);
+      console.log(`[generatePlan] 미검증 통계 주장 검증 성공: "${claim.sentence.slice(0, 40)}..." -> [${n}]`);
+    } else {
+      console.warn(`[generatePlan] 미검증 통계 주장 검증 실패(그대로 진행): "${claim.sentence.slice(0, 40)}..."`);
     }
-    return {
-      order: s.order,
-      task: s.task,
-      estimated_minutes: s.estimated_minutes,
-      search_keywords: s.search_keywords,
-      source_n: keep ? s.source_n : null,
-    };
-  });
+  }
+
+  // 최종 안전장치: 인용은 있는데 그 출처가 전부 위키/동영상처럼 원문 대조가
+  // 불가능한 약한 출처뿐이면, 검증된 것처럼 보이는 각주를 남겨두지 않고
+  // 각주 표기 자체를 지운다(약한 근거를 정식 출처인 것처럼 보여주지 않기
+  // 위함 — generate-essay.ts의 stripWeaklySourcedQuotes와 같은 철학).
+  if (validatedSources.length > 0 && validatedSources.every((s) => isWeakQuoteSource(s.url))) {
+    console.warn("[generatePlan] 최종 안전장치: 출처가 전부 약한 매체(위키/동영상)뿐이라 각주를 제거함");
+    content = content.replace(/\[\d+\]/g, "");
+    validatedSources = [];
+  }
+
+  console.log(`[generatePlan] latency_ms=${Date.now() - start}`);
 
   return {
     type: "plan",
-    steps: finalSteps,
+    content,
+    productionSteps,
     sources: validatedSources,
     latency_ms: Date.now() - start,
     verifiedItemNames,

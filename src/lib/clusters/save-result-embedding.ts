@@ -7,7 +7,7 @@ export function essayResultToText(result: EssayResult): string {
 }
 
 export function planResultToText(result: PlanResult): string {
-  return result.steps.map((s) => s.task).join("\n");
+  return result.content;
 }
 
 /**
