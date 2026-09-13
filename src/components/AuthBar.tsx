@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { useAuth } from "@/lib/supabase/use-auth";
 
@@ -13,6 +13,22 @@ export default function AuthBar() {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+
+  // 관리자 코드 로그인은 별도의 httpOnly 쿠키라 Supabase useAuth()로는
+  // 안 잡힌다 — 마운트 시 한 번 서버에 확인해서, 이메일 로그인한 것처럼
+  // 사이드바 하단에 "관리자"로 표시해준다.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    fetch("/api/admin/session")
+      .then((res) => res.json())
+      .then((data) => setIsAdmin(!!data.isAdmin))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  async function handleAdminLogout() {
+    await fetch("/api/admin/logout", { method: "POST" });
+    setIsAdmin(false);
+  }
 
   async function handleSendLink() {
     setError(null);
@@ -46,6 +62,23 @@ export default function AuthBar() {
         </div>
         <button
           onClick={handleLogout}
+          className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
+        >
+          로그아웃
+        </button>
+      </div>
+    );
+  }
+
+  if (isAdmin) {
+    return (
+      <div className="rounded-md border border-accent/30 bg-accent/5 p-2.5">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
+          <p className="truncate text-xs text-foreground">관리자</p>
+        </div>
+        <button
+          onClick={handleAdminLogout}
           className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
         >
           로그아웃
