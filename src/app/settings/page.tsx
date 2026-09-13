@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { useAuth } from "@/lib/supabase/use-auth";
@@ -167,6 +168,12 @@ export default function SettingsPage() {
 
       <section className="space-y-2 text-xs text-muted">
         <p>이용약관 · 개인정보처리방침 (준비 중)</p>
+      </section>
+
+      <section className="text-right">
+        <Link href="/admin/login" className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
+          코드로 로그인하기
+        </Link>
       </section>
 
       {user && (
