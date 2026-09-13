@@ -10,7 +10,7 @@ import { buildSourceList, insertCitationMarkers } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
-import { stripClichesFromText, stripUnsupportedSuperlatives } from "./generate-essay";
+import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList } from "./generate-essay";
 import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
 
 // 사용자 요청(2026-09-13): 예전엔 이 경로가 "무엇을 조사/작성할지"만 안내하는
@@ -384,6 +384,13 @@ export async function generatePlan(
   content = clicheCleanedContent;
   const { content: superlativeCleanedContent } = stripUnsupportedSuperlatives(content);
   content = superlativeCleanedContent;
+  if (validatedSources.length === 0) {
+    const { content: refListCleanedContent, stripped } = stripFakeReferenceList(content);
+    if (stripped) {
+      console.warn("[generatePlan] 최종 안전장치: 미검증 자기 생성 참고문헌 목록 제거함");
+      content = refListCleanedContent;
+    }
+  }
 
   console.log(`[generatePlan] latency_ms=${Date.now() - start}`);
 

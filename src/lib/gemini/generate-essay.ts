@@ -336,6 +336,9 @@ ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물
    말 것 — 그런 건 그냥 각주 없이 자연스러운 문장으로 쓸 것.
 3. 맨 위에 불릿 3줄로 전체 내용을 요약해서 먼저 제시할 것 (학생이 스스로 검증할
    수 있도록 — 글의 "내용"만 요약하고, 어떻게 썼는지에 대한 언급은 절대 넣지 말 것).
+   본문에 실제로 없는 내용(예: 본문 계산에서 명시적으로 제외한 조건, 본문이
+   언급하지 않은 결과나 수치)을 요약에서 새로 지어내 넣지 말 것 — 요약은
+   반드시 본문에 실제로 쓴 내용만 압축한 것이어야 한다.
 4. 그 요약 바로 다음 줄부터 구분선이나 "본문" 같은 라벨 없이 곧바로 첫 단계로 이어서 쓸 것.
 5. 안내문·요구사항에 명시된 항목(예: "인상 깊은 구절"처럼 특정 요소를 포함하라는
    지시)은 검증 성공 여부와 상관없이 절대 통째로 생략하지 말 것. 검증되면 아래
@@ -1151,6 +1154,16 @@ export async function generateEssay(
     attempt = { ...attempt, sections: superlativeCleanedSections };
   }
 
+  // 검색 그라운딩이 전혀 없었는데(sources=0) 자기 생성 "출처:" 목록이 남아
+  // 있을 수 있다 — 코드가 확정적으로 제거한다(stripFakeReferenceList() 참고).
+  if (attempt.sources.length === 0) {
+    const { sections: refListCleanedSections, strippedLabels: refListStrippedLabels } =
+      stripFakeReferenceListFromSections(attempt.sections);
+    if (refListStrippedLabels.length > 0) {
+      attempt = { ...attempt, sections: refListCleanedSections };
+    }
+  }
+
   // 재시도까지 거치고도 이상 문자(다른 문자 체계)가 남을 수 있다 — 코드가
   // 확정적으로 제거한다(stripForeignScriptCorruption() 설명 참고).
   const { sections: scriptCleanedSections, strippedLabels: scriptStrippedLabels } = stripForeignScriptCorruption(
@@ -1631,8 +1644,13 @@ function stripWeaklySourcedQuotes(
 //까지 검증 대상으로 잡던 오탐을 고칠 때 쓴 것과 같은 종류의 판별 — 통계·
 // 정의·전문용어처럼 실제로 외부 검증이 필요한 사실 주장에만 각주를 허용하고,
 // 감정·상황 묘사 같은 순수 서술에는 각주를 붙이지 않는다.
+// 10종 수행평가 교차 테스트(2026-09-13)에서 발견된 문제: 역사 탐구(산업혁명)
+// 에세이가 "하루 14시간이 넘는 장시간 노동", "러다이트 운동", "차티스트 운동",
+// "공장법" 같은 구체적 역사적 사실을 각주 하나 없이 썼는데도, 기존 패턴이
+// "통계/수치/%/연구" 같은 키워드만 봐서 noSourcesWarning이 안 뜬 사례가 있었다.
+// 연도·세기·특정 수량·최초/유일 표현도 검증이 필요한 구체적 사실 주장이므로 추가.
 const FACTUAL_CLAIM_HINT_PATTERN =
-  /통계|수치|%|퍼센트|사례|자료|조사|보고서|논문|기사|뉴스|데이터|현황|정의|용어|전문|연구|평균|비율/;
+  /통계|수치|%|퍼센트|사례|자료|조사|보고서|논문|기사|뉴스|데이터|현황|정의|용어|전문|연구|평균|비율|\d{3,4}\s*년|\d+\s*세기|\d+\s*(시간|명|건|개|배|주|일)|최초|유일한?|결정적/;
 
 /** [n] 각주 바로 앞의 "그 문장"만 잘라낸다 — 문장부호(. ! ? 개행)를 기준으로
  * 역방향 탐색. 완벽한 문장 분리기는 아니지만, 각주 바로 앞 절 정도의 맥락을
@@ -1699,6 +1717,43 @@ function stripUnjustifiedSummaryCitations(summaryLines: string[]): { summaryLine
     console.warn(`[generateEssay] 최종 안전장치: 전체 요약(summary_lines)의 불필요한 각주 ${strippedCount}건 제거함`);
   }
   return { summaryLines: newLines, strippedCount };
+}
+
+// 10종 수행평가 교차 테스트(2026-09-13)에서 발견된 버그: 사회문제 탐구
+// 에세이가 실제 검색 그라운딩이 하나도 없었는데도(sources=[]) 본문 맨 끝에
+// "출처:\n- 한국언론진흥재단 미디어 통계 자료\n- 보건복지부 청소년 건강
+// 행태 조사 보고서"처럼 그럴듯해 보이는 참고문헌 목록을 스스로 지어내
+// 붙였다. noSourcesWarning 배너는 정상적으로 떴지만, 학생이 배너를 못 보고
+// 이 목록만 보면 실제로 검증된 출처처럼 오해할 수 있다 — "출처가 존재한다"
+// 와 "출처가 그 주장을 뒷받침한다"는 다르다는 원칙을 이 경우에도 적용해서,
+// 검증(실제 [n] 각주)이 전혀 없는데 "출처:"류 헤더로 시작하는 자기 생성
+// 목록은 제거한다.
+const FAKE_REFERENCE_LIST_PATTERN = /^[ \t]*(출처|참고\s*문헌|참고\s*자료|References?)[ \t]*[:：][ \t]*$/m;
+
+/** content 전체에 실제 [n] 각주가 하나도 없는데(=진짜 검증된 것이 없는데)
+ * "출처:"/"참고문헌:" 같은 자기 생성 헤더 줄이 있으면, 그 줄부터 끝까지
+ * 잘라낸다. 실제 각주가 있으면(다른 문제일 수 있어도) 건드리지 않는다. */
+export function stripFakeReferenceList(content: string): { content: string; stripped: boolean } {
+  if (/\[\d+\]/.test(content)) return { content, stripped: false };
+  const m = FAKE_REFERENCE_LIST_PATTERN.exec(content);
+  if (!m) return { content, stripped: false };
+  const newContent = content.slice(0, m.index).trim();
+  if (newContent.length < 10) return { content, stripped: false };
+  return { content: newContent, stripped: true };
+}
+
+function stripFakeReferenceListFromSections(
+  sections: RawSection[]
+): { sections: RawSection[]; strippedLabels: string[] } {
+  const strippedLabels: string[] = [];
+  const newSections = sections.map((s) => {
+    const { content, stripped } = stripFakeReferenceList(s.content);
+    if (!stripped) return s;
+    strippedLabels.push(s.label);
+    console.warn(`[generateEssay] 최종 안전장치: 미검증 자기 생성 참고문헌 목록 제거함 label="${s.label}"`);
+    return { ...s, content };
+  });
+  return { sections: newSections, strippedLabels };
 }
 
 /**
