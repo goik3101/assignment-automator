@@ -2622,6 +2622,127 @@ analyze.ts 유형 분류 등)는 재설계하지 않고 유지.
 **변경 파일**: [generate-essay.ts](src/lib/gemini/generate-essay.ts),
 [generate-plan.ts](src/lib/gemini/generate-plan.ts).
 
+## 관리자 로그인 전체 계정 연동 + 미니 CMS 추가 (2026-09-14)
+
+사용자 리포트/요청: (1) "코드로 로그인하기"로 로그인해도 사이드바에 "관리자"가
+안 뜬다, (2) 로그인해야 쓸 수 있는 개인화·히스토리 기능을 관리자도 못 쓴다,
+(3) 관리자 대시보드가 로그인 직후에만 보이고 나가면 다시 들어갈 방법이 없다,
+(4) 관리자로 로그인하면 대시보드 버튼이 생기고 로그인 전용 기능도 다 쓸 수
+있게 해달라, (5) 문의·피드백 목록/사용자 목록/공지 작성 기능을 관리자에게
+달라, (6) 공지는 메인 화면 구석에 노출하고 삭제하면 사라지게 해달라.
+
+### 1. "관리자" 배지가 안 뜨던 원인
+
+[admin/login/page.tsx](src/app/admin/login/page.tsx)가 로그인 성공 후
+`router.push("/admin")`(소프트 네비게이션)를 썼는데, 사이드바(AuthBar)의
+관리자 상태 확인은 `useEffect(() => {...}, [])`로 **마운트 시 딱 한 번만**
+서버에 물어본다 — 소프트 네비게이션은 이미 마운트돼 있던 사이드바를 다시
+마운트하지 않으므로, 로그인 전에 이미 가져온 "관리자 아님" 상태가 그대로
+남는다. `window.location.href = "/admin"`(완전 새로고침)으로 바꿔서 해결 —
+`useAuth()`(Supabase)도 같은 구조라 이 수정으로 함께 고쳐짐.
+
+### 2. 관리자도 로그인 전용 기능(개인화/히스토리)을 쓸 수 있게
+
+개인화 설정·히스토리는 전부 RLS(`auth.uid()`) 기반이라 진짜 Supabase 로그인
+없이는 원천적으로 동작하지 않는다. [session.ts](src/lib/admin/session.ts)에
+예약 계정(`ADMIN_ACCOUNT_EMAIL = "studed-admin@internal.studed.local"`)을
+추가하고, [api/admin/login/route.ts](src/app/api/admin/login/route.ts)가
+코드 검증 성공 시 이 계정으로 `auth.admin.generateLink({type:"magiclink"})`
++ `auth.verifyOtp({token_hash})`를 호출해 실제 Supabase 세션도 함께
+발급한다(기존 매직링크 로그인과 완전히 같은 메커니즘이라 히스토리/설정 등
+다른 코드는 전혀 안 건드려도 됨). [api/admin/logout/route.ts](src/app/api/admin/logout/route.ts)
+는 로그아웃 시 이 Supabase 세션도 같이 끊는다.
+
+**실측 중 발견한 문제**: 첫 테스트에서 `AuthApiError: Email link is invalid
+or has expired`(`otp_expired`)로 실패함 — 재현 테스트 결과 동시에 같은
+예약 계정으로 `generateLink`가 두 번 이상 호출되면(테스트 스크립트 재시도,
+또는 다른 세션이 같은 dev 서버를 동시에 씀) 나중 호출이 이전 토큰을
+무효화하는 것으로 추정됨. 깨끗한 단독 호출로는 100% 성공 — 단일 사용자
+로그인 시나리오에서는 재현 가능성이 낮고, 실패해도 관리자 대시보드 자체는
+그대로 쓸 수 있게(catch로 감싸 로그만 남김) 만들어둬서 완전 실패로는
+안 이어짐. 재발하면 참고할 것.
+
+`AuthBar`는 `isAdmin`을 `user`보다 먼저 확인하도록 순서를 바꿨다 — 이제
+관리자도 `user`가 항상 채워지므로(예약 계정), 그 계정의 실제 내부 이메일
+대신 "관리자"를 보여주려면 관리자 쿠키가 최종 기준이어야 한다.
+[settings/page.tsx](src/app/settings/page.tsx)에서도 "계정 탈퇴"/
+"코드로 로그인하기" 섹션을 `isAdmin`일 때 숨김 — 안 그러면 관리자가 실수로
+예약 계정을 탈퇴시켜버릴 수 있었음(구현 중 자체적으로 발견해서 함께 고침).
+
+### 3. 관리자 대시보드 상시 진입점
+
+[Sidebar.tsx](src/components/Sidebar.tsx)에 `isAdmin`일 때만 보이는
+"관리자 대시보드" 링크 추가(공유 훅 [use-admin-status.ts](src/lib/admin/use-admin-status.ts)
+로 AuthBar와 상태 공유, 중복 요청 없이).
+
+### 4. 관리자 미니 CMS
+
+- [admin/feedback](src/app/admin/feedback/page.tsx): `feedback_submissions`
+  조회(이 테이블은 select RLS 정책이 아예 없어 service_role로만 읽을 수
+  있음 — 관리자 라우트 전용으로 딱 맞음). 개별 이메일은 안 보여주고
+  로그인/비로그인 여부만 표시(11-6 원칙 유지).
+- [admin/users](src/app/admin/users/page.tsx): `auth.admin.listUsers()`로
+  실제 가입자 목록(이메일/가입일/최근 로그인). 예약 관리자 계정은
+  `ADMIN_ACCOUNT_EMAIL`로 필터링해서 목록에서 제외.
+- [admin/announcements](src/app/admin/announcements/page.tsx): 공지 작성
+  (INSERT)/삭제(DELETE) — `is_active` 같은 상태 플래그 없이 "쓰면 보이고
+  지우면 안 보이는" 단순 모델(요청 그대로). 새 테이블
+  [0011_announcements.sql](supabase/migrations/0011_announcements.sql)
+  필요(**아직 대시보드에 미적용 — 0008/0009/0010과 같은 패턴으로 사용자가
+  Supabase 대시보드 SQL Editor에서 직접 실행해야 함**).
+- [AnnouncementBanner.tsx](src/components/AnnouncementBanner.tsx): 메인
+  화면(수행평가 생성 화면) 오른쪽 아래 구석에 최신 공지 1건만 노출(로그인
+  여부 무관, 공개 API `/api/announcements/latest`). 공지가 없으면 아무것도
+  안 그림.
+
+### 검증
+
+관리자 코드로 실제 `/api/admin/login`을 호출(스크립트 우회가 아니라 진짜
+로그인 엔드포인트)해서 확인:
+- 응답에 `studed_admin_session` + `sb-*-auth-token`(Supabase 세션) 쿠키가
+  함께 발급됨을 확인.
+- 같은 세션으로 `/api/user/settings`(200, 실제 데이터), `/api/histories/latest`
+  (200, null — 히스토리 없음이지 인증 실패 아님)를 호출해 로그인 전용
+  API가 정상 동작함을 확인.
+- `/admin/feedback`, `/admin/users` 페이지가 실제 데이터로 렌더링됨을
+  확인(사용자 목록에 실제 가입 계정들이 뜨는 것까지 확인, 예약 관리자
+  계정은 목록에서 제외됨).
+- 이 세션 쿠키를 브라우저에 주입해 실제 UI로 확인: 사이드바에 "관리자"
+  배지 + "관리자 대시보드" 링크 노출, 설정 페이지에 개인화 폼 정상 노출
+  ("관리자 (예약 계정)"로 표시, 탈퇴/코드로그인 섹션은 숨겨짐), 로그아웃
+  클릭 → 두 세션 모두 정리됨(`/api/admin/session` 재호출로 `isAdmin:false`
+  확인, `document.cookie`에 `sb-` 쿠키도 사라짐)까지 전부 실제 확인.
+- `/admin/announcements`는 마이그레이션 미적용 상태라 "공지 목록 조회
+  실패: Could not find the table 'public.announcements'" 에러를 그대로
+  확인(예상된 동작 — 코드 자체는 정상, 테이블만 없음). 메인 화면의
+  `/api/announcements/latest`도 같은 이유로 500이지만, `AnnouncementBanner`
+  가 fetch 실패를 클라이언트에서 조용히 삼켜서 메인 화면 자체는 깨지지
+  않음을 확인.
+
+`npx tsc --noEmit`/`npx eslint src/` 클린(단, `admin/login/page.tsx`의
+`window.location.href` 사용에 대한 eslint 경고 1건은 의도된 것 — 소프트
+네비게이션이 이번 버그의 원인이라 일부러 하드 네비게이션을 씀).
+
+**해야 할 일(사용자)**: Supabase 대시보드 SQL Editor에서
+[0011_announcements.sql](supabase/migrations/0011_announcements.sql) 실행
+— 실행 전까지 공지사항 기능(작성/조회/배너)만 에러 상태이고 나머지는 전부
+정상 동작함.
+
+**변경 파일**: [session.ts](src/lib/admin/session.ts),
+[api/admin/login/route.ts](src/app/api/admin/login/route.ts),
+[api/admin/logout/route.ts](src/app/api/admin/logout/route.ts),
+[admin/login/page.tsx](src/app/admin/login/page.tsx),
+[AuthBar.tsx](src/components/AuthBar.tsx), [Sidebar.tsx](src/components/Sidebar.tsx),
+[settings/page.tsx](src/app/settings/page.tsx), [admin/page.tsx](src/app/admin/page.tsx),
+[use-admin-status.ts](src/lib/admin/use-admin-status.ts) 신설,
+[feedback.ts](src/lib/admin/feedback.ts)/[admin/feedback/page.tsx](src/app/admin/feedback/page.tsx) 신설,
+[users.ts](src/lib/admin/users.ts)/[admin/users/page.tsx](src/app/admin/users/page.tsx) 신설,
+[announcements.ts](src/lib/admin/announcements.ts)/[admin/announcements/**](src/app/admin/announcements/page.tsx)/
+[api/admin/announcements/**](src/app/api/admin/announcements/route.ts)/
+[api/announcements/latest/route.ts](src/app/api/announcements/latest/route.ts)/
+[AnnouncementBanner.tsx](src/components/AnnouncementBanner.tsx) 신설,
+[0011_announcements.sql](supabase/migrations/0011_announcements.sql) 신설.
+
 ## 다음에 할 일
 
 1. ~~`0008`/`0009`/`0010` 마이그레이션 실행~~ — **2026-09-01에 사용자가
@@ -2719,6 +2840,16 @@ analyze.ts 유형 분류 등)는 재설계하지 않고 유지.
 17. **(2026-09-13 신규)** 언어 감지(`detectElementLanguage`)는 지금 "영어/
     중국어/일본어" 세 키워드만 인식한다 — 한문·독일어·프랑스어 등 다른
     외국어 과목 리포트가 오면 키워드 목록에 추가할 것.
+18. **(2026-09-14 신규)** `0011_announcements.sql` 마이그레이션 실행 필요
+    — 실행 전까지 관리자 공지사항 작성/조회와 메인 화면 공지 배너만 에러
+    상태(다른 기능은 전부 정상). 0008/0009/0010과 같은 패턴으로 Supabase
+    대시보드 SQL Editor에서 직접 실행할 것.
+19. **(2026-09-14 신규, 알려진 한계)** 관리자 예약 계정 로그인 중
+    `auth.admin.generateLink`+`verifyOtp` 조합이 동시에 두 번 이상 같은
+    계정으로 호출되면(같은 dev 서버를 동시에 쓰는 다른 세션 등) `otp_
+    expired` 에러로 실패하는 사례를 실측 중 관찰함(재시도하니 정상 동작) —
+    실패해도 관리자 대시보드 자체는 그대로 쓸 수 있게 안전장치는 있지만,
+    재발 빈도가 높아지면 재시도 로직을 추가할 것.
 
 **참고 — 사용자가 매 세션 시작 시 습관적으로 남기는 두 확인 항목에 대한 현재
 상태**: (1) "결과 공유 링크 버튼" — 위 1번 항목과 동일한 건, 코드는 이미
