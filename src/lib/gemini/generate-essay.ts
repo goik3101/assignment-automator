@@ -218,6 +218,50 @@ function splitAnnotatedIntoSections(annotated: string, labels: string[]): Map<st
   return result;
 }
 
+// 10종 수행평가 교차 테스트(2026-09-13)에서 발견된 가장 심각한 문제: 과목이
+// "영어"이고 라벨이 "영어 발표 대본"인 과제인데도 완성 원고 전체가 한국어로
+// 나온 사례가 실제로 있었다 — 지금까지 이 파일의 모든 문체 규칙은 "어떻게
+// 쓸지"만 다뤘지 "무슨 언어로 쓸지"는 아예 다룬 적이 없었다(항상 한국어라고
+// 암묵적으로 가정). 과목/라벨/설명에 외국어 과목명이 있으면 그 언어로 쓰라고
+// 명시한다.
+const LANGUAGE_KEYWORDS: { keyword: string; language: string }[] = [
+  { keyword: "영어", language: "English(영어)" },
+  { keyword: "중국어", language: "Chinese(중국어)" },
+  { keyword: "일본어", language: "Japanese(일본어)" },
+];
+
+function detectElementLanguage(subject: string, el: CoreTaskInfo["task_elements"][number]): string | null {
+  const haystack = `${subject} ${el.label} ${el.description}`;
+  for (const { keyword, language } of LANGUAGE_KEYWORDS) {
+    if (haystack.includes(keyword)) return language;
+  }
+  return null;
+}
+
+/** 지정된 언어로 써야 하는 단계인데 실제로는 한글 비중이 높으면(한국어로
+ * 써버린 것으로 의심) 감지한다 — 공백을 뺀 전체 글자 수 대비 한글 음절
+ * 비율이 20%를 넘으면 의심스럽다고 본다(외국어 글에서도 고유명사 등으로
+ * 한글이 소량 섞일 수는 있어 0%가 아니라 여유를 둠). */
+function detectLanguageMismatches(
+  sections: RawSection[],
+  elements: CoreTaskInfo["task_elements"],
+  subject: string
+): string[] {
+  const mismatched: string[] = [];
+  for (const el of elements) {
+    const lang = detectElementLanguage(subject, el);
+    if (!lang) continue;
+    const section = sections.find((s) => s.label === el.label);
+    if (!section || !section.content.trim()) continue;
+    const hangulCount = (section.content.match(/[가-힣]/g) ?? []).length;
+    const totalCount = section.content.replace(/\s/g, "").length;
+    if (totalCount > 0 && hangulCount / totalCount > 0.2) {
+      mismatched.push(`${el.label}(${lang}로 작성해야 함)`);
+    }
+  }
+  return mismatched;
+}
+
 function buildPrompt(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): string {
   const continuityBlock = input.previousOutputText
     ? `
@@ -233,6 +277,17 @@ ${input.previousOutputText}
     : "";
 
   const sectionsBlock = elements.map((el, i) => `${i + 1}. "${el.label}" — ${el.description}`).join("\n");
+
+  const languageNotes = elements
+    .map((el) => {
+      const lang = detectElementLanguage(input.subject, el);
+      return lang ? `- "${el.label}" 단계는 반드시 ${lang}로 작성할 것(한국어로 쓰지 말 것) — 제목이 있다면 제목도 포함해서 전부.` : null;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n");
+  const languageBlock = languageNotes
+    ? `\n【언어 규칙 — 반드시 지킬 것】\n${languageNotes}\n(이 지시문이나 [학생이 추가로 입력한 지침] 자체는 한국어여도 되지만, 위에서 지정한 단계의 실제 제출용 본문은 반드시 그 언어로만 쓸 것.)\n`
+    : "";
 
   return `
 ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을 대신 써주는 도우미다.
@@ -250,7 +305,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${input.presetBook ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${input.presetBook.title}』${input.presetBook.author ? ` (저자: ${input.presetBook.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
@@ -390,6 +445,45 @@ function needsBookCandidateSelection(input: GenerateEssayInput, elements: CoreTa
   if (BOOK_TASK_HINT_PATTERN.test(input.coreTaskInfo.topic)) return true;
   if (input.coreTaskInfo.requirements.some((r) => BOOK_TASK_HINT_PATTERN.test(r))) return true;
   return elements.some((e) => BOOK_TASK_HINT_PATTERN.test(e.description) || BOOK_TASK_HINT_PATTERN.test(e.label));
+}
+
+// 10종 수행평가 교차 테스트(2026-09-13)에서 발견된 심각한 문제: 독서 비평문
+// 과제에서 학생이 [학생이 추가로 입력한 지침]에 "내가 실제로 읽은 책은
+// 『사피엔스』다"라고 명시했는데도, BOOK_TASK_HINT_PATTERN("독서"라는 단어
+// 때문에 매치)이 needsBookCandidateSelection을 트리거해서 selectBookCandidate()
+// 가 실행됐고, 그 함수는 학생 지침을 보지 않고 자체적으로 책 후보를 검색해서
+// 완전히 다른 책(『총, 균, 쇠』)을 골라버렸다. selectBookCandidate()는 "AI가
+// 책을 추천/처방하는" 시나리오(책처방전 등)를 위한 것이라 학생이 이미 실제로
+// 읽은 책을 지정한 경우에는 맞지 않는다 — 이 경우엔 후보를 새로 고를 필요
+// 자체가 없다. 그래서 후보 선택보다 먼저 지침에 책 제목이 겹낫표(『』/《》)로
+// 명시돼 있는지 확인하고, 있으면 그 책으로 바로 고정한다(후보 검색 생략).
+const QUOTED_BOOK_TITLE_PATTERN = /[『《]([^』》]{1,60})[』》]/;
+
+function extractStudentSpecifiedBook(instructions: string | undefined): { title: string; author?: string } | null {
+  if (!instructions) return null;
+  const m = QUOTED_BOOK_TITLE_PATTERN.exec(instructions);
+  if (!m) return null;
+  const title = m[1].trim();
+  if (!title) return null;
+  // "유발 하라리의 『사피엔스』"처럼 겹낫표 바로 앞에 "~의"로 저자가 붙는
+  // 흔한 표기만 가볍게 인식한다(못 찾아도 author는 그냥 undefined로 둔다).
+  const before = instructions.slice(0, m.index);
+  const authorMatch = /([가-힣]{2,4}(?:\s[가-힣]{2,6}){0,1})의\s*$/.exec(before);
+  const author = authorMatch ? authorMatch[1].trim() : undefined;
+  return { title, author };
+}
+
+/** presetBook(추천 후보든 학생이 직접 지정한 책이든)이 있는데 실제 결과물이
+ * 다른 책을 언급했으면 감지한다 — presetBook 프롬프트 지시만으로는 100%
+ * 지켜지지 않는다는, 이 프로젝트에서 반복 확인된 패턴에 대한 안전장치. */
+function detectPresetBookMismatch(
+  sections: RawSection[],
+  presetBook?: { title: string; author?: string }
+): boolean {
+  if (!presetBook) return false;
+  const mentioned = extractDistinctBookMentions(sections);
+  if (mentioned.length === 0) return false;
+  return !mentioned.some((b) => normalizeBookTitleKey(b.title) === normalizeBookTitleKey(presetBook.title));
 }
 
 interface BookCandidate {
@@ -699,9 +793,15 @@ export async function generateEssay(
   // "이미 정해진 사실은 바꾸지 말라"는 지시와 충돌할 수 있음). presetBook을
   // input에 얹어서 이 아래 모든 generateOnce() 호출(초회+재시도)에 자연스럽게
   // 전달되게 한다.
-  if (!input.previousOutputText && needsBookCandidateSelection(input, elements)) {
-    const presetBook = await selectBookCandidate(input);
-    if (presetBook) input = { ...input, presetBook };
+  if (!input.previousOutputText) {
+    const studentSpecifiedBook = extractStudentSpecifiedBook(input.instructions);
+    if (studentSpecifiedBook) {
+      console.log(`[generateEssay] 학생이 지침에 직접 지정한 책으로 고정: "${studentSpecifiedBook.title}"`);
+      input = { ...input, presetBook: studentSpecifiedBook };
+    } else if (needsBookCandidateSelection(input, elements)) {
+      const presetBook = await selectBookCandidate(input);
+      if (presetBook) input = { ...input, presetBook };
+    }
   }
 
   let attempt: Attempt;
@@ -753,6 +853,8 @@ export async function generateEssay(
   //    단독 채택된 경우 — 실제 리포트된 버그).
   const cliches = detectCliches(attempt.sections);
   const unsupportedSuperlatives = detectUnsupportedSuperlatives(attempt.sections);
+  const languageMismatches = detectLanguageMismatches(attempt.sections, elements, input.subject);
+  const presetBookMismatch = detectPresetBookMismatch(attempt.sections, input.presetBook);
   // 실제로 발견된 버그: 요약 문장에 아랍 문자가 섞여 나온 사례("ف친구가
   // 겪는...") — 본문/요약 둘 다 확인한다(요약은 사고가 실제로 일어난 곳).
   const corruptedSections = [
@@ -806,6 +908,8 @@ export async function generateEssay(
   if (
     cliches.length > 0 ||
     unsupportedSuperlatives.length > 0 ||
+    languageMismatches.length > 0 ||
+    presetBookMismatch ||
     corruptedSections.length > 0 ||
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
@@ -813,10 +917,23 @@ export async function generateEssay(
     authorMismatches.length > 0
   ) {
     console.warn(
-      `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} unsupportedSuperlatives=${JSON.stringify(unsupportedSuperlatives)} corruptedSections=${JSON.stringify(corruptedSections)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
+      `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} unsupportedSuperlatives=${JSON.stringify(unsupportedSuperlatives)} languageMismatches=${JSON.stringify(languageMismatches)} presetBookMismatch=${presetBookMismatch} corruptedSections=${JSON.stringify(corruptedSections)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
     );
     try {
       const correctionParts: string[] = [];
+      if (presetBookMismatch && input.presetBook) {
+        correctionParts.push(
+          `[책 제목 정정 지시 — 반드시 지킬 것] 이 과제는 반드시 『${input.presetBook.title}』${input.presetBook.author ? `(저자: ${input.presetBook.author})` : ""}` +
+            ` 한 권만 다뤄야 하는데, 방금 쓴 글은 이 책이 아니라 전혀 다른 책을 다뤘다. 이번에는 반드시 지정된 ` +
+            `이 책 하나만 다뤄서 다시 쓸 것 — 다른 책으로 바꾸지 말 것.`
+        );
+      }
+      if (languageMismatches.length > 0) {
+        correctionParts.push(
+          `[언어 정정 지시 — 반드시 지킬 것] 다음 단계는 지정된 언어로 써야 하는데 한국어로 써버렸다: ` +
+            `${languageMismatches.join(", ")}. 이번에는 반드시 지정된 언어로만(한국어 문장 없이) 다시 쓸 것.`
+        );
+      }
       if (cliches.length > 0) {
         correctionParts.push(
           `[문체 재작성 지시 — 반드시 지킬 것] 방금 쓴 글에서 다음과 같은 상투적 표현을 사용했다: ` +
@@ -949,6 +1066,8 @@ export async function generateEssay(
       } else if (retryAttempt.insufficientReasons.length === 0) {
         const stillHasCliches = detectCliches(retryAttempt.sections);
         const stillHasUnsupportedSuperlatives = detectUnsupportedSuperlatives(retryAttempt.sections);
+        const stillHasLanguageMismatches = detectLanguageMismatches(retryAttempt.sections, elements, input.subject);
+        const stillHasPresetBookMismatch = detectPresetBookMismatch(retryAttempt.sections, input.presetBook);
         const stillHasCorruption = [
           ...detectForeignScriptCorruption(retryAttempt.sections),
           ...(retryAttempt.summaryLines.some((l) => hasForeignScriptCorruption(l)) ? ["전체 요약"] : []),
@@ -966,6 +1085,8 @@ export async function generateEssay(
         if (
           stillHasCliches.length > 0 ||
           stillHasUnsupportedSuperlatives.length > 0 ||
+          stillHasLanguageMismatches.length > 0 ||
+          stillHasPresetBookMismatch ||
           stillHasCorruption.length > 0 ||
           stillHasUncitedBooks.length > 0 ||
           stillNeedsVerification.length > 0 ||
@@ -973,7 +1094,7 @@ export async function generateEssay(
           stillHasAuthorMismatches.length > 0
         ) {
           console.warn(
-            `[generateEssay] 재시도 후에도 품질 문제 남음(그대로 진행): cliches=${JSON.stringify(stillHasCliches)} unsupportedSuperlatives=${JSON.stringify(stillHasUnsupportedSuperlatives)} corruptedSections=${JSON.stringify(stillHasCorruption)} uncitedBookMentions=${JSON.stringify(stillHasUncitedBooks)} stillNeedsVerification=${JSON.stringify(stillNeedsVerification)} stillHasLengthIssues=${JSON.stringify(stillHasLengthIssues)} stillHasAuthorMismatches=${JSON.stringify(stillHasAuthorMismatches)}`
+            `[generateEssay] 재시도 후에도 품질 문제 남음(그대로 진행): cliches=${JSON.stringify(stillHasCliches)} unsupportedSuperlatives=${JSON.stringify(stillHasUnsupportedSuperlatives)} languageMismatches=${JSON.stringify(stillHasLanguageMismatches)} presetBookMismatch=${stillHasPresetBookMismatch} corruptedSections=${JSON.stringify(stillHasCorruption)} uncitedBookMentions=${JSON.stringify(stillHasUncitedBooks)} stillNeedsVerification=${JSON.stringify(stillNeedsVerification)} stillHasLengthIssues=${JSON.stringify(stillHasLengthIssues)} stillHasAuthorMismatches=${JSON.stringify(stillHasAuthorMismatches)}`
           );
         }
         attempt = retryAttempt;

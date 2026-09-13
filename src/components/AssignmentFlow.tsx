@@ -551,11 +551,14 @@ export default function AssignmentFlow() {
 
           <button
             onClick={handleGenerate}
-            disabled={!user && !!TURNSTILE_SITE_KEY && !turnstileToken}
+            disabled={(!user && !!TURNSTILE_SITE_KEY && !turnstileToken) || !subject.trim()}
             className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40"
           >
             이 내용으로 생성하기
           </button>
+          {!subject.trim() && (
+            <p className="text-xs text-red-600">위 &ldquo;과목&rdquo; 칸을 채워주세요 — 비어 있으면 생성할 수 없어요.</p>
+          )}
         </div>
       )}
 

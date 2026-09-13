@@ -9,7 +9,14 @@ import type { AnalyzeResult } from "@/types/task";
 const ANALYZE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
-    subject: { type: Type.STRING, description: "과목명 (예: 국어, 과학)" },
+    subject: {
+      type: Type.STRING,
+      description:
+        "과목명 (예: 국어, 과학). 안내문에 과목명이 직접 적혀 있지 않아도, 과제 내용으로 보아 " +
+        "가장 그럴듯한 과목을 추론해서 채울 것(예: 신조어 만들기→국어, 앱 기획→정보, 포스터 제작→미술). " +
+        "이 필드는 뒤 단계에서 프롬프트에 그대로 쓰이므로 빈 문자열로 두면 안 된다 — " +
+        "다른 필드(행정정보 등)의 '모르면 빈 문자열' 규칙과 달리 이 필드만은 예외로 항상 채울 것.",
+    },
     insufficient_data: {
       type: Type.BOOLEAN,
       description:
@@ -246,8 +253,21 @@ export async function analyzeAssignment(
     };
   });
 
+  // 최종 안전장치: 프롬프트로 "빈 문자열 금지"를 지시해도(위 스키마 설명 참고)
+  // 실제로 빈 문자열이 돌아올 수 있다는 게 이 프로젝트에서 반복 확인된
+  // 패턴이다. subject는 다른 행정정보 필드와 달리 뒤에서 essay/plan
+  // 생성 라우트가 "필수값 없음"으로 보고 요청 자체를 거부해버리는 값이라
+  // (10종 수행평가 교차 테스트에서 실제로 신조어/앱 기획/포스터 3건이
+  // 이렇게 생성 실패했다), 빈 문자열로 남기지 않고 코드가 결정론적으로
+  // 채워 넣는다.
+  const subject = parsed.subject.trim() || "수행평가";
+  if (!parsed.subject.trim()) {
+    console.warn(`[analyzeAssignment] 최종 안전장치: 모델이 과목을 못 채워서 기본값으로 대체함 topic="${parsed.core_task_info.topic}"`);
+  }
+
   return {
     ...parsed,
+    subject,
     core_task_info: { ...parsed.core_task_info, task_elements },
     insufficient_reason: parsed.insufficient_reason || null,
   };
