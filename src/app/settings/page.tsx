@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { useAuth } from "@/lib/supabase/use-auth";
+import { useAdminStatus } from "@/lib/admin/use-admin-status";
 import ThemeToggle from "@/components/ThemeToggle";
 
 const SCHOOL_TYPES = ["일반고", "특성화고", "특목고", "자율고", "기타"];
 
 export default function SettingsPage() {
   const { user, loading } = useAuth();
+  const { isAdmin } = useAdminStatus();
   const router = useRouter();
 
   const [interests, setInterests] = useState("");
@@ -89,7 +91,7 @@ export default function SettingsPage() {
           <section className="space-y-4 rounded-md border border-border bg-surface p-5">
             <div>
               <h2 className="text-sm font-medium">계정 정보</h2>
-              <p className="mt-1 text-sm text-muted">{user.email}</p>
+              <p className="mt-1 text-sm text-muted">{isAdmin ? "관리자 (예약 계정)" : user.email}</p>
             </div>
           </section>
 
@@ -170,13 +172,15 @@ export default function SettingsPage() {
         <p>이용약관 · 개인정보처리방침 (준비 중)</p>
       </section>
 
-      <section className="text-right">
-        <Link href="/admin/login" className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
-          코드로 로그인하기
-        </Link>
-      </section>
+      {!isAdmin && (
+        <section className="text-right">
+          <Link href="/admin/login" className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
+            코드로 로그인하기
+          </Link>
+        </section>
+      )}
 
-      {user && (
+      {user && !isAdmin && (
         <section className="space-y-3 rounded-md border border-red-200 p-5 dark:border-red-900">
           <h2 className="text-sm font-medium text-red-700 dark:text-red-400">계정 탈퇴</h2>
           <p className="text-xs text-muted">

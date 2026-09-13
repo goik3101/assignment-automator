@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AuthBar from "./AuthBar";
 import { Logo } from "./Logo";
+import { useAdminStatus } from "@/lib/admin/use-admin-status";
 
 const NAV_ITEMS = [
   {
@@ -52,6 +53,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const { isAdmin } = useAdminStatus();
 
   return (
     <>
@@ -121,6 +123,31 @@ export default function Sidebar() {
               </Link>
             );
           })}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              onClick={() => setOpen(false)}
+              title="관리자 대시보드"
+              className={[
+                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                pathname.startsWith("/admin")
+                  ? "bg-accent/10 text-accent font-medium"
+                  : "text-muted hover:text-foreground hover:bg-background",
+              ].join(" ")}
+            >
+              <span className="shrink-0">
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                  <path
+                    d="M10 3 4 5.5v4c0 4 2.6 6.9 6 8 3.4-1.1 6-4 6-8v-4L10 3Z"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+              {!collapsed && <span>관리자 대시보드</span>}
+            </Link>
+          )}
         </nav>
 
         <div className="border-t border-border p-3">{!collapsed && <AuthBar />}</div>

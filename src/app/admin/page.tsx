@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from "@/lib/admin/session";
+import Link from "next/link";
+import { requireAdminOrRedirect } from "@/lib/admin/session";
 import { getAdminStats } from "@/lib/admin/stats";
 import AdminLogoutButton from "./AdminLogoutButton";
 
@@ -10,9 +9,7 @@ function pct(ratio: number): string {
 
 // F12/11-6: 관리자 통계 대시보드. 집계 수치만 보여준다 — 개별 이메일 나열 없음.
 export default async function AdminDashboardPage() {
-  const cookieStore = await cookies();
-  const isValid = verifyAdminSessionToken(cookieStore.get(ADMIN_COOKIE_NAME)?.value);
-  if (!isValid) redirect("/admin/login");
+  await requireAdminOrRedirect();
 
   const stats = await getAdminStats();
   const loginPct = stats.loginRatio.total > 0 ? stats.loginRatio.loggedIn / stats.loginRatio.total : 0;
@@ -23,6 +20,27 @@ export default async function AdminDashboardPage() {
         <h1 className="text-lg font-semibold tracking-tight">관리자 대시보드</h1>
         <AdminLogoutButton />
       </div>
+
+      <nav className="flex flex-wrap gap-2">
+        <Link
+          href="/admin/feedback"
+          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
+        >
+          문의·피드백
+        </Link>
+        <Link
+          href="/admin/users"
+          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
+        >
+          사용자 목록
+        </Link>
+        <Link
+          href="/admin/announcements"
+          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
+        >
+          공지사항
+        </Link>
+      </nav>
 
       <section>
         <h2 className="mb-3 text-sm font-medium text-muted">생성 횟수</h2>

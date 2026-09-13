@@ -1,32 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { useAuth } from "@/lib/supabase/use-auth";
+import { useAdminStatus } from "@/lib/admin/use-admin-status";
 
 /** 사이드바 하단에 들어가는 로그인/로그아웃 위젯. 로그인/비로그인 상태를 카드
  * 형태로 구분해서 보여준다. 계정 아이콘은 아이콘 세트를 받으면 앞에 붙일 것 —
  * 그 전까지는 텍스트+상태 점만 사용. */
 export default function AuthBar() {
   const { user, loading } = useAuth();
+  const { isAdmin, setIsAdmin } = useAdminStatus();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
-  // 관리자 코드 로그인은 별도의 httpOnly 쿠키라 Supabase useAuth()로는
-  // 안 잡힌다 — 마운트 시 한 번 서버에 확인해서, 이메일 로그인한 것처럼
-  // 사이드바 하단에 "관리자"로 표시해준다.
-  const [isAdmin, setIsAdmin] = useState(false);
-  useEffect(() => {
-    fetch("/api/admin/session")
-      .then((res) => res.json())
-      .then((data) => setIsAdmin(!!data.isAdmin))
-      .catch(() => setIsAdmin(false));
-  }, []);
-
   async function handleAdminLogout() {
     await fetch("/api/admin/logout", { method: "POST" });
+    // 로그인 때 함께 발급된 예약 계정 Supabase 세션도 같이 끊는다.
+    await getBrowserSupabase().auth.signOut();
     setIsAdmin(false);
   }
 
@@ -53,23 +46,10 @@ export default function AuthBar() {
 
   if (loading) return null;
 
-  if (user) {
-    return (
-      <div className="rounded-md border border-accent/30 bg-accent/5 p-2.5">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-          <p className="truncate text-xs text-foreground">{user.email}</p>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
-        >
-          로그아웃
-        </button>
-      </div>
-    );
-  }
-
+  // isAdmin을 user보다 먼저 확인한다 — 관리자 코드 로그인 시 예약 계정으로
+  // 실제 Supabase 세션도 함께 발급되므로(개인화/히스토리 기능용) user도
+  // 항상 채워져 있는데, 그 예약 계정의 실제 이메일 대신 "관리자"로 보여주는
+  // 게 맞다. 관리자 세션 쿠키가 이 화면이 보여줄 정체성의 최종 기준이다.
   if (isAdmin) {
     return (
       <div className="rounded-md border border-accent/30 bg-accent/5 p-2.5">
@@ -79,6 +59,23 @@ export default function AuthBar() {
         </div>
         <button
           onClick={handleAdminLogout}
+          className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
+        >
+          로그아웃
+        </button>
+      </div>
+    );
+  }
+
+  if (user) {
+    return (
+      <div className="rounded-md border border-accent/30 bg-accent/5 p-2.5">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
+          <p className="truncate text-xs text-foreground">{user.email}</p>
+        </div>
+        <button
+          onClick={handleLogout}
           className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
         >
           로그아웃

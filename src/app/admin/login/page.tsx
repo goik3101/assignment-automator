@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -22,8 +20,11 @@ export default function AdminLoginPage() {
       setError((await res.json()).error ?? "로그인에 실패했습니다.");
       return;
     }
-    router.push("/admin");
-    router.refresh();
+    // 소프트 네비게이션(router.push)으로는 사이드바(AuthBar)가 이미 마운트
+    // 시점에 한 번만 관리자 상태를 확인해둔 채라 새로고침 전까지 반영이
+    // 안 된다 — 로그인 직후엔 드물게 일어나는 동작이라 그냥 완전히 새로
+    // 불러와서 확실히 최신 상태로 만든다.
+    window.location.href = "/admin";
   }
 
   return (
