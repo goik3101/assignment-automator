@@ -193,14 +193,29 @@ export default function AssignmentFlow() {
   // fixedSubject: 같은 과제의 완성 원고(text_submission)가 먼저 생성되어
   // 인물/사건 등을 확정했다면 그 값 — 신문 제작 등이 다른 대상을 새로
   // 선정해버리는 인물 혼입을 막기 위해 그대로 넘겨 고정시킨다.
-  async function generatePlanElements(planElements: TextStageRef[], fixedSubject?: string) {
+  // referenceFactsText: 위 완성 원고의 전체 텍스트 — 출생/사망 연도 같은
+  // 구체적 사실이 essay와 plan에서 서로 다르게 나오는(둘이 독립된 검색
+  // 그라운딩 호출이라 생길 수 있는) 문제를 막기 위해 그대로 전달한다.
+  async function generatePlanElements(
+    planElements: TextStageRef[],
+    fixedSubject?: string,
+    referenceFactsText?: string
+  ) {
     await Promise.all(
       planElements.map(async ({ element, idx }) => {
         try {
           const res = await fetch("/api/tasks/generate/plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject }),
+            body: JSON.stringify({
+              subject,
+              coreTaskInfo,
+              adminInfo,
+              instructions,
+              turnstileToken,
+              fixedSubject,
+              referenceFactsText,
+            }),
           });
           if (!res.ok) throw new Error((await res.json()).error ?? "생성에 실패했습니다.");
           const result: EssayResult | PlanResult | InsufficientDataResult = await res.json();
@@ -221,10 +236,13 @@ export default function AssignmentFlow() {
   // 지침" 필드에 학생이 입력한 내용(예: 무작위로 뽑은 친구의 실제 고민 원문)도
   // 이 한 번의 호출에 그대로 실려서 반영된다.
   // 반환값: 이 과제가 인물/사건 등을 자유롭게 선정한 유형이면 그 대상 이름
-  // (EssayResult.confirmedSubject) — 같은 과제에 external_production 요소도
-  // 있으면 handleGenerate()가 이 값을 그대로 generatePlanElements에 넘겨서
-  // 두 종류가 서로 다른 대상을 골라버리는 인물 혼입을 막는다.
-  async function generateTextElements(textStages: TextStageRef[]): Promise<string | undefined> {
+  // (EssayResult.confirmedSubject)과 전체 텍스트(markdown) — 같은 과제에
+  // external_production 요소도 있으면 handleGenerate()가 이 값을 그대로
+  // generatePlanElements에 넘겨서, 두 종류가 서로 다른 대상을 골라버리는
+  // 인물 혼입이나 서로 다른 사실(날짜·숫자 등)을 내놓는 문제를 막는다.
+  async function generateTextElements(
+    textStages: TextStageRef[]
+  ): Promise<{ confirmedSubject?: string; markdown?: string } | undefined> {
     try {
       const res = await fetch("/api/tasks/generate/essay", {
         method: "POST",
@@ -265,7 +283,7 @@ export default function AssignmentFlow() {
           setItemError(idx, element, new Error("이 단계는 별도로 표시되지 않았어요 — 위 결과를 확인해주세요."));
         }
       }
-      return result.confirmedSubject;
+      return { confirmedSubject: result.confirmedSubject, markdown: result.markdown };
     } catch (err) {
       for (const { element, idx } of textStages) setItemError(idx, element, err);
       return undefined;
@@ -292,8 +310,8 @@ export default function AssignmentFlow() {
       // 등을 자유롭게 선정할 수 있다 — 두 호출이 병렬로 각자 다른 대상을
       // 골라버리는 인물 혼입을 막기 위해, 원고를 먼저 생성해 확정된 대상을
       // 실행 계획 생성에 그대로 넘긴다(순서상 조금 느려지지만 일관성이 우선).
-      const confirmedSubject = await generateTextElements(textStages);
-      void generatePlanElements(planElements, confirmedSubject);
+      const essayOutcome = await generateTextElements(textStages);
+      void generatePlanElements(planElements, essayOutcome?.confirmedSubject, essayOutcome?.markdown);
     } else {
       void generatePlanElements(planElements);
       if (textStages.length > 0) void generateTextElements(textStages);

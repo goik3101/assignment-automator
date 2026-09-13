@@ -4,11 +4,13 @@ import {
   NO_META_COMMENTARY_RULE,
   PERSPECTIVE_RULE,
   MULTI_DELIVERABLE_SEPARATION_RULE,
+  FACTUAL_RIGOR_RULES,
 } from "./prompts";
 import { buildSourceList, insertCitationMarkers } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
+import { stripClichesFromText, stripUnsupportedSuperlatives } from "./generate-essay";
 import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
 
 // 사용자 요청(2026-09-13): 예전엔 이 경로가 "무엇을 조사/작성할지"만 안내하는
@@ -53,6 +55,18 @@ export interface GeneratePlanInput {
    * 자유롭게 골라버려서 완전히 다른 내용이 섞이는 문제가 실제로 있었다.
    */
   fixedSubject?: string;
+  /**
+   * 날짜/숫자 불일치 방지: 같은 과제의 완성 원고(text_submission)가 먼저
+   * 생성되었다면 그 전체 텍스트(EssayResult.markdown)를 그대로 받는다.
+   * fixedSubject가 "누구"를 고정한다면, 이건 "그 사람에 대해 이미 확정한
+   * 구체적 사실(출생/사망 연도, 숫자 등)"을 고정한다 — essay와 plan은 서로
+   * 다른 검색 그라운딩 호출이라, 같은 인물이어도 예를 들어 사망 연도가
+   * 자료 수집=1931년/신문 제작=1932년처럼 서로 다르게 나올 수 있다.
+   * previousOutputText(재생성 연속성용)와는 목적이 달라 별도 필드로 둔다 —
+   * 이건 "같은 문서를 이어쓰기"가 아니라 "다른 형식의 새 글인데 사실만
+   * 맞추기"라서, 원문을 그대로 베끼거나 같은 구조로 쓰면 안 된다.
+   */
+  referenceFactsText?: string;
 }
 
 const CONTENT_HEADING = "## 완성된 글";
@@ -102,6 +116,22 @@ ${
 직접 관련된 것만 쓴다.`
     : ""
 }
+${
+  input.referenceFactsText
+    ? `
+【사실 일관성 규칙 — 반드시 지킬 것】 아래 [이미 확정된 자료]는 같은 과제의
+다른 단계(자료 수집)에서 이미 검색해 확정한 내용이다. 여기 나온 인물 이름,
+출생·사망 연도, 나이, 숫자, 사건 순서 등 구체적 사실은 이 글에서도 반드시
+동일하게 유지할 것 — 이번에 새로 검색해서 다른 값이 나오더라도 이미 확정된
+이 사실을 우선한다. 단, 이 글은 그 자료를 이어쓰는 게 아니라 신문 기사·
+슬라이드 등 완전히 다른 형식의 새 글이니, 문장을 그대로 베끼거나 같은
+구조로 쓰지 말고 이 산출물 형식에 맞게 새로 쓸 것.
+
+[이미 확정된 자료]
+${input.referenceFactsText}
+`.trim()
+    : ""
+}
 ${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentStatGuidance ? `\n${input.recentStatGuidance}\n` : ""}
@@ -136,6 +166,7 @@ ${PHYSICAL_HEADING}
 글자도 바꾸지 않고 그대로 써야 한다("완성된 시대저널"처럼 꾸미지 말 것) —
 코드가 이 줄을 기준으로 텍스트를 기계적으로 나누기 때문이다.
 ${ANTI_AI_TONE_RULES}
+${FACTUAL_RIGOR_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${PERSPECTIVE_RULE}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
@@ -344,6 +375,15 @@ export async function generatePlan(
     content = content.replace(/\[\d+\]/g, "");
     validatedSources = [];
   }
+
+  // generate-essay.ts와 같은 최종 안전망을 재사용한다 — plan 경로는 essay와
+  // 달리 품질 재시도 루프가 없으므로(latency 고려), 프롬프트(FACTUAL_RIGOR_
+  // RULES/ANTI_AI_TONE_RULES)로 애초에 덜 나오게 한 뒤, 그래도 남으면 이
+  // 결정론적 strip으로 확정 처리한다.
+  const { content: clicheCleanedContent } = stripClichesFromText(content);
+  content = clicheCleanedContent;
+  const { content: superlativeCleanedContent } = stripUnsupportedSuperlatives(content);
+  content = superlativeCleanedContent;
 
   console.log(`[generatePlan] latency_ms=${Date.now() - start}`);
 

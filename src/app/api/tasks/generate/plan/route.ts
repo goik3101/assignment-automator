@@ -20,16 +20,20 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject } = body as {
-      subject: string;
-      coreTaskInfo: CoreTaskInfo;
-      adminInfo?: AdministrativeInfo;
-      instructions?: string;
-      turnstileToken?: string;
-      /** 같은 과제의 완성 원고(text_submission)가 먼저 생성되어 인물/사건 등을
-       * 확정했다면 그 값(EssayResult.confirmedSubject) — 인물 혼입 방지용. */
-      fixedSubject?: string;
-    };
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText } =
+      body as {
+        subject: string;
+        coreTaskInfo: CoreTaskInfo;
+        adminInfo?: AdministrativeInfo;
+        instructions?: string;
+        turnstileToken?: string;
+        /** 같은 과제의 완성 원고(text_submission)가 먼저 생성되어 인물/사건 등을
+         * 확정했다면 그 값(EssayResult.confirmedSubject) — 인물 혼입 방지용. */
+        fixedSubject?: string;
+        /** 위와 같은 완성 원고의 전체 텍스트 — 날짜/숫자 등 세부 사실 일관성
+         * 방지용(EssayResult.markdown). */
+        referenceFactsText?: string;
+      };
 
     if (!subject || !coreTaskInfo) {
       return NextResponse.json({ error: "subject와 coreTaskInfo가 필요합니다." }, { status: 400 });
@@ -66,6 +70,7 @@ export async function POST(req: NextRequest) {
       avoidanceInstruction: avoidanceInstruction ?? undefined,
       recentStatGuidance: statGuidance?.instructionText,
       fixedSubject,
+      referenceFactsText,
     });
 
     const response =

@@ -8,6 +8,7 @@ import {
   PERSPECTIVE_RULE,
   MULTI_DELIVERABLE_SEPARATION_RULE,
   REAL_PERSON_NAME_RULE,
+  FACTUAL_RIGOR_RULES,
 } from "./prompts";
 import { buildSourceList, insertCitationMarkers } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
@@ -369,6 +370,7 @@ ${BOOK_EXCERPT_QUERY_TEMPLATES.map((q, i) => `  ${i + 1}. ${q({ name: "<책 제�
 질의로 뭉뚱그리지 말고 각각 따로 검색해서, 전체 글이 출처 하나에만 계속
 의존하지 않게 할 것.
 ${ANTI_AI_TONE_RULES}
+${FACTUAL_RIGOR_RULES}
 ${COPYRIGHT_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${CITATION_JUDGMENT_RULE}
@@ -750,6 +752,7 @@ export async function generateEssay(
   //    (서지정보 갖춘 텍스트 페이지가 검색 후보에 있었을 수 있는데도 유튜브만
   //    단독 채택된 경우 — 실제 리포트된 버그).
   const cliches = detectCliches(attempt.sections);
+  const unsupportedSuperlatives = detectUnsupportedSuperlatives(attempt.sections);
   // 실제로 발견된 버그: 요약 문장에 아랍 문자가 섞여 나온 사례("ف친구가
   // 겪는...") — 본문/요약 둘 다 확인한다(요약은 사고가 실제로 일어난 곳).
   const corruptedSections = [
@@ -802,6 +805,7 @@ export async function generateEssay(
 
   if (
     cliches.length > 0 ||
+    unsupportedSuperlatives.length > 0 ||
     corruptedSections.length > 0 ||
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
@@ -809,7 +813,7 @@ export async function generateEssay(
     authorMismatches.length > 0
   ) {
     console.warn(
-      `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} corruptedSections=${JSON.stringify(corruptedSections)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
+      `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} unsupportedSuperlatives=${JSON.stringify(unsupportedSuperlatives)} corruptedSections=${JSON.stringify(corruptedSections)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
     );
     try {
       const correctionParts: string[] = [];
@@ -820,6 +824,14 @@ export async function generateEssay(
             `반복해서 나왔다. 이번에는 이 표현들을 절대 쓰지 말고, 마무리를 완전히 다른 방식으로 쓸 것 — ` +
             `예를 들어 구체적인 다음 계획을 제안하며 끝내거나, 질문을 던지며 끝내거나, 앞서 언급한 ` +
             `구체적인 디테일을 다시 살짝 언급하며 자연스럽게 끝내는 식으로.`
+        );
+      }
+      if (unsupportedSuperlatives.length > 0) {
+        correctionParts.push(
+          `[과장 표현 정정 지시 — 반드시 지킬 것] 방금 쓴 글의 다음 단계에서 "최초/유일/결정적" 같은 ` +
+            `절대적 표현을 각주(근거) 없이 사용했다: ${unsupportedSuperlatives.join(", ")}. 이번에는 검색으로 ` +
+            `실제로 그렇게 확인되면 그 문장에 [n] 각주를 붙이고, 확인이 안 되면 절대적 표현 대신 ` +
+            `"~하는 데 큰 역할을 했다"처럼 근거만큼만 정확하게 표현할 것.`
         );
       }
       if (corruptedSections.length > 0) {
@@ -936,6 +948,7 @@ export async function generateEssay(
         );
       } else if (retryAttempt.insufficientReasons.length === 0) {
         const stillHasCliches = detectCliches(retryAttempt.sections);
+        const stillHasUnsupportedSuperlatives = detectUnsupportedSuperlatives(retryAttempt.sections);
         const stillHasCorruption = [
           ...detectForeignScriptCorruption(retryAttempt.sections),
           ...(retryAttempt.summaryLines.some((l) => hasForeignScriptCorruption(l)) ? ["전체 요약"] : []),
@@ -952,6 +965,7 @@ export async function generateEssay(
         });
         if (
           stillHasCliches.length > 0 ||
+          stillHasUnsupportedSuperlatives.length > 0 ||
           stillHasCorruption.length > 0 ||
           stillHasUncitedBooks.length > 0 ||
           stillNeedsVerification.length > 0 ||
@@ -959,7 +973,7 @@ export async function generateEssay(
           stillHasAuthorMismatches.length > 0
         ) {
           console.warn(
-            `[generateEssay] 재시도 후에도 품질 문제 남음(그대로 진행): cliches=${JSON.stringify(stillHasCliches)} corruptedSections=${JSON.stringify(stillHasCorruption)} uncitedBookMentions=${JSON.stringify(stillHasUncitedBooks)} stillNeedsVerification=${JSON.stringify(stillNeedsVerification)} stillHasLengthIssues=${JSON.stringify(stillHasLengthIssues)} stillHasAuthorMismatches=${JSON.stringify(stillHasAuthorMismatches)}`
+            `[generateEssay] 재시도 후에도 품질 문제 남음(그대로 진행): cliches=${JSON.stringify(stillHasCliches)} unsupportedSuperlatives=${JSON.stringify(stillHasUnsupportedSuperlatives)} corruptedSections=${JSON.stringify(stillHasCorruption)} uncitedBookMentions=${JSON.stringify(stillHasUncitedBooks)} stillNeedsVerification=${JSON.stringify(stillNeedsVerification)} stillHasLengthIssues=${JSON.stringify(stillHasLengthIssues)} stillHasAuthorMismatches=${JSON.stringify(stillHasAuthorMismatches)}`
           );
         }
         attempt = retryAttempt;
@@ -1006,6 +1020,14 @@ export async function generateEssay(
   const { sections: clicheCleanedSections, strippedLabels: clicheStrippedLabels } = stripCliches(attempt.sections);
   if (clicheStrippedLabels.length > 0) {
     attempt = { ...attempt, sections: clicheCleanedSections };
+  }
+
+  // 재시도까지 거치고도 근거 없는 절대적 표현("최초로", "유일하게" 등)이
+  // 남을 수 있다 — 코드가 확정적으로 제거한다(stripUnsupportedSuperlatives() 설명 참고).
+  const { sections: superlativeCleanedSections, strippedCount: superlativeStrippedCount } =
+    stripUnsupportedSuperlativesFromSections(attempt.sections);
+  if (superlativeStrippedCount > 0) {
+    attempt = { ...attempt, sections: superlativeCleanedSections };
   }
 
   // 재시도까지 거치고도 이상 문자(다른 문자 체계)가 남을 수 있다 — 코드가
@@ -1696,7 +1718,98 @@ const CLICHE_PATTERNS: { label: string; pattern: RegExp }[] = [
     pattern: /(힘내자|화이팅하자|응원할게|응원할 테니까)[,!.]?\s*[가-힣]{0,4}[아야]?[!.]?\s*$/,
   },
   { label: '"너무 조급해하지 마"', pattern: /너무\s*조급[^.!?\n]{0,10}(하지\s*마|말)/ },
+  // 사용자 요청(2026-09-13): 위 항목들은 편지·조언형 글의 상투구인데, 인물/
+  // 역사 탐구형 글(신문 기사, 위인 소개 등)에는 다른 종류의 AI 번역체
+  // 클리셰(거창한 서술체)가 반복된다는 지적을 받아 추가함.
+  { label: '"기틀을 마련했다"', pattern: /기틀을\s*마련했다/ },
+  { label: '"결정적 계기가/를 마련/되었다"', pattern: /결정적\s*계기(를|가)\s*(마련했다|되었다)/ },
+  { label: '"지대한 영향을 미쳤다"', pattern: /지대한\s*영향을\s*미쳤다/ },
+  { label: '"역사적 의미가 크다"', pattern: /역사적\s*의미가\s*크다/ },
+  { label: '"보편적 가치를 제시했다"', pattern: /보편적\s*가치를\s*제시했다/ },
+  { label: '"(명료한/깊은) 교훈을 던진다"', pattern: /(?:명료한|큰|깊은)?\s*교훈을\s*던진다/ },
+  { label: '"깊은 울림을 준다"', pattern: /깊은\s*울림을\s*준다/ },
+  // 실제 10주제 교차 테스트(2026-09-13)에서 "향해 걸어갔다" 정확히 일치하는
+  // 대신 "향했던"/"향해"처럼 활용형만 바꿔 같은 클리셰가 새어나간 사례가
+  // 발견되어, 활용형에 안 흔들리도록 "가장 낮은 곳" 자체로 넓혔다.
+  { label: '"가장 낮은 곳(을 향해)"', pattern: /가장\s*낮은\s*곳/ },
+  { label: '"작은 물결이 되었다"', pattern: /작은\s*물결이\s*되었다/ },
+  { label: '"시대를 관통하는"', pattern: /시대를\s*관통하는/ },
+  { label: '"단순히 ~에 그치지 않고"', pattern: /단순히[^.!?\n]{0,20}그치지\s*않고/ },
+  { label: '"~을 온몸으로 증명했다"', pattern: /온몸으로\s*증명했다/ },
+  // 같은 테스트에서 "지평을 열었다" 정확 일치 대신 "지평 뒤에는"처럼 다른
+  // 서술로 같은 클리셰가 새어나간 사례가 발견되어 함께 넓혔다.
+  { label: '"(~의) 지평"', pattern: /지평(을|이)?[^.!?\n]{0,10}(열었다|넓혔다|넓히|확장|뒤에는|앞에서)/ },
 ];
+
+// 사용자 요청(2026-09-13): "'최초'/'유일'/'결정적' 등은 출처에서 실제로 그렇게
+// 표현하거나 충분한 근거가 있을 때만 사용" — 근거(각주)가 문장 안에 없는데도
+// 이런 절대적 표현을 쓰면 과장/환각 위험이 크다. "온몸으로 증명했다"류와 달리
+// 이건 "표현 자체가 나쁜 것"이 아니라 "근거 없이 쓰면 위험한 것"이라 CLICHE_
+// PATTERNS(단순 문자열 매치)와 분리해서, 그 문장에 각주([n])가 있는지까지
+// 함께 확인하는 별도 검사로 둔다.
+// 10주제 교차 테스트(2026-09-13)에서 말랄라 유사프자이 사례("역대 최연소의
+// 나이로 노벨평화상을 수상")에 각주가 없는 경우가 실제로 발견되어 추가함
+// — 이 경우는 사실 자체는 맞았지만(검증 결과 확인됨), 근거 없이 단정하는
+// 습관 자체를 줄이려는 목적이라 사실 여부와 무관하게 각주를 요구한다.
+const UNSUPPORTED_SUPERLATIVE_PATTERN =
+  /(세계\s*최초|국내\s*최초|사상\s*최초|역사상\s*최초|최초로|유일하게|유일한|결정적인?\s*(계기|원인|영향)|역대\s*최연소|가장\s*어린)/;
+
+/** 매치를 포함하는 문장 전체에서 각주([n]) 없이 절대적 표현이 쓰인 경우만
+ * 골라 [시작,끝) 범위를 반환한다(각주가 있으면 근거가 있다고 보고 통과). */
+function findUnsupportedSuperlativeSentences(content: string): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  const re = new RegExp(UNSUPPORTED_SUPERLATIVE_PATTERN.source, "g");
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content))) {
+    const { start, end } = sentenceBoundsAround(content, m.index, m.index + m[0].length);
+    const key = `${start}-${end}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!/\[\d+\]/.test(content.slice(start, end))) ranges.push({ start, end });
+  }
+  return ranges;
+}
+
+function hasUnsupportedSuperlative(content: string): boolean {
+  return findUnsupportedSuperlativeSentences(content).length > 0;
+}
+
+/** 최종 안전망 — 재시도 후에도 근거 없는 절대적 표현("최초로", "유일하게" 등)이
+ * 남으면, stripCliches()와 같은 철학으로 그 문장을 통째로 제거한다. */
+export function stripUnsupportedSuperlatives(content: string): { content: string; strippedCount: number } {
+  const ranges = findUnsupportedSuperlativeSentences(content);
+  if (ranges.length === 0) return { content, strippedCount: 0 };
+  let result = content;
+  let strippedCount = 0;
+  for (const { start, end } of [...ranges].sort((a, b) => b.start - a.start)) {
+    const removed = result.slice(0, start) + result.slice(end);
+    if (removed.trim().length < 10) continue; // 문단 전체가 이 문장뿐이면 남긴다.
+    result = removed;
+    strippedCount++;
+  }
+  result = result.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  if (strippedCount > 0) {
+    console.warn(`[generateEssay] 최종 안전장치: 근거 없는 절대적 표현(최초/유일 등) 문장 ${strippedCount}건 제거함`);
+  }
+  return { content: result, strippedCount };
+}
+
+function stripUnsupportedSuperlativesFromSections(
+  sections: RawSection[]
+): { sections: RawSection[]; strippedCount: number } {
+  let total = 0;
+  const newSections = sections.map((s) => {
+    const { content, strippedCount } = stripUnsupportedSuperlatives(s.content);
+    total += strippedCount;
+    return strippedCount > 0 ? { ...s, content } : s;
+  });
+  return { sections: newSections, strippedCount: total };
+}
+
+function detectUnsupportedSuperlatives(sections: RawSection[]): string[] {
+  return sections.filter((s) => hasUnsupportedSuperlative(s.content)).map((s) => s.label);
+}
 
 function detectCliches(sections: RawSection[]): string[] {
   const found = new Set<string>();
@@ -1750,24 +1863,35 @@ function removeSentenceMatching(content: string, pattern: RegExp): { content: st
  * 자연스럽게 끝나므로(애초에 "덧붙는 상투적 결어"라는 게 이 패턴들의 공통
  * 특징) 제거만으로 충분하다.
  */
-function stripCliches(sections: RawSection[]): { sections: RawSection[]; strippedLabels: string[] } {
-  const strippedLabels = new Set<string>();
-  const newSections = sections.map((s) => {
-    let content = s.content;
-    for (const { label, pattern } of CLICHE_PATTERNS) {
-      // 같은 패턴이 한 섹션에 여러 번 걸릴 가능성은 낮지만, 방어적으로
-      // 최대 3회까지 반복 제거한다(무한 루프 방지용 상한일 뿐).
-      for (let i = 0; i < 3; i++) {
-        const result = removeSentenceMatching(content, pattern);
-        if (!result.removed) break;
-        content = result.content;
-        strippedLabels.add(label);
-        console.warn(`[generateEssay] 최종 안전장치: 재시도 후에도 남은 상투구 문장을 통째로 제거함 label="${s.label}" pattern="${label}"`);
-      }
+/** stripCliches()의 문자열 단위 핵심 로직 — generate-plan.ts의 content(단일
+ * 이어진 글)에도 같은 최종 안전망을 적용할 수 있도록 export한다. */
+export function stripClichesFromText(content: string, logLabel?: string): { content: string; strippedLabels: string[] } {
+  const strippedLabels: string[] = [];
+  let result = content;
+  for (const { label, pattern } of CLICHE_PATTERNS) {
+    // 같은 패턴이 한 섹션에 여러 번 걸릴 가능성은 낮지만, 방어적으로
+    // 최대 3회까지 반복 제거한다(무한 루프 방지용 상한일 뿐).
+    for (let i = 0; i < 3; i++) {
+      const removal = removeSentenceMatching(result, pattern);
+      if (!removal.removed) break;
+      result = removal.content;
+      strippedLabels.push(label);
+      console.warn(
+        `[generateEssay] 최종 안전장치: 재시도 후에도 남은 상투구 문장을 통째로 제거함 ${logLabel ? `label="${logLabel}" ` : ""}pattern="${label}"`
+      );
     }
+  }
+  return { content: result, strippedLabels };
+}
+
+function stripCliches(sections: RawSection[]): { sections: RawSection[]; strippedLabels: string[] } {
+  const allLabels = new Set<string>();
+  const newSections = sections.map((s) => {
+    const { content, strippedLabels } = stripClichesFromText(s.content, s.label);
+    strippedLabels.forEach((l) => allLabels.add(l));
     return content === s.content ? s : { ...s, content };
   });
-  return { sections: newSections, strippedLabels: Array.from(strippedLabels) };
+  return { sections: newSections, strippedLabels: Array.from(allLabels) };
 }
 
 // 실제로 발견된 버그: 요약(summary_lines) 문장 맨 앞에 아랍 문자 "ف"가
