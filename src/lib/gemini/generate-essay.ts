@@ -9,8 +9,9 @@ import {
   MULTI_DELIVERABLE_SEPARATION_RULE,
   REAL_PERSON_NAME_RULE,
   FACTUAL_RIGOR_RULES,
+  ACHIEVEMENT_INTERPRETATION_RULES,
 } from "./prompts";
-import { buildSourceList, insertCitationMarkers } from "./citations";
+import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
 import {
@@ -438,6 +439,7 @@ ${BOOK_EXCERPT_QUERY_TEMPLATES.map((q, i) => `  ${i + 1}. ${q({ name: "<책 제�
 의존하지 않게 할 것.
 ${ANTI_AI_TONE_RULES}
 ${FACTUAL_RIGOR_RULES}
+${ACHIEVEMENT_INTERPRETATION_RULES}
 ${COPYRIGHT_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${CITATION_JUDGMENT_RULE}
@@ -697,10 +699,24 @@ async function generateOnce(
     )}`
   );
   const { sources, chunkIndexToN } = buildSourceList(grounding?.groundingChunks);
-  const annotated = insertCitationMarkers(freeText, grounding?.groundingSupports, chunkIndexToN);
+  let annotated = insertCitationMarkers(freeText, grounding?.groundingSupports, chunkIndexToN);
   const validatedSources = await validateSources(sources);
   if (sources.length > 0 && validatedSources.every((s) => s.url_valid === false)) {
     console.warn("[generateEssay] 검색은 됐지만 모든 출처 링크 검증(HTTP 상태 확인)이 실패함");
+  }
+
+  // 라에네크 결과물 감사(2026-09-16)에서 실제로 발견된 문제: 출처 6개 중 1개가
+  // (제목은 "newsmp.com"인데 실제 도착 URL은 se-cu.com/ndsoft/error.html —
+  // 죽은 도메인이 돌려주는 안내 페이지) 검증에 실패했는데도, 그 출처를 가리키는
+  // [4] 각주는 본문에 그대로 남아 학생에게 "검증된 참고문헌"처럼 보였다.
+  // validateSources()가 개별 출처마다 url_valid를 매기지만, 지금까지는 "전체
+  // 출처가 0개"인 극단적 경우에만 각주를 통째로 지웠을 뿐 "일부만 무효"인
+  // 훨씬 흔한 경우는 그대로 방치돼 있었다 — 검증 실패로 확인된 출처 번호만
+  // 콕 집어 각주 표시를 지운다(문장 내용은 그대로 보존, 표시만 제거).
+  const invalidNs = new Set(validatedSources.filter((s) => s.url_valid === false).map((s) => s.n));
+  if (invalidNs.size > 0) {
+    console.warn(`[generateEssay] 검증 실패한 출처를 가리키는 각주 제거: [${[...invalidNs].join(",")}]`);
+    annotated = stripInvalidCitationMarkers(annotated, invalidNs);
   }
 
   // 2차: 본문은 그대로 두고, "## 라벨" 제목을 기준으로 단계별 본문만 분리한다
@@ -1287,7 +1303,13 @@ export async function generateEssay(
     }),
     sources: attempt.sources,
     summaryLines: attempt.summaryLines,
-    noSourcesWarning: attempt.sources.length === 0 && attempt.sections.some((s) => sectionHasVerifiableClaim(s)),
+    // 라에네크 감사(2026-09-16): 출처가 몇 개 있어도 전부 검증 실패(url_valid
+    // === false)면 학생 입장에선 "출처 없음"과 다르지 않다 — 원래는 sources.
+    // length(검증 여부와 무관한 원본 개수)만 봐서, 6개 중 1개가 죽은 페이지로
+    // 확인돼도 noSourcesWarning이 안 뜨는 문제가 있었다.
+    noSourcesWarning:
+      attempt.sources.every((s) => s.url_valid === false) &&
+      attempt.sections.some((s) => sectionHasVerifiableClaim(s)),
     // 추천 다양성 시스템(recommendation-diversity.ts)이 이 생성에서 실제로
     // 어떤 책이 최종 확정됐는지 기록할 수 있도록 노출한다. 책이 정확히 1권일
     // 때만 채운다(여러 권이면 어느 책을 "그 과제의 추천 항목"으로 기록해야
@@ -1674,8 +1696,12 @@ function stripWeaklySourcedQuotes(
 // 표현(UNSUPPORTED_SUPERLATIVE_PATTERN, 미검증 시 문장 통째로 제거)보다는
 // 위험도가 낮은 일반 사실 서술 동사라, 여기(noSourcesWarning 트리거)에만
 // 추가한다 — 문장을 지우지 않고 "검증 안 됨" 배너만 띄우는 수준.
+// 라에네크 결과물 감사(2026-09-16)에서 추가 요구된 표현("발명"/"창립"/
+// "수호했다"/"~의 원인이 되었다") — 특히 "환자의 생명권을 수호했다"처럼
+// 실제 업적(발명)을 과제 주제(인권)에 맞춰 해석까지 확장하는 문장이 각주
+// 없이 나온 사례가 실제로 발견되어 추가함.
 const FACTUAL_CLAIM_HINT_PATTERN =
-  /통계|수치|%|퍼센트|사례|자료|조사|보고서|논문|기사|뉴스|데이터|현황|정의|용어|전문|연구|평균|비율|\d{3,4}\s*년|\d+\s*세기|\d+\s*(시간|명|건|개|배|주|일)|최초|유일한?|결정적|창시|만들었다|제정했다|발표했다|창간했다|설립했다|영향을\s*미쳤다|(?:로|으로)\s*이어졌다|기틀이\s*되었다|가능하게\s*했다/;
+  /통계|수치|%|퍼센트|사례|자료|조사|보고서|논문|기사|뉴스|데이터|현황|정의|용어|전문|연구|평균|비율|\d{3,4}\s*년|\d+\s*세기|\d+\s*(시간|명|건|개|배|주|일)|최초|유일한?|결정적|창시|발명|창립|만들었다|제정했다|발표했다|창간했다|설립했다|수호했다|영향을\s*미쳤다|영향을\s*주었다|원인이\s*되었다|(?:로|으로)\s*이어졌다|기틀이\s*되었다|가능하게\s*했다/;
 
 /** [n] 각주 바로 앞의 "그 문장"만 잘라낸다 — 문장부호(. ! ? 개행)를 기준으로
  * 역방향 탐색. 완벽한 문장 분리기는 아니지만, 각주 바로 앞 절 정도의 맥락을

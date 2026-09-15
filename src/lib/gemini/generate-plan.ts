@@ -5,8 +5,9 @@ import {
   PERSPECTIVE_RULE,
   MULTI_DELIVERABLE_SEPARATION_RULE,
   FACTUAL_RIGOR_RULES,
+  ACHIEVEMENT_INTERPRETATION_RULES,
 } from "./prompts";
-import { buildSourceList, insertCitationMarkers } from "./citations";
+import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
@@ -170,6 +171,7 @@ ${PHYSICAL_HEADING}
 코드가 이 줄을 기준으로 텍스트를 기계적으로 나누기 때문이다.
 ${ANTI_AI_TONE_RULES}
 ${FACTUAL_RIGOR_RULES}
+${ACHIEVEMENT_INTERPRETATION_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${PERSPECTIVE_RULE}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
@@ -340,8 +342,18 @@ export async function generatePlan(
   );
 
   const { sources, chunkIndexToN } = buildSourceList(grounding?.groundingChunks);
-  const annotated = insertCitationMarkers(freeText, grounding?.groundingSupports, chunkIndexToN);
+  let annotated = insertCitationMarkers(freeText, grounding?.groundingSupports, chunkIndexToN);
   let validatedSources = await validateSources(sources);
+
+  // generate-essay.ts와 같은 이유(2026-09-16 라에네크 감사) — 검증 실패로
+  // 확인된 출처를 가리키는 각주만 콕 집어 지운다. essay와 달리 plan은 이
+  // 시점 이후에도(아래 5단계) validatedSources에 새 출처가 추가될 수 있어서,
+  // 이 시점의 무효 출처만 우선 제거한다.
+  const invalidNs = new Set(validatedSources.filter((s) => s.url_valid === false).map((s) => s.n));
+  if (invalidNs.size > 0) {
+    console.warn(`[generatePlan] 검증 실패한 출처를 가리키는 각주 제거: [${[...invalidNs].join(",")}]`);
+    annotated = stripInvalidCitationMarkers(annotated, invalidNs);
+  }
 
   const { content: rawContent, physicalText } = splitContentAndPhysicalText(annotated);
   let content = rawContent;

@@ -1,5 +1,20 @@
 import type { SourceRef } from "@/types/task";
 
+/**
+ * 검증 실패로 확인된 출처 번호(n)를 가리키는 [n] 각주 표시만 지운다(문장
+ * 내용은 보존). generate-essay.ts/generate-plan.ts가 공유하는 로직이라 여기
+ * 하나로 모아둔다 — 라에네크 결과물 감사(2026-09-16)에서 신설.
+ * 각주 앞에 공백이 있던 자리([n] 바로 앞이 공백인 경우, 모델이 스스로 넣은
+ * 것)는 각주를 지우면 "단어 ." 처럼 어색한 공백이 남을 수 있어 함께 정리한다.
+ */
+export function stripInvalidCitationMarkers(text: string, invalidNs: Set<number>): string {
+  if (invalidNs.size === 0) return text;
+  return text
+    .replace(/\[(\d+)\]/g, (match, numStr) => (invalidNs.has(Number(numStr)) ? "" : match))
+    .replace(/ +([.,!?」』])/g, "$1")
+    .replace(/ {2,}/g, " ");
+}
+
 // Gemini Search Grounding이 돌려주는 타입은 SDK 버전마다 미세하게 다를 수 있어
 // 여기서는 실제로 쓰는 필드만 최소한으로 정의해 느슨하게 받는다.
 export interface GroundingChunkLike {
