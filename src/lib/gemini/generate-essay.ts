@@ -56,6 +56,14 @@ export interface GenerateEssayInput {
    */
   recentBookGuidance?: string;
   /**
+   * recommendation-diversity.ts가 채워 넣는, 최근 자주 선정된 인물/사건 등
+   * confirmed_subject 목록 기반 안내 텍스트. recentBookGuidance와 같은
+   * 메커니즘을 "subject" 카테고리로 재사용한 것 — 책이 아니라 "인권 선구자
+   * 한 명을 골라라" 같은 인물/사건 자유 선정형 과제에서, 서로 다른 계정인데도
+   * 같은 인물(예: 방정환)이 반복 선정되는 걸 막기 위해 2026-09-16 추가.
+   */
+  recentSubjectGuidance?: string;
+  /**
    * 후보 생성 ↔ 검증 분리(3단계): 이 값이 있으면 본문 생성(stageA)이 책을
    * "쓰면서" 즉흥적으로 고르지 않고, 이미 다양성을 고려해 선택된 이 책을
    * 그대로 처방/언급하도록 고정한다. `generateEssay()`가 `selectBookCandidate()`
@@ -309,6 +317,7 @@ ${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 �
 ${input.presetBook ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${input.presetBook.title}』${input.presetBook.author ? ` (저자: ${input.presetBook.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
+${input.recentSubjectGuidance ? `\n${input.recentSubjectGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -1311,6 +1320,17 @@ function normalizeForCompare(s: string): string {
  * 쓰고, 이 정규화는 오직 "같은 책인지 비교"할 때만 쓴다. */
 export function normalizeBookTitleKey(title: string): string {
   return title.replace(/[《》『』"'"'`]/g, "").replace(/\s+/g, "").toLowerCase();
+}
+
+/** confirmed_subject(인물/사건 등 자유 선정 대상)를 빈도 집계 키로 쓸 때 정규화한다.
+ * "소파 방정환 선생님" vs "방정환"처럼 재시도·재생성마다 붙는 호칭/존칭이 달라져도
+ * 같은 인물로 집계되도록, 흔한 존칭 접미사를 뗀다. normalizeBookTitleKey와 다른
+ * 이유로 분리했다 — 책은 겹낫표/공백만 문제지만 인물은 존칭이 주된 변주 요인. */
+export function normalizeSubjectKey(subject: string): string {
+  return subject
+    .replace(/\s*(선생님|선생|여사|박사|교수|씨)$/u, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
 }
 
 // isVideoPlatformUrl/isWeakQuoteSource는 excerpt-verification.ts(범용 검증

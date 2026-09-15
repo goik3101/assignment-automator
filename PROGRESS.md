@@ -2909,6 +2909,116 @@ Gemini `groundingSupports[].segment.endIndex`(UTF-8 바이트 오프셋)에서
 [generate-essay.ts](src/lib/gemini/generate-essay.ts),
 [generate-plan.ts](src/lib/gemini/generate-plan.ts), [prompts.ts](src/lib/gemini/prompts.ts).
 
+## 인물 선정형 과제의 차별화 실패 — "subject" 추천 다양성 카테고리 신설 (2026-09-16)
+
+사용자가 실제로 다른 계정으로 같은 "인권 선구자 탐구" 과제를 생성했는데도
+방정환이 또 나왔다고 보고("차별화가 하나도 안됨" + "겹치기까지 함"). 코드
+추측이 아니라 실제 DB 기록으로 원인부터 확인.
+
+### 실제 확인한 사실
+
+- `user_histories`를 직접 조회(개발자 1회성 진단, service-role) — 최근 essay
+  23건 중 **방정환이 5건**, 서로 다른 계정(user_id 3종) · 서로 다른 클러스터
+  2개(`0bbd2497`, `a3e216ce`)에서 반복 확인. `confirmed_subject` 필드는 5건
+  모두 정확히 `"소파 방정환"`.
+- 두 최신 방정환 essay(2026-09-15, 5분 간격, 다른 계정)의 markdown을 문장
+  단위로 대조 — 완전 일치 문장은 17개 중 1개("그의 주요 활동은 크게 세
+  가지로 나뉜다.")뿐. 즉 **텍스트 표절/복사 수준의 겹침은 아니고, "같은
+  인물을 골랐다"는 겹침**이었다 — 사용자가 말한 "겹친다"와 "차별화 안 됨"은
+  사실 하나의 같은 현상.
+- `recommendation_history`의 `category` 값은 실제로 `book`/`statistic`
+  두 종류만 존재 — **"인물 선정" 자체를 추적하는 카테고리가 아예 없었다.**
+  책 추천 편향(『데미안』 반복)을 잡으려고 만든 축 B가 "인물 자유 선정형"
+  과제에는 애초에 적용된 적이 없었던 것.
+- 축 A(클러스터 쏠림 억제)도 확인 — `cluster_saturation` RPC를 두 클러스터에
+  실제로 호출해보니 `0bbd2497`은 ratio=0.385(MILD 발동 중), `a3e216ce`는
+  ratio=0.278(MILD 문턱 0.3 바로 아래, 미발동). 즉 한쪽은 이미 회피 지시가
+  나가고 있었는데도 방정환이 계속 나옴 — MILD 지시 문구("조금 다른 각도나
+  개인적인 요소를 섞어서 작성할 것")가 "문체를 다르게 써라"는 뜻이지 "다른
+  인물을 골라라"는 뜻이 아니라서, 모델이 문장 구조·서술 각도는 실제로
+  바꾸면서도(두 essay가 문장 단위로는 거의 안 겹쳤던 이유) 정작 "누구를
+  고를지"는 그대로 두는 방식으로 지시를 "만족"시키고 있었던 것으로 보임.
+
+### 근본 원인
+
+**책 추천 편향을 잡을 때 썼던 것과 완전히 같은 클래스의 버그**(검증하기
+쉽고 유명한 답으로 수렴)가, 그 해결책(축 B, `recommendation_history`)이
+"책 카테고리"에만 좁게 적용되고 "인물/사건 자유 선정"에는 확장되지 않아서
+재발한 것. [generate-essay.ts](src/lib/gemini/generate-essay.ts)는 이미
+`confirmed_subject`(이 과제가 인물/사건을 자유 선정한 유형이면 그 대상 이름)를
+매 생성마다 뽑아내고 있었지만, essay/plan 주제 일관성 유지 용도로만 쓰이고
+다양성 시스템에는 한 번도 연결된 적이 없었다.
+
+### 수정 내용
+
+기존 책 추천 다양성 메커니즘을 그대로 재사용 — 새 알고리즘을 만들지 않고
+카테고리만 확장:
+
+1. [0012_recommendation_subject_category.sql](supabase/migrations/0012_recommendation_subject_category.sql)
+   신설 — `recommendation_history.category` CHECK 제약에 `'subject'` 추가
+   (사용자가 Supabase 대시보드에서 직접 적용 완료).
+2. [recommendation-diversity.ts](src/lib/recommendations/recommendation-diversity.ts):
+   `RecommendationCategory`에 `"subject"` 추가, `buildRecommendationGuidance()`의
+   안내 문구를 "추천된"→"선택된"으로 범주 중립적으로 조정(책 외 카테고리에도
+   자연스럽게 맞게).
+3. [generate-essay.ts](src/lib/gemini/generate-essay.ts): `GenerateEssayInput`에
+   `recentSubjectGuidance?: string` 추가, `buildPrompt()`에서
+   `recentBookGuidance`와 같은 방식으로 삽입. `normalizeSubjectKey()` 신설 —
+   "소파 방정환 선생님" vs "방정환"처럼 존칭 변주가 있어도 같은 인물로
+   집계되도록 흔한 존칭 접미사(선생님/선생/여사/박사/교수/씨)를 제거
+   (`normalizeBookTitleKey`와는 변주 원인이 달라 별도 함수로 분리 —
+   책은 겹낫표/공백이 문제고 인물은 존칭이 문제).
+4. [essay/route.ts](src/app/api/tasks/generate/essay/route.ts): 생성 전
+   `buildRecommendationGuidance("subject", ...)` 호출해서 프롬프트에 전달,
+   생성 후 `result.confirmedSubject`가 있으면 `recordRecommendation({
+   category: "subject", ... })` 기록. `recommendedBookTitle`과 별개로도
+   기록되어(책 처방형 과제는 둘 다 채워질 수 있음) 카테고리가 중복될 수
+   있지만 서로 다른 안내 문구로만 쓰여 무해함.
+5. **실제 반복 이력 5건을 새 카테고리로 소급 기록**(마이그레이션 직후,
+   service-role로 1회성 백필) — 새 카테고리가 `GUIDANCE_MIN_HISTORY=3`
+   문턱을 채우기까지 3번 더 기다리지 않고, 사용자가 바로 재현 확인을
+   할 수 있게 하기 위함.
+
+### 실제 재생성으로 검증 (라이브, 3회)
+
+migration 적용 + 백필 직후, 동일 안내문·**인물 미지정**(사용자가 실제 보고한
+상황과 동일하게 instructions를 비워둠) 조건으로 실제 `/api/tasks/generate/essay`
+를 3회 연속 호출:
+
+| 실행 | confirmedSubject | 깨진 문자(�) |
+|---|---|---|
+| 1 | 야누시 코르차크 | 0 |
+| 2 | 야누시 코르차크 | 0 |
+| 3 | 야누시 코르차크 | 0 |
+
+**3/3 모두 방정환이 아닌 다른 인물**(야누시 코르차크 — 폴란드의 실존 아동
+인권 선구자, 아동권리선언 초기 형태를 실제로 저술한 인물로 이 과제 주제에도
+실제로 부합)을 선택 — 회피 안내가 실제로 프롬프트에 반영되어 선택 자체를
+바꾸는 것을 확인. UTF-8 손상(지난 라운드 수정분)도 3회 모두 0건 유지.
+
+**정직하게 기록할 한계**: 이 3회는 완전히 동일한 입력을 짧은 간격으로 연속
+호출한 것이라, 방정환에서는 벗어났지만 3회 모두 "코르차크"라는 새로운
+단일 인물로 다시 수렴했다 — 이건 버그가 아니라 설계상 당연한 결과다(각
+호출 사이에 다른 변수가 전혀 없으므로). `recordRecommendation`이 매 호출
+후 즉시 기록되므로, 코르차크도 계속 반복되면 다음 호출부터는 코르차크
+역시 회피 목록에 오르기 시작한다 — 책 카테고리가 실제 50건 실측(2026-09-01,
+서로 다른 주제 61건)에서 증명한 것과 같은 자기 교정 패턴이다. 다만 이번
+검증은 "같은 인물 반복을 실제로 끊는다"는 것만 짧게 확인한 것이고, 책
+때처럼 대규모(수십 건) 실측으로 장기 반복률까지 확인하지는 않았다 —
+필요하면 후속 라운드에서 확인할 것.
+
+### 기존 회귀 테스트
+
+`npx tsc --noEmit`/`npx eslint src/` 클린. 책 카테고리 로직(`selectBookCandidate`,
+`recordRecommendation("book", ...)`)은 이번에 코드를 건드리지 않았고, 실제
+재생성 3회 중 2번째 실행에서 `recommendedBookTitle`이 정상적으로 채워지는 것도
+함께 확인됨(회귀 없음).
+
+**변경 파일**: [0012_recommendation_subject_category.sql](supabase/migrations/0012_recommendation_subject_category.sql)(신설),
+[recommendation-diversity.ts](src/lib/recommendations/recommendation-diversity.ts),
+[generate-essay.ts](src/lib/gemini/generate-essay.ts),
+[essay/route.ts](src/app/api/tasks/generate/essay/route.ts).
+
 ## 다음에 할 일
 
 1. ~~`0008`/`0009`/`0010` 마이그레이션 실행~~ — **2026-09-01에 사용자가

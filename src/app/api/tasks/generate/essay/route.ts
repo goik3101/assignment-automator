@@ -5,7 +5,7 @@ import { identifyCluster } from "@/lib/clusters/identify-cluster";
 import { buildAvoidanceInstruction } from "@/lib/clusters/avoidance";
 import { saveResultEmbedding, essayResultToText } from "@/lib/clusters/save-result-embedding";
 import { buildRecommendationGuidance, recordRecommendation } from "@/lib/recommendations/recommendation-diversity";
-import { normalizeBookTitleKey } from "@/lib/gemini/generate-essay";
+import { normalizeBookTitleKey, normalizeSubjectKey } from "@/lib/gemini/generate-essay";
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
     // "똑같은 책 제목이 문자 그대로 반복되는지"를 본다(추천 다양성 시스템,
     // PROGRESS.md 참고). 실패해도(테이블 미생성 등) null을 반환할 뿐 여기를 막지 않는다.
     const bookGuidance = await buildRecommendationGuidance("book", { userId: identity.userId ?? undefined });
+    // bookGuidance와 별개 축 — "책 제목"이 아니라 인권 선구자 같은 "자유 선정
+    // 인물/사건"이 계정을 넘나들며 반복되는 버그(2026-09-16 실측 확인)를 막는다.
+    const subjectGuidance = await buildRecommendationGuidance("subject", { userId: identity.userId ?? undefined });
 
     const result = await generateEssay({
       subject,
@@ -64,6 +67,7 @@ export async function POST(req: NextRequest) {
       instructions,
       avoidanceInstruction: avoidanceInstruction ?? undefined,
       recentBookGuidance: bookGuidance?.instructionText,
+      recentSubjectGuidance: subjectGuidance?.instructionText,
     });
 
     const response =
@@ -86,6 +90,21 @@ export async function POST(req: NextRequest) {
               await recordRecommendation({
                 category: "book",
                 itemName: normalizeBookTitleKey(result.recommendedBookTitle),
+                userId: identity.userId,
+                guestId: identity.guestId,
+                clusterId: cluster.clusterId,
+                topic: coreTaskInfo.topic,
+                submissionId,
+              });
+            }
+
+            if (result.confirmedSubject) {
+              // recommendedBookTitle과 별개로도 기록한다 — 책 처방형 과제는
+              // confirmedSubject에도 같은 책 제목이 들어올 수 있어 두 카테고리에
+              // 중복 기록될 수 있지만, 서로 다른 안내 문구로 쓰이므로 무해하다.
+              await recordRecommendation({
+                category: "subject",
+                itemName: normalizeSubjectKey(result.confirmedSubject),
                 userId: identity.userId,
                 guestId: identity.guestId,
                 clusterId: cluster.clusterId,

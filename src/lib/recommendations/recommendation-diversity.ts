@@ -23,7 +23,12 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 // 넘어가고 콘솔에만 경고를 남긴다.
 // ============================================================================
 
-export type RecommendationCategory = "book" | "statistic" | "case_example";
+// "subject"(2026-09-16 추가): 인물/사건/자료 등 "자유롭게 선정하는" 유형의
+// 과제에서 어떤 대상이 골라졌는지(generate-essay.ts의 confirmed_subject) 추적.
+// book/statistic/case_example과 같은 메커니즘을 재사용하되, 항목 정체가 책이
+// 아니라 인물·사건일 수 있어 분리했다 — 실제로 서로 다른 계정인데도 같은
+// 인물(방정환)이 반복 선정되는 버그가 확인되어 신설.
+export type RecommendationCategory = "book" | "statistic" | "case_example" | "subject";
 
 export interface RecommendationRecord {
   itemName: string;
@@ -155,14 +160,15 @@ export async function buildRecommendationGuidance(
     .slice(0, GUIDANCE_TOP_N)
     .map(([name, count]) => `${name}(최근 ${count}회)`);
 
-  const categoryLabel = category === "book" ? "책" : category === "statistic" ? "통계/자료" : "사례";
+  const categoryLabel =
+    category === "book" ? "책" : category === "statistic" ? "통계/자료" : category === "subject" ? "인물/대상" : "사례";
   const instructionText = `
-[추천 다양성 확보 — 반드시 반영할 것]
-최근 다른 학생들에게 자주 추천된 ${categoryLabel} 항목: ${topOverused.join(", ")}.
-최근 추천 이력에 존재하는 항목은 우선순위를 낮춰라. 단, 주제와의 적합성이
-압도적으로 높은 경우에는 동일 항목을 다시 추천할 수 있다. 단순히 유명하거나
-검증하기 쉽다는 이유만으로 최근 추천 항목을 다시 선택하지 마라. 주제와 충분히
-관련 있으면서 최근 사용 빈도가 낮은 대안을 우선적으로 탐색하라.
+[선정 다양성 확보 — 반드시 반영할 것]
+최근 다른 학생들이 자주 선택한 ${categoryLabel}: ${topOverused.join(", ")}.
+최근 선택 이력에 존재하는 항목은 우선순위를 낮춰라. 단, 주제와의 적합성이
+압도적으로 높은 경우에는 동일 항목을 다시 선택할 수 있다. 단순히 유명하거나
+검증하기 쉽다는 이유만으로 최근 선택 항목을 다시 고르지 마라. 주제와 충분히
+관련 있으면서 최근 선택 빈도가 낮은 대안을 우선적으로 탐색하라.
 `.trim();
 
   return { instructionText, recentGlobalFrequency, recentUserFrequency };
