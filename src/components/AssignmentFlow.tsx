@@ -12,7 +12,7 @@ import type {
 } from "@/types/task";
 import { EssayPanel, PlanPanel } from "./ResultPanel";
 import Turnstile from "./Turnstile";
-import OnboardingChecklist from "./OnboardingChecklist";
+import HomeDashboard from "./HomeDashboard";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { isPresentationTask } from "@/lib/util/presentation";
 
@@ -69,6 +69,8 @@ function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
 export default function AssignmentFlow() {
   const { user } = useAuth();
   const [step, setStep] = useState<Step>("input");
+  // 홈 대시보드에서 + 를 눌렀을 때 뜨는 새 수행평가 입력 모달(Figma). 입력 상태/핸들러는 그대로다.
+  const [showNew, setShowNew] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
@@ -149,6 +151,7 @@ export default function AssignmentFlow() {
             "안내문에서 충분한 정보를 읽어내지 못했어요. 사진을 다시 찍거나 주제를 직접 입력해주세요."
         );
         setStep("input");
+        setShowNew(true);
         return;
       }
 
@@ -159,6 +162,7 @@ export default function AssignmentFlow() {
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "분석 중 오류가 발생했습니다.");
       setStep("input");
+        setShowNew(true);
     }
   }
 
@@ -373,99 +377,129 @@ export default function AssignmentFlow() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-6 py-12">
-      <header className="mb-8">
-        <h1 className="text-[22px] font-bold tracking-tight">새 수행평가</h1>
-        <p className="mt-1 text-sm text-muted">겹치지 않는, 출처 있는 수행평가 도우미</p>
-      </header>
+    <div className={step === "input" ? "w-full px-6 py-6 md:px-8" : "mx-auto w-full max-w-2xl px-6 py-12"}>
+      {step !== "input" && (
+        <header className="mb-8">
+          <h1 className="text-[22px] font-bold tracking-tight">새 수행평가</h1>
+          <p className="mt-1 text-sm text-muted">겹치지 않는, 출처 있는 수행평가 도우미</p>
+        </header>
+      )}
 
-      {errorMessage && (
+      {errorMessage && !(step === "input" && showNew) && (
         <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
           {errorMessage}
         </div>
       )}
 
       {step === "input" && (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-border bg-surface px-6 py-7">
-            <div className="flex flex-col items-center gap-6">
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-bold">사진 넣기</h2>
-                  {user && latestHistory && (
-                    <button
-                      onClick={handleUseLatest}
-                      className="text-xs text-muted underline underline-offset-2 hover:text-foreground"
-                    >
-                      최근 불러오기
-                    </button>
-                  )}
-                </div>
-                <label className="flex h-[235px] w-[185px] cursor-pointer items-center justify-center border border-dashed border-foreground/70 transition-opacity hover:opacity-70">
-                  {imagePreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={imagePreview} alt="업로드한 안내문 미리보기" className="max-h-full max-w-full object-contain" />
-                  ) : (
-                    <svg viewBox="0 0 20 20" fill="none" className="h-14 w-14">
-                      <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
-                    </svg>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] ?? null;
-                      setImageFile(file);
-                      setImagePreview(file ? URL.createObjectURL(file) : null);
-                    }}
-                  />
-                </label>
-              </div>
-
-              <div className="w-full">
-                <div className="mb-2 flex items-center justify-center gap-3">
-                  <label htmlFor="topic-text" className="block text-xl font-bold">
-                    사진 넣기 또는 주제 설명
-                  </label>
-                  {topicText.length > 0 && <span className="text-xs text-muted">{topicText.length}자</span>}
-                </div>
-                <input
-                  id="topic-text"
-                  type="text"
-                  value={topicText}
-                  onChange={(e) => setTopicText(e.target.value)}
-                  placeholder="예: 어린 왕자 독서감상문"
-                  className="w-full rounded-full border border-foreground/50 bg-transparent px-5 py-2 text-sm"
-                />
-              </div>
-
-              <div className="w-full">
-                <label htmlFor="instructions-text" className="mb-2 block text-center text-xl font-bold">
-                  상세 입력 <span className="text-sm font-normal text-muted">(선택)</span>
-                </label>
-                <textarea
-                  id="instructions-text"
-                  value={instructions}
-                  onChange={(e) => setInstructions(e.target.value)}
-                  placeholder={instructionPlaceholder}
-                  rows={3}
-                  className="w-full rounded-2xl border border-foreground/50 bg-transparent px-5 py-3 text-sm"
-                />
-              </div>
-
-              <button
-                onClick={handleAnalyze}
-                disabled={!imageFile && !topicText.trim()}
-                className="rounded-full bg-accent px-12 py-2.5 text-sm font-bold text-accent-foreground disabled:opacity-40"
+        <>
+          <HomeDashboard onNew={() => setShowNew(true)} />
+          {showNew && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setShowNew(false);
+              }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="새 수행평가"
+                className="relative max-h-[92vh] w-full max-w-[640px] overflow-y-auto rounded-2xl border border-border bg-surface px-8 py-7 shadow-2xl"
               >
-                분석하기
-              </button>
-            </div>
-          </div>
+                <button
+                  onClick={() => setShowNew(false)}
+                  aria-label="닫기"
+                  className="absolute right-4 top-4 rounded-md p-1 text-foreground/70 hover:text-foreground"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                    <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <div className="flex flex-col items-center gap-5">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-xl font-bold">사진 넣기</h2>
+                      {user && latestHistory && (
+                        <button
+                          onClick={handleUseLatest}
+                          className="text-xs text-muted underline underline-offset-2 hover:text-foreground"
+                        >
+                          최근 불러오기
+                        </button>
+                      )}
+                    </div>
+                    <label className="flex h-[235px] w-[185px] cursor-pointer items-center justify-center border border-dashed border-foreground/70 transition-opacity hover:opacity-70">
+                      {imagePreview ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={imagePreview} alt="업로드한 안내문 미리보기" className="max-h-full max-w-full object-contain" />
+                      ) : (
+                        <svg viewBox="0 0 20 20" fill="none" className="h-14 w-14">
+                          <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
+                        </svg>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          setImageFile(file);
+                          setImagePreview(file ? URL.createObjectURL(file) : null);
+                        }}
+                      />
+                    </label>
+                  </div>
 
-          <OnboardingChecklist completed={[false, false, false]} />
-        </div>
+                  <div className="w-full">
+                    <div className="mb-2 flex items-center justify-center gap-3">
+                      <label htmlFor="topic-text" className="block text-xl font-bold">
+                        사진 넣기 또는 주제 설명
+                      </label>
+                      {topicText.length > 0 && <span className="text-xs text-muted">{topicText.length}자</span>}
+                    </div>
+                    <input
+                      id="topic-text"
+                      type="text"
+                      value={topicText}
+                      onChange={(e) => setTopicText(e.target.value)}
+                      placeholder="예: 어린 왕자 독서감상문"
+                      className="w-full rounded-full border border-foreground/50 bg-transparent px-5 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div className="w-full">
+                    <label htmlFor="instructions-text" className="mb-2 block text-center text-xl font-bold">
+                      상세 입력 <span className="text-sm font-normal text-muted">(선택)</span>
+                    </label>
+                    <textarea
+                      id="instructions-text"
+                      value={instructions}
+                      onChange={(e) => setInstructions(e.target.value)}
+                      placeholder={instructionPlaceholder}
+                      rows={3}
+                      className="w-full rounded-2xl border border-foreground/50 bg-transparent px-5 py-3 text-sm"
+                    />
+                  </div>
+
+                  {errorMessage && (
+                    <p role="alert" className="w-full rounded-xl border border-red-500/60 px-4 py-2 text-sm text-red-500">
+                      {errorMessage}
+                    </p>
+                  )}
+
+                  <button
+                    onClick={handleAnalyze}
+                    disabled={!imageFile && !topicText.trim()}
+                    className="rounded-full bg-accent px-12 py-2.5 text-sm font-bold text-accent-foreground disabled:opacity-40"
+                  >
+                    분석하기
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {step === "analyzing" && (
@@ -636,6 +670,7 @@ export default function AssignmentFlow() {
           <button
             onClick={() => {
               setStep("input");
+              setShowNew(true);
               setImageFile(null);
               setImagePreview(null);
               setTopicText("");
