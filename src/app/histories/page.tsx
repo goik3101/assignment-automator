@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getServerSupabase } from "@/lib/supabase/server-client";
 import DeleteHistoryButton from "@/components/DeleteHistoryButton";
+import { getTrashedSubmissionIds } from "@/lib/histories/trash";
 
 // F7: 과거 히스토리 조회 (로그인 사용자). RLS 덕분에 이 쿼리는 자동으로 본인 것만
 // 가져온다 — user_id로 따로 필터링할 필요가 없다 (server-client.ts, RLS 정책 참고).
@@ -18,11 +19,14 @@ export default async function HistoriesPage() {
     );
   }
 
-  const { data: histories, error } = await supabase
+  const { data: allHistories, error } = await supabase
     .from("user_histories")
-    .select("id, created_at, subject, title, output_type")
+    .select("id, submission_id, created_at, subject, title, output_type")
     .eq("is_current", true)
     .order("created_at", { ascending: false });
+
+  const { ids: trashed } = await getTrashedSubmissionIds(supabase);
+  const histories = allHistories?.filter((h) => !trashed.has(h.submission_id));
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">

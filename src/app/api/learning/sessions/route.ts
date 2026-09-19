@@ -13,26 +13,29 @@ export async function GET(req: NextRequest) {
     if ("error" in auth) return auth.error;
     const { supabase } = auth;
 
-    const { data: sessions, error } = await supabase
+    const trashedOnly = req.nextUrl.searchParams.get("trashed") === "1";
+    const base = supabase
       .from("learning_sessions")
-      .select("id, title, subject, status, admin_info, focus_subject, research_status, updated_at, created_at")
-      .is("deleted_at", null)
+      .select("id, title, subject, status, admin_info, focus_subject, research_status, updated_at, created_at, deleted_at");
+    const { data: sessions, error } = await (trashedOnly ? base.not("deleted_at", "is", null) : base.is("deleted_at", null))
       .order("updated_at", { ascending: false })
       .limit(50);
     if (error) throw error;
 
     const ids = (sessions ?? []).map((s) => s.id);
-    const progress = new Map<string, { done: number; total: number }>();
+    const progress = new Map<string, { done: number; total: number; items: { label: string; done: boolean }[] }>();
     if (ids.length > 0) {
       const { data: sections, error: sErr } = await supabase
         .from("learning_sections")
-        .select("session_id, status")
+        .select("session_id, status, label, position")
+        .order("position", { ascending: true })
         .in("session_id", ids);
       if (sErr) throw sErr;
       for (const s of sections ?? []) {
-        const p = progress.get(s.session_id) ?? { done: 0, total: 0 };
+        const p = progress.get(s.session_id) ?? { done: 0, total: 0, items: [] };
         p.total += 1;
         if (s.status === "completed") p.done += 1;
+        p.items.push({ label: s.label as string, done: s.status === "completed" });
         progress.set(s.session_id, p);
       }
     }
@@ -49,7 +52,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-      sessions: (sessions ?? []).map((s) => ({ ...s, progress: progress.get(s.id) ?? { done: 0, total: 0 } })),
+      sessions: (sessions ?? []).map((s) => ({ ...s, progress: progress.get(s.id) ?? { done: 0, total: 0, items: [] } })),
       histories,
     });
   } catch (err) {

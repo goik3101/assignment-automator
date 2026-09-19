@@ -14,9 +14,7 @@ interface WorkItem {
 }
 
 // Figma 사이드바의 "작업 목록": 제목 / 모드 태그(학습모드📚, AI모드✨). 학습 과제와 자동
-// 작성 히스토리를 한 목록으로 보여준다(히스토리는 읽기 전용 조회). 이 목록은 부가
-// 기능이라 실패하면(예: 학습 모드 테이블 미적용) 아무것도 그리지 않고 조용히 숨긴다 —
-// 기존 사이드바 동작에 영향을 주지 않기 위함.
+// 작성 히스토리를 한 목록으로 보여준다(히스토리는 읽기 전용 조회). 목록이 비면 그리지 않는다.
 export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth();
   const pathname = usePathname();
@@ -25,38 +23,33 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    fetch("/api/learning/sessions?withHistories=1")
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("worklist"))))
-      .then(
-        (data: {
-          sessions: { id: string; title: string; updated_at: string }[];
-          histories?: { id: string; title: string | null; subject: string; created_at: string }[];
-        }) => {
-          if (cancelled) return;
-          const merged: WorkItem[] = [
-            ...data.sessions.map((s) => ({
-              key: `l-${s.id}`,
-              href: `/learning/${s.id}`,
-              title: s.title,
-              mode: "learning" as const,
-              at: s.updated_at,
-            })),
-            ...(data.histories ?? []).map((h) => ({
-              key: `h-${h.id}`,
-              href: `/histories/${h.id}`,
-              title: h.title || h.subject,
-              mode: "auto" as const,
-              at: h.created_at,
-            })),
-          ]
-            .sort((a, b) => b.at.localeCompare(a.at))
-            .slice(0, 8);
-          setItems(merged);
-        }
-      )
-      .catch(() => {
-        if (!cancelled) setItems([]);
-      });
+    // 두 목록을 따로 불러온다 — 한쪽(예: 학습 모드 테이블 미적용)이 실패해도 다른 쪽은 보여준다.
+    const load = (url: string) =>
+      fetch(url)
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null);
+    Promise.all([load("/api/histories"), load("/api/learning/sessions")]).then(([h, l]) => {
+      if (cancelled) return;
+      const merged: WorkItem[] = [
+        ...((l?.sessions ?? []) as { id: string; title: string; updated_at: string }[]).map((s) => ({
+          key: `l-${s.id}`,
+          href: `/learning/${s.id}`,
+          title: s.title,
+          mode: "learning" as const,
+          at: s.updated_at,
+        })),
+        ...((h?.histories ?? []) as { id: string; title: string | null; subject: string; created_at: string }[]).map((x) => ({
+          key: `h-${x.id}`,
+          href: `/histories/${x.id}`,
+          title: x.title || x.subject,
+          mode: "auto" as const,
+          at: x.created_at,
+        })),
+      ]
+        .sort((x, y) => y.at.localeCompare(x.at))
+        .slice(0, 8);
+      setItems(merged);
+    });
     return () => {
       cancelled = true;
     };

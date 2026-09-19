@@ -11,6 +11,7 @@ interface HistoryRow {
   subject: string;
   output_type: "essay" | "plan";
   created_at: string;
+  preview: string;
 }
 
 type Filter = "all" | "essay" | "plan";
@@ -20,16 +21,19 @@ const TYPE_LABEL = { essay: "완성 원고", plan: "실행 계획" } as const;
 function HistoryCard({ h, onDelete }: { h: HistoryRow; onDelete: (id: string) => void }) {
   const [menu, setMenu] = useState(false);
   return (
-    <div className="relative w-full">
+    <div className="relative w-[170px]">
       <Link href={`/histories/${h.id}`} className="group block">
-        <div className="flex aspect-[3/4] flex-col justify-between border border-border bg-background p-4 transition-colors group-hover:border-foreground">
-          <span className="w-fit rounded-full border border-foreground/60 px-3 py-0.5 text-xs font-bold">{h.subject}</span>
-          <div>
-            <p className="text-xs text-muted">{TYPE_LABEL[h.output_type]}</p>
-            <p className="mt-0.5 text-xs text-muted">{new Date(h.created_at).toLocaleDateString("ko-KR")}</p>
+        <div className="flex h-[225px] w-[170px] flex-col border border-border bg-background p-3 transition-colors group-hover:border-foreground">
+          <div className="flex items-center justify-between gap-2">
+            <span className="max-w-[90px] truncate rounded-full border border-foreground/60 px-2 py-0.5 text-[10px] font-bold">{h.subject}</span>
+            <span className="text-[10px] text-muted">{TYPE_LABEL[h.output_type]}</span>
           </div>
+          <p className="mt-2.5 flex-1 overflow-hidden whitespace-pre-line break-words text-[9.5px] leading-[1.55] text-foreground/75 [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
+            {h.preview || "내용이 없어요."}
+          </p>
+          <p className="mt-1 text-[10px] text-muted">{new Date(h.created_at).toLocaleDateString("ko-KR")}</p>
         </div>
-        <p className="mt-1.5 truncate pr-7 text-sm font-bold">{h.title || h.subject}</p>
+        <p className="mt-2 truncate pr-7 text-sm font-bold">{h.title || h.subject}</p>
       </Link>
       <div className="absolute bottom-0 right-0">
         <button
@@ -49,11 +53,11 @@ function HistoryCard({ h, onDelete }: { h: HistoryRow; onDelete: (id: string) =>
             <button
               onClick={() => {
                 setMenu(false);
-                if (window.confirm("정말 삭제하시겠습니까? 삭제하면 되돌릴 수 없어요.")) onDelete(h.id);
+                if (window.confirm("휴지통으로 이동할까요? 휴지통에서 복원할 수 있어요.")) onDelete(h.id);
               }}
               className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-red-500 hover:bg-background"
             >
-              삭제
+              휴지통으로
             </button>
           </div>
         )}
@@ -172,13 +176,13 @@ export default function HomeDashboard({ onNew }: { onNew: () => void }) {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-[repeat(auto-fill,170px)] justify-start gap-x-6 gap-y-12">
         <button
           onClick={onNew}
           aria-label="새 수행평가 만들기"
-          className="flex aspect-[3/4] items-center justify-center border border-dashed border-foreground/70 text-foreground transition-opacity hover:opacity-70"
+          className="flex h-[225px] w-[170px] items-center justify-center border border-dashed border-foreground/70 text-foreground transition-opacity hover:opacity-70"
         >
-          <svg viewBox="0 0 20 20" fill="none" className="h-14 w-14">
+          <svg viewBox="0 0 20 20" fill="none" className="h-12 w-12">
             <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
           </svg>
         </button>

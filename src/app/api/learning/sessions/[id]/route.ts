@@ -74,13 +74,23 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/learning/s
   }
 }
 
-// 소프트 삭제 — 목록에서만 숨기고 데이터는 남긴다.
+// 기본은 소프트 삭제(휴지통으로 이동, 데이터는 남김). ?permanent=1이면 영구 삭제(항목도 함께 삭제).
 export async function DELETE(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]">) {
   try {
     const { id } = await ctx.params;
     const auth = await requireLearningUser(req);
     if ("error" in auth) return auth.error;
     const { supabase } = auth;
+
+    if (req.nextUrl.searchParams.get("permanent") === "1") {
+      const { error, count } = await supabase
+        .from("learning_sessions")
+        .delete({ count: "exact" })
+        .eq("id", id);
+      if (error) throw error;
+      if (!count) return jsonError("학습 과제를 찾을 수 없어요.", 404);
+      return NextResponse.json({ ok: true });
+    }
 
     const { error, count } = await supabase
       .from("learning_sessions")

@@ -14,7 +14,7 @@ interface SessionRow {
   status: "active" | "completed";
   admin_info: AdministrativeInfo | null;
   updated_at: string;
-  progress: { done: number; total: number };
+  progress: { done: number; total: number; items?: { label: string; done: boolean }[] };
 }
 
 type Filter = "all" | "active" | "completed";
@@ -26,20 +26,29 @@ function SessionCard({ s, onDelete }: { s: SessionRow; onDelete: (id: string) =>
   // Figma 카드: 썸네일 블록 + 그 아래 굵은 제목 + 우측 ⋮ 메뉴(바깥 테두리 상자 없음).
   // 썸네일 자리에는 안내문 이미지를 저장하지 않으므로 과목·진행률을 보여준다.
   return (
-    <div className="relative w-full">
+    <div className="relative w-[170px]">
       <Link href={`/learning/${s.id}`} className="group block">
-        <div className="flex aspect-[3/4] flex-col justify-between border border-border bg-background p-4 transition-colors group-hover:border-foreground">
-          <span className="w-fit rounded-full border border-foreground/60 px-3 py-0.5 text-xs font-bold">{s.subject}</span>
-          <div>
-            <p className="mb-2 text-xs text-muted">
-              {s.progress.done}/{s.progress.total} 항목 완료
-            </p>
-            <div className="h-1 overflow-hidden rounded-full bg-border" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${pct}%` }} />
-            </div>
+        <div className="flex h-[225px] w-[170px] flex-col border border-border bg-background p-3 transition-colors group-hover:border-foreground">
+          <div className="flex items-center justify-between gap-2">
+            <span className="max-w-[90px] truncate rounded-full border border-foreground/60 px-2 py-0.5 text-[10px] font-bold">{s.subject}</span>
+            <span className="text-[10px] text-muted">학습 모드</span>
+          </div>
+          <ul className="mt-2.5 flex-1 space-y-1 overflow-hidden text-[9.5px] leading-[1.5] text-foreground/75">
+            {(s.progress.items ?? []).slice(0, 7).map((it, i) => (
+              <li key={i} className="flex gap-1.5">
+                <span className="shrink-0">{it.done ? "●" : "○"}</span>
+                <span className="line-clamp-2 break-words">{it.label}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mb-1.5 mt-1 text-[10px] text-muted">
+            {s.progress.done}/{s.progress.total} 항목 완료
+          </p>
+          <div className="h-1 overflow-hidden rounded-full bg-border" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${pct}%` }} />
           </div>
         </div>
-        <p className="mt-1.5 truncate pr-7 text-sm font-bold">{s.title}</p>
+        <p className="mt-2 truncate pr-7 text-sm font-bold">{s.title}</p>
       </Link>
       <div className="absolute bottom-0 right-0">
         <button
@@ -59,7 +68,7 @@ function SessionCard({ s, onDelete }: { s: SessionRow; onDelete: (id: string) =>
             <button
               onClick={() => {
                 setMenu(false);
-                if (window.confirm("이 학습 과제를 목록에서 삭제할까요?")) onDelete(s.id);
+                if (window.confirm("이 학습 과제를 휴지통으로 이동할까요?")) onDelete(s.id);
               }}
               className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-red-500 hover:bg-background"
             >
@@ -204,10 +213,10 @@ export default function LearningList() {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-[repeat(auto-fill,170px)] justify-start gap-x-6 gap-y-12">
         <button
           onClick={() => setModal(true)}
-          className="flex aspect-[3/4] flex-col items-center justify-center gap-2 border border-dashed border-foreground/70 text-foreground transition-opacity hover:opacity-70"
+          className="flex h-[225px] w-[170px] flex-col items-center justify-center gap-2 border border-dashed border-foreground/70 text-foreground transition-opacity hover:opacity-70"
         >
           <svg viewBox="0 0 20 20" fill="none" className="h-14 w-14">
             <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
