@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import AuthBar from "./AuthBar";
 import { Logo } from "./Logo";
 import { useAdminStatus } from "@/lib/admin/use-admin-status";
+import SidebarWorklist from "./SidebarWorklist";
 
 const NAV_ITEMS = [
   {
@@ -14,6 +15,16 @@ const NAV_ITEMS = [
     icon: (
       <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
         <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    href: "/learning",
+    label: "학습 모드",
+    icon: (
+      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+        <rect x="2.5" y="3.5" width="15" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M9 3.5v13" stroke="currentColor" strokeWidth="1.5" />
       </svg>
     ),
   },
@@ -106,7 +117,7 @@ export default function Sidebar() {
 
         <nav className="flex-1 space-y-1 px-2">
           {NAV_ITEMS.map((item) => {
-            const active = pathname === item.href;
+            const active = item.href === "/learning" ? pathname.startsWith("/learning") : pathname === item.href;
             return (
               <Link
                 key={item.href}
@@ -149,6 +160,9 @@ export default function Sidebar() {
             </Link>
           )}
         </nav>
+
+        {!collapsed && <SidebarWorklist onNavigate={() => setOpen(false)} />}
+        <div className="flex-1" />
 
         <div className="border-t border-border p-3">{!collapsed && <AuthBar />}</div>
       </aside>
