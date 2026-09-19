@@ -115,3 +115,16 @@ export function insertCitationMarkers(
 
   return buf.toString("utf-8");
 }
+
+/**
+ * 최종 출력 텍스트 위생 정리(순수 문자열 처리):
+ *  - 각주를 지운 뒤 문장부호 앞에 남은 공백("~했다 .")을 붙인다.
+ *  - 모델이 프롬프트의 항목 표기용 「」 부호를 소제목에 그대로 따라 쓴 경우("### 「혁명의
+ *    배경」", 세계사 테스트에서 실제 발생)를 벗겨낸다.
+ */
+export function tidyOutputText(text: string): string {
+  return text
+    .replace(/^(#{2,4}[ \t]*)[「『](.+?)[」』][ \t]*$/gm, "$1$2")
+    .replace(/[ \t]+([.,!?])(?=\s|$)/g, "$1")
+    .replace(/(?<=\S)[ \t]{2,}/g, " ");
+}

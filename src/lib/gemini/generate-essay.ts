@@ -13,7 +13,7 @@ import {
   RESEARCH_MATERIAL_RULES,
 } from "./prompts";
 import { findMissingItems, parseResearchItems } from "@/lib/research/research-items";
-import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "./citations";
+import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
 import {
@@ -323,7 +323,7 @@ ${input.previousOutputText}
       `항목도 빼거나 합치지 말 것. 항목마다 실제 내용이 있어야 한다(소제목만 쓰고 비워두지 말 것). ` +
       `이 단계는 하나의 긴 글이 아니라 항목별로 구조화된 조사 자료다.\n` +
       structuredEls
-        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.map((it) => `「${it}」`).join(", ")}`)
+        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}`)
         .join("\n") +
       `\n${RESEARCH_MATERIAL_RULES}\n`
     : "";
@@ -837,7 +837,7 @@ ${annotated}
     if (!mechanicalSections.has(label)) {
       console.warn(`[generateEssay] label="${label}" 본문을 원문에서 못 잘라내서 stage B의 content로 폴백함`);
     }
-    let content = stripCitations ? rawContent.replace(/\[\d+\]/g, "") : rawContent;
+    let content = stripCitations ? tidyOutputText(rawContent.replace(/\[\d+\]/g, "")) : rawContent;
     const insufficientMatch = content.trimStart().match(/^\[자료부족:?\s*(.*?)\]/);
     if (insufficientMatch) {
       insufficientReasons.push(`${label}: ${insufficientMatch[1] || "정보 부족"}`);
@@ -1348,6 +1348,9 @@ export async function generateEssay(
       );
     }
   }
+
+  // 각주 제거 등으로 남은 " ." 공백과 소제목의 「」 표기를 최종 정리한다.
+  attempt = { ...attempt, sections: attempt.sections.map((s) => ({ ...s, content: tidyOutputText(s.content) })) };
 
   // 필수 항목(소제목) 구조는 재시도까지 거치고도 남은 누락만 정직하게 알린다.
   const finalMissingItems = detectMissingRequiredItems(attempt.sections);
@@ -2234,7 +2237,11 @@ function stripCliches(sections: RawSection[]): { sections: RawSection[]; strippe
 // 등)는 전부 이상 문자로 본다 — "허용 목록에 없는 걸 잡는" 게 아니라
 // "알려진 정상 범위만 통과시키는" 방향이 더 안전하다(새로운 이상 문자
 // 유형이 나와도 놓치지 않음).
-const ALLOWED_TEXT_PATTERN = /[가-힣ᄀ-ᇿ㄰-㆏a-zA-Z0-9\p{P}\p{S}\s]/u;
+// 라틴 문자 전체(\p{Script=Latin})를 허용한다 — 세계사·음악·미술 과제에서 흔한 악센트 문자
+// (Ancien Régime, Dvořák, Für Elise)를 예전 필터(a-zA-Z만 허용)가 통째로 삭제해서
+// "Rgime"처럼 깨뜨렸다(2026-09-19 14종 테스트에서 발견). 실제 보고된 오염은 아랍 문자
+// 등 다른 문자 체계라 그쪽은 계속 막는다.
+const ALLOWED_TEXT_PATTERN = /[가-힣ᄀ-ᇿ㄰-㆏a-zA-Z0-9\p{Script=Latin}\p{P}\p{S}\s]/u;
 
 /** 코드포인트 단위로 순회한다(서로게이트 쌍이 섞여도 안전) — 문자열 인덱스
  * 기반 순회는 이모지 등에서 반쪽 문자를 만들 수 있어서 피한다. */

@@ -7,7 +7,7 @@ import {
   FACTUAL_RIGOR_RULES,
   ACHIEVEMENT_INTERPRETATION_RULES,
 } from "./prompts";
-import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "./citations";
+import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
 import {
   extractYears,
   findMissingItems,
@@ -109,7 +109,7 @@ function buildStepAPrompt(input: GeneratePlanInput): string {
   const itemsBlock = requiredItems
     ? `
 【필수 항목 구조 — 반드시 지킬 것】 이 산출물은 안내문이 요구한 다음 항목을 모두 포함해야 한다:
-${requiredItems.map((it) => `「${it}」`).join(", ")}
+${requiredItems.join(" → ")}
 "${CONTENT_HEADING}" 아래에서 각 항목마다 "### "로 시작하는 소제목 부분을 하나씩 둘 것 — 소제목에는 항목명의
 핵심 단어가 그대로 들어가야 하고(신문이면 "### 인물의 생애 배경 — 헤드라인"처럼 기사 제목을 덧붙여도 됨),
 그 아래에 그 항목의 실제 내용을 쓸 것. 항목을 빼거나 소제목만 쓰고 비워두지 말 것. 학생 본인의 생각·감상을
@@ -523,6 +523,8 @@ export async function generatePlan(
       content = refListCleanedContent;
     }
   }
+
+  content = tidyOutputText(content);
 
   console.log(`[generatePlan] latency_ms=${Date.now() - start}`);
 
