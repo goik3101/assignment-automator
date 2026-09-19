@@ -73,6 +73,26 @@ const ANALYZE_SCHEMA: Schema = {
                 type: Type.BOOLEAN,
                 description: "분량 기준이 공백 포함인지 여부. 안내문에 명시가 없으면 true(공백 포함)로 할 것.",
               },
+              required_items: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description:
+                  "안내문이 이 요소에서 '반드시 조사/작성하라'고 명시적으로 나열한 세부 항목들을, 안내문에 " +
+                  "나온 순서대로, 짧은 항목명(명사구)만 적은 배열. 예: 인권 선구자 탐구 자료 수집 → " +
+                  "['인물 선정 이유','인물 배경','주요 활동','활동의 성과','인권 발달에 미친 영향'], " +
+                  "과학 실험 설계 → ['탐구 주제','가설','준비물','실험 방법','예상 결과','결론']. " +
+                  "안내문에 세부 항목이 2개 이상 명시적으로 나열되어 있을 때만 채울 것 — 안내문에 없는 항목을 " +
+                  "추측해서 만들지 말 것. 자유 서술형 과제(신조어 만들기, 글쓰기 등)나 항목 나열이 없으면 빈 배열.",
+              },
+              items_format: {
+                type: Type.STRING,
+                enum: ["sections", "flowing"],
+                description:
+                  "required_items가 있을 때만 의미가 있다. 'sections' = 조사·탐구·자료수집·보고서·실험 설계·" +
+                  "계획서·토론 개요·기획서처럼 항목별로 나눠 적는 산출물. 'flowing' = 편지·일기·시·소설·" +
+                  "감상문·비평문·발표 대본·책처방전 카드처럼 하나의 글로 이어 쓰는 산출물(항목이 나열돼 있어도 " +
+                  "소제목으로 쪼개면 어색한 글). required_items가 비어 있으면 'flowing'.",
+              },
             },
             required: ["type", "label", "description"],
           },
@@ -122,7 +142,38 @@ const SYSTEM_INSTRUCTION = `
   개요")에 별도로 다른 분량 기준이 있으면 그 단계에는 그 표현을 따로 채울
   것 — 안내문 전체에 적용되는 공통 분량이면 해당하는 모든 단계에 같은
   표현을 채울 것.
+- required_items는 그 단계에 대해 안내문이 "이 항목들을 조사/작성하라"고 **직접
+  나열한 세부 항목**만 안내문 순서대로 짧은 항목명으로 담을 것. 안내문 문장에
+  "A, B, C, D에 대한 자료를 수집", "가설·준비물·방법을 쓰고"처럼 항목이 실제로
+  적혀 있어야 하며, 없는 항목을 과제 유형으로부터 추측해서 만들지 말 것. 학생이
+  고르거나 정하는 것 자체가 요구되면(예: "인물을 선정하고 이유를 작성") 그것도
+  항목으로 넣을 것(예: "인물 선정 이유"). 항목이 2개 미만이거나 자유 서술형
+  (신조어 만들기, 자유 글쓰기 등)이면 빈 배열. items_format은 조사·탐구·보고서·
+  계획서처럼 항목별로 나눠 쓰는 산출물이면 "sections", 편지·감상문·비평문·발표
+  대본처럼 한 편의 글로 이어 쓰는 산출물이면 "flowing" — 애매하면 "flowing".
 `.trim();
+
+const FLOWING_LABEL_PATTERN = /대본|발표문|연설|비평문|감상문|독후감|서평|편지|일기|소설|에세이|칼럼|소감/;
+
+// required_items 후처리: 모델이 채운 값을 그대로 믿지 않고 코드가 정리한다 —
+// 공백/중복 제거, 지나치게 긴 항목 제거(항목명이 아니라 문장이면 제외), 최대 10개,
+// 2개 미만이면 "항목 나열 없음"으로 취급해서 통째로 버린다(항목 1개짜리 구조화는
+// 의미가 없고 오히려 자유 서술을 해친다).
+function normalizeRequiredItems(items: string[] | undefined): string[] | undefined {
+  if (!items) return undefined;
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const raw of items) {
+    const item = raw.replace(/\s+/g, " ").trim();
+    if (!item || item.length > 40) continue;
+    const key = item.replace(/\s/g, "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cleaned.push(item);
+    if (cleaned.length >= 10) break;
+  }
+  return cleaned.length >= 2 ? cleaned : undefined;
+}
 
 // 처음엔 모델에게 min/max 정수 두 개를 직접 계산해서 채우게 했는데, 실제
 // 테스트 중 flashLite가 드물게 토큰 반복 루프에 빠져 정수 필드에 자릿수
@@ -232,6 +283,8 @@ export async function analyzeAssignment(
     description: string;
     target_length_text?: string;
     target_length_counts_spaces?: boolean;
+    required_items?: string[];
+    items_format?: "sections" | "flowing";
   }
   const parsed = JSON.parse(raw) as Omit<AnalyzeResult, "core_task_info"> & {
     insufficient_reason: string;
@@ -245,11 +298,23 @@ export async function analyzeAssignment(
   // "분량 제약 없음"이므로 target_length 자체를 생략해서, generate-essay.ts가
   // 이 필드의 존재 여부만으로 검사 대상인지 바로 판단할 수 있게 한다.
   const task_elements = parsed.core_task_info.task_elements.map((e) => {
-    const { target_length_text, target_length_counts_spaces, ...rest } = e;
+    const { target_length_text, target_length_counts_spaces, required_items, items_format, ...rest } = e;
     const range = target_length_text ? parseLengthConstraint(target_length_text) : null;
+    const items = normalizeRequiredItems(required_items);
+    // 모델이 분류한 items_format을 그대로 믿지 않는다 — 실제 테스트에서 "영어 발표
+    // 대본"·"독서 비평문"이 sections로 분류돼 말하는 대본/한 편의 비평문이 "### 항목"
+    // 소제목으로 쪼개졌다. 한 편의 글로 이어 읽히는 산출물(라벨 기준)은 코드가
+    // flowing으로 강제한다(항목은 빠짐없이 다루되 소제목은 강제하지 않음).
+    const forcedFlowing = FLOWING_LABEL_PATTERN.test(e.label);
     return {
       ...rest,
       target_length: range ? { ...range, counts_spaces: target_length_counts_spaces ?? true } : undefined,
+      required_items: items,
+      items_format: items
+        ? items_format === "sections" && !forcedFlowing
+          ? ("sections" as const)
+          : ("flowing" as const)
+        : undefined,
     };
   });
 

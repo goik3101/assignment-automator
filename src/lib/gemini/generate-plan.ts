@@ -8,6 +8,12 @@ import {
   ACHIEVEMENT_INTERPRETATION_RULES,
 } from "./prompts";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "./citations";
+import {
+  extractYears,
+  findMissingItems,
+  parseResearchItems,
+  yearsMissingFromResearch,
+} from "@/lib/research/research-items";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
@@ -73,10 +79,45 @@ export interface GeneratePlanInput {
 const CONTENT_HEADING = "## 완성된 글";
 const PHYSICAL_HEADING = "## 직접 만들어야 할 것";
 
+/** 이 산출물(external_production)이 안내문에서 요구받은 필수 항목 — 조사·탐구형
+ * ("sections")일 때만 "### 항목" 구조와 누락 검사를 적용한다. */
+function planRequiredItems(input: GeneratePlanInput): string[] | undefined {
+  const element = input.coreTaskInfo.task_elements.find((e) => e.type === "external_production");
+  if (!element || (element.required_items?.length ?? 0) < 2) return undefined;
+  return element.required_items;
+}
+
+/** 자료 수집(essay)에서 확정된 조사 자료를 "항목별 사실" 목록 + 연도 목록으로
+ * 다시 정리해 프롬프트에 넣는다 — 신문 제작이 인물·연도·사건을 독립적으로 다시
+ * 만들어내지 않고 이 확정 사실을 재사용하게 하는 단일 진실 소스. */
+function formatResearchFacts(referenceFactsText: string): string | null {
+  const items = parseResearchItems(referenceFactsText);
+  if (items.length === 0) return null;
+  const years = extractYears(referenceFactsText);
+  return (
+    items.map((it) => `[${it.item}]\n${it.lines.join("\n")}`).join("\n\n") +
+    (years.length ? `\n\n[확정된 연도 목록] ${years.join(", ")}` : "")
+  );
+}
+
 function buildStepAPrompt(input: GeneratePlanInput): string {
   const element = input.coreTaskInfo.task_elements.find(
     (e) => e.type === "external_production"
   );
+  const requiredItems = planRequiredItems(input);
+  const structuredFacts = input.referenceFactsText ? formatResearchFacts(input.referenceFactsText) : null;
+  const itemsBlock = requiredItems
+    ? `
+【필수 항목 구조 — 반드시 지킬 것】 이 산출물은 안내문이 요구한 다음 항목을 모두 포함해야 한다:
+${requiredItems.map((it) => `「${it}」`).join(", ")}
+"${CONTENT_HEADING}" 아래에서 각 항목마다 "### "로 시작하는 소제목 부분을 하나씩 둘 것 — 소제목에는 항목명의
+핵심 단어가 그대로 들어가야 하고(신문이면 "### 인물의 생애 배경 — 헤드라인"처럼 기사 제목을 덧붙여도 됨),
+그 아래에 그 항목의 실제 내용을 쓸 것. 항목을 빼거나 소제목만 쓰고 비워두지 말 것. 학생 본인의 생각·감상을
+요구하는 항목(인상 깊었던 점, 교훈 등)은 소제목 바로 아래 첫 줄에 "(학생 감상 초안 — 본인 생각에 맞게 고쳐
+쓰세요)"라고 표시하고 초안을 쓸 것 — 학생이 실제로 하지 않은 경험(직접 방문, 직접 인터뷰 등)이나 밝힌 적 없는
+감정을 사실처럼 지어내지 말 것.
+`
+    : "";
 
   const continuityBlock = input.previousOutputText
     ? `
@@ -127,12 +168,18 @@ ${
 이 사실을 우선한다. 단, 이 글은 그 자료를 이어쓰는 게 아니라 신문 기사·
 슬라이드 등 완전히 다른 형식의 새 글이니, 문장을 그대로 베끼거나 같은
 구조로 쓰지 말고 이 산출물 형식에 맞게 새로 쓸 것.
+이 글에 쓰는 인물·연도·사건·수치·성과는 아래 자료에서 가져오는 것이 원칙이다 — 아래
+자료에 없는 새 연도나 수치를 이 글에서 새로 만들어 쓰지 말 것(꼭 필요하면 검색으로
+확인하고 [n] 각주를 붙이되, 아래 자료의 사실과 충돌하면 안 된다). "(해석)" 표시가 붙은
+줄과 "학생 감상 초안"은 확정된 사실이 아니라 해석·초안이니 사실처럼 단정하지 말 것.
+아래 자료가 항목별(활동/성과/영향 등)로 나뉘어 있으면 그 층위를 이 글에서도 섞지 말 것.
 
 [이미 확정된 자료]
-${input.referenceFactsText}
+${structuredFacts ?? input.referenceFactsText}
 `.trim()
     : ""
 }
+${itemsBlock}
 ${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentStatGuidance ? `\n${input.recentStatGuidance}\n` : ""}
@@ -187,8 +234,10 @@ function escapeRegExp(s: string): string {
 // 강조해도 100% 보장은 안 된다는, 이 프로젝트에서 반복 확인된 패턴). 그래서
 // 정확히 일치하는 제목이 없으면, 그 제목을 대표하는 핵심 단어가 들어간
 // "## "로 시작하는 줄을 대신 찾는 완화된 매칭으로 한 번 더 시도한다.
-const CONTENT_HEADING_FUZZY = /^##.*완성.*$/m;
-const PHYSICAL_HEADING_FUZZY = /^##.*(직접|손으로).*(만들|제작|작업).*$/m;
+// "###" 항목 소제목이 "완성"/"직접...만들" 같은 단어를 우연히 포함해도 오인하지
+// 않도록 "##" 바로 뒤에 "#"이 오지 않는 줄만 대상으로 한다.
+const CONTENT_HEADING_FUZZY = /^##(?!#).*완성.*$/m;
+const PHYSICAL_HEADING_FUZZY = /^##(?!#).*(직접|손으로).*(만들|제작|작업).*$/m;
 
 /** annotated(각주까지 삽입된 원문)에서 CONTENT_HEADING/PHYSICAL_HEADING 두
  * 제목을 기준으로 순수 문자열 slice만 한다 — 모델에게 다시 옮겨 적으라고
@@ -335,6 +384,70 @@ export async function generatePlan(
     }
   }
 
+  // 항목·사실 일관성 검사(기계적): (1) 안내문의 필수 항목이 "### 소제목"으로 다 있는지,
+  // (2) 자료 수집에서 확정된 조사 자료에 없는 연도가 이 글에 새로 생기지 않았는지.
+  // 자료 수집과 신문 제작이 사실을 독립적으로 다시 만들면서 어긋나던 문제(사망 연도
+  // 1931 vs 1932 등)를 fixedSubject/referenceFactsText 프롬프트만으로는 100% 못
+  // 막는다는 게 확인돼서, 여기서 결정론적으로 확인하고 1회 재지시한다.
+  const requiredItems = planRequiredItems(input);
+  const researchText = input.referenceFactsText;
+  const inspectPlan = (text: string) => {
+    const { content: c } = splitContentAndPhysicalText(text);
+    return {
+      missing: requiredItems ? findMissingItems(c, requiredItems) : [],
+      badYears: researchText ? yearsMissingFromResearch(c, researchText) : [],
+    };
+  };
+  let planIssues = inspectPlan(freeText);
+  if (planIssues.missing.length > 0 || planIssues.badYears.length > 0) {
+    console.warn(
+      `[generatePlan] 항목/사실 일관성 문제 감지, 1회 재시도: 누락항목=${JSON.stringify(planIssues.missing)} ` +
+        `조사자료에없는연도=${JSON.stringify(planIssues.badYears)}`
+    );
+    try {
+      const parts: string[] = [];
+      if (planIssues.missing.length > 0) {
+        parts.push(
+          `[필수 항목 누락 정정 지시 — 반드시 지킬 것] 방금 쓴 글에는 안내문이 요구한 다음 항목이 "### " ` +
+            `소제목으로 없거나 내용이 비어 있다: ${planIssues.missing.join(", ")}. 이번에는 누락된 항목마다 ` +
+            `항목명의 핵심 단어가 들어간 "### " 소제목과 실제 내용을 추가할 것.`
+        );
+      }
+      if (planIssues.badYears.length > 0) {
+        parts.push(
+          `[사실 일관성 정정 지시 — 반드시 지킬 것] 방금 쓴 글에는 이미 확정된 자료에 없는 연도가 새로 ` +
+            `등장했다: ${planIssues.badYears.map((y) => `${y}년`).join(", ")}. 이번에는 이 연도들을 확정된 ` +
+            `자료의 연도로 바로잡거나, 자료에 근거가 없다면 빼고 쓸 것(꼭 필요하면 검색으로 확인하고 [n] ` +
+            `각주를 붙이되 확정된 자료와 충돌하면 안 된다).`
+        );
+      }
+      const retryPrompt =
+        buildStepAPrompt(input) +
+        `\n\n${parts.join("\n\n")}\n\n아래는 방금 쓴 초안이다. 위에서 지적한 부분만 고치고, 지적하지 않은 ` +
+        `사실·표현·구조는 그대로 유지해서 두 제목("${CONTENT_HEADING}", "${PHYSICAL_HEADING}")을 갖춘 ` +
+        `전체 글을 다시 써줘.\n\n[방금 쓴 초안]\n${freeText}`;
+      const retryStepA = await runStepA(retryPrompt);
+      if (retryStepA.text) {
+        const retryIssues = inspectPlan(retryStepA.text);
+        const originalChunks = stepA.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0;
+        const retryChunks = retryStepA.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0;
+        const regressedGrounding = originalChunks > 0 && retryChunks === 0;
+        const better =
+          retryIssues.missing.length + retryIssues.badYears.length <=
+          planIssues.missing.length + planIssues.badYears.length;
+        if (better && !regressedGrounding) {
+          stepA = retryStepA;
+          freeText = retryStepA.text;
+          planIssues = retryIssues;
+        } else {
+          console.warn("[generatePlan] 재시도가 더 나아지지 않아 원래 응답으로 진행");
+        }
+      }
+    } catch (err) {
+      console.error("[generatePlan] 항목/사실 일관성 재시도 실패(원래 응답으로 진행)", err);
+    }
+  }
+
   const grounding = stepA.candidates?.[0]?.groundingMetadata;
   console.log(
     `[generatePlan] 그라운딩 진단: webSearchQueries=${JSON.stringify(grounding?.webSearchQueries ?? [])} ` +
@@ -349,7 +462,11 @@ export async function generatePlan(
   // 확인된 출처를 가리키는 각주만 콕 집어 지운다. essay와 달리 plan은 이
   // 시점 이후에도(아래 5단계) validatedSources에 새 출처가 추가될 수 있어서,
   // 이 시점의 무효 출처만 우선 제거한다.
-  const invalidNs = new Set(validatedSources.filter((s) => s.url_valid === false).map((s) => s.n));
+  // 링크 검증 실패뿐 아니라 "블로그·개인" 등급(source-quality.ts) 출처도 핵심 사실의 근거로 쓰지
+  // 않는다 — 열리는 것과 근거로 쓸 만한 것은 다르다(각주 표시만 제거, 문장은 보존).
+  const invalidNs = new Set(
+    validatedSources.filter((s) => s.url_valid === false || s.tier === "weak").map((s) => s.n)
+  );
   if (invalidNs.size > 0) {
     console.warn(`[generatePlan] 검증 실패한 출처를 가리키는 각주 제거: [${[...invalidNs].join(",")}]`);
     annotated = stripInvalidCitationMarkers(annotated, invalidNs);
@@ -416,5 +533,13 @@ export async function generatePlan(
     sources: validatedSources,
     latency_ms: Date.now() - start,
     verifiedItemNames,
+    structureWarning:
+      planIssues.missing.length > 0
+        ? `안내문이 요구한 항목이 비어 있어요: ${planIssues.missing.join(", ")}. 제출 전에 직접 보완해주세요.`
+        : undefined,
+    factConsistencyWarning:
+      planIssues.badYears.length > 0
+        ? `자료 수집에서 확정한 내용에 없는 연도가 있어요: ${planIssues.badYears.map((y) => `${y}년`).join(", ")}. 자료 수집 내용과 맞는지 확인해주세요.`
+        : undefined,
   };
 }

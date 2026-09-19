@@ -4,6 +4,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
+import { SOURCE_TIER_LABEL } from "@/lib/links/source-quality";
 
 // N6/N8: 검색 출처가 하나도 없으면(그라운딩이 안 됐거나 모델이 검색을 안 쓴 경우)
 // 하단에 작은 문구로 조용히 알리는 정도로는 눈에 잘 안 띈다 — 책 제목/저자/인용구처럼
@@ -53,11 +54,25 @@ function AuthorWarning({ message }: { message: string }) {
   );
 }
 
+// 안내문이 요구한 필수 항목이 재시도 후에도 비어 있거나(구조), 자료 수집에서 확정한
+// 사실과 산출물의 연도가 어긋날 때(일관성)만 뜬다 — 조용히 최종본인 척 내보내지 않기 위함.
+function StructureWarning({ message }: { message: string }) {
+  return (
+    <div className="mb-4 rounded-md border-2 border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950">
+      <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">⚠ {message}</p>
+    </div>
+  );
+}
+
 function SourceList({ sources }: { sources: SourceRef[] }) {
   if (sources.length === 0) return null;
   return (
     <div className="mt-6 border-t border-border pt-4">
-      <h4 className="text-sm font-medium text-muted mb-2">출처</h4>
+      <h4 className="text-sm font-medium text-muted mb-1">출처</h4>
+      <p className="mb-2 text-xs text-muted">
+        &quot;연결 확인됨&quot;은 주소가 열린다는 뜻일 뿐, 그 페이지가 위 문장의 내용을 실제로 뒷받침한다는 뜻은
+        아니에요. 중요한 사실은 링크를 열어 직접 확인하세요.
+      </p>
       <ol className="space-y-1 text-sm">
         {sources.map((s) => (
           <li key={s.n} className="flex gap-2">
@@ -79,6 +94,9 @@ function SourceList({ sources }: { sources: SourceRef[] }) {
             >
               {s.url_valid === false ? "(연결 확인 안 됨)" : s.url_valid ? "(연결 확인됨)" : ""}
             </span>
+            {s.tier && (
+              <span className="text-muted text-xs whitespace-nowrap">· {SOURCE_TIER_LABEL[s.tier]}</span>
+            )}
           </li>
         ))}
       </ol>
@@ -263,6 +281,7 @@ export function EssayPanel({
       {result.noSourcesWarning && <NoSourcesWarning />}
       {result.authorWarning && <AuthorWarning message={result.authorWarning} />}
       {result.lengthWarning && <LengthWarning message={result.lengthWarning} />}
+      {result.structureWarning && <StructureWarning message={result.structureWarning} />}
       <article className="prose prose-sm max-w-none prose-neutral dark:prose-invert">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.markdown}</ReactMarkdown>
       </article>
@@ -295,6 +314,8 @@ export function PlanPanel({
         <h3 className="text-base font-semibold">{label} — 완성된 글</h3>
       </div>
       {result.sources.length === 0 && <NoSourcesWarning />}
+      {result.structureWarning && <StructureWarning message={result.structureWarning} />}
+      {result.factConsistencyWarning && <StructureWarning message={result.factConsistencyWarning} />}
       <article className="prose prose-sm max-w-none prose-neutral dark:prose-invert">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.content}</ReactMarkdown>
       </article>

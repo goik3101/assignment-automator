@@ -10,7 +10,9 @@ import {
   REAL_PERSON_NAME_RULE,
   FACTUAL_RIGOR_RULES,
   ACHIEVEMENT_INTERPRETATION_RULES,
+  RESEARCH_MATERIAL_RULES,
 } from "./prompts";
+import { findMissingItems, parseResearchItems } from "@/lib/research/research-items";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
 import { withGeminiRetry } from "./retry";
@@ -95,6 +97,25 @@ interface RawSection {
   /** 이 단계에 TaskElement.target_length가 있었는데 재시도까지 거치고도
    * 범위를 못 맞췄을 때만 채워진다(정직한 실패 표시용). */
   lengthWarning?: string;
+  /** 안내문의 필수 항목을 "### 항목명" 소제목 구조로 쓰도록 요구된 단계(TaskElement.
+   * items_format === "sections")면 그 항목 목록 — 누락 검사·최종 경고의 기준. */
+  requiredItems?: string[];
+}
+
+/** 필수 항목을 소제목 구조로 써야 하는 단계인가. */
+function isStructuredElement(el: CoreTaskInfo["task_elements"][number]): boolean {
+  return el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2;
+}
+
+/** 각 sections 단계 중 필수 항목이 소제목으로 없거나 비어 있는 곳을 모은다. */
+function detectMissingRequiredItems(sections: RawSection[]): { label: string; missing: string[] }[] {
+  const result: { label: string; missing: string[] }[] = [];
+  for (const s of sections) {
+    if (!s.requiredItems) continue;
+    const missing = findMissingItems(s.content, s.requiredItems);
+    if (missing.length > 0) result.push({ label: s.label, missing });
+  }
+  return result;
 }
 
 const SECTIONS_SCHEMA: Schema = {
@@ -287,6 +308,34 @@ ${input.previousOutputText}
 
   const sectionsBlock = elements.map((el, i) => `${i + 1}. "${el.label}" — ${el.description}`).join("\n");
 
+  // 안내문이 조사/작성 항목을 나열한 단계(analyze.ts가 required_items로 추출)는
+  // 항목 구조를 강제한다 — 항목은 절대 하드코딩이 아니라 안내문에서 동적으로 온다.
+  // "sections"(조사·탐구형)는 "### 항목명" 소제목 + 조사 자료 형식, "flowing"(편지·
+  // 감상문 등)은 소제목 없이 항목을 빠짐없이 다루라고만 지시한다.
+  const structuredEls = elements.filter(isStructuredElement);
+  const flowingEls = elements.filter(
+    (el) => el.items_format === "flowing" && (el.required_items?.length ?? 0) >= 2
+  );
+  const structuredBlock = structuredEls.length
+    ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
+      `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +
+      `글자 그대로, 순서도 그대로 — 번호·기호·꾸밈말을 앞뒤에 붙이지 말 것)으로 나눠 쓰고, 어떤 ` +
+      `항목도 빼거나 합치지 말 것. 항목마다 실제 내용이 있어야 한다(소제목만 쓰고 비워두지 말 것). ` +
+      `이 단계는 하나의 긴 글이 아니라 항목별로 구조화된 조사 자료다.\n` +
+      structuredEls
+        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.map((it) => `「${it}」`).join(", ")}`)
+        .join("\n") +
+      `\n${RESEARCH_MATERIAL_RULES}\n`
+    : "";
+  const flowingBlock = flowingEls.length
+    ? `\n【필수 항목 포함 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 세부 항목이 정해져 있다. ` +
+      `소제목으로 쪼개지 말고 하나의 자연스러운 글로 쓰되, 아래 항목을 하나도 빠뜨리지 말고 모두 다룰 것.\n` +
+      flowingEls
+        .map((el) => `- "${el.label}" 단계에서 다룰 항목: ${el.required_items!.join(" / ")}`)
+        .join("\n") +
+      "\n"
+    : "";
+
   const languageNotes = elements
     .map((el) => {
       const lang = detectElementLanguage(input.subject, el);
@@ -314,7 +363,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${structuredBlock}${flowingBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${input.presetBook ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${input.presetBook.title}』${input.presetBook.author ? ` (저자: ${input.presetBook.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
@@ -713,7 +762,11 @@ async function generateOnce(
   // 출처가 0개"인 극단적 경우에만 각주를 통째로 지웠을 뿐 "일부만 무효"인
   // 훨씬 흔한 경우는 그대로 방치돼 있었다 — 검증 실패로 확인된 출처 번호만
   // 콕 집어 각주 표시를 지운다(문장 내용은 그대로 보존, 표시만 제거).
-  const invalidNs = new Set(validatedSources.filter((s) => s.url_valid === false).map((s) => s.n));
+  // 링크 검증 실패뿐 아니라 "블로그·개인" 등급(source-quality.ts) 출처도 핵심 사실의 근거로 쓰지
+  // 않는다 — 열리는 것과 근거로 쓸 만한 것은 다르다(각주 표시만 제거, 문장은 보존).
+  const invalidNs = new Set(
+    validatedSources.filter((s) => s.url_valid === false || s.tier === "weak").map((s) => s.n)
+  );
   if (invalidNs.size > 0) {
     console.warn(`[generateEssay] 검증 실패한 출처를 가리키는 각주 제거: [${[...invalidNs].join(",")}]`);
     annotated = stripInvalidCitationMarkers(annotated, invalidNs);
@@ -798,7 +851,9 @@ ${annotated}
     const citedBook = meta?.cited_book_title
       ? { title: meta.cited_book_title, author: meta.cited_book_author || undefined, quote: meta.cited_book_quote || undefined }
       : undefined;
-    return { label, content, citedBook };
+    const element = elements.find((e) => e.label === label);
+    const requiredItems = element && isStructuredElement(element) ? element.required_items : undefined;
+    return { label, content, citedBook, requiredItems };
   });
 
   return {
@@ -898,6 +953,12 @@ export async function generateEssay(
   const soleVideoSourceBooks = detectSoleVideoSourceBookMentions(attempt.sections, attempt.sources);
   const bookMentionsNeedingVerification = extractBookMentionsNeedingVerification(attempt.sections, attempt.sources);
   const lengthIssues = checkLengthCompliance(attempt.sections, elements);
+  // 안내문의 필수 항목이 "### 항목명" 소제목으로 존재하고 내용이 있는지 기계적으로
+  // 검사한다(analyze.ts가 안내문에서 동적으로 뽑은 required_items 기준).
+  const missingItems = detectMissingRequiredItems(attempt.sections);
+  if (missingItems.length > 0) {
+    console.warn(`[generateEssay] 필수 항목 누락 감지: ${JSON.stringify(missingItems)}`);
+  }
   console.log(
     `[generateEssay] 인용구 검증 필요 섹션: ${JSON.stringify(bookMentionsNeedingVerification)} ` +
       `(진단용 — unverifiedQuotes=${JSON.stringify(unverifiedQuotes)} soleVideoSourceBooks=${JSON.stringify(soleVideoSourceBooks)})`
@@ -942,6 +1003,7 @@ export async function generateEssay(
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
     lengthIssues.length > 0 ||
+    missingItems.length > 0 ||
     authorMismatches.length > 0
   ) {
     console.warn(
@@ -989,6 +1051,14 @@ export async function generateEssay(
       }
       for (const issue of lengthIssues) {
         correctionParts.push(buildLengthCorrectionMessage(issue));
+      }
+      for (const m of missingItems) {
+        correctionParts.push(
+          `[필수 항목 누락 정정 지시 — 반드시 지킬 것] "${m.label}" 단계에서 안내문이 요구한 다음 필수 ` +
+            `항목이 "### 항목명" 소제목으로 존재하지 않거나 내용이 비어 있다: ${m.missing.join(", ")}. ` +
+            `이번에는 누락된 항목을 각각 항목명 그대로의 "### " 소제목으로 추가해 실제 내용으로 채울 것 — ` +
+            `이미 있던 다른 항목의 내용·사실(연도, 이름, 수치, 출처)은 바꾸지 말고 그대로 유지할 것.`
+        );
       }
       for (const mismatch of authorMismatches) {
         correctionParts.push(
@@ -1103,6 +1173,10 @@ export async function generateEssay(
         const stillHasUncitedBooks = detectUncitedBookMentions(retryAttempt.sections);
         const stillNeedsVerification = extractBookMentionsNeedingVerification(retryAttempt.sections, retryAttempt.sources);
         const stillHasLengthIssues = checkLengthCompliance(retryAttempt.sections, elements);
+        const stillMissingItems = detectMissingRequiredItems(retryAttempt.sections);
+        if (stillMissingItems.length > 0) {
+          console.warn(`[generateEssay] 재시도 후에도 필수 항목 누락(경고 표시): ${JSON.stringify(stillMissingItems)}`);
+        }
         // 저자 재대조는 검색을 다시 안 한다(비용 절감) — 이미 확인해둔
         // confirmedAuthor 문자열과 재시도가 실제로 정정했는지만 비교한다.
         const retryBooksWithAuthor = extractDistinctBookMentions(retryAttempt.sections).filter((b) => b.author);
@@ -1275,8 +1349,22 @@ export async function generateEssay(
     }
   }
 
+  // 필수 항목(소제목) 구조는 재시도까지 거치고도 남은 누락만 정직하게 알린다.
+  const finalMissingItems = detectMissingRequiredItems(attempt.sections);
+  const structureWarningByLabel = new Map(
+    finalMissingItems.map((m) => [
+      m.label,
+      `안내문이 요구한 항목이 비어 있어요: ${m.missing.join(", ")}. 제출 전에 이 항목을 직접 보완해주세요.`,
+    ])
+  );
+  if (finalMissingItems.length > 0) {
+    console.warn(`[generateEssay] 최종 필수 항목 누락(경고 표시): ${JSON.stringify(finalMissingItems)}`);
+  }
+
   const markdown = attempt.sections.map((s) => `## ${s.label}\n\n${s.content}`).join("\n\n");
   console.log(`[generateEssay] latency_ms=${Date.now() - start}`);
+
+  const researchFacts: NonNullable<EssayResult["researchFacts"]> = [];
 
   return {
     type: "essay",
@@ -1292,6 +1380,10 @@ export async function generateEssay(
         attempt.sources
       );
       const bookTitle = mentionedBookTitle(s);
+      if (s.requiredItems) {
+        // 조사 자료를 항목별 구조화 사실로 분해 — 순수 문자열 처리(LLM 재생성 아님).
+        researchFacts.push({ label: s.label, items: parseResearchItems(renumberedContent) });
+      }
       return {
         label: s.label,
         markdown: renumberedContent,
@@ -1299,8 +1391,11 @@ export async function generateEssay(
         lengthWarning: lengthWarningByLabel.get(s.label),
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
         noSourcesWarning: renumberedSources.length === 0 && sectionHasVerifiableClaim(s),
+        structureWarning: structureWarningByLabel.get(s.label),
       };
     }),
+    researchFacts: researchFacts.length > 0 ? researchFacts : undefined,
+    structureWarning: finalMissingItems.length > 0 ? [...structureWarningByLabel.values()].join(" ") : undefined,
     sources: attempt.sources,
     summaryLines: attempt.summaryLines,
     // 라에네크 감사(2026-09-16): 출처가 몇 개 있어도 전부 검증 실패(url_valid
@@ -1308,7 +1403,7 @@ export async function generateEssay(
     // length(검증 여부와 무관한 원본 개수)만 봐서, 6개 중 1개가 죽은 페이지로
     // 확인돼도 noSourcesWarning이 안 뜨는 문제가 있었다.
     noSourcesWarning:
-      attempt.sources.every((s) => s.url_valid === false) &&
+      attempt.sources.every((s) => s.url_valid === false || s.tier === "weak") &&
       attempt.sections.some((s) => sectionHasVerifiableClaim(s)),
     // 추천 다양성 시스템(recommendation-diversity.ts)이 이 생성에서 실제로
     // 어떤 책이 최종 확정됐는지 기록할 수 있도록 노출한다. 책이 정확히 1권일
@@ -1742,6 +1837,10 @@ function stripUnjustifiedNarrativeCitations(sections: RawSection[]): { sections:
   let strippedCount = 0;
   const newSections = sections.map((s) => {
     if (mentionedBookTitle(s)) return s; // 책 관련 각주는 정당한 경우가 많아 건드리지 않음
+    // 항목별 조사 자료("### 항목명" + 사실 불릿)는 줄마다 검증된 사실이라, 연도·수치
+    // 같은 힌트 단어가 없는 짧은 사실 줄(예: "- 출생: 미국 조지아주 애틀랜타")의
+    // 정당한 각주까지 지워버리면 항목별 출처 연결이 깨진다.
+    if (s.requiredItems) return s;
     const { text: newContent, strippedCount: n } = stripUnjustifiedCitationsFromText(s.content);
     if (n === 0) return s;
     strippedCount += n;

@@ -270,6 +270,7 @@ export default function AssignmentFlow() {
             lengthWarning: section.lengthWarning,
             authorWarning: section.authorWarning,
             noSourcesWarning: section.noSourcesWarning,
+            structureWarning: section.structureWarning,
             latency_ms: result.latency_ms,
             submissionId: result.submissionId,
           });
@@ -353,6 +354,7 @@ export default function AssignmentFlow() {
             lengthWarning: section.lengthWarning,
             authorWarning: section.authorWarning,
             noSourcesWarning: section.noSourcesWarning,
+            structureWarning: section.structureWarning,
             latency_ms: result.latency_ms,
             submissionId: result.submissionId,
           });
@@ -525,6 +527,13 @@ export default function AssignmentFlow() {
                   rows={2}
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
                 />
+                {el.required_items && el.required_items.length > 0 && (
+                  <p className="text-xs text-muted">
+                    안내문에서 찾은 필수 항목 (
+                    {el.items_format === "sections" ? "항목별로 나눠서 작성" : "글 안에서 빠짐없이 다룸"}):{" "}
+                    {el.required_items.join(" · ")}
+                  </p>
+                )}
               </div>
             ))}
           </div>

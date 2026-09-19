@@ -21,6 +21,18 @@ export interface TaskElement {
     /** 분량 기준이 공백 포함인지. 안내문에 명시 없으면 true(공백 포함). */
     counts_spaces: boolean;
   };
+  /** 안내문이 이 단계에서 "반드시 조사/작성하라"고 명시적으로 나열한 필수 항목
+   * (항목명만, 안내문 순서대로). analyze.ts가 안내문에서 동적으로 뽑는다 —
+   * 어떤 과제에도 하드코딩된 항목은 없다(예: 인권 선구자 탐구는 "인물 선정
+   * 이유/인물 배경/주요 활동/활동의 성과/인권 발달에 미친 영향", 과학 실험은
+   * "가설/준비물/실험 방법/..."). 안내문이 항목을 나열하지 않았거나 항목이 2개
+   * 미만이면 undefined — 이 경우 기존 방식(자유 서술)으로 생성된다. */
+  required_items?: string[];
+  /** "sections" = 조사·탐구·보고서·계획서처럼 항목별로 나눠 적는 산출물 — 항목마다
+   * "### 항목명" 소제목으로 생성하고 코드가 누락을 검사한다. "flowing" = 편지·
+   * 감상문·비평문·발표 대본처럼 하나의 글로 이어 쓰는 산출물 — 소제목을 강제하지
+   * 않고 항목을 빠짐없이 다루라고만 지시한다(기계적 누락 검사 불가). */
+  items_format?: "sections" | "flowing";
 }
 
 export interface AdministrativeInfo {
@@ -52,6 +64,9 @@ export interface SourceRef {
   url: string;
   /** 출처 링크 유효성 검증 결과 (N6). 검증 전에는 null */
   url_valid: boolean | null;
+  /** 도메인 기반 출처 품질 등급(source-quality.ts). "연결이 된다"와 "핵심 사실의
+   * 근거로 쓸 만하다"는 다르다 — 검증 전에는 undefined. */
+  tier?: "official" | "reliable" | "reference" | "general" | "weak";
 }
 
 export interface EssayResult {
@@ -87,7 +102,17 @@ export interface EssayResult {
     lengthWarning?: string;
     authorWarning?: string;
     noSourcesWarning?: boolean;
+    /** 안내문의 필수 항목(TaskElement.required_items, sections 형식)이 재시도
+     * 후에도 소제목으로 존재하지 않거나 비어 있을 때만 채워진다. */
+    structureWarning?: string;
   }[];
+  /** 조사 자료(sections 형식 단계)를 항목별로 분리한 구조화 사실 — 코드가 "### "
+   * 소제목 기준으로 순수 문자열 처리로 만든다(LLM 재생성 아님). plan 생성이 이
+   * 사실(연도·수치·사건)을 그대로 재사용하고 독립적으로 다시 만들지 않게 하는
+   * 단일 진실 소스. sections 형식 단계가 없으면 undefined. */
+  researchFacts?: { label: string; items: { item: string; lines: string[] }[] }[];
+  /** 위 sections와 별개로 단일 단계 케이스에 쓰는 필수 항목 누락 경고. */
+  structureWarning?: string;
   /** 글 맨 위에 제시하는 불릿 3줄 요약(학생이 스스로 검증할 수 있도록). 여러
    * 단계가 있어도 전체를 아우르는 하나의 요약이라 섹션별이 아니라 여기(최상위)
    * 에 붙는다. 모델이 못 만들었으면 빈 배열이거나 생략될 수 있다. */
@@ -141,6 +166,12 @@ export interface PlanResult {
   /** 이 생성에서 실제로 검증에 성공한 통계/사례 항목의 식별 문구 목록 —
    * 추천 다양성 시스템(recommendation-diversity.ts)이 이력을 기록할 때 쓴다. */
   verifiedItemNames?: string[];
+  /** 안내문의 필수 항목(TaskElement.required_items, sections 형식)이 재시도 후에도
+   * 소제목으로 존재하지 않을 때만 채워진다. */
+  structureWarning?: string;
+  /** 자료 수집(조사 자료)에서 확정된 연도가 아닌 연도가 이 산출물에 남았을 때만
+   * 채워진다 — 조사 자료와 최종 산출물의 사실이 어긋났다는 정직한 표시. */
+  factConsistencyWarning?: string;
 }
 
 export interface InsufficientDataResult {

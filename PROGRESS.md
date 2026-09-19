@@ -3207,6 +3207,51 @@ DB로 확인(신규 인물로 계속 분산되는 것이 이 누적 이력과 �
 [citations.ts](src/lib/gemini/citations.ts),
 [validate-sources.ts](src/lib/links/validate-sources.ts).
 
+## 자료 수집 구조화 — 안내문의 필수 항목을 동적으로 추출해 항목별 조사 자료로 생성 (2026-09-19)
+
+자료 수집이 하나의 긴 에세이로 나와서 (1) 필수 항목 누락을 알 수 없고 (2) 배경/활동/성과/영향이
+섞이고 (3) 신문 제작이 사실을 독립적으로 다시 만들어 어긋나던 문제. 기존 구조(analyze → essay →
+plan, confirmedSubject)는 유지하고 그 위에 "안내문 → 필수 항목 추출 → 항목별 생성 → 누락 검사 →
+확정 사실 재사용" 층을 추가.
+
+### 구현
+- [analyze.ts](src/lib/gemini/analyze.ts): task_element마다 `required_items`(안내문이 나열한 항목, 하드코딩 없음)
+  + `items_format`("sections"=조사·탐구형 / "flowing"=한 편의 글). 후처리로 정리(중복/긴 항목 제거, 2개 미만이면 폐기),
+  라벨이 대본·비평문·감상문·편지 등이면 코드가 flowing으로 강제(실측: 영어 발표 대본/독서 비평문이 sections로 분류돼 소제목으로 쪼개짐).
+- [research-items.ts](src/lib/research/research-items.ts) 신설: `### 항목` 분해, 누락/빈 본문 검사(`findMissingItems`),
+  항목명 변형 매칭, 연도 추출·조사자료 대비 불일치 검사. 전부 순수 문자열 처리(LLM 재생성 아님).
+- [prompts.ts](src/lib/gemini/prompts.ts) `RESEARCH_MATERIAL_RULES`: 사실 불릿+[n], 활동/성과/영향 층위 분리, 인과 미확인 시 "이어졌다" 금지,
+  `(해석)` 표시, 학생 감상은 "(학생 감상 초안…)" 표시 + 경험 날조 금지, 미수행 실험 결과값 날조 금지·실험 전 결론 단정 금지.
+- [generate-essay.ts](src/lib/gemini/generate-essay.ts): sections 단계는 항목 구조 강제, flowing은 항목 포함만 지시.
+  누락 시 기존 품질 재시도 루프(누락 항목만 추가, 기존 사실 유지)에 편입, 재시도 후에도 남으면 `structureWarning`.
+  항목별 사실 줄의 정당한 각주를 지우던 `stripUnjustifiedNarrativeCitations`는 구조화 단계에서 제외.
+  `EssayResult.researchFacts`(항목별 구조화 사실) 노출. `confirmedSubject`는 그대로.
+- [generate-plan.ts](src/lib/gemini/generate-plan.ts): 자료 수집 결과를 항목별 사실 + 확정 연도 목록으로 프롬프트에 주입,
+  산출물 필수 항목을 `### ` 소제목으로 강제, 누락/조사자료에 없는 연도 감지 시 1회 재시도, 남으면 `structureWarning`/`factConsistencyWarning`.
+- [source-quality.ts](src/lib/links/source-quality.ts) 신설 + validateSources가 `tier` 부여(공식/신뢰매체/백과·위키/일반/블로그·개인).
+  "블로그·개인" 출처는 링크가 열려도 각주 제거(핵심 사실 근거 불가). UI에 등급 표시 + "연결 확인됨≠주장 뒷받침" 안내 문구.
+- UI: 확인 화면에 추출된 필수 항목 표시, 구조/일관성 경고 배너.
+
+### 검증
+- 격리 테스트(실행함): research-items(누락·빈 본문·연도 불일치·항목명 변형), source-quality 12/12 PASS.
+- 실제 API(실행함): MLK — 필수 5항목 전부 소제목 존재, 신문 6항목 전부 존재, 자료수집·신문 연도 집합 동일(1929/1954/1955/1963/1964),
+  구조/일관성 경고 없음. 10종 전부 analyze→essay/plan 실행 완료·오류 0, 유형마다 다른 항목 추출(신조어에 인물 배경 없음, 과학 실험 결과는 "예상"
+  표기·수치 날조 없음, 토론 찬반 유지, 영어 한글비율 0.004, 독서 사피엔스 고정, 포스터 손제작 체크리스트 분리). 수정 후 03/06/10/MLK 재실행으로 재확인.
+
+### 남은 문제
+- 출처 품질은 "등급 표시 + 블로그 제거"까지만 — 검색이 위키/일반 사이트만 돌려주면(MLK: namu.wiki 2, wikipedia 1, 공식 1) 상위 출처 우선 탐색을 강제할 수단은 없음.
+  페이지 내용이 주장을 실제로 뒷받침하는지의 자동 검증은 여전히 없음(UI 안내만).
+- flowing 유형(대본·비평문·편지)은 항목 포함을 기계적으로 검사하지 못함(프롬프트 지시만).
+- 학생 감상 초안 표시는 프롬프트 지시라 모델이 빠뜨릴 수 있음(MLK 자료수집의 "인물 선정 이유"에는 표시가 안 붙음).
+- 항목 구조는 재생성(F6) 경로에서 이전 결과에 이미 required_items가 저장된 경우에만 유지됨(구 기록은 기존 방식).
+- **비로그인 생성 문제(코드 확인만, 라이브 미검증)**: essay·plan 라우트가 각각 `enforceGenerationLimit`/`recordGeneration`을 호출해
+  비로그인(평생 1회)은 essay 후 plan이 429, 로그인(하루 2회)도 essay+plan 한 과제가 하루치를 소진. 제한 우회는 구현하지 않았고,
+  "한 과제=1회"로 셀지는 정책 결정이 필요. 개발 환경에서 Turnstile 시크릿이 설정돼 있어 스크립트로 게스트 흐름 재현 불가.
+  mock session/test mode는 코드에 없음(테스트는 공식 관리자 코드 로그인 사용).
+
+**변경 파일**: analyze.ts, generate-essay.ts, generate-plan.ts, prompts.ts, validate-sources.ts, research-items.ts(신설),
+source-quality.ts(신설), types/task.ts, AssignmentFlow.tsx, ResultPanel.tsx.
+
 ## 다음에 할 일
 
 1. ~~`0008`/`0009`/`0010` 마이그레이션 실행~~ — **2026-09-01에 사용자가

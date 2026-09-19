@@ -1,5 +1,6 @@
 import { getServiceClient } from "@/lib/supabase/service-client";
 import type { SourceRef } from "@/types/task";
+import { classifySourceTier } from "./source-quality";
 
 const TIMEOUT_MS = 5000;
 
@@ -98,5 +99,10 @@ async function logValidations(results: { valid: boolean }[]): Promise<void> {
 export async function validateSources(sources: SourceRef[]): Promise<SourceRef[]> {
   const checks = await Promise.all(sources.map((s) => checkUrl(s.url)));
   if (checks.length > 0) void logValidations(checks);
-  return sources.map((s, i) => ({ ...s, url_valid: checks[i].valid, url: checks[i].finalUrl }));
+  return sources.map((s, i) => ({
+    ...s,
+    url_valid: checks[i].valid,
+    url: checks[i].finalUrl,
+    tier: classifySourceTier(checks[i].finalUrl),
+  }));
 }
