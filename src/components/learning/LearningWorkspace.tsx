@@ -147,6 +147,8 @@ function SubjectPicker({
 }) {
   const [tab, setTab] = useState<"ai" | "direct">("ai");
   const [candidates, setCandidates] = useState<SubjectCandidate[] | null>(null);
+  const [target, setTarget] = useState<{ typeLabel: string; constraints: string[] } | null>(null);
+  const [clarify, setClarify] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -171,11 +173,23 @@ function SubjectPicker({
     setLoading(true);
     setError(null);
     try {
-      const data = await learningApi<{ candidates: SubjectCandidate[] }>(
+      const data = await learningApi<{
+        candidates: SubjectCandidate[];
+        target?: { typeLabel: string; constraints: string[] };
+        needsClarification?: boolean;
+        message?: string | null;
+      }>(
         `/api/learning/sessions/${sessionId}/suggest-subject`,
         { method: "POST" }
       );
-      setCandidates(data.candidates);
+      setTarget(data.target ?? null);
+      if (data.needsClarification) {
+        setClarify(data.message ?? "안내문에서 어떤 대상을 고르라는 건지 확인되지 않아요.");
+        setTab("direct");
+      } else {
+        setClarify(null);
+        setCandidates(data.candidates);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "추천을 불러오지 못했어요.");
     } finally {
@@ -208,6 +222,11 @@ function SubjectPicker({
 
       {tab === "ai" ? (
         <div className="space-y-3">
+          {target && !clarify && (
+            <p className="text-xs text-muted">
+              이 과제는 <b>{target.typeLabel}</b>을(를) 고르는 과제예요{target.constraints.length ? ` (조건: ${target.constraints.join(", ")})` : ""}.
+            </p>
+          )}
           {!candidates && (
             <button
               onClick={suggest}
@@ -228,6 +247,15 @@ function SubjectPicker({
                   >
                     <span className="block text-sm font-medium">{c.name}</span>
                     <span className="mt-0.5 block text-xs text-muted">{c.reason}</span>
+                    {c.fieldNotes && c.fieldNotes.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5 text-xs text-muted">
+                        {c.fieldNotes.map((f) => (
+                          <li key={f.field}>
+                            <b className="text-foreground/80">{f.field}</b> · {f.note}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </button>
                 </li>
               ))}
@@ -266,6 +294,12 @@ function SubjectPicker({
             정하기
           </button>
         </form>
+      )}
+
+      {clarify && (
+        <p className="mt-3 rounded-xl border border-border px-4 py-3 text-sm text-muted">
+          {clarify} 대상을 직접 정해서 입력해 주세요.
+        </p>
       )}
 
       {error && (

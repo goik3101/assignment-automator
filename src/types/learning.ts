@@ -87,7 +87,10 @@ export interface LearningUsage {
 
 export interface SubjectCandidate {
   name: string;
+  /** 과제의 대상 조건(예: 인권 선구자)을 왜 충족하는지. */
   reason: string;
+  /** 조사 항목별 배경 단서(답안이 아니라 자료 조사의 출발점). */
+  fieldNotes?: { field: string; note: string }[];
 }
 
 export const MAX_DRAFT_CHARS = 5000;
