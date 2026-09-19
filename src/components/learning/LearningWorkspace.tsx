@@ -634,6 +634,14 @@ export default function LearningWorkspace({ id }: { id: string }) {
 
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-xl font-bold">{selected.label}</h2>
+                <div className="flex items-center gap-3">
+                <button
+                  onClick={handleComplete}
+                  disabled={!draft.trim() || selected.status === "completed"}
+                  className="rounded-full border border-foreground/50 px-5 py-1.5 text-sm font-semibold hover:opacity-70 disabled:opacity-40"
+                >
+                  {selected.status === "completed" ? "완료됨" : "이 항목 완료"}
+                </button>
                 <div className="inline-flex rounded-full border border-border p-0.5 text-xs lg:hidden">
                   {(["material", "write"] as Pane[]).map((p) => (
                     <button
@@ -645,6 +653,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                       {p === "material" ? "자료" : "작성"}
                     </button>
                   ))}
+                </div>
                 </div>
               </div>
 
@@ -749,13 +758,6 @@ export default function LearningWorkspace({ id }: { id: string }) {
                       className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
                     >
                       {feedbackBusy ? "살펴보는 중..." : "AI 피드백 받기"}
-                    </button>
-                    <button
-                      onClick={handleComplete}
-                      disabled={!draft.trim() || selected.status === "completed"}
-                      className="rounded-full border border-foreground/50 px-5 py-2 text-sm font-semibold hover:opacity-70 disabled:opacity-40"
-                    >
-                      이 항목 완료
                     </button>
                     <button onClick={() => setAskOpen((v) => !v)} className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
                       {askOpen ? "질문 닫기" : "표현/문법 질문하기"}
