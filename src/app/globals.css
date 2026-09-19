@@ -10,15 +10,16 @@
    이 토글 하나로 함께 전환된다. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* 기획서 12번 디자인 원칙: 그라디언트/이모지/화려한 카드 그림자 지양,
-   중성적인 색상 + 정돈된 산세리프, 여백을 넉넉히 쓰는 차분한 톤. */
+/* "수행평가 도우미" Figma 시안: 순수 검정/흰색 단색 팔레트(포인트 색 없음 — accent는 전경색),
+   얇은 테두리, 굵은 서체, 알약형 입력·버튼. 색은 전부 아래 토큰으로만 쓰므로 이 값을
+   바꾸면 사이트 전체가 함께 바뀐다. */
 :root {
-  --background: #fafaf9;
-  --surface: #ffffff;
-  --foreground: #1c1c1a;
-  --muted: #6b6b66;
-  --border: #e7e5e1;
-  --accent: #2f6f5e;
+  --background: #ffffff;
+  --surface: #f5f5f5;
+  --foreground: #000000;
+  --muted: #5f5f5f;
+  --border: #cfcfcf;
+  --accent: #000000;
   --accent-foreground: #ffffff;
 }
 
@@ -35,40 +36,6 @@
 /* 라이트/다크 수동 토글 (ThemeToggle.tsx): layout.tsx의 인라인 스크립트가
    방문 즉시 data-theme을 확정해서 넣어주므로, 여기서는 그 값만 보면 된다. */
 :root[data-theme="dark"] {
-  --background: #171715;
-  --surface: #1f1f1c;
-  --foreground: #ececea;
-  --muted: #9b9b94;
-  --border: #302f2b;
-  --accent: #6fb3a0;
-  --accent-foreground: #10231d;
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo",
-    "Malgun Gothic", system-ui, sans-serif;
-}
-
-/* "수행평가 도우미" Figma 시안 스코프 — 순수 검정/흰색 단색 팔레트, 얇은 테두리, 굵은
-   서체, 알약형 컨트롤. 전역 토큰을 바꾸지 않고 이 클래스가 붙은 영역(사이드바, 학습
-   모드 화면)에서만 같은 토큰 이름(--background 등)을 덮어쓰므로, 토큰을 쓰는 기존
-   컴포넌트는 그대로 두고 이 영역만 시안 색으로 바뀐다. 시안에는 포인트 색이 없어서
-   accent를 전경색(흰색/검정)으로 둔다. 사이트 전체를 시안으로 바꿀 때는 아래 값을
-   :root 토큰으로 옮기면 된다. */
-.figma {
-  --background: #ffffff;
-  --surface: #f5f5f5;
-  --foreground: #000000;
-  --muted: #5f5f5f;
-  --border: #cfcfcf;
-  --accent: #000000;
-  --accent-foreground: #ffffff;
-  background: var(--background);
-  color: var(--foreground);
-}
-:root[data-theme="dark"] .figma {
   --background: #000000;
   --surface: #111111;
   --foreground: #ffffff;
@@ -76,4 +43,11 @@ body {
   --border: #3d3d3d;
   --accent: #ffffff;
   --accent-foreground: #000000;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo",
+    "Malgun Gothic", system-ui, sans-serif;
 }

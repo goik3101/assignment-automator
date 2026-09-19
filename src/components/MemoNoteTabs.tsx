@@ -52,7 +52,7 @@ export default function MemoNoteTabs({ historyId, children }: { historyId: strin
       {tab === "result" && children}
 
       {tab === "memo" && (
-        <div className="rounded-lg border border-border bg-surface p-6">
+        <div className="rounded-2xl border border-border bg-surface p-6">
           {loading && <p className="text-sm text-muted">암기노트를 만드는 중...</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
           {memo && (

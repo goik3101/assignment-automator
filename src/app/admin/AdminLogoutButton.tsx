@@ -11,7 +11,7 @@ export default function AdminLogoutButton() {
         router.push("/admin/login");
         router.refresh();
       }}
-      className="rounded-md border border-border px-3 py-1.5 text-xs font-medium"
+      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium"
     >
       로그아웃
     </button>

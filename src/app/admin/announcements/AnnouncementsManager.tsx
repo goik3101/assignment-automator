@@ -41,7 +41,7 @@ export default function AnnouncementsManager({ initialItems }: { initialItems: A
 
   return (
     <div className="space-y-6">
-      <section className="space-y-3 rounded-md border border-border bg-surface p-4">
+      <section className="space-y-3 rounded-2xl border border-border bg-surface p-4">
         <h2 className="text-sm font-medium">새 공지 작성</h2>
         <p className="text-xs text-muted">
           작성하면 즉시 메인 화면 구석에 노출돼요(가장 최근 글 하나만 보여줌). 예전 글을 다시
@@ -53,12 +53,12 @@ export default function AnnouncementsManager({ initialItems }: { initialItems: A
           onChange={(e) => setMessage(e.target.value)}
           rows={2}
           placeholder="예: 9/20(토) 새벽 2시~4시 서버 점검이 있어요."
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm"
         />
         <button
           onClick={handlePost}
           disabled={!message.trim() || posting}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+          className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
         >
           {posting ? "게시 중..." : "게시"}
         </button>
@@ -90,7 +90,7 @@ export default function AnnouncementsManager({ initialItems }: { initialItems: A
                 <button
                   onClick={() => handleDelete(item.id)}
                   disabled={deletingId === item.id}
-                  className="shrink-0 rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-40 dark:border-red-800 dark:text-red-400"
+                  className="shrink-0 rounded-full border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-40 dark:border-red-800 dark:text-red-400"
                 >
                   {deletingId === item.id ? "삭제 중..." : "삭제"}
                 </button>

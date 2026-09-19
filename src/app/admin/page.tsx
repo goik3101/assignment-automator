@@ -17,26 +17,26 @@ export default async function AdminDashboardPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-8 px-6 py-12">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">관리자 대시보드</h1>
+        <h1 className="text-[22px] font-bold tracking-tight">관리자 대시보드</h1>
         <AdminLogoutButton />
       </div>
 
       <nav className="flex flex-wrap gap-2">
         <Link
           href="/admin/feedback"
-          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
+          className="rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
         >
           문의·피드백
         </Link>
         <Link
           href="/admin/users"
-          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
+          className="rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
         >
           사용자 목록
         </Link>
         <Link
           href="/admin/announcements"
-          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
+          className="rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface"
         >
           공지사항
         </Link>
@@ -81,7 +81,7 @@ export default async function AdminDashboardPage() {
 
 function StatCard({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-md border border-border bg-surface p-4">
+    <div className="rounded-2xl border border-border bg-surface p-4">
       <p className="text-xs text-muted">{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
     </div>

@@ -43,7 +43,7 @@ export default function ThemeToggle() {
         onClick={toggle}
         aria-label={theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}
         title={theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}
-        className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-background"
+        className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-background"
       >
         <span className="shrink-0">
           {theme === "dark" ? (

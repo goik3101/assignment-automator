@@ -9,7 +9,7 @@ export default async function AdminUsersPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-6 py-12">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">사용자 목록 ({users.length}명)</h1>
+        <h1 className="text-[22px] font-bold tracking-tight">사용자 목록 ({users.length}명)</h1>
         <Link href="/admin" className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
           대시보드로
         </Link>

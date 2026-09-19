@@ -18,7 +18,7 @@ export default function AnnouncementBanner() {
   if (!message) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 max-w-xs rounded-lg border border-accent/30 bg-surface p-3 text-xs shadow-lg">
+    <div className="fixed bottom-4 right-4 z-40 max-w-xs rounded-2xl border border-accent/30 bg-surface p-3 text-xs shadow-lg">
       <p className="mb-1 font-medium text-accent">공지</p>
       <p className="whitespace-pre-wrap text-foreground">{message}</p>
     </div>

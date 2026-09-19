@@ -52,7 +52,7 @@ export default function AuthBar() {
   // 게 맞다. 관리자 세션 쿠키가 이 화면이 보여줄 정체성의 최종 기준이다.
   if (isAdmin) {
     return (
-      <div className="rounded-md border border-accent/30 bg-accent/5 p-2.5">
+      <div className="rounded-2xl border border-accent/30 bg-accent/5 p-2.5">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
           <p className="truncate text-xs text-foreground">관리자</p>
@@ -69,7 +69,7 @@ export default function AuthBar() {
 
   if (user) {
     return (
-      <div className="rounded-md border border-accent/30 bg-accent/5 p-2.5">
+      <div className="rounded-2xl border border-accent/30 bg-accent/5 p-2.5">
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
           <p className="truncate text-xs text-foreground">{user.email}</p>
@@ -86,14 +86,14 @@ export default function AuthBar() {
 
   if (sent) {
     return (
-      <div className="rounded-md border border-border bg-background p-2.5">
+      <div className="rounded-2xl border border-border bg-background p-2.5">
         <p className="text-xs text-muted">{email}로 링크를 보냈어요. 메일함을 확인해주세요.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border border-border bg-background p-2.5 space-y-1.5">
+    <div className="rounded-2xl border border-border bg-background p-2.5 space-y-1.5">
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-muted" aria-hidden />
         <p className="text-xs text-muted">로그인 전</p>
@@ -104,12 +104,12 @@ export default function AuthBar() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="이메일로 로그인"
-        className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs"
+        className="w-full rounded-full border border-border bg-surface px-2.5 py-1.5 text-xs"
       />
       <button
         onClick={handleSendLink}
         disabled={!email.includes("@") || sending}
-        className="w-full rounded-md border border-border px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
+        className="w-full rounded-full border border-border px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
       >
         {sending ? "전송 중..." : "로그인 링크 받기"}
       </button>

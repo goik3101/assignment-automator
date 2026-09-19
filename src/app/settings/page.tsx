@@ -78,9 +78,9 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-6 py-12">
-      <h1 className="text-lg font-semibold tracking-tight">설정</h1>
+      <h1 className="text-[22px] font-bold tracking-tight">설정</h1>
 
-      <section className="rounded-md border border-border bg-surface p-5">
+      <section className="rounded-2xl border border-border bg-surface p-5">
         <ThemeToggle />
       </section>
 
@@ -88,14 +88,14 @@ export default function SettingsPage() {
         <p className="text-sm text-muted">개인화 정보 설정은 로그인 후 이용할 수 있어요.</p>
       ) : (
         <>
-          <section className="space-y-4 rounded-md border border-border bg-surface p-5">
+          <section className="space-y-4 rounded-2xl border border-border bg-surface p-5">
             <div>
               <h2 className="text-sm font-medium">계정 정보</h2>
               <p className="mt-1 text-sm text-muted">{isAdmin ? "관리자 (예약 계정)" : user.email}</p>
             </div>
           </section>
 
-          <section className="space-y-4 rounded-md border border-border bg-surface p-5">
+          <section className="space-y-4 rounded-2xl border border-border bg-surface p-5">
             <h2 className="text-sm font-medium">개인화 정보 (선택)</h2>
             <p className="text-xs text-muted">
               결과물에 자연스럽게 녹아들어요. 학교명은 받지 않습니다.
@@ -108,7 +108,7 @@ export default function SettingsPage() {
                 onChange={(e) => setInterests(e.target.value)}
                 rows={3}
                 placeholder="예: 축구를 좋아함, 반려동물을 키움"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm"
               />
             </div>
 
@@ -118,7 +118,7 @@ export default function SettingsPage() {
                 value={textbookPublisher}
                 onChange={(e) => setTextbookPublisher(e.target.value)}
                 placeholder="예: 미래엔, 천재교육"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                className="w-full rounded-full border border-border bg-background px-3 py-2 text-sm"
               />
             </div>
 
@@ -127,7 +127,7 @@ export default function SettingsPage() {
               <select
                 value={schoolType}
                 onChange={(e) => setSchoolType(e.target.value)}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                className="w-full rounded-full border border-border bg-background px-3 py-2 text-sm"
               >
                 <option value="">선택 안 함</option>
                 {SCHOOL_TYPES.map((t) => (
@@ -141,7 +141,7 @@ export default function SettingsPage() {
             <button
               onClick={handleSave}
               disabled={saveState === "saving"}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+              className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
             >
               {saveState === "saving" ? "저장 중..." : saveState === "saved" ? "저장됨" : "저장"}
             </button>
@@ -149,19 +149,19 @@ export default function SettingsPage() {
         </>
       )}
 
-      <section id="feedback" className="space-y-3 rounded-md border border-border bg-surface p-5 scroll-mt-6">
+      <section id="feedback" className="space-y-3 rounded-2xl border border-border bg-surface p-5 scroll-mt-6">
         <h2 className="text-sm font-medium">문의·피드백</h2>
         <textarea
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
           rows={3}
           placeholder="불편한 점이나 제안해주실 내용을 적어주세요"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm"
         />
         <button
           onClick={handleFeedbackSubmit}
           disabled={!feedback.trim()}
-          className="rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-40"
+          className="rounded-full border border-border px-4 py-2 text-sm font-medium disabled:opacity-40"
         >
           제출
         </button>
@@ -181,7 +181,7 @@ export default function SettingsPage() {
       )}
 
       {user && !isAdmin && (
-        <section className="space-y-3 rounded-md border border-red-200 p-5 dark:border-red-900">
+        <section className="space-y-3 rounded-2xl border border-red-200 p-5 dark:border-red-900">
           <h2 className="text-sm font-medium text-red-700 dark:text-red-400">계정 탈퇴</h2>
           <p className="text-xs text-muted">
             탈퇴하면 히스토리를 포함한 모든 개인 데이터가 삭제되며 되돌릴 수 없습니다.
@@ -189,7 +189,7 @@ export default function SettingsPage() {
           {!confirmingDelete ? (
             <button
               onClick={() => setConfirmingDelete(true)}
-              className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 dark:border-red-800 dark:text-red-400"
+              className="rounded-full border border-red-300 px-4 py-2 text-sm font-medium text-red-700 dark:border-red-800 dark:text-red-400"
             >
               계정 탈퇴
             </button>
@@ -198,13 +198,13 @@ export default function SettingsPage() {
               <button
                 onClick={handleDeleteAccount}
                 disabled={deleting}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                className="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
               >
                 {deleting ? "삭제 중..." : "정말 삭제할게요"}
               </button>
               <button
                 onClick={() => setConfirmingDelete(false)}
-                className="rounded-md border border-border px-4 py-2 text-sm font-medium"
+                className="rounded-full border border-border px-4 py-2 text-sm font-medium"
               >
                 취소
               </button>

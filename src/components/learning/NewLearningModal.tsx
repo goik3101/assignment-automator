@@ -92,7 +92,7 @@ export default function NewLearningModal({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-learning-title"
-        className="figma relative max-h-[92vh] w-full max-w-[640px] overflow-y-auto rounded-2xl border border-border !bg-surface px-8 py-7 shadow-2xl"
+        className="relative max-h-[92vh] w-full max-w-[640px] overflow-y-auto rounded-2xl border border-border bg-surface px-8 py-7 shadow-2xl"
       >
         <button
           onClick={onClose}

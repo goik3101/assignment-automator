@@ -9,7 +9,7 @@ export default function OnboardingChecklist({ completed }: { completed: [boolean
   const doneCount = completed.filter(Boolean).length;
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-5">
+    <div className="rounded-2xl border border-border bg-surface p-5">
       <p className="mb-3 text-xs font-medium text-muted">시작하기 {doneCount}/3</p>
       <ol className="space-y-2.5">
         {STEPS.map((label, i) => {

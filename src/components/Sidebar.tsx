@@ -7,6 +7,7 @@ import AuthBar from "./AuthBar";
 import { Logo } from "./Logo";
 import { useAdminStatus } from "@/lib/admin/use-admin-status";
 import SidebarWorklist from "./SidebarWorklist";
+import SidebarQuickActions from "./SidebarQuickActions";
 
 const NAV_ITEMS = [
   {
@@ -86,7 +87,7 @@ export default function Sidebar() {
 
       <aside
         className={[
-          "figma shrink-0 border-r border-border flex flex-col",
+          "shrink-0 border-r border-border flex flex-col",
           "md:h-screen md:sticky md:top-0",
           collapsed ? "md:w-14" : "md:w-56",
           open ? "block" : "hidden md:flex",
@@ -164,7 +165,14 @@ export default function Sidebar() {
         {!collapsed && <SidebarWorklist onNavigate={() => setOpen(false)} />}
         <div className="flex-1" />
 
-        <div className="border-t border-border p-3">{!collapsed && <AuthBar />}</div>
+        <div className="border-t border-border p-3">
+          {!collapsed && (
+            <>
+              <SidebarQuickActions onNavigate={() => setOpen(false)} />
+              <AuthBar />
+            </>
+          )}
+        </div>
       </aside>
     </>
   );

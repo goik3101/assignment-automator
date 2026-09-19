@@ -9,7 +9,7 @@ export default async function AdminFeedbackPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-6 py-12">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">문의·피드백</h1>
+        <h1 className="text-[22px] font-bold tracking-tight">문의·피드백</h1>
         <Link href="/admin" className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
           대시보드로
         </Link>
@@ -20,7 +20,7 @@ export default async function AdminFeedbackPage() {
       ) : (
         <ul className="space-y-3">
           {items.map((item) => (
-            <li key={item.id} className="rounded-md border border-border bg-surface p-4">
+            <li key={item.id} className="rounded-2xl border border-border bg-surface p-4">
               <div className="mb-2 flex items-center justify-between text-xs text-muted">
                 <span>{new Date(item.created_at).toLocaleString("ko-KR")}</span>
                 <span>{item.from_logged_in_user ? "로그인 사용자" : "비로그인"}</span>

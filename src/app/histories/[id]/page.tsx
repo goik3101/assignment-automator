@@ -36,7 +36,7 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-6 py-12">
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">{history.title || history.subject}</h1>
+        <h1 className="text-[22px] font-bold tracking-tight">{history.title || history.subject}</h1>
         <p className="mt-1 text-xs text-muted">
           {history.subject} · {new Date(history.created_at).toLocaleString("ko-KR")}
         </p>

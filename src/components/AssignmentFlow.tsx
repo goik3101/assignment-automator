@@ -13,7 +13,6 @@ import type {
 import { EssayPanel, PlanPanel } from "./ResultPanel";
 import Turnstile from "./Turnstile";
 import OnboardingChecklist from "./OnboardingChecklist";
-import { Logo } from "./Logo";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { isPresentationTask } from "@/lib/util/presentation";
 
@@ -376,11 +375,8 @@ export default function AssignmentFlow() {
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-12">
       <header className="mb-8">
-        <p className="text-xs font-medium tracking-wide text-muted">AI 수행평가 도우미</p>
-        <h1 className="mt-2">
-          <Logo variant="wordmark" height={32} />
-        </h1>
-        <p className="mt-2 text-sm text-muted">겹치지 않는, 출처 있는 수행평가 도우미</p>
+        <h1 className="text-[22px] font-bold tracking-tight">새 수행평가</h1>
+        <p className="mt-1 text-sm text-muted">겹치지 않는, 출처 있는 수행평가 도우미</p>
       </header>
 
       {errorMessage && (
@@ -391,71 +387,81 @@ export default function AssignmentFlow() {
 
       {step === "input" && (
         <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-surface p-6 space-y-6">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-sm font-medium">수행평가 안내문 사진</label>
-                {user && latestHistory && (
-                  <button
-                    onClick={handleUseLatest}
-                    className="text-xs text-accent underline underline-offset-2 hover:no-underline"
-                  >
-                    최근 불러오기
-                  </button>
-                )}
+          <div className="rounded-2xl border border-border bg-surface px-6 py-7">
+            <div className="flex flex-col items-center gap-6">
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold">사진 넣기</h2>
+                  {user && latestHistory && (
+                    <button
+                      onClick={handleUseLatest}
+                      className="text-xs text-muted underline underline-offset-2 hover:text-foreground"
+                    >
+                      최근 불러오기
+                    </button>
+                  )}
+                </div>
+                <label className="flex h-[235px] w-[185px] cursor-pointer items-center justify-center border border-dashed border-foreground/70 transition-opacity hover:opacity-70">
+                  {imagePreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={imagePreview} alt="업로드한 안내문 미리보기" className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <svg viewBox="0 0 20 20" fill="none" className="h-14 w-14">
+                      <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
+                    </svg>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      setImageFile(file);
+                      setImagePreview(file ? URL.createObjectURL(file) : null);
+                    }}
+                  />
+                </label>
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  setImageFile(file);
-                  setImagePreview(file ? URL.createObjectURL(file) : null);
-                }}
-                className="block w-full text-sm text-muted file:mr-4 file:rounded-md file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-accent-foreground"
-              />
-              {imagePreview && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={imagePreview} alt="업로드한 안내문 미리보기" className="mt-3 max-h-64 rounded-md border border-border" />
-              )}
-            </div>
 
-            <div className="text-center text-xs text-muted">또는</div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-sm font-medium">주제 직접 입력</label>
-                {topicText.length > 0 && (
-                  <span className="text-xs text-muted">{topicText.length}자</span>
-                )}
+              <div className="w-full">
+                <div className="mb-2 flex items-center justify-center gap-3">
+                  <label htmlFor="topic-text" className="block text-xl font-bold">
+                    사진 넣기 또는 주제 설명
+                  </label>
+                  {topicText.length > 0 && <span className="text-xs text-muted">{topicText.length}자</span>}
+                </div>
+                <input
+                  id="topic-text"
+                  type="text"
+                  value={topicText}
+                  onChange={(e) => setTopicText(e.target.value)}
+                  placeholder="예: 어린 왕자 독서감상문"
+                  className="w-full rounded-full border border-foreground/50 bg-transparent px-5 py-2 text-sm"
+                />
               </div>
-              <input
-                type="text"
-                value={topicText}
-                onChange={(e) => setTopicText(e.target.value)}
-                placeholder="예: 어린 왕자 독서감상문"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              />
-            </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium">상세 설명 (선택)</label>
-              <textarea
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
-                placeholder={instructionPlaceholder}
-                rows={3}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              />
-            </div>
+              <div className="w-full">
+                <label htmlFor="instructions-text" className="mb-2 block text-center text-xl font-bold">
+                  상세 입력 <span className="text-sm font-normal text-muted">(선택)</span>
+                </label>
+                <textarea
+                  id="instructions-text"
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  placeholder={instructionPlaceholder}
+                  rows={3}
+                  className="w-full rounded-2xl border border-foreground/50 bg-transparent px-5 py-3 text-sm"
+                />
+              </div>
 
-            <button
-              onClick={handleAnalyze}
-              disabled={!imageFile && !topicText.trim()}
-              className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40"
-            >
-              분석하기
-            </button>
+              <button
+                onClick={handleAnalyze}
+                disabled={!imageFile && !topicText.trim()}
+                className="rounded-full bg-accent px-12 py-2.5 text-sm font-bold text-accent-foreground disabled:opacity-40"
+              >
+                분석하기
+              </button>
+            </div>
           </div>
 
           <OnboardingChecklist completed={[false, false, false]} />
@@ -468,25 +474,25 @@ export default function AssignmentFlow() {
 
       {step === "confirm" && coreTaskInfo && (
         <div className="space-y-6">
-          <div className="rounded-md border border-border bg-surface p-4">
+          <div className="rounded-2xl border border-border bg-surface p-4">
             <p className="text-xs text-muted mb-1">과목</p>
             <input
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-full border border-border bg-background px-3 py-2 text-sm"
             />
           </div>
 
-          <div className="rounded-md border border-border bg-surface p-4">
+          <div className="rounded-2xl border border-border bg-surface p-4">
             <p className="text-xs text-muted mb-1">주제</p>
             <input
               value={coreTaskInfo.topic}
               onChange={(e) => setCoreTaskInfo({ ...coreTaskInfo, topic: e.target.value })}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-full border border-border bg-background px-3 py-2 text-sm"
             />
           </div>
 
-          <div className="rounded-md border border-border bg-surface p-4">
+          <div className="rounded-2xl border border-border bg-surface p-4">
             <p className="text-xs text-muted mb-2">요구사항</p>
             <textarea
               value={coreTaskInfo.requirements.join("\n")}
@@ -497,7 +503,7 @@ export default function AssignmentFlow() {
                 })
               }
               rows={4}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm"
             />
             <p className="mt-1 text-xs text-muted">한 줄에 하나씩</p>
           </div>
@@ -505,12 +511,12 @@ export default function AssignmentFlow() {
           <div className="space-y-3">
             <p className="text-xs text-muted">산출물 요소</p>
             {coreTaskInfo.task_elements.map((el, idx) => (
-              <div key={idx} className="rounded-md border border-border bg-surface p-4 space-y-2">
+              <div key={idx} className="rounded-2xl border border-border bg-surface p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <select
                     value={el.type}
                     onChange={(e) => updateElement(idx, { type: e.target.value as TaskElement["type"] })}
-                    className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+                    className="rounded-full border border-border bg-background px-2 py-1 text-xs"
                   >
                     <option value="text_submission">완성 원고로 제출 가능</option>
                     <option value="external_production">외부 툴로 별도 제작 필요</option>
@@ -518,14 +524,14 @@ export default function AssignmentFlow() {
                   <input
                     value={el.label}
                     onChange={(e) => updateElement(idx, { label: e.target.value })}
-                    className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+                    className="flex-1 rounded-full border border-border bg-background px-3 py-1.5 text-sm"
                   />
                 </div>
                 <textarea
                   value={el.description}
                   onChange={(e) => updateElement(idx, { description: e.target.value })}
                   rows={2}
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
+                  className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-xs"
                 />
                 {el.required_items && el.required_items.length > 0 && (
                   <p className="text-xs text-muted">
@@ -539,7 +545,7 @@ export default function AssignmentFlow() {
           </div>
 
           {adminInfo && (adminInfo.due_date || adminInfo.submission_method || adminInfo.grading_criteria) && (
-            <div className="rounded-md border border-border bg-surface p-4 text-xs text-muted space-y-1">
+            <div className="rounded-2xl border border-border bg-surface p-4 text-xs text-muted space-y-1">
               <p className="font-medium text-foreground">행정정보 (참고용)</p>
               {adminInfo.due_date && <p>제출기한: {adminInfo.due_date}</p>}
               {adminInfo.submission_method && <p>제출방법: {adminInfo.submission_method}</p>}
@@ -561,7 +567,7 @@ export default function AssignmentFlow() {
           <button
             onClick={handleGenerate}
             disabled={(!user && !!TURNSTILE_SITE_KEY && !turnstileToken) || !subject.trim()}
-            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40"
+            className="w-full rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40"
           >
             이 내용으로 생성하기
           </button>
@@ -574,7 +580,7 @@ export default function AssignmentFlow() {
       {step === "result" && (
         <div className="space-y-6">
           {essaySummaryLines.length > 0 && (
-            <div className="rounded-md border border-border bg-surface p-4">
+            <div className="rounded-2xl border border-border bg-surface p-4">
               <p className="mb-2 text-xs font-medium text-muted">전체 요약</p>
               <ul className="list-disc space-y-1 pl-5 text-sm">
                 {essaySummaryLines.map((line, i) => (
@@ -586,21 +592,21 @@ export default function AssignmentFlow() {
           {items.map((item, idx) => {
             if (item.status === "loading") {
               return (
-                <div key={idx} className="rounded-md border border-border bg-surface p-6 text-sm text-muted">
+                <div key={idx} className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted">
                   {item.element.label} 생성 중...
                 </div>
               );
             }
             if (item.status === "error") {
               return (
-                <div key={idx} className="rounded-md border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+                <div key={idx} className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
                   {item.element.label}: {item.message}
                 </div>
               );
             }
             if (item.status === "insufficient") {
               return (
-                <div key={idx} className="rounded-md border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                <div key={idx} className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
                   {item.element.label}: 자료가 부족해 정확한 생성이 어려웠어요. ({item.reason})
                 </div>
               );
@@ -639,7 +645,7 @@ export default function AssignmentFlow() {
               setItems([]);
               setEssaySummaryLines([]);
             }}
-            className="w-full rounded-md border border-border px-4 py-2.5 text-sm font-medium"
+            className="w-full rounded-full border border-border px-4 py-2.5 text-sm font-medium"
           >
             새 수행평가 시작하기
           </button>

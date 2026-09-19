@@ -26,7 +26,7 @@ export default async function HistoriesPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
-      <h1 className="mb-6 text-lg font-semibold tracking-tight">히스토리</h1>
+      <h1 className="mb-6 text-[22px] font-bold tracking-tight">히스토리</h1>
 
       {error && <p className="text-sm text-red-600">불러오는 중 오류가 발생했습니다.</p>}
       {!error && (!histories || histories.length === 0) && (
@@ -37,7 +37,7 @@ export default async function HistoriesPage() {
         {histories?.map((h) => (
           <li
             key={h.id}
-            className="flex items-center gap-2 rounded-md border border-border bg-surface p-4 transition-colors hover:border-accent"
+            className="flex items-center gap-2 rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-accent"
           >
             <Link href={`/histories/${h.id}`} className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">

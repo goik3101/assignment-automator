@@ -131,7 +131,7 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
         onChange={(e) => setText(e.target.value)}
         rows={2}
         placeholder="예: 좀 더 개인적인 경험을 넣어서, 문체를 더 편하게"
-        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm"
       />
       <div className="flex gap-2">
         <button
@@ -149,14 +149,14 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
             }
           }}
           disabled={!text.trim() || loading}
-          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground disabled:opacity-40"
+          className="rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground disabled:opacity-40"
         >
           {loading ? "다시 만드는 중..." : "다시 만들기"}
         </button>
         <button
           onClick={() => setOpen(false)}
           disabled={loading}
-          className="rounded-md border border-border px-3 py-1.5 text-xs font-medium"
+          className="rounded-full border border-border px-3 py-1.5 text-xs font-medium"
         >
           취소
         </button>
@@ -274,7 +274,7 @@ export function EssayPanel({
   showExpectedQuestions?: boolean;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-surface p-6">
+    <section className="rounded-2xl border border-border bg-surface p-6">
       <div className="mb-4">
         <h3 className="text-base font-semibold">{label} — 완성 원고</h3>
       </div>
@@ -309,7 +309,7 @@ export function PlanPanel({
   showExpectedQuestions?: boolean;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-surface p-6">
+    <section className="rounded-2xl border border-border bg-surface p-6">
       <div className="mb-4">
         <h3 className="text-base font-semibold">{label} — 완성된 글</h3>
       </div>
@@ -329,7 +329,7 @@ export function PlanPanel({
             {result.productionSteps
               .sort((a, b) => a.order - b.order)
               .map((step) => (
-                <li key={step.order} className="border border-border rounded-md p-3">
+                <li key={step.order} className="border border-border rounded-2xl p-3">
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-sm font-medium">
                       {step.order}. {step.task}
