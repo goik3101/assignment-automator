@@ -8,6 +8,7 @@ import { Logo } from "./Logo";
 import { useAdminStatus } from "@/lib/admin/use-admin-status";
 import SidebarWorklist from "./SidebarWorklist";
 import SidebarQuickActions from "./SidebarQuickActions";
+import SettingsModal from "./settings/SettingsModal";
 
 const NAV_ITEMS = [
   {
@@ -159,6 +160,7 @@ export default function Sidebar() {
           )}
         </div>
       </aside>
+      <SettingsModal />
     </>
   );
 }

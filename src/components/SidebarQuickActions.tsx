@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { openSettings } from "@/lib/settings/open";
 
 const STORAGE_KEY = "studed-theme";
 
@@ -22,26 +23,26 @@ export default function SidebarQuickActions({ onNavigate }: { onNavigate?: () =>
 
   return (
     <div className="mb-2 space-y-0.5">
-      <Link href="/settings" onClick={onNavigate} className={item}>
+      <button onClick={() => { onNavigate?.(); openSettings("general"); }} className={item}>
         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
           <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth="1.5" />
           <path d="M10 3v1.6M10 15.4V17M17 10h-1.6M4.6 10H3M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1M14.8 14.8l-1.1-1.1M6.3 6.3 5.2 5.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
         설정
-      </Link>
+      </button>
       <Link href="/trash" onClick={onNavigate} className={item}>
         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
           <path d="M4 6h12M8 6V4h4v2M6 6l.7 10h6.6L14 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         휴지통
       </Link>
-      <Link href="/settings#feedback" onClick={onNavigate} className={item}>
+      <button onClick={() => { onNavigate?.(); openSettings("general"); }} className={item}>
         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
           <circle cx="10" cy="10" r="7.2" stroke="currentColor" strokeWidth="1.5" />
           <path d="M8 8a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.6M10 14v.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
         피드백/문의
-      </Link>
+      </button>
       <button onClick={toggleTheme} className={item}>
         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
           <circle cx="10" cy="10" r="3.6" stroke="currentColor" strokeWidth="1.5" />

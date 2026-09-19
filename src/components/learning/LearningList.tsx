@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { openSettings } from "@/lib/settings/open";
 import { useAuth } from "@/lib/supabase/use-auth";
 import type { AdministrativeInfo } from "@/types/task";
 import NewLearningModal from "./NewLearningModal";
@@ -183,12 +184,12 @@ export default function LearningList() {
               <path d="m13 13 4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
             </svg>
           </button>
-          <Link href="/settings" aria-label="설정" className="text-foreground hover:opacity-70">
+          <button onClick={() => openSettings()} aria-label="설정" className="text-foreground hover:opacity-70">
             <svg viewBox="0 0 20 20" fill="none" className="h-[18px] w-[18px]">
               <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth="1.5" />
               <path d="M10 3v1.6M10 15.4V17M17 10h-1.6M4.6 10H3M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1M14.8 14.8l-1.1-1.1M6.3 6.3 5.2 5.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
-          </Link>
+          </button>
           <label className="sr-only" htmlFor="learning-filter">
             분류
           </label>
