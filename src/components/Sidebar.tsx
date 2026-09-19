@@ -44,21 +44,6 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
-  {
-    href: "/settings",
-    label: "설정",
-    icon: (
-      <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
-        <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth="1.6" />
-        <path
-          d="M10 3v1.6M10 15.4V17M17 10h-1.6M4.6 10H3M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1M14.8 14.8l-1.1-1.1M6.3 6.3 5.2 5.2"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
 ];
 
 export default function Sidebar() {

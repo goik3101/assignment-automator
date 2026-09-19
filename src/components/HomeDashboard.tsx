@@ -18,6 +18,34 @@ type Filter = "all" | "essay" | "plan";
 const FILTER_LABEL: Record<Filter, string> = { all: "분류", essay: "완성 원고", plan: "실행 계획" };
 const TYPE_LABEL = { essay: "완성 원고", plan: "실행 계획" } as const;
 
+const EXAMPLES = [
+  "독서 감상문 — 책 한 권을 읽고 느낀 점",
+  "과학 탐구 보고서 — 실험 설계와 결과 분석",
+  "영어 발표 — 관심 주제로 3분 스피치",
+  "사회 탐구 — 뉴스 기사로 쓰는 시사 분석",
+  "역사 인물 조사 — 업적과 오늘의 의미",
+  "진로 발표 PPT — 희망 직업 탐색",
+  "토론 입론서 — 찬반 논거 정리",
+  "시 창작 — 주제에 맞춰 직접 써보기",
+];
+
+// + 카드 옆에서 어떤 수행평가를 넣을 수 있는지 돌아가며 보여준다.
+function ExampleRotator() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setI((v) => (v + 1) % EXAMPLES.length), 2800);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="flex h-[225px] w-[170px] flex-col justify-center gap-1.5 self-start" aria-live="off">
+      <p className="text-xs text-muted">이런 걸 넣어보세요</p>
+      <p key={i} className="animate-[fadeIn_0.5s_ease] text-sm font-bold leading-snug">
+        {EXAMPLES[i]}
+      </p>
+    </div>
+  );
+}
+
 function HistoryCard({ h, onDelete }: { h: HistoryRow; onDelete: (id: string) => void }) {
   const [menu, setMenu] = useState(false);
   return (
@@ -186,13 +214,14 @@ export default function HomeDashboard({ onNew }: { onNew: () => void }) {
             <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
           </svg>
         </button>
+        {rows && rows.length === 0 ? <ExampleRotator /> : !user ? <ExampleRotator /> : null}
         {visible.map((h) => (
           <HistoryCard key={h.id} h={h} onDelete={handleDelete} />
         ))}
       </div>
 
       {!user && (
-        <p className="mt-8 text-sm text-muted">로그인하면 만든 결과물이 여기에 모여요. 로그인 없이는 1회만 만들 수 있어요.</p>
+        <p className="mt-8 text-sm text-muted">로그인하면 만든 결과물이 여기에 모여요.</p>
       )}
       {user && rows && rows.length === 0 && (
         <p className="mt-8 text-sm text-muted">아직 만든 결과물이 없어요. + 를 눌러 수행평가 안내문을 올려보세요.</p>

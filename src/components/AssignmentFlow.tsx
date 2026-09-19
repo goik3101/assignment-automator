@@ -589,9 +589,6 @@ export default function AssignmentFlow() {
 
           {!user && (
             <div>
-              <p className="mb-1 text-xs text-muted">
-                비로그인 상태에서는 1회만 무료로 생성할 수 있어요.
-              </p>
               {TURNSTILE_SITE_KEY && (
                 <Turnstile siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} />
               )}
