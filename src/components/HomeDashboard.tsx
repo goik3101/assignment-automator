@@ -19,30 +19,34 @@ const FILTER_LABEL: Record<Filter, string> = { all: "분류", essay: "완성 원
 const TYPE_LABEL = { essay: "완성 원고", plan: "실행 계획" } as const;
 
 const EXAMPLES = [
-  "독서 감상문 — 책 한 권을 읽고 느낀 점",
-  "과학 탐구 보고서 — 실험 설계와 결과 분석",
-  "영어 발표 — 관심 주제로 3분 스피치",
-  "사회 탐구 — 뉴스 기사로 쓰는 시사 분석",
-  "역사 인물 조사 — 업적과 오늘의 의미",
-  "진로 발표 PPT — 희망 직업 탐색",
-  "토론 입론서 — 찬반 논거 정리",
-  "시 창작 — 주제에 맞춰 직접 써보기",
+  { subject: "국어", text: "책 한 권을 읽고 느낀 점을 정리하는 독서 감상문", title: "독서 감상문" },
+  { subject: "과학", text: "실험을 설계하고 결과를 분석하는 탐구 보고서", title: "과학 탐구 보고서" },
+  { subject: "영어", text: "관심 주제로 3분 동안 발표하는 영어 스피치", title: "영어 발표" },
+  { subject: "사회", text: "뉴스 기사를 골라 원인과 영향을 분석하기", title: "시사 분석" },
+  { subject: "한국사", text: "역사 인물의 업적과 오늘날의 의미 조사하기", title: "역사 인물 조사" },
+  { subject: "진로", text: "희망 직업을 탐색하고 발표 자료 만들기", title: "진로 발표 PPT" },
+  { subject: "국어", text: "찬반 논거를 정리해 입론서 쓰기", title: "토론 입론서" },
+  { subject: "국어", text: "주제에 맞춰 직접 시를 쓰고 창작 의도 밝히기", title: "시 창작" },
 ];
 
-// + 카드 옆에서 어떤 수행평가를 넣을 수 있는지 돌아가며 보여준다.
-function ExampleRotator() {
+// + 카드 옆의 점선 미리보기 카드: 어떤 수행평가를 넣을 수 있는지 돌아가며 보여준다(클릭 시 새 수행평가 모달).
+function ExampleRotator({ onNew }: { onNew: () => void }) {
   const [i, setI] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setI((v) => (v + 1) % EXAMPLES.length), 2800);
     return () => clearInterval(t);
   }, []);
+  const ex = EXAMPLES[i];
   return (
-    <div className="flex h-[225px] w-[170px] flex-col justify-center gap-1.5 self-start" aria-live="off">
-      <p className="text-xs text-muted">이런 걸 넣어보세요</p>
-      <p key={i} className="animate-[fadeIn_0.5s_ease] text-sm font-bold leading-snug">
-        {EXAMPLES[i]}
+    <button onClick={onNew} aria-label="예시로 새 수행평가 만들기" className="block w-[170px] text-left" aria-live="off">
+      <div key={i} className="h-[225px] w-[170px] animate-[fadeIn_0.5s_ease] border border-dashed border-foreground/50 p-3">
+        <span className="rounded-full border border-foreground/60 px-2 py-0.5 text-[10px] font-bold">{ex.subject}</span>
+        <p className="mt-3 text-xs font-bold leading-snug">{ex.text}</p>
+      </div>
+      <p key={"t" + i} className="mt-2 animate-[fadeIn_0.5s_ease] truncate text-sm font-bold text-muted">
+        {ex.title}
       </p>
-    </div>
+    </button>
   );
 }
 
@@ -214,7 +218,7 @@ export default function HomeDashboard({ onNew }: { onNew: () => void }) {
             <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
           </svg>
         </button>
-        {rows && rows.length === 0 ? <ExampleRotator /> : !user ? <ExampleRotator /> : null}
+        {(!user || (rows && rows.length === 0)) && <ExampleRotator onNew={onNew} />}
         {visible.map((h) => (
           <HistoryCard key={h.id} h={h} onDelete={handleDelete} />
         ))}
