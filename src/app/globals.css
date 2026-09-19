@@ -50,3 +50,30 @@ body {
   font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo",
     "Malgun Gothic", system-ui, sans-serif;
 }
+
+/* "수행평가 도우미" Figma 시안 스코프 — 순수 검정/흰색 단색 팔레트, 얇은 테두리, 굵은
+   서체, 알약형 컨트롤. 전역 토큰을 바꾸지 않고 이 클래스가 붙은 영역(사이드바, 학습
+   모드 화면)에서만 같은 토큰 이름(--background 등)을 덮어쓰므로, 토큰을 쓰는 기존
+   컴포넌트는 그대로 두고 이 영역만 시안 색으로 바뀐다. 시안에는 포인트 색이 없어서
+   accent를 전경색(흰색/검정)으로 둔다. 사이트 전체를 시안으로 바꿀 때는 아래 값을
+   :root 토큰으로 옮기면 된다. */
+.figma {
+  --background: #ffffff;
+  --surface: #f5f5f5;
+  --foreground: #000000;
+  --muted: #5f5f5f;
+  --border: #cfcfcf;
+  --accent: #000000;
+  --accent-foreground: #ffffff;
+  background: var(--background);
+  color: var(--foreground);
+}
+:root[data-theme="dark"] .figma {
+  --background: #000000;
+  --surface: #111111;
+  --foreground: #ffffff;
+  --muted: #a3a3a3;
+  --border: #3d3d3d;
+  --accent: #ffffff;
+  --accent-foreground: #000000;
+}

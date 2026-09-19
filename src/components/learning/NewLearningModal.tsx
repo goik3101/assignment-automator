@@ -83,7 +83,7 @@ export default function NewLearningModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !busy) onClose();
       }}
@@ -92,38 +92,32 @@ export default function NewLearningModal({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-learning-title"
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-xl"
+        className="figma relative max-h-[92vh] w-full max-w-[640px] overflow-y-auto rounded-2xl border border-border !bg-surface px-8 py-7 shadow-2xl"
       >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 id="new-learning-title" className="text-base font-semibold">
-            새 학습 과제
-          </h2>
-          <button
-            onClick={onClose}
-            disabled={busy}
-            aria-label="닫기"
-            className="rounded-md p-1 text-muted hover:text-foreground disabled:opacity-40"
-          >
-            <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
-              <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          disabled={busy}
+          aria-label="닫기"
+          className="absolute right-4 top-4 rounded-md p-1 text-foreground/70 hover:text-foreground disabled:opacity-40"
+        >
+          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+            <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
 
-        <div className="space-y-5">
-          <div>
-            <p className="mb-2 text-sm font-medium">안내문 사진</p>
-            <label className="flex h-40 cursor-pointer items-center justify-center rounded-lg border border-dashed border-border text-muted transition-colors hover:border-accent hover:text-accent">
+        <div className="flex flex-col items-center gap-5">
+          <div className="flex flex-col items-center gap-3">
+            <h2 id="new-learning-title" className="text-xl font-bold">
+              사진 넣기
+            </h2>
+            <label className="flex h-[235px] w-[185px] cursor-pointer items-center justify-center border border-dashed border-foreground/70 transition-opacity hover:opacity-70">
               {preview ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={preview} alt="업로드한 안내문 미리보기" className="max-h-full rounded-md object-contain" />
+                <img src={preview} alt="업로드한 안내문 미리보기" className="max-h-full max-w-full object-contain" />
               ) : (
-                <span className="flex flex-col items-center gap-1 text-sm">
-                  <svg viewBox="0 0 20 20" fill="none" className="h-6 w-6">
-                    <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  </svg>
-                  사진 넣기
-                </span>
+                <svg viewBox="0 0 20 20" fill="none" className="h-14 w-14">
+                  <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
+                </svg>
               )}
               <input
                 type="file"
@@ -138,9 +132,9 @@ export default function NewLearningModal({ onClose }: { onClose: () => void }) {
             </label>
           </div>
 
-          <div>
-            <label htmlFor="learning-topic" className="mb-2 block text-sm font-medium">
-              또는 주제 설명
+          <div className="w-full">
+            <label htmlFor="learning-topic" className="mb-2 block text-center text-xl font-bold">
+              사진 넣기 또는 주제 설명
             </label>
             <input
               id="learning-topic"
@@ -148,26 +142,25 @@ export default function NewLearningModal({ onClose }: { onClose: () => void }) {
               value={topicText}
               onChange={(e) => setTopicText(e.target.value)}
               placeholder="예: 인권 선구자의 업적 탐구 신문 만들기"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="w-full rounded-full border border-foreground/50 bg-transparent px-5 py-1.5 text-sm"
             />
           </div>
 
-          <div>
-            <label htmlFor="learning-detail" className="mb-2 block text-sm font-medium">
-              상세 입력 <span className="font-normal text-muted">(선택)</span>
+          <div className="w-full">
+            <label htmlFor="learning-detail" className="mb-2 block text-center text-xl font-bold">
+              상세 입력
             </label>
-            <textarea
+            <input
               id="learning-detail"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              rows={3}
-              placeholder="예: 분량이나 형식, 선생님이 강조한 점"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              placeholder="예: 분량이나 형식, 선생님이 강조한 점 (선택)"
+              className="w-full rounded-full border border-foreground/50 bg-transparent px-5 py-1.5 text-sm"
             />
           </div>
 
           {error && (
-            <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            <p role="alert" className="w-full rounded-xl border border-red-500/60 px-4 py-2 text-sm text-red-500">
               {error}
             </p>
           )}
@@ -175,7 +168,7 @@ export default function NewLearningModal({ onClose }: { onClose: () => void }) {
           <button
             onClick={handleStart}
             disabled={!canStart}
-            className="w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40"
+            className="rounded-full bg-accent px-10 py-2 text-sm font-bold text-accent-foreground disabled:opacity-40"
           >
             {busy ? "안내문을 분석하고 있어요..." : "분석하고 시작하기"}
           </button>

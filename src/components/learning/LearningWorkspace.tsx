@@ -51,7 +51,7 @@ function StatusBadge({ status }: { status: string }) {
     <span
       className={[
         "shrink-0 rounded-full px-2 py-0.5 text-[11px]",
-        done ? "bg-accent/15 text-accent" : "border border-border text-muted",
+        done ? "bg-accent text-accent-foreground font-bold" : "border border-border text-muted",
       ].join(" ")}
     >
       {STATUS_LABEL[status] ?? status}
@@ -93,13 +93,13 @@ function PlainList({ title, items }: { title: string; items: string[] }) {
 
 function FeedbackPanel({ fb }: { fb: LearningFeedback }) {
   return (
-    <section aria-label="AI 피드백" className="space-y-4 rounded-lg border border-border bg-surface p-5">
+    <section aria-label="AI 피드백" className="space-y-4 rounded-2xl border border-border bg-surface p-5">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium">{fb.summary}</p>
         <span
           className={[
             "shrink-0 rounded-full px-2.5 py-0.5 text-xs",
-            fb.readyToComplete ? "bg-accent/15 text-accent" : "border border-border text-muted",
+            fb.readyToComplete ? "bg-accent text-accent-foreground font-bold" : "border border-border text-muted",
           ].join(" ")}
         >
           {fb.readyToComplete ? "완료해도 좋아요" : "조금 더 다듬어봐요"}
@@ -184,8 +184,8 @@ function SubjectPicker({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-6">
-      <h2 className="mb-1 text-base font-semibold">다룰 인물/대상 정하기</h2>
+    <section className="rounded-2xl border border-border bg-surface p-6">
+      <h2 className="mb-1 text-xl font-bold">다룰 인물/대상 정하기</h2>
       <p className="mb-4 text-sm text-muted">
         이 과제는 다룰 대상을 직접 정해야 해요. 정한 대상을 기준으로 자료를 조사해 드려요.
       </p>
@@ -212,7 +212,7 @@ function SubjectPicker({
             <button
               onClick={suggest}
               disabled={loading}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+              className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
             >
               {loading ? "후보를 찾고 있어요..." : "후보 3개 추천받기"}
             </button>
@@ -256,12 +256,12 @@ function SubjectPicker({
             onChange={(e) => setName(e.target.value)}
             maxLength={80}
             placeholder="예: 앙리 뒤낭"
-            className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-full border border-foreground/50 bg-background px-4 py-1.5 text-sm"
           />
           <button
             type="submit"
             disabled={!name.trim() || saving}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+            className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
           >
             정하기
           </button>
@@ -515,7 +515,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
           <Link href="/learning" className="text-xs text-muted hover:text-foreground">
             ← 학습 모드
           </Link>
-          <h1 className="mt-1 truncate text-lg font-semibold tracking-tight">{session.title}</h1>
+          <h1 className="mt-1 truncate text-[22px] font-bold tracking-tight">{session.title}</h1>
           <p className="mt-0.5 text-xs text-muted">
             {session.subject}
             {session.focus_subject && (
@@ -561,8 +561,8 @@ export default function LearningWorkspace({ id }: { id: string }) {
       )}
 
       {!needSubject && !changingSubject && !researchDone && (
-        <section className="mb-6 rounded-lg border border-border bg-surface p-6">
-          <h2 className="mb-1 text-base font-semibold">자료 조사</h2>
+        <section className="mb-6 rounded-2xl border border-border bg-surface p-6">
+          <h2 className="mb-1 text-xl font-bold">자료 조사</h2>
           <p className="mb-1 text-sm text-muted">
             과제에서 작성할 항목 {sections.length}개에 필요한 자료를 한 번에 조사해서 항목별로 나눠 보여드려요.
             자료를 읽고 답변은 직접 작성하게 돼요.
@@ -571,7 +571,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
           <button
             onClick={handleResearch}
             disabled={researching || usageLeft <= 0}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+            className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
           >
             {researching
               ? "자료를 조사하고 있어요... (최대 1분)"
@@ -585,9 +585,9 @@ export default function LearningWorkspace({ id }: { id: string }) {
       )}
 
       {showAll ? (
-        <section className="rounded-lg border border-border bg-surface p-6">
+        <section className="rounded-2xl border border-border bg-surface p-6">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">내가 쓴 내용</h2>
+            <h2 className="text-xl font-bold">내가 쓴 내용</h2>
             <button
               onClick={() => void navigator.clipboard.writeText(assembled).then(() => setNotice("복사했어요."))}
               className="rounded-md border border-border px-3 py-1.5 text-xs hover:text-accent"
@@ -610,8 +610,8 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     onClick={() => setSelectedId(s.id)}
                     aria-current={s.id === selectedId ? "true" : undefined}
                     className={[
-                      "flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors",
-                      s.id === selectedId ? "border-accent bg-accent/10 text-accent" : "border-border hover:border-accent",
+                      "flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors",
+                      s.id === selectedId ? "border-foreground bg-accent/10" : "border-border hover:border-foreground/60",
                     ].join(" ")}
                   >
                     <span className="truncate">
@@ -633,7 +633,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
               )}
 
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold">{selected.label}</h2>
+                <h2 className="text-xl font-bold">{selected.label}</h2>
                 <div className="inline-flex rounded-full border border-border p-0.5 text-xs lg:hidden">
                   {(["material", "write"] as Pane[]).map((p) => (
                     <button
@@ -651,7 +651,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
               <div className="grid gap-5 xl:grid-cols-2">
                 <section
                   aria-label="조사 자료"
-                  className={[pane === "material" ? "block" : "hidden", "lg:block", "min-w-0 rounded-lg border border-border bg-surface p-5"].join(" ")}
+                  className={[pane === "material" ? "block" : "hidden", "lg:block", "min-w-0 rounded-2xl border border-border bg-surface p-5"].join(" ")}
                 >
                   <h3 className="mb-3 text-sm font-semibold">자료 읽기</h3>
                   {selected.research ? (
@@ -697,7 +697,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                   className={[pane === "write" ? "block" : "hidden", "lg:block", "min-w-0 space-y-3"].join(" ")}
                 >
                   <div className="flex items-center justify-between">
-                    <label htmlFor="learning-draft" className="text-sm font-semibold">
+                    <label htmlFor="learning-draft" className="text-sm font-bold">
                       내 답변
                     </label>
                     <span className="text-xs text-muted" aria-live="polite">
@@ -717,7 +717,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     onChange={(e) => onDraftChange(selected.id, e.target.value)}
                     rows={14}
                     placeholder="자료를 읽고 내 말로 직접 써보세요. 쓰는 대로 자동 저장돼요."
-                    className="w-full resize-y rounded-lg border border-border bg-background px-4 py-3 text-sm leading-relaxed"
+                    className="w-full resize-y rounded-2xl border border-foreground/40 bg-background px-4 py-3 text-sm leading-relaxed"
                   />
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>
@@ -737,7 +737,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                         onChange={(e) => setQuestion(e.target.value)}
                         maxLength={300}
                         placeholder="예: 이 문장에서 ‘which’를 써도 되나요?"
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        className="w-full rounded-full border border-foreground/50 bg-background px-4 py-1.5 text-sm"
                       />
                     </div>
                   )}
@@ -746,14 +746,14 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     <button
                       onClick={handleFeedback}
                       disabled={feedbackBusy || draft.trim().length < 10 || usageLeft <= 0}
-                      className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+                      className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
                     >
                       {feedbackBusy ? "살펴보는 중..." : "AI 피드백 받기"}
                     </button>
                     <button
                       onClick={handleComplete}
                       disabled={!draft.trim() || selected.status === "completed"}
-                      className="rounded-md border border-border px-4 py-2 text-sm hover:border-accent hover:text-accent disabled:opacity-40"
+                      className="rounded-full border border-foreground/50 px-5 py-2 text-sm font-semibold hover:opacity-70 disabled:opacity-40"
                     >
                       이 항목 완료
                     </button>

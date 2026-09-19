@@ -23,46 +23,45 @@ const FILTER_LABEL: Record<Filter, string> = { all: "전체", active: "진행 �
 function SessionCard({ s, onDelete }: { s: SessionRow; onDelete: (id: string) => void }) {
   const [menu, setMenu] = useState(false);
   const pct = s.progress.total ? Math.round((s.progress.done / s.progress.total) * 100) : 0;
+  // Figma 카드: 썸네일 블록 + 그 아래 굵은 제목 + 우측 ⋮ 메뉴(바깥 테두리 상자 없음).
+  // 썸네일 자리에는 안내문 이미지를 저장하지 않으므로 과목·진행률을 보여준다.
   return (
-    <div className="group relative w-full">
-      <Link
-        href={`/learning/${s.id}`}
-        className="block overflow-hidden rounded-lg border border-border bg-surface transition-colors hover:border-accent"
-      >
-        <div className="flex aspect-[3/4] flex-col justify-between bg-background p-4">
-          <span className="w-fit rounded-full border border-border px-2.5 py-0.5 text-xs text-muted">{s.subject}</span>
+    <div className="relative w-full">
+      <Link href={`/learning/${s.id}`} className="group block">
+        <div className="flex aspect-[3/4] flex-col justify-between border border-border bg-background p-4 transition-colors group-hover:border-foreground">
+          <span className="w-fit rounded-full border border-foreground/60 px-3 py-0.5 text-xs font-bold">{s.subject}</span>
           <div>
             <p className="mb-2 text-xs text-muted">
               {s.progress.done}/{s.progress.total} 항목 완료
             </p>
-            <div className="h-1.5 overflow-hidden rounded-full bg-border" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-              <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+            <div className="h-1 overflow-hidden rounded-full bg-border" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${pct}%` }} />
             </div>
           </div>
         </div>
-        <p className="truncate px-3 py-2.5 pr-9 text-sm font-medium">{s.title}</p>
+        <p className="mt-1.5 truncate pr-7 text-sm font-bold">{s.title}</p>
       </Link>
-      <div className="absolute bottom-1.5 right-1">
+      <div className="absolute bottom-0 right-0">
         <button
           onClick={() => setMenu((v) => !v)}
           aria-label="더보기"
           aria-expanded={menu}
-          className="rounded-md p-1.5 text-muted hover:text-foreground"
+          className="rounded-md p-1 text-foreground/80 hover:text-foreground"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-            <circle cx="10" cy="4" r="1.4" />
-            <circle cx="10" cy="10" r="1.4" />
-            <circle cx="10" cy="16" r="1.4" />
+            <circle cx="10" cy="4" r="1.3" />
+            <circle cx="10" cy="10" r="1.3" />
+            <circle cx="10" cy="16" r="1.3" />
           </svg>
         </button>
         {menu && (
-          <div className="absolute bottom-9 right-0 z-10 w-28 rounded-md border border-border bg-surface p-1 shadow-lg">
+          <div className="absolute bottom-8 right-0 z-10 w-28 rounded-xl border border-border bg-surface p-1 shadow-lg">
             <button
               onClick={() => {
                 setMenu(false);
                 if (window.confirm("이 학습 과제를 목록에서 삭제할까요?")) onDelete(s.id);
               }}
-              className="w-full rounded px-2.5 py-1.5 text-left text-sm text-red-600 hover:bg-background"
+              className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-red-500 hover:bg-background"
             >
               삭제
             </button>
@@ -82,6 +81,7 @@ export default function LearningList() {
   const [modal, setModal] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -135,26 +135,51 @@ export default function LearningList() {
   }
 
   return (
-    <div className="px-6 py-8 md:px-8">
-      <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
-          <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
+    <div className="px-6 py-6 md:px-8">
+      <header className="mb-8 flex items-center justify-between gap-3">
+        <h1 className="flex items-center gap-2.5 text-[22px] font-bold tracking-tight">
+          <svg viewBox="0 0 20 20" fill="none" className="h-6 w-6">
             <rect x="2.5" y="3.5" width="15" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
             <path d="M9 3.5v13M11.5 7h3M11.5 10h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           학습 모드
         </h1>
-        <div className="flex items-center gap-2">
-          <label className="sr-only" htmlFor="learning-search">
-            학습 과제 검색
-          </label>
-          <input
-            id="learning-search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="검색"
-            className="w-36 rounded-full border border-border bg-transparent px-3.5 py-1.5 text-sm"
-          />
+        <div className="flex items-center gap-3">
+          {searchOpen && (
+            <>
+              <label className="sr-only" htmlFor="learning-search">
+                학습 과제 검색
+              </label>
+              <input
+                id="learning-search"
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="검색"
+                className="w-40 rounded-full border border-foreground/60 bg-transparent px-4 py-1 text-sm"
+              />
+            </>
+          )}
+          <button
+            onClick={() => {
+              setSearchOpen((v) => !v);
+              if (searchOpen) setQuery("");
+            }}
+            aria-label="검색"
+            aria-pressed={searchOpen}
+            className="text-foreground hover:opacity-70"
+          >
+            <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
+              <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.6" />
+              <path d="m13 13 4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+          <Link href="/settings" aria-label="설정" className="text-foreground hover:opacity-70">
+            <svg viewBox="0 0 20 20" fill="none" className="h-[18px] w-[18px]">
+              <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10 3v1.6M10 15.4V17M17 10h-1.6M4.6 10H3M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1M14.8 14.8l-1.1-1.1M6.3 6.3 5.2 5.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </Link>
           <label className="sr-only" htmlFor="learning-filter">
             분류
           </label>
@@ -162,10 +187,10 @@ export default function LearningList() {
             id="learning-filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value as Filter)}
-            className="rounded-full border border-border bg-transparent px-3 py-1.5 text-sm"
+            className="rounded-full border border-foreground bg-transparent px-4 py-1 text-xs font-bold"
           >
             {(Object.keys(FILTER_LABEL) as Filter[]).map((f) => (
-              <option key={f} value={f}>
+              <option key={f} value={f} className="bg-background text-foreground">
                 {f === "all" ? "분류" : FILTER_LABEL[f]}
               </option>
             ))}
@@ -182,12 +207,12 @@ export default function LearningList() {
       <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         <button
           onClick={() => setModal(true)}
-          className="flex aspect-[3/4] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border text-muted transition-colors hover:border-accent hover:text-accent"
+          className="flex aspect-[3/4] flex-col items-center justify-center gap-2 border border-dashed border-foreground/70 text-foreground transition-opacity hover:opacity-70"
         >
-          <svg viewBox="0 0 20 20" fill="none" className="h-8 w-8">
-            <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <svg viewBox="0 0 20 20" fill="none" className="h-14 w-14">
+            <path d="M10 3v14M3 10h14" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
           </svg>
-          <span className="text-sm">새 학습 과제</span>
+          <span className="text-sm font-bold">새 학습 과제</span>
         </button>
         {visible.map((s) => (
           <SessionCard key={s.id} s={s} onDelete={handleDelete} />
@@ -204,17 +229,17 @@ export default function LearningList() {
       )}
 
       {inProgress.length > 0 && (
-        <section className="mt-14" aria-labelledby="in-progress-title">
-          <h2 id="in-progress-title" className="mb-4 text-base font-semibold">
+        <section className="mt-16" aria-labelledby="in-progress-title">
+          <h2 id="in-progress-title" className="mb-6 text-xl font-bold">
             진행중인 과제
           </h2>
-          <ul className="flex flex-wrap gap-x-5 gap-y-4">
+          <ul className="flex flex-wrap gap-x-8 gap-y-6">
             {inProgress.map((s) => (
-              <li key={s.id} className="flex flex-col items-start gap-1.5">
-                <span className="px-1 text-xs text-muted">{formatDue(s.admin_info?.due_date) ?? "기한 미정"}</span>
+              <li key={s.id} className="flex flex-col items-center gap-2">
+                <span className="text-xl font-semibold">{formatDue(s.admin_info?.due_date) ?? "기한 미정"}</span>
                 <Link
                   href={`/learning/${s.id}`}
-                  className="max-w-56 truncate rounded-lg border border-border px-4 py-2 text-sm transition-colors hover:border-accent hover:text-accent"
+                  className="max-w-60 truncate rounded-xl border-2 border-foreground px-7 py-1.5 text-xl font-semibold transition-opacity hover:opacity-70"
                 >
                   {s.title}
                 </Link>

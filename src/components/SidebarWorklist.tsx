@@ -66,7 +66,7 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
 
   return (
     <div className="mt-5 px-2">
-      <p className="mb-1.5 px-2.5 text-xs font-medium text-muted">작업 목록</p>
+      <p className="mb-1.5 px-2.5 text-xs font-bold">작업 목록</p>
       <ul className="space-y-0.5">
         {items.map((it) => (
           <li key={it.key}>
@@ -76,7 +76,7 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
               title={it.title}
               className={[
                 "flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
-                pathname === it.href ? "bg-accent/10 text-accent" : "text-muted hover:bg-background hover:text-foreground",
+                pathname === it.href ? "bg-accent/15 text-foreground" : "text-foreground hover:bg-accent/10",
               ].join(" ")}
             >
               <span className="truncate">{it.title}</span>

@@ -13,7 +13,7 @@ const NAV_ITEMS = [
     href: "/",
     label: "새 수행평가",
     icon: (
-      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+      <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
         <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
       </svg>
     ),
@@ -22,7 +22,7 @@ const NAV_ITEMS = [
     href: "/learning",
     label: "학습 모드",
     icon: (
-      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+      <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
         <rect x="2.5" y="3.5" width="15" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
         <path d="M9 3.5v13" stroke="currentColor" strokeWidth="1.5" />
       </svg>
@@ -32,7 +32,7 @@ const NAV_ITEMS = [
     href: "/histories",
     label: "히스토리",
     icon: (
-      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+      <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
         <path
           d="M10 5v5l3 2M17 10a7 7 0 1 1-2-4.9"
           stroke="currentColor"
@@ -47,7 +47,7 @@ const NAV_ITEMS = [
     href: "/settings",
     label: "설정",
     icon: (
-      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+      <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
         <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth="1.6" />
         <path
           d="M10 3v1.6M10 15.4V17M17 10h-1.6M4.6 10H3M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1M14.8 14.8l-1.1-1.1M6.3 6.3 5.2 5.2"
@@ -78,7 +78,7 @@ export default function Sidebar() {
           aria-label="메뉴 열기"
           className="rounded-md border border-border p-1.5"
         >
-          <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+          <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
             <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
         </button>
@@ -86,7 +86,7 @@ export default function Sidebar() {
 
       <aside
         className={[
-          "shrink-0 border-r border-border bg-surface flex flex-col",
+          "figma shrink-0 border-r border-border flex flex-col",
           "md:h-screen md:sticky md:top-0",
           collapsed ? "md:w-14" : "md:w-56",
           open ? "block" : "hidden md:flex",
@@ -103,7 +103,7 @@ export default function Sidebar() {
             aria-label="사이드바 접기/펼치기"
             className="hidden md:block rounded-md p-1 text-muted hover:text-foreground"
           >
-            <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+            <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
               <path
                 d={collapsed ? "M7 4l6 6-6 6" : "M13 4l-6 6 6 6"}
                 stroke="currentColor"
@@ -125,8 +125,8 @@ export default function Sidebar() {
                 onClick={() => setOpen(false)}
                 title={item.label}
                 className={[
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                  active ? "bg-accent/10 text-accent font-medium" : "text-muted hover:text-foreground hover:bg-background",
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-[17px] font-bold transition-colors",
+                  active ? "bg-accent/15 text-foreground" : "text-foreground/90 hover:bg-accent/10",
                 ].join(" ")}
               >
                 <span className="shrink-0">{item.icon}</span>
@@ -140,14 +140,14 @@ export default function Sidebar() {
               onClick={() => setOpen(false)}
               title="관리자 대시보드"
               className={[
-                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                "flex items-center gap-3 rounded-md px-3 py-2 text-[17px] font-bold transition-colors",
                 pathname.startsWith("/admin")
-                  ? "bg-accent/10 text-accent font-medium"
-                  : "text-muted hover:text-foreground hover:bg-background",
+                  ? "bg-accent/15 text-foreground"
+                  : "text-foreground/90 hover:bg-accent/10",
               ].join(" ")}
             >
               <span className="shrink-0">
-                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
                   <path
                     d="M10 3 4 5.5v4c0 4 2.6 6.9 6 8 3.4-1.1 6-4 6-8v-4L10 3Z"
                     stroke="currentColor"
