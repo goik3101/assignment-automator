@@ -28,6 +28,8 @@ import {
 } from "@/lib/verification/excerpt-verification";
 import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
 import { bigramSimilarity, canonicalize, compactName, sameEntity } from "@/lib/selection/canonical";
+import { rewriteUnquoted, findQuoteResidue } from "@/lib/gemini/quote-cleanup";
+import { postprocessStyle, STYLE_POSTPROCESS_FLAGS } from "@/lib/gemini/style-postprocess";
 import { selectFromCandidates, type HistoryEntry } from "@/lib/selection/score";
 import { selectSubjectForTask, type SelectedSubject } from "@/lib/selection/subject-selection";
 import type { CoreTaskInfo, EssayResult, InsufficientDataResult, SourceRef } from "@/types/task";
@@ -1417,6 +1419,20 @@ export async function generateEssay(
   }
 
   // 각주 제거 등으로 남은 " ." 공백과 소제목의 「」 표기를 최종 정리한다.
+  // 실험용 학생 문체 후처리(기본 OFF): 문두 접속어 / "~임을 알 수 있다" — 문장 단위 재작성 + 규칙·의미 검증을 통과한 문장만 교체한다.
+  // 각주 번호·숫자·이름은 검증에서 바뀌면 거부되고, 실패하면 원문을 그대로 둔다(style-postprocess.ts 참고).
+  if (STYLE_POSTPROCESS_FLAGS.connective() || STYLE_POSTPROCESS_FLAGS.conclusion()) {
+    const processed = await Promise.all(
+      attempt.sections.map(async (sec) => {
+        const r = await postprocessStyle(sec.content);
+        const applied = r.reports.reduce((n, x) => n + x.applied.length, 0);
+        if (applied > 0) console.log(`[generateEssay] 문체 후처리 적용 label="${sec.label}" ${applied}문장`);
+        return { ...sec, content: r.text };
+      })
+    );
+    attempt = { ...attempt, sections: processed };
+  }
+
   attempt = { ...attempt, sections: attempt.sections.map((s) => ({ ...s, content: tidyOutputText(s.content) })) };
 
   // 필수 항목(소제목) 구조는 재시도까지 거치고도 남은 누락만 정직하게 알린다.
@@ -1802,8 +1818,15 @@ async function applyCanonicalQuotes(
       return { ...s, content: `${before}"${result.confirmedExcerpt}"[${n}]${afterTrimmed}` };
     }
 
+    // 따옴표만 삭제하면 "…던졌다.라며"처럼 문장부호·조사가 남는다 — 인용문과 뒤따르는 인용 조사를 함께 재구성한다.
+    const rw = rewriteUnquoted(occ.quoteText, afterTrimmed);
+    const rebuilt = `${before}${rw.text}${afterTrimmed.slice(rw.consumed)}`;
+    if (rw.uncertain || findQuoteResidue(rebuilt.slice(Math.max(0, before.length - 40), before.length + rw.text.length + 60)).length > 0) {
+      console.warn(`[generateEssay] 인용구 통일: label="${s.label}" title="${title}" → 검증 실패지만 문법적으로 안전하게 바꿀 수 없어 따옴표 유지`);
+      return s;
+    }
     console.warn(`[generateEssay] 인용구 통일: label="${s.label}" title="${title}" → 검증 실패, 따옴표 제거`);
-    return { ...s, content: `${before}${occ.quoteText}${afterTrimmed}` };
+    return { ...s, content: rebuilt };
   });
 
   return { sections: newSections, sources: newSources };
@@ -1822,7 +1845,7 @@ async function applyCanonicalQuotes(
  * 확인 등 다른 문장의 근거로는 여전히 정당할 수 있어서 — 이 함수는 오직
  * "따옴표를 쓸 자격이 있는가"만 판단한다).
  */
-function stripWeaklySourcedQuotes(
+export function stripWeaklySourcedQuotes(
   sections: RawSection[],
   sources: SourceRef[]
 ): { sections: RawSection[]; strippedCount: number } {
@@ -1831,28 +1854,38 @@ function stripWeaklySourcedQuotes(
 
   const newSections = sections.map((s) => {
     const original = s.content;
-    QUOTE_PATTERN.lastIndex = 0;
-    const newContent = original.replace(
-      QUOTE_PATTERN,
-      (match, g1: string | undefined, g2: string | undefined, g3: string | undefined, g4: string | undefined, offset: number) => {
-        const quoteText = g1 ?? g2 ?? g3 ?? g4 ?? "";
-        const afterEnd = offset + match.length;
-        const trailingWindow = original.slice(afterEnd, afterEnd + 60);
-        const citedNs = Array.from(trailingWindow.matchAll(/\[(\d+)\]/g), (mm) => Number(mm[1]));
-        const hasTrustworthyCitation = citedNs.some((n) => {
-          const src = sourceById.get(n);
-          return src && !isWeakQuoteSource(src.url);
-        });
-        const isMarketingCopy = looksLikeMarketingCopy(quoteText);
-        if (hasTrustworthyCitation && !isMarketingCopy) return match;
-        strippedCount++;
-        console.warn(
-          `[generateEssay] 최종 안전장치: ${isMarketingCopy ? "저자 소개/마케팅 카피" : "약한/무 출처"} 인용구의 따옴표를 강제로 제거함 label="${s.label}" quote="${quoteText.slice(0, 40)}"`
-        );
-        return quoteText;
+    let out = "";
+    let cursor = 0;
+    for (const m of original.matchAll(QUOTE_PATTERN)) {
+      const offset = m.index ?? 0;
+      if (offset < cursor) continue; // 앞선 재구성이 이미 소비한 구간
+      const quoteText = m[1] ?? m[2] ?? m[3] ?? m[4] ?? "";
+      const afterEnd = offset + m[0].length;
+      const trailingWindow = original.slice(afterEnd, afterEnd + 60);
+      const citedNs = Array.from(trailingWindow.matchAll(/\[(\d+)\]/g), (mm) => Number(mm[1]));
+      const hasTrustworthyCitation = citedNs.some((n) => {
+        const src = sourceById.get(n);
+        return src && !isWeakQuoteSource(src.url);
+      });
+      const isMarketingCopy = looksLikeMarketingCopy(quoteText);
+      if (hasTrustworthyCitation && !isMarketingCopy) continue;
+
+      // 따옴표만 벗기면 "…던졌다.라며"처럼 문장부호·조사가 남는다 — 인용문과 뒤따르는 인용 조사를 함께 재구성한다.
+      const rw = rewriteUnquoted(quoteText, original.slice(afterEnd));
+      const candidate = rw.text + original.slice(afterEnd + rw.consumed, afterEnd + rw.consumed + 40);
+      if (rw.uncertain || findQuoteResidue(candidate).length > 0) {
+        console.warn(`[generateEssay] 최종 안전장치: 인용구를 문법적으로 안전하게 바꿀 수 없어 따옴표 유지 label="${s.label}" quote="${quoteText.slice(0, 40)}"`);
+        continue;
       }
-    );
-    return newContent === original ? s : { ...s, content: newContent };
+      strippedCount++;
+      console.warn(
+        `[generateEssay] 최종 안전장치: ${isMarketingCopy ? "저자 소개/마케팅 카피" : "약한/무 출처"} 인용구의 따옴표를 강제로 제거함 label="${s.label}" quote="${quoteText.slice(0, 40)}"`
+      );
+      out += original.slice(cursor, offset) + rw.text;
+      cursor = afterEnd + rw.consumed;
+    }
+    out += original.slice(cursor);
+    return out === original ? s : { ...s, content: out };
   });
 
   return { sections: newSections, strippedCount };
