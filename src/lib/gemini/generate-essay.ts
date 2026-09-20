@@ -26,7 +26,10 @@ import {
   BOOK_EXCERPT_QUERY_TEMPLATES,
   type VerificationResult,
 } from "@/lib/verification/excerpt-verification";
-import { queryRecommendations, summarizeItemFrequency } from "@/lib/recommendations/recommendation-diversity";
+import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
+import { bigramSimilarity, canonicalize, compactName, sameEntity } from "@/lib/selection/canonical";
+import { selectFromCandidates, type HistoryEntry } from "@/lib/selection/score";
+import { selectSubjectForTask, type SelectedSubject } from "@/lib/selection/subject-selection";
 import type { CoreTaskInfo, EssayResult, InsufficientDataResult, SourceRef } from "@/types/task";
 
 // 기획서 5-1: 완성 원고 경로는 그라운딩 켠 상태로 마크다운을 바로 받는다.
@@ -73,6 +76,17 @@ export interface GenerateEssayInput {
    * 로 미리 계산해서 채운다 — 호출자가 직접 채울 일은 없다.
    */
   presetBook?: { title: string; author?: string };
+  /**
+   * 자동 선정(src/lib/selection/)이 미리 골라 확정한 다룰 대상(인물·사건·탐구 대상 등). 있으면 본문 생성이 대상을 새로
+   * 고르지 않고 이 대상을 그대로 쓴다 — generateEssay()가 selection 옵션으로 채운다. 학생이 지침에 직접 지정한
+   * 대상이면 userSpecified가 true(추천 로직 미실행).
+   */
+  presetSubject?: { name: string; key: string; group?: string | null; userSpecified?: boolean; tier?: string; fallbackUsed?: boolean };
+  /**
+   * 자동 선정 옵션. 주면 generateEssay()가 본문 생성 전에 대상 선정 단계를 실행한다(선정 과제일 때만).
+   * scopeKey = 같은 수행평가 식별자(cluster_id), history = 테스트용 fixture 이력(없으면 DB에서 읽음).
+   */
+  selection?: { userId?: string | null; scopeKey?: string | null; history?: HistoryEntry[]; rng?: () => number };
   /** 설정 탭 개인화 정보 (M4 이후 연동) */
   personalization?: string;
   /** F6 재생성 시 학생이 입력하는 "이번엔 이렇게 고쳐줘" 방향 (9-5) */
@@ -366,8 +380,8 @@ ${sectionsBlock}
 ${structuredBlock}${flowingBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${input.presetBook ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${input.presetBook.title}』${input.presetBook.author ? ` (저자: ${input.presetBook.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
-${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
-${input.recentSubjectGuidance ? `\n${input.recentSubjectGuidance}\n` : ""}
+${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
+${input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 「${input.presetSubject.name}」${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -549,6 +563,19 @@ function detectPresetBookMismatch(
   return !mentioned.some((b) => normalizeBookTitleKey(b.title) === normalizeBookTitleKey(presetBook.title));
 }
 
+/** 선정된 대상(presetSubject)과 다른 대상을 다뤘는지. 단계 B가 뽑은 confirmed_subject를 canonical로 비교하고, 못 뽑았으면 본문에 이름이 있는지 본다. */
+function detectPresetSubjectMismatch(attempt: Attempt, preset?: GenerateEssayInput["presetSubject"]): boolean {
+  if (!preset) return false;
+  if (attempt.confirmedSubject) {
+    const k = canonicalize(attempt.confirmedSubject).key;
+    if (k === preset.key || sameEntity(k, preset.key)) return false;
+    // 같은 대상의 다른 한글 음역(예: 카사스/까사스)은 위반으로 보지 않는다 — 이름 표기 유사도가 높으면 같은 대상.
+    return bigramSimilarity(compactName(attempt.confirmedSubject), compactName(preset.name)) < 0.5;
+  }
+  const text = attempt.sections.map((sec) => compactName(sec.content)).join("");
+  return !text.includes(compactName(preset.name));
+}
+
 interface BookCandidate {
   title: string;
   author?: string;
@@ -648,21 +675,27 @@ ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
     const parsed = JSON.parse(raw) as { candidates: BookCandidate[] };
     if (!parsed.candidates || parsed.candidates.length === 0) return null;
 
-    // 코드가 결정(추가 LLM 호출 없음): 최근 전체 사용자 기준 빈도가 낮은
-    // 후보를 우선한다 — 완전 배제가 아니라 안정 정렬(stable sort)이라, 전부
-    // 빈도 0이면 모델의 원래 1순위가 그대로 유지된다.
-    const globalRecords = await queryRecommendations("book", { sinceDays: 90 });
-    const frequency = summarizeItemFrequency(globalRecords);
-    const scored = parsed.candidates.map((c, i) => ({
-      candidate: c,
-      freq: frequency.get(normalizeBookTitleKey(c.title)) ?? 0,
-      originalIndex: i,
+    // 코드가 결정(추가 LLM 호출 없음): 공통 선정 점수(src/lib/selection/)로 같은 사용자·같은 수행평가·전체 이력을 반영한다.
+    // 책은 과제와 무관하게 몇 권으로 수렴하는 편향이 실측돼(『데미안』) 다른 수행평가의 기록도 약하게(crossScope) 본다.
+    const history = input.selection?.history ?? (await loadSelectionHistory("book"));
+    const bookCandidates = parsed.candidates.map((c, i) => ({
+      name: c.title,
+      key: normalizeBookTitleKey(c.title),
+      group: c.author ?? null,
+      // 모델이 준 순서를 적합도의 대리 신호로 쓴다(앞쪽일수록 높음). 하한(0.6) 아래로 내려가지 않는다.
+      fit: Math.max(0.6, 1 - 0.08 * i),
     }));
-    scored.sort((a, b) => a.freq - b.freq || a.originalIndex - b.originalIndex);
-
-    const picked = scored[0].candidate;
+    const sel = selectFromCandidates(bookCandidates, history, {
+      userId: input.selection?.userId,
+      scopeKey: input.selection?.scopeKey,
+      rng: input.selection?.rng,
+      config: { weights: { user: 1.0, scope: 1.4, group: 0, crossScope: 0.35 } },
+    });
+    if (!sel) return null;
+    if (sel.fallbackUsed) console.warn(`[selection] 책 선정 fallback tier=${sel.tier} 선택="${sel.picked.name}"`);
+    const picked = parsed.candidates[bookCandidates.findIndex((c) => c.key === sel.picked.key)] ?? parsed.candidates[0];
     console.log(
-      `[generateEssay] selectBookCandidate: 후보=${JSON.stringify(scored.map((s) => ({ title: s.candidate.title, freq: s.freq })))} 선택="${picked.title}"`
+      `[generateEssay] selectBookCandidate: 후보=${JSON.stringify(sel.ranking.map((r) => ({ title: r.name, pen: Number(r.penalty.toFixed(2)) })))} 선택="${picked.title}" tier=${sel.tier}`
     );
     return { title: picked.title, author: picked.author || undefined };
   } catch (err) {
@@ -887,6 +920,32 @@ export async function generateEssay(
     }
   }
 
+  // 자동 선정(인물·사건·탐구 대상·발표 주제 등). 책 과제는 위 책 선정이 맡으므로 건너뛴다. 선정 결과는 이후 생성에서 바꾸지 않는다.
+  let subjectSelection: SelectedSubject | null = null;
+  if (!input.previousOutputText && !input.presetBook && !input.presetSubject && input.selection) {
+    try {
+      subjectSelection = await selectSubjectForTask(
+        { subject: input.subject, info: input.coreTaskInfo, instructions: input.instructions },
+        input.selection
+      );
+    } catch (err) {
+      console.error("[generateEssay] 자동 선정 실패(본문 생성이 직접 고르도록 폴백)", err);
+    }
+    if (subjectSelection) {
+      input = {
+        ...input,
+        presetSubject: {
+          name: subjectSelection.name,
+          key: subjectSelection.key,
+          group: subjectSelection.group,
+          userSpecified: subjectSelection.kind === "user_specified",
+          tier: subjectSelection.tier,
+          fallbackUsed: subjectSelection.fallbackUsed,
+        },
+      };
+    }
+  }
+
   let attempt: Attempt;
   try {
     attempt = await generateOnce(input, elements);
@@ -938,6 +997,7 @@ export async function generateEssay(
   const unsupportedSuperlatives = detectUnsupportedSuperlatives(attempt.sections);
   const languageMismatches = detectLanguageMismatches(attempt.sections, elements, input.subject);
   const presetBookMismatch = detectPresetBookMismatch(attempt.sections, input.presetBook);
+  const presetSubjectMismatch = detectPresetSubjectMismatch(attempt, input.presetSubject);
   // 실제로 발견된 버그: 요약 문장에 아랍 문자가 섞여 나온 사례("ف친구가
   // 겪는...") — 본문/요약 둘 다 확인한다(요약은 사고가 실제로 일어난 곳).
   const corruptedSections = [
@@ -999,6 +1059,7 @@ export async function generateEssay(
     unsupportedSuperlatives.length > 0 ||
     languageMismatches.length > 0 ||
     presetBookMismatch ||
+    presetSubjectMismatch ||
     corruptedSections.length > 0 ||
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
@@ -1016,6 +1077,12 @@ export async function generateEssay(
           `[책 제목 정정 지시 — 반드시 지킬 것] 이 과제는 반드시 『${input.presetBook.title}』${input.presetBook.author ? `(저자: ${input.presetBook.author})` : ""}` +
             ` 한 권만 다뤄야 하는데, 방금 쓴 글은 이 책이 아니라 전혀 다른 책을 다뤘다. 이번에는 반드시 지정된 ` +
             `이 책 하나만 다뤄서 다시 쓸 것 — 다른 책으로 바꾸지 말 것.`
+        );
+      }
+      if (presetSubjectMismatch && input.presetSubject) {
+        correctionParts.push(
+          `[다룰 대상 정정 지시 — 반드시 지킬 것] 이 과제는 반드시 「${input.presetSubject.name}」 한 명(하나)만 다뤄야 하는데, 방금 쓴 글은 다른 대상을 다뤘다. ` +
+            `이번에는 지정된 이 대상만으로 처음부터 다시 쓸 것 — 다른 대상으로 바꾸지 말 것.`
         );
       }
       if (languageMismatches.length > 0) {
@@ -1413,7 +1480,18 @@ export async function generateEssay(
     // 때만 채운다(여러 권이면 어느 책을 "그 과제의 추천 항목"으로 기록해야
     // 할지 모호해서 — finalBookMentions는 위에서 이미 같은 기준으로 계산해둠).
     recommendedBookTitle: finalBookMentions.length === 1 ? finalBookMentions[0].title : undefined,
-    confirmedSubject: attempt.confirmedSubject || undefined,
+    confirmedSubject: input.presetSubject && !detectPresetSubjectMismatch(attempt, input.presetSubject) ? input.presetSubject.name : attempt.confirmedSubject || undefined,
+    selection:
+      subjectSelection && subjectSelection.kind === "auto"
+        ? {
+            name: subjectSelection.name,
+            key: subjectSelection.key,
+            group: subjectSelection.group,
+            tier: subjectSelection.tier,
+            fallbackUsed: subjectSelection.fallbackUsed,
+            violated: detectPresetSubjectMismatch(attempt, input.presetSubject),
+          }
+        : undefined,
     latency_ms: Date.now() - start,
   };
 }

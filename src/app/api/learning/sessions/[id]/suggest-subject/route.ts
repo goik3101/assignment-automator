@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireLearningUser, jsonError } from "@/lib/learning/auth";
 import { suggestSubjectCandidates } from "@/lib/learning/suggest-subject";
+import { lookupClusterReadOnly } from "@/lib/selection/scope";
 import { SUBJECT_TYPE_LABEL } from "@/lib/learning/subject-spec";
 import type { CoreTaskInfo } from "@/types/task";
 
@@ -23,7 +24,10 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/se
     if (error) throw error;
     if (!session) return jsonError("학습 과제를 찾을 수 없어요.", 404);
 
+    // 같은 수행평가(cluster)를 쓰기 없이 조회해 그 범위의 최근 선정 이력으로 후보를 고른다(못 찾으면 이력 미사용).
+    const scopeKey = await lookupClusterReadOnly(session.core_task_info as CoreTaskInfo);
     const result = await suggestSubjectCandidates({
+      scopeKey,
       subject: session.subject,
       info: session.core_task_info as CoreTaskInfo,
       instructions: session.instructions,

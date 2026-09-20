@@ -5,7 +5,8 @@ import { identifyCluster } from "@/lib/clusters/identify-cluster";
 import { buildAvoidanceInstruction } from "@/lib/clusters/avoidance";
 import { saveResultEmbedding, essayResultToText } from "@/lib/clusters/save-result-embedding";
 import { buildRecommendationGuidance, recordRecommendation } from "@/lib/recommendations/recommendation-diversity";
-import { normalizeBookTitleKey, normalizeSubjectKey } from "@/lib/gemini/generate-essay";
+import { normalizeBookTitleKey } from "@/lib/gemini/generate-essay";
+import { canonicalize } from "@/lib/selection/canonical";
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
@@ -56,10 +57,12 @@ export async function POST(req: NextRequest) {
     // avoidanceInstruction(클러스터 결과물 전체의 의미적 쏠림)과는 다른 축 —
     // "똑같은 책 제목이 문자 그대로 반복되는지"를 본다(추천 다양성 시스템,
     // PROGRESS.md 참고). 실패해도(테이블 미생성 등) null을 반환할 뿐 여기를 막지 않는다.
-    const bookGuidance = await buildRecommendationGuidance("book", { userId: identity.userId ?? undefined });
+    const bookGuidance = await buildRecommendationGuidance("book", { scopeKey: cluster.clusterId });
     // bookGuidance와 별개 축 — "책 제목"이 아니라 인권 선구자 같은 "자유 선정
     // 인물/사건"이 계정을 넘나들며 반복되는 버그(2026-09-16 실측 확인)를 막는다.
-    const subjectGuidance = await buildRecommendationGuidance("subject", { userId: identity.userId ?? undefined });
+    const subjectGuidance = await buildRecommendationGuidance("subject", { scopeKey: cluster.clusterId });
+    // 관리자 테스트 실행은 실제 추천 통계에서 빠지도록 표시한다(x-studed-test 헤더는 관리자 요청에서만 인정).
+    const isTest = admin && req.headers.get("x-studed-test") === "1";
 
     const result = await generateEssay({
       subject,
@@ -68,6 +71,8 @@ export async function POST(req: NextRequest) {
       avoidanceInstruction: avoidanceInstruction ?? undefined,
       recentBookGuidance: bookGuidance?.instructionText,
       recentSubjectGuidance: subjectGuidance?.instructionText,
+      // 자동 선정: 같은 수행평가(cluster)·같은 사용자 기록으로 코드가 후보를 골라 본문 생성에 고정한다.
+      selection: { userId: identity.userId, scopeKey: cluster.clusterId },
     });
 
     const response =
@@ -95,21 +100,28 @@ export async function POST(req: NextRequest) {
                 clusterId: cluster.clusterId,
                 topic: coreTaskInfo.topic,
                 submissionId,
+                isTest,
               });
             }
 
-            if (result.confirmedSubject) {
+            if (result.confirmedSubject || result.selection) {
               // recommendedBookTitle과 별개로도 기록한다 — 책 처방형 과제는
               // confirmedSubject에도 같은 책 제목이 들어올 수 있어 두 카테고리에
               // 중복 기록될 수 있지만, 서로 다른 안내 문구로 쓰이므로 무해하다.
               await recordRecommendation({
                 category: "subject",
-                itemName: normalizeSubjectKey(result.confirmedSubject),
+                // 자동 선정이 고른 대상이면 그 canonical key/표시 이름/계열을, 아니면(학생 지정·선정 아님·불일치) 실제로 다룬 대상을 canonical로 변환해 기록한다.
+                ...(() => {
+                  const auto = result.selection && !result.selection.violated ? result.selection : null;
+                  const c = auto ? { key: auto.key, display: auto.name } : canonicalize(result.confirmedSubject ?? "");
+                  return { itemName: c.key, displayName: c.display, semanticGroup: auto?.group ?? null };
+                })(),
                 userId: identity.userId,
                 guestId: identity.guestId,
                 clusterId: cluster.clusterId,
                 topic: coreTaskInfo.topic,
                 submissionId,
+                isTest,
               });
             }
 

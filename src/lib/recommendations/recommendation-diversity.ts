@@ -1,44 +1,42 @@
 import { getServiceClient } from "@/lib/supabase/service-client";
+import { canonicalKeyFromLegacy } from "@/lib/selection/canonical";
+import type { HistoryEntry } from "@/lib/selection/score";
 
 // ============================================================================
-// 추천 다양성 시스템 — 실제로 발견된 버그: 서로 다른 주제("진로 고민", "친구가
-// 없어 느끼는 고립감")에 연속으로 헤르만 헤세의 『데미안』이 추천됨. 검증
-// (grounding)하기 쉬운 소수의 유명한 항목으로 추천이 수렴하는 구조적 편향으로
-// 추정된다. 이 모듈의 목적은 특정 항목을 금지하는 게 아니라, "최근에 이 항목이
-// 얼마나 자주 추천됐는지"를 추적해서 생성 프롬프트에 반영할 수 있게 하는 것 —
-// 책/통계/사례 등 여러 추천 기능이 공유해서 쓴다.
+// 추천 이력(recommendation_history) 저장/조회 + 프롬프트용 안내문.
 //
-// ⚠️ 이 모듈은 src/lib/clusters/(M2/M3, avoidance.ts·identify-cluster.ts·
-// save-result-embedding.ts)와 이름이 비슷해 보이지만 완전히 다른 축이다:
-//   - clusters/task_embeddings = "안내문(과제) 임베딩" 기반 클러스터당 "결과물
-//     전체"가 의미적으로 비슷한지(embedForClustering/embedForDiversity 사용).
-//   - 이 모듈(recommendation_history) = "똑같은 책 제목/통계/사례가 문자
-//     그대로 반복되는지" — 임베딩을 전혀 쓰지 않는다.
-// 함수명에 "diversity"만 단독으로 쓰지 않고 recommendation/item 접두어를
-// 붙인 것도 이 구분을 명확히 하기 위함이다. 절대 이 둘을 같은 값으로 섞지 말 것.
+// ⚠️ src/lib/clusters/(M2/M3)와 이름이 비슷하지만 다른 축이다:
+//   - clusters/task_embeddings = "안내문 임베딩" 기반, 결과물 전체가 의미적으로 비슷한지(embedForClustering/embedForDiversity).
+//   - 이 모듈 = "같은 책/인물/주제가 반복 선정되는지" — 임베딩을 쓰지 않는다. 절대 섞지 말 것.
 //
-// DB 접근 실패(가장 흔하게는 마이그레이션을 아직 안 돌린 경우)가 핵심 생성
-// 파이프라인을 절대 막으면 안 된다 — validate-sources.ts의 logValidations()와
-// 같은 이유로, 여기 모든 함수는 실패 시 조용히 안전한 기본값(빈 배열/null)으로
-// 넘어가고 콘솔에만 경고를 남긴다.
+// 2026-09-21 개편(전수 조사 결과 반영): 중복 방지의 실제 계산은 src/lib/selection/(코드 레벨 점수·선택)이 맡고,
+// 이 모듈은 이력 I/O와 "같은 수행평가(cluster_id) 범위의 안내문"만 만든다. 이전처럼 전체 기록 상위 N개를 모든 과제에
+// 공통으로 넣지 않는다(다른 과제의 항목이 섞이던 문제).
+//
+// DB 접근 실패(마이그레이션 미적용 등)가 핵심 생성 파이프라인을 막으면 안 된다 — 모든 함수는 실패 시
+// 조용히 안전한 기본값으로 넘어가고 콘솔에만 남긴다.
 // ============================================================================
 
-// "subject"(2026-09-16 추가): 인물/사건/자료 등 "자유롭게 선정하는" 유형의
-// 과제에서 어떤 대상이 골라졌는지(generate-essay.ts의 confirmed_subject) 추적.
-// book/statistic/case_example과 같은 메커니즘을 재사용하되, 항목 정체가 책이
-// 아니라 인물·사건일 수 있어 분리했다 — 실제로 서로 다른 계정인데도 같은
-// 인물(방정환)이 반복 선정되는 버그가 확인되어 신설.
 export type RecommendationCategory = "book" | "statistic" | "case_example" | "subject";
 
 export interface RecommendationRecord {
   itemName: string;
   createdAt: string;
   userId: string | null;
+  clusterId: string | null;
+  displayName: string | null;
+  semanticGroup: string | null;
+  isTest: boolean;
 }
 
 export interface RecordRecommendationInput {
   category: RecommendationCategory;
+  /** 중복 판정용 canonical key(표시 이름이 아님). */
   itemName: string;
+  displayName?: string | null;
+  semanticGroup?: string | null;
+  /** 테스트 실행 표시 — 실제 추천 통계에서 제외된다(0015 이후). */
+  isTest?: boolean;
   userId?: string | null;
   guestId?: string | null;
   clusterId?: string | null;
@@ -47,11 +45,16 @@ export interface RecordRecommendationInput {
   submissionId?: string | null;
 }
 
+function isMissingColumnError(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  return err.code === "42703" || err.code === "PGRST204" || /column .* (does not exist|of relation)|Could not find the '.*' column/i.test(err.message ?? "");
+}
+
 /** 추천이 확정된 시점에 이력을 남긴다. 실패해도 생성 파이프라인을 막지 않는다. */
 export async function recordRecommendation(input: RecordRecommendationInput): Promise<void> {
   try {
     const supabase = getServiceClient();
-    const { error } = await supabase.from("recommendation_history").insert({
+    const base = {
       category: input.category,
       item_name: input.itemName,
       user_id: input.userId ?? null,
@@ -60,8 +63,22 @@ export async function recordRecommendation(input: RecordRecommendationInput): Pr
       topic: input.topic ?? null,
       source: input.source ?? null,
       submission_id: input.submissionId ?? null,
+    };
+    const { error } = await supabase.from("recommendation_history").insert({
+      ...base,
+      display_name: input.displayName ?? null,
+      semantic_group: input.semanticGroup ?? null,
+      is_test: input.isTest === true,
     });
-    if (error) console.error("[recommendation-diversity] 이력 기록 실패", error);
+    if (!error) return;
+    if (isMissingColumnError(error)) {
+      // 0015 미적용 — 예전 컬럼만으로 기록한다(테스트 표시는 못 남기므로 테스트 실행은 기록하지 않는다).
+      if (input.isTest) return;
+      const { error: legacyError } = await supabase.from("recommendation_history").insert(base);
+      if (legacyError) console.error("[recommendation-diversity] 이력 기록 실패(legacy)", legacyError);
+      return;
+    }
+    console.error("[recommendation-diversity] 이력 기록 실패", error);
   } catch (err) {
     console.error("[recommendation-diversity] 이력 기록 중 예외", err);
   }
@@ -70,106 +87,123 @@ export async function recordRecommendation(input: RecordRecommendationInput): Pr
 export interface QueryRecommendationsOptions {
   /** 최근 N일 이내만(기본 90일). */
   sinceDays?: number;
-  /** 최대 건수(기본 200 — 이 규모에서는 실시간 조회 후 JS 집계로 충분하다,
-   * avoidance.ts의 "트래픽 커지면 캐시+배치로 전환" 철학과 동일). */
   limitCount?: number;
-  /** 있으면 그 사용자 것만(개인별 중복 회피용). 없으면 전체 사용자(전체 회피용). */
+  /** 있으면 그 사용자 것만. */
   userId?: string;
+  /** 있으면 그 수행평가(cluster_id) 것만. */
+  clusterId?: string;
+  /** 테스트 행 포함 여부(기본 false — 실제 통계에서 제외). */
+  includeTest?: boolean;
 }
 
-/** 원시 조회 프리미티브 — "최근 N건"/"최근 N일"/"개인별"/"전체"를 전부 이걸로 커버한다. */
+/** 원시 조회 프리미티브. select("*")라 0015 컬럼이 없어도 동작한다(없으면 null/false). */
 export async function queryRecommendations(
   category: RecommendationCategory,
   opts: QueryRecommendationsOptions = {}
 ): Promise<RecommendationRecord[]> {
-  const { sinceDays = 90, limitCount = 200, userId } = opts;
+  const { sinceDays = 90, limitCount = 500, userId, clusterId, includeTest = false } = opts;
   try {
     const supabase = getServiceClient();
     const sinceIso = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString();
     let query = supabase
       .from("recommendation_history")
-      .select("item_name, created_at, user_id")
+      .select("*")
       .eq("category", category)
       .gte("created_at", sinceIso)
       .order("created_at", { ascending: false })
       .limit(limitCount);
     if (userId) query = query.eq("user_id", userId);
+    if (clusterId) query = query.eq("cluster_id", clusterId);
 
     const { data, error } = await query;
     if (error) {
       console.error("[recommendation-diversity] 이력 조회 실패", error);
       return [];
     }
-    return (data ?? []).map((row) => ({
-      itemName: (row as { item_name: string }).item_name,
-      createdAt: (row as { created_at: string }).created_at,
-      userId: (row as { user_id: string | null }).user_id,
-    }));
+    return (data ?? [])
+      .map((row) => {
+        const r = row as Record<string, unknown>;
+        return {
+          itemName: r.item_name as string,
+          createdAt: r.created_at as string,
+          userId: (r.user_id as string | null) ?? null,
+          clusterId: (r.cluster_id as string | null) ?? null,
+          displayName: (r.display_name as string | null) ?? null,
+          semanticGroup: (r.semantic_group as string | null) ?? null,
+          isTest: r.is_test === true,
+        };
+      })
+      .filter((r) => includeTest || !r.isTest);
   } catch (err) {
     console.error("[recommendation-diversity] 이력 조회 중 예외", err);
     return [];
   }
 }
 
-/** 순수 JS 집계 — DB 왕복 없이 "항목별 추천 횟수"/"최근 추천 항목 목록"을 파생한다. */
-export function summarizeItemFrequency(records: RecommendationRecord[]): Map<string, number> {
+/** 선정 점수 계산용 이력. 예전 방식 item_name도 canonical key로 승격해서 같은 대상끼리 합쳐 센다. */
+export async function loadSelectionHistory(
+  category: RecommendationCategory,
+  opts: { sinceDays?: number } = {}
+): Promise<HistoryEntry[]> {
+  const rows = await queryRecommendations(category, { sinceDays: opts.sinceDays ?? 90 });
+  return rows.map((r) => ({
+    key: category === "subject" ? canonicalKeyFromLegacy(r.itemName) : r.itemName,
+    name: r.displayName ?? r.itemName,
+    group: r.semanticGroup,
+    userId: r.userId,
+    scopeKey: r.clusterId,
+    createdAt: r.createdAt,
+    isTest: r.isTest,
+  }));
+}
+
+/** 순수 JS 집계. */
+export function summarizeItemFrequency(records: { itemName: string }[]): Map<string, number> {
   const freq = new Map<string, number>();
-  for (const r of records) {
-    freq.set(r.itemName, (freq.get(r.itemName) ?? 0) + 1);
-  }
+  for (const r of records) freq.set(r.itemName, (freq.get(r.itemName) ?? 0) + 1);
   return freq;
 }
 
 export interface RecommendationGuidance {
-  /** 프롬프트에 바로 넣을 안내 텍스트. */
   instructionText: string;
-  /** 진단/테스트용 — 실제로 참고한 빈도 데이터. */
-  recentGlobalFrequency: Map<string, number>;
-  recentUserFrequency: Map<string, number>;
+  scopeFrequency: Map<string, number>;
 }
 
 const GUIDANCE_MIN_HISTORY = Number(process.env.RECOMMENDATION_GUIDANCE_MIN_HISTORY ?? 3);
-// 안내문에 실제로 나열할 "최근 과다 사용 항목" 개수 상한 — 프롬프트가 너무 길어지지
-// 않게, 빈도 상위 몇 개만 예시로 보여준다(전체 금지 목록이 아니라 예시일 뿐).
 const GUIDANCE_TOP_N = Number(process.env.RECOMMENDATION_GUIDANCE_TOP_N ?? 5);
 
 /**
- * avoidance.ts의 buildAvoidanceInstruction()과 병렬 구조 — 최근 항목 빈도를
- * 조회·요약해서 프롬프트에 바로 넣을 안내 텍스트를 만든다. 이력이 너무 적으면
- * (표본 부족으로 우연히 편향될 수 있어서) null을 반환해 지시 자체를 생략한다.
- *
- * 이번 버그가 "서로 다른 주제인데도" 반복된 사례였으므로, 핵심 방어선은
- * clusterId(주제)가 아니라 category 전체(전 사용자, 전 주제) 기준 최근
- * 빈도다 — clusterId/userId는 있으면 추가 참고 정보로만 곁들인다.
+ * "같은 수행평가(scopeKey)"에서 최근 많이 선정된 항목만 알려주는 보조 안내문. 이제 이 안내문은 참고용 힌트일 뿐이고
+ * (프롬프트만으로는 지켜지지 않는다는 게 실측으로 확인됨), 실제 회피는 src/lib/selection/의 코드 선택이 한다.
+ * scopeKey가 없으면 null — 다른 과제의 기록을 절대 섞지 않는다.
  */
 export async function buildRecommendationGuidance(
   category: RecommendationCategory,
-  opts: { userId?: string; sinceDays?: number } = {}
+  opts: { scopeKey?: string | null; sinceDays?: number } = {}
 ): Promise<RecommendationGuidance | null> {
-  const globalRecords = await queryRecommendations(category, { sinceDays: opts.sinceDays });
-  if (globalRecords.length < GUIDANCE_MIN_HISTORY) return null;
+  if (!opts.scopeKey) return null;
+  const records = await queryRecommendations(category, { sinceDays: opts.sinceDays, clusterId: opts.scopeKey });
+  if (records.length < GUIDANCE_MIN_HISTORY) return null;
 
-  const recentGlobalFrequency = summarizeItemFrequency(globalRecords);
-  const userRecords = opts.userId
-    ? await queryRecommendations(category, { sinceDays: opts.sinceDays, userId: opts.userId })
-    : [];
-  const recentUserFrequency = summarizeItemFrequency(userRecords);
-
-  const topOverused = Array.from(recentGlobalFrequency.entries())
+  const names = new Map<string, string>();
+  const freq = new Map<string, number>();
+  for (const r of records) {
+    const key = category === "subject" ? canonicalKeyFromLegacy(r.itemName) : r.itemName;
+    freq.set(key, (freq.get(key) ?? 0) + 1);
+    if (!names.has(key)) names.set(key, r.displayName ?? r.itemName);
+  }
+  const minCount = category === "statistic" || category === "case_example" ? 2 : 1;
+  const top = [...freq.entries()]
+    .filter(([, c]) => c >= minCount)
     .sort((a, b) => b[1] - a[1])
     .slice(0, GUIDANCE_TOP_N)
-    .map(([name, count]) => `${name}(최근 ${count}회)`);
-
-  const categoryLabel =
-    category === "book" ? "책" : category === "statistic" ? "통계/자료" : category === "subject" ? "인물/대상" : "사례";
+    .map(([k, c]) => `${names.get(k)}(최근 ${c}회)`);
+  if (top.length === 0) return null;
+  const label = category === "book" ? "책" : category === "statistic" ? "통계/자료" : category === "subject" ? "인물/대상" : "사례";
   const instructionText = `
-[선정 다양성 확보 — 반드시 반영할 것]
-최근 다른 학생들이 자주 선택한 ${categoryLabel}: ${topOverused.join(", ")}.
-최근 선택 이력에 존재하는 항목은 우선순위를 낮춰라. 단, 주제와의 적합성이
-압도적으로 높은 경우에는 동일 항목을 다시 선택할 수 있다. 단순히 유명하거나
-검증하기 쉽다는 이유만으로 최근 선택 항목을 다시 고르지 마라. 주제와 충분히
-관련 있으면서 최근 선택 빈도가 낮은 대안을 우선적으로 탐색하라.
+[선정 다양성 참고 — 이 수행평가에서 최근 다른 학생들이 자주 고른 ${label}]
+${top.join(", ")}.
+가능하면 이 항목들과 겹치지 않는 대안을 우선 고려하되, 과제 조건에 맞지 않는 항목으로 바꾸지는 말 것.
 `.trim();
-
-  return { instructionText, recentGlobalFrequency, recentUserFrequency };
+  return { instructionText, scopeFrequency: freq };
 }

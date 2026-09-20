@@ -137,6 +137,16 @@ export interface EssayResult {
    * 각자 다른 대상을 골라버리는 인물 혼입 버그를 막기 위해 essay 쪽에서 먼저
    * 확정한 값을 plan 생성(generate-plan.ts의 fixedSubject)에 그대로 넘긴다. */
   confirmedSubject?: string;
+  /** 자동 선정(src/lib/selection/)이 실제로 대상을 골랐을 때의 결과 — 라우트가 이력 기록에 쓴다. 학생이 직접 지정했거나 선정 대상이 아니면 undefined. */
+  selection?: {
+    name: string;
+    key: string;
+    group?: string | null;
+    tier?: string;
+    fallbackUsed?: boolean;
+    /** 생성 결과가 선정된 대상과 다른 대상을 다뤘는지(재시도 후에도) — true면 기록은 실제로 다룬 대상 기준으로 한다. */
+    violated?: boolean;
+  };
 }
 
 /** 학생이 AI 대신 직접 손으로 해야 하는 물리적 제작 단계만 담는다(그림

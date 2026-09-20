@@ -2,7 +2,9 @@ import { Type, type Schema } from "@google/genai";
 import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
 import { withGeminiRetry } from "@/lib/gemini/retry";
 import { ACHIEVEMENT_INTERPRETATION_RULES } from "@/lib/gemini/prompts";
-import { buildRecommendationGuidance } from "@/lib/recommendations/recommendation-diversity";
+import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
+import { canonicalize } from "@/lib/selection/canonical";
+import { selectFromCandidates, type HistoryEntry, type SelectionCandidate } from "@/lib/selection/score";
 import type { SubjectCandidate } from "@/types/learning";
 import type { CoreTaskInfo } from "@/types/task";
 import {
@@ -22,6 +24,8 @@ const SCHEMA: Schema = {
         type: Type.OBJECT,
         properties: {
           name: { type: Type.STRING, description: "대상 이름(널리 쓰이는 표기)" },
+          canonical_id: { type: Type.STRING, description: "영문 정식 이름 소문자 snake_case(예: henry_dunant)" },
+          group: { type: Type.STRING, description: "이 대상이 속하는 분야/계열 짧은 라벨" },
           candidate_type: { type: Type.STRING, enum: [...SUBJECT_TYPES] },
           reason: { type: Type.STRING, description: "안내문의 대상 조건을 왜 충족하는지" },
           field_notes: {
@@ -33,7 +37,7 @@ const SCHEMA: Schema = {
             },
           },
         },
-        required: ["name", "candidate_type", "reason", "field_notes"],
+        required: ["name", "canonical_id", "group", "candidate_type", "reason", "field_notes"],
       },
     },
   },
@@ -43,6 +47,8 @@ const SCHEMA: Schema = {
 const WANT = 3;
 const OVERGENERATE = 6;
 const MAX_ROUNDS = 2;
+// 검증을 통과한 후보가 이만큼 모이면(WANT보다 많이) 더 생성하지 않고 그 안에서 코드가 WANT개를 고른다.
+const POOL_ENOUGH = 4;
 
 export interface SuggestResult {
   spec: SubjectSpec;
@@ -60,7 +66,7 @@ async function generateRound(params: {
   instructions?: string | null;
   guidanceText?: string;
   avoid: string[];
-}): Promise<{ name: string; candidate_type: string; reason: string; field_notes: { field: string; note: string }[] }[]> {
+}): Promise<{ name: string; canonical_id?: string; group?: string; candidate_type: string; reason: string; field_notes: { field: string; note: string }[] }[]> {
   const { spec } = params;
   const ai = getGeminiClient();
   const typeLabel = SUBJECT_TYPE_LABEL[spec.subject_type];
@@ -118,7 +124,7 @@ ${ACHIEVEMENT_INTERPRETATION_RULES}
   );
   try {
     const parsed = JSON.parse(extraction.text ?? "{}") as {
-      candidates?: { name: string; candidate_type: string; reason: string; field_notes: { field: string; note: string }[] }[];
+      candidates?: { name: string; canonical_id?: string; group?: string; candidate_type: string; reason: string; field_notes: { field: string; note: string }[] }[];
     };
     return (parsed.candidates ?? []).filter((c) => c.name?.trim());
   } catch {
@@ -137,28 +143,29 @@ export async function suggestSubjectCandidates(params: {
   info: CoreTaskInfo;
   instructions?: string | null;
   userId?: string;
+  /** 같은 수행평가 식별자(cluster_id) — 있으면 그 범위의 최근 선정 이력으로 후보를 코드가 골라 반복을 줄인다. */
+  scopeKey?: string | null;
+  /** 테스트용 fixture 이력. */
+  history?: HistoryEntry[];
+  rng?: () => number;
 }): Promise<SuggestResult> {
   const spec = await extractSubjectSpec(params);
   if (spec.needs_clarification) {
     return { spec, candidates: [], needsClarification: true, rejected: [] };
   }
 
-  const guidance =
-    spec.subject_type === "person" ? await buildRecommendationGuidance("subject", { userId: params.userId }) : null;
-
-  const accepted: SubjectCandidate[] = [];
+  const pool: { cand: SubjectCandidate; key: string; group: string | null }[] = [];
   const rejected: { name: string; reason: string }[] = [];
   const seen = new Set<string>();
   const key = (n: string) => n.replace(/[\s·・]/g, "").toLowerCase();
 
-  for (let round = 0; round < MAX_ROUNDS && accepted.length < WANT; round++) {
+  for (let round = 0; round < MAX_ROUNDS && pool.length < POOL_ENOUGH; round++) {
     const raw = await generateRound({
       subject: params.subject,
       info: params.info,
       spec,
       instructions: params.instructions,
-      guidanceText: guidance?.instructionText,
-      avoid: [...rejected.map((r) => r.name), ...accepted.map((a) => a.name)],
+      avoid: [...rejected.map((r) => r.name), ...pool.map((p) => p.cand.name)],
     });
     const fresh = raw.filter((c) => !seen.has(key(c.name)));
     fresh.forEach((c) => seen.add(key(c.name)));
@@ -170,15 +177,16 @@ export async function suggestSubjectCandidates(params: {
       // 후보 생성 호출의 자기 분류도 대상 종류와 어긋나면 탈락시킨다(두 신호 모두 통과해야 함).
       const selfTypeOk = c.candidate_type === spec.subject_type;
       if (v.pass && selfTypeOk) {
-        if (accepted.length < WANT) {
-          accepted.push({
+        {
+          const canon = canonicalize(c.name.trim(), c.canonical_id);
+          pool.push({ key: canon.key, group: c.group?.trim() || null, cand: {
             name: c.name.trim(),
             reason: (c.reason ?? "").trim().slice(0, 200),
             fieldNotes: (c.field_notes ?? [])
               .filter((f) => f.field?.trim() && f.note?.trim() && !/종류|유형|선정|선택/.test(f.field))
               .slice(0, 6)
               .map((f) => ({ field: f.field.trim(), note: f.note.trim().slice(0, 140) })),
-          });
+          } });
         }
       } else {
         rejected.push({
@@ -189,5 +197,17 @@ export async function suggestSubjectCandidates(params: {
     });
   }
 
-  return { spec, candidates: accepted, needsClarification: false, rejected };
+  // 검증을 통과한 후보 풀에서 WANT개를 코드가 고른다(같은 사용자·같은 수행평가·전체 이력 + 별칭·의미 계열 반영).
+  const history = params.history ?? (params.scopeKey ? await loadSelectionHistory("subject") : []);
+  let remaining: (SelectionCandidate & { cand: SubjectCandidate })[] = pool.map((p) => ({ name: p.cand.name, key: p.key, group: p.group, fit: 0.8, cand: p.cand }));
+  const chosen: SubjectCandidate[] = [];
+  while (chosen.length < WANT && remaining.length > 0) {
+    const sel = selectFromCandidates(remaining, history, { userId: params.userId, scopeKey: params.scopeKey, rng: params.rng });
+    if (!sel) break;
+    if (sel.fallbackUsed) console.warn(`[selection] 학습 추천 fallback tier=${sel.tier} 선택="${sel.picked.name}"`);
+    const pickedKey = sel.picked.key;
+    chosen.push((remaining.find((r) => r.key === pickedKey) as { cand: SubjectCandidate }).cand);
+    remaining = remaining.filter((r) => r.key !== pickedKey);
+  }
+  return { spec, candidates: chosen, needsClarification: false, rejected };
 }

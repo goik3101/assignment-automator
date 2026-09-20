@@ -3435,3 +3435,11 @@ source-quality.ts(신설), types/task.ts, AssignmentFlow.tsx, ResultPanel.tsx.
 - 수정(학습 모드 전용, 자동 작성 모드·analyze.ts 무변경): `src/lib/learning/subject-spec.ts`(대상 유형 subject_type·constraints·required_fields·exclusions 추출, 안내문에 없으면 unspecified → 추천하지 않고 확인 안내, 후보 독립 검증 `verifyCandidates`), `suggest-subject.ts`(조건 기반 6개 생성 → 검증 통과분 3개 표시, 최대 2라운드, 유형 자기분류+독립검증 둘 다 통과해야 함, 설명은 조건 충족 이유 + 조사 항목별 단서), 라우트/화면(대상 종류 안내, 확인 필요 메시지).
 - 테스트: 검증기 단독 11/11(신문고·세계인권선언·UN·레이첼 카슨·노예제 폐지 운동·책·앰네스티 탈락, 앙리 뒤낭·킹·만델라·간디 통과). 유형별 전체 흐름 6/6(인물/사건/작품/제도/지역/미지정 → 각 유형만 추천, 미지정은 추천 대신 확인 요청). 적대적 지침(제도·환경운동가를 넣으라고 요구)에서 4건 탈락 확인. 학습 e2e 13/13.
 - 한계: 검증도 LLM 판정이라 경계 사례(예: 반기문을 인권 선구자로 통과)는 남을 수 있음. 후보 항목별 단서에서 세부 사실 오류 1건 관찰(삼대 인물 관계) → 세부 사실 금지 규칙 추가. 직접 입력한 대상은 검증하지 않음.
+
+## 자동 선정/추천 시스템 공통화 (2026-09-21)
+
+- 조사에서 확인한 구조 문제(프롬프트 한 줄 의존, 전체 기록 상위 5개를 모든 과제에 주입, 별칭 분열, 의미 중복 미감지, 사용자별 기록 미사용)를 `src/lib/selection/`로 공통화: canonical(별칭·의미 계열), score(순수 함수: 같은 사용자/같은 수행평가/전체 이력 + 최근성 감쇠 + 3단계 fallback + 가중 선택), subject-selection(조건 분석→후보 10개→유형 필터→코드 선택→선택된 1개만 검증→고정), scope(cluster 읽기 전용 조회).
+- 자동 작성: 선정 과제면 본문 생성 전에 대상을 확정해 `presetSubject`로 고정(불일치 시 1회 재시도, 위반 표시). 학생이 지침에 대상을 명시하면(`student_specified_subject`) 추천 미실행. 책 선정도 같은 점수 로직(cross-scope 약하게). 다양성 안내문은 같은 수행평가(cluster) 범위만, 책/대상이 이미 정해졌으면 넣지 않음.
+- 학습 모드 추천: 검증 통과 풀에서 같은 코드 선택으로 3개. `SELECTION_HINT`에 "골라/고른" 추가(선정 과제 인식 누락 수정).
+- 마이그레이션 0015(추가만: is_test, display_name, semantic_group) — **아직 미적용**. 미적용이어도 동작(기록은 legacy 컬럼만, 테스트 표시 행은 기록 생략).
+- im-not-ai 규칙: `ANTI_AI_TONE_RULES_V2` 추가(MIT, docs/THIRD_PARTY_NOTICES.md)했으나 A/B에서 개선이 확인되지 않아 기본값은 v1 유지(`ANTI_AI_TONE_VERSION=v2`로 전환).

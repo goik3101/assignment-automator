@@ -43,6 +43,8 @@ export interface SubjectSpec {
   /** 안내문만으로는 어떤 종류의 대상을 고르라는 건지 알 수 없을 때 true. */
   needs_clarification: boolean;
   clarification_note: string | null;
+  /** 학생 지침에 다룰 대상이 이미 명시돼 있으면 그 이름(자동 추천을 실행하지 않는다). 없으면 null. */
+  student_specified_subject: string | null;
 }
 
 const SPEC_SCHEMA: Schema = {
@@ -55,6 +57,7 @@ const SPEC_SCHEMA: Schema = {
     exclusions: { type: Type.ARRAY, items: { type: Type.STRING } },
     needs_clarification: { type: Type.BOOLEAN },
     clarification_note: { type: Type.STRING, nullable: true },
+    student_specified_subject: { type: Type.STRING, nullable: true },
   },
   required: ["subject_type", "topic", "constraints", "required_fields", "exclusions", "needs_clarification"],
 };
@@ -95,6 +98,7 @@ ${describeTask(params)}
   needs_clarification을 true로, clarification_note에 "안내문에서 확인되는 것 / 확인되지 않는 것"을 한두 문장으로 적어라.
 - constraints: 대상이 만족해야 하는 조건을 안내문 표현 그대로(예: "인권 선구자"). 없으면 빈 배열.
 - required_fields: 대상을 고른 뒤 학생이 조사·작성해야 하는 항목(대상 선정 이유 자체는 제외).
+- student_specified_subject: [학생 지침]에 다룰 대상(인물·책·사건 등)이 학생 본인 말로 명확히 지정돼 있으면(예: "마틴 루터 킹으로 해줘", "사피엔스로 해줘") 그 이름만 적고, 지침이 없거나 대상을 정하지 않았으면 null. 안내문(과제 설명)에 적힌 예시는 학생 지정이 아니다.
 - exclusions: 이 과제에서 추천하면 안 되는 대상. 지정된 종류가 아닌 모든 종류(예: person이면 제도·기관·사건·법률·개념·단체 자체·책·영화)와
   과제 조건을 충족하지 못하는 인접 분야의 대상을 포함한다.
 `.trim();
@@ -120,6 +124,7 @@ ${describeTask(params)}
       .map((s) => s.trim())
       .filter((s) => s && !/선정|선택|나의|내가|느낀|소감|다짐|생각|의견/.test(s)),
     exclusions: (p.exclusions ?? []).map((s) => s.trim()).filter(Boolean),
+    student_specified_subject: p.student_specified_subject?.trim() || null,
     needs_clarification: unclear,
     clarification_note: unclear
       ? p.clarification_note?.trim() || "안내문에서 어떤 종류의 대상을 고르라는 것인지 확인되지 않아요. 선생님 안내를 확인하고 직접 정해 주세요."

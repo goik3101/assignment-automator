@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     const avoidanceInstruction = await buildAvoidanceInstruction(cluster.clusterId);
     // generate-essay.ts의 recentBookGuidance와 같은 역할, 카테고리만 다름 —
     // 새 회피 로직을 따로 안 만들고 recommendation-diversity.ts를 재사용.
-    const statGuidance = await buildRecommendationGuidance("statistic", { userId: identity.userId ?? undefined });
+    const statGuidance = await buildRecommendationGuidance("statistic", { scopeKey: cluster.clusterId });
 
     const result = await generatePlan({
       subject,
