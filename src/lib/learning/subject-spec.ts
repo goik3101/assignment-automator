@@ -1,6 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
-import { withGeminiRetry } from "@/lib/gemini/retry";
 import type { CoreTaskInfo } from "@/types/task";
 
 // 학습 모드 전용: "이 과제가 학생에게 고르라고 하는 대상이 무슨 종류이고 어떤 조건을 만족해야
@@ -83,7 +82,6 @@ export async function extractSubjectSpec(params: {
   info: CoreTaskInfo;
   instructions?: string | null;
 }): Promise<SubjectSpec> {
-  const ai = getGeminiClient();
   const prompt = `
 아래는 고등학생 수행평가 안내문을 분석한 결과다. 학생이 스스로 "골라야 하는 대상"이 무엇인지 구조화해줘.
 
@@ -103,15 +101,13 @@ ${describeTask(params)}
   과제 조건을 충족하지 못하는 인접 분야의 대상을 포함한다.
 `.trim();
 
-  const res = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flash,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json", responseSchema: SPEC_SCHEMA, temperature: 0 },
-      }),
-    "learning:subject-spec"
-  );
+  const res = await generate({
+      label: "learning:subject-spec",
+      role: "main",
+      prompt: prompt,
+      schema: SPEC_SCHEMA,
+      temperature: 0,
+    });
   const p = JSON.parse(res.text ?? "{}") as Partial<SubjectSpec>;
   const type = (SUBJECT_TYPES as readonly string[]).includes(p.subject_type ?? "") ? (p.subject_type as SubjectType) : "unspecified";
   const unclear = type === "unspecified" || p.needs_clarification === true;
@@ -169,7 +165,6 @@ export async function verifyCandidates(
   names: string[]
 ): Promise<(CandidateVerdict & { pass: boolean })[]> {
   if (names.length === 0) return [];
-  const ai = getGeminiClient();
   const prompt = `
 수행평가에서 학생이 고를 대상의 후보를 엄격하게 검증해줘.
 
@@ -189,15 +184,13 @@ ${names.map((n, i) => `${i + 1}. ${n}`).join("\n")}
 - note: 판단 근거 한 줄.
 `.trim();
 
-  const res = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flash,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json", responseSchema: VERIFY_SCHEMA, temperature: 0 },
-      }),
-    "learning:verify-candidates"
-  );
+  const res = await generate({
+      label: "learning:verify-candidates",
+      role: "main",
+      prompt: prompt,
+      schema: VERIFY_SCHEMA,
+      temperature: 0,
+    });
   const verdicts = (JSON.parse(res.text ?? "{}") as { verdicts?: CandidateVerdict[] }).verdicts ?? [];
   const typeOk = (t: SubjectType) => spec.subject_type === "unspecified" || spec.subject_type === t;
   // 검증 응답에 빠진 후보는 통과시키지 않는다(보수적).

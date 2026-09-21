@@ -1,4 +1,4 @@
-import { getGeminiClient, GEMINI_MODELS } from "./client";
+import { generate } from "@/lib/llm";
 import {
   ANTI_AI_TONE_RULES,
   NO_META_COMMENTARY_RULE,
@@ -15,7 +15,6 @@ import {
   yearsMissingFromResearch,
 } from "@/lib/research/research-items";
 import { validateSources } from "@/lib/links/validate-sources";
-import { withGeminiRetry } from "./retry";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
 import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList } from "./generate-essay";
 import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
@@ -330,18 +329,14 @@ export async function generatePlan(
   input: GeneratePlanInput
 ): Promise<PlanResult | InsufficientDataResult> {
   const start = Date.now();
-  const ai = getGeminiClient();
 
   const runStepA = (p: string) =>
-    withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flash,
-          contents: [{ role: "user", parts: [{ text: p }] }],
-          config: { tools: [{ googleSearch: {} }] },
-        }),
-      "generatePlan:stepA"
-    );
+    generate({
+      label: "generatePlan:stepA",
+      role: "main",
+      prompt: p,
+      search: {},
+    });
 
   let stepA;
   try {
@@ -429,8 +424,8 @@ export async function generatePlan(
       const retryStepA = await runStepA(retryPrompt);
       if (retryStepA.text) {
         const retryIssues = inspectPlan(retryStepA.text);
-        const originalChunks = stepA.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0;
-        const retryChunks = retryStepA.candidates?.[0]?.groundingMetadata?.groundingChunks?.length ?? 0;
+        const originalChunks = stepA.grounding?.chunks?.length ?? 0;
+        const retryChunks = retryStepA.grounding?.chunks?.length ?? 0;
         const regressedGrounding = originalChunks > 0 && retryChunks === 0;
         const better =
           retryIssues.missing.length + retryIssues.badYears.length <=
@@ -448,14 +443,14 @@ export async function generatePlan(
     }
   }
 
-  const grounding = stepA.candidates?.[0]?.groundingMetadata;
+  const grounding = stepA.grounding;
   console.log(
-    `[generatePlan] 그라운딩 진단: webSearchQueries=${JSON.stringify(grounding?.webSearchQueries ?? [])} ` +
-      `groundingChunks=${grounding?.groundingChunks?.length ?? 0}`
+    `[generatePlan] 그라운딩 진단: queries=${JSON.stringify(grounding?.queries ?? [])} ` +
+      `groundingChunks=${grounding?.chunks?.length ?? 0}`
   );
 
-  const { sources, chunkIndexToN } = buildSourceList(grounding?.groundingChunks);
-  let annotated = insertCitationMarkers(freeText, grounding?.groundingSupports, chunkIndexToN);
+  const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
+  let annotated = insertCitationMarkers(freeText, grounding?.supports, chunkIndexToN);
   let validatedSources = await validateSources(sources);
 
   // generate-essay.ts와 같은 이유(2026-09-16 라에네크 감사) — 검증 실패로

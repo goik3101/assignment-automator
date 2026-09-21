@@ -1,5 +1,5 @@
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "./client";
+import { generate, type LlmPart } from "@/lib/llm";
 import type { AnalyzeResult } from "@/types/task";
 
 // 기획서 6-0 1단계: 안내문에서 administrative_info(제출기한 등)와
@@ -247,10 +247,10 @@ export async function analyzeAssignment(
     throw new Error("imageBase64 또는 topicText 중 하나는 반드시 있어야 합니다.");
   }
 
-  const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
+  const parts: LlmPart[] = [];
 
   if (input.imageBase64 && input.imageMimeType) {
-    parts.push({ inlineData: { data: input.imageBase64, mimeType: input.imageMimeType } });
+    parts.push({ image: { base64: input.imageBase64, mimeType: input.imageMimeType } });
   }
 
   const userTextLines = [
@@ -260,15 +260,12 @@ export async function analyzeAssignment(
   ].filter(Boolean);
   parts.push({ text: userTextLines.join("\n\n") });
 
-  const ai = getGeminiClient();
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODELS.flashLite,
-    contents: [{ role: "user", parts }],
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      responseMimeType: "application/json",
-      responseSchema: ANALYZE_SCHEMA,
-    },
+  const response = await generate({
+    label: "analyze",
+    role: "lite",
+    prompt: parts,
+    system: SYSTEM_INSTRUCTION,
+    schema: ANALYZE_SCHEMA,
   });
 
   const raw = response.text;

@@ -3457,3 +3457,9 @@ source-quality.ts(신설), types/task.ts, AssignmentFlow.tsx, ResultPanel.tsx.
 - 후처리 실험(기본 OFF, `STYLE_POSTPROCESS_CONNECTIVES=1` / `STYLE_POSTPROCESS_CONCLUSION=1`): 문장 단위 탐지 → 모델 재작성 → 규칙 검증(길이·숫자·출처·이름·새 접속어·새 평가어) → 의미 검증. 같은 글에 적용해 비교한 결과 효과가 미미(접속어 60편에서 25→20개, 결론 공식은 탐지 대상이 거의 없음)해서 켜지 않음.
 - 분량 테스트(6과제×3편, v1 vs v3): v3가 한국어 5과제 합산 0.89배, 신문 0.77배, 탐구 보고서 0.85배, 영어 발표 0.70배(85 words, 요구 120~150). 아직 규칙 수정은 하지 않음(승인 대기). 참고: 분석 단계가 "1500자 내외"를 `max=1500,min=0`으로만 잡아 하한이 강제되지 않는다.
 - 최종 10종 회귀는 Gemini 선불 크레딧 소진(402)으로 01~03만 실행됨. 크레딧 충전 후 재실행 필요.
+
+## OpenAI 마이그레이션 1단계: 모델 호출 계층 (2026-09-22)
+
+- `src/lib/llm/`: `generate()`/`generateJson()`/`embedText()` 단일 입구, 제공자(`providers/gemini.ts`, `providers/openai.ts`는 2~6단계에서 구현), 오류 종류(`LlmError`), 요청 단위 호출 기록기(`trace.ts`). 제공자는 `LLM_PROVIDER`(기본 gemini)로만 고르고 파이프라인 안에서 섞지 않는다. 모델은 역할(main/lite)→환경변수로 매핑.
+- 직접 Gemini 호출 22곳(14개 파일)을 AST 코드모드로 전부 계층 호출로 바꿈. SDK 런타임 사용은 `llm/providers/gemini.ts`, `gemini/client.ts`에만 남음. 검색 그라운딩 메타데이터는 `{queries, chunks, supports(unit)}`로 정규화(Gemini=utf8 바이트, OpenAI=utf16 글자).
+- 검증: tsc/eslint 통과, 단위 테스트 41개(계층 5개 신규: 모델 매핑, 재시도/quota, trace, 구조화 출력 오류 구분). Gemini 크레딧이 소진돼 Gemini 실호출 회귀는 못 함.

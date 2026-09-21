@@ -1,6 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
-import { withGeminiRetry } from "@/lib/gemini/retry";
 import { LEARNING_FEEDBACK_RULES } from "./prompts";
 import type { FeedbackIssue, LearningFeedback, RequirementCheck } from "@/types/learning";
 
@@ -98,16 +97,12 @@ const clipIssues = (a: unknown, max = 4): FeedbackIssue[] =>
     : [];
 
 export async function generateLearningFeedback(input: FeedbackInput): Promise<LearningFeedback> {
-  const ai = getGeminiClient();
-  const response = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flash,
-        contents: [{ role: "user", parts: [{ text: buildPrompt(input) }] }],
-        config: { responseMimeType: "application/json", responseSchema: FEEDBACK_SCHEMA },
-      }),
-    "learning:feedback"
-  );
+  const response = await generate({
+      label: "learning:feedback",
+      role: "main",
+      prompt: buildPrompt(input),
+      schema: FEEDBACK_SCHEMA,
+    });
   const raw = response.text;
   if (!raw) throw new Error("피드백 응답이 비어 있습니다.");
   const p = JSON.parse(raw) as Record<string, unknown>;

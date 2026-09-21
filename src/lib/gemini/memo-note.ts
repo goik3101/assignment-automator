@@ -1,5 +1,5 @@
 import { Type } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "./client";
+import { generate } from "@/lib/llm";
 import type { EssayResult, PlanResult, MemoNote } from "@/types/task";
 
 // 기획서 9-2: 암기노트 — 서비스가 이미 생성한 원고/계획서에서 핵심만 뽑아 정리.
@@ -29,28 +29,16 @@ function resultToPlainText(result: EssayResult | PlanResult): string {
 }
 
 export async function generateMemoNote(result: EssayResult | PlanResult): Promise<MemoNote> {
-  const ai = getGeminiClient();
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODELS.flashLite,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `아래는 학생이 이미 완성한 수행평가 결과물이다. 시험이나 발표 직전에 빠르게
+  const response = await generate({
+    label: "memoNote",
+    role: "lite",
+    schema: MEMO_NOTE_SCHEMA,
+    prompt: `아래는 학생이 이미 완성한 수행평가 결과물이다. 시험이나 발표 직전에 빠르게
 훑어볼 수 있는 "암기노트"로 압축해줘. 원문에 없는 사실을 새로 지어내지 말고,
 있는 내용만 골라 요약할 것.
 
 [결과물]
 ${resultToPlainText(result)}`,
-          },
-        ],
-      },
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: MEMO_NOTE_SCHEMA,
-    },
   });
 
   const raw = response.text;

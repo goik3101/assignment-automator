@@ -1,5 +1,4 @@
-import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
-import { withGeminiRetry } from "@/lib/gemini/retry";
+import { generate } from "@/lib/llm";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "@/lib/gemini/citations";
 import { FACTUAL_RIGOR_RULES, ACHIEVEMENT_INTERPRETATION_RULES } from "@/lib/gemini/prompts";
 import { stripUnsupportedSuperlatives } from "@/lib/gemini/generate-essay";
@@ -122,36 +121,32 @@ function renumber(content: string, all: SourceRef[]): SectionResearch {
  * 자동 작성 모드와 같은 공유 유틸을 읽기 전용으로 재사용한다.
  */
 export async function researchLearningItems(input: ResearchInput): Promise<Map<string, SectionResearch>> {
-  const ai = getGeminiClient();
   const prompt = buildPrompt(input);
   const run = (p: string) =>
-    withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flash,
-          contents: [{ role: "user", parts: [{ text: p }] }],
-          config: { tools: [{ googleSearch: {} }] },
-        }),
-      "learning:research"
-    );
+    generate({
+      label: "learning:research",
+      role: "main",
+      prompt: p,
+      search: {},
+    });
 
   let response = await run(prompt);
-  let grounding = response.candidates?.[0]?.groundingMetadata;
-  if ((grounding?.webSearchQueries?.length ?? 0) === 0) {
+  let grounding = response.grounding;
+  if ((grounding?.queries?.length ?? 0) === 0) {
     console.warn("[learning research] 검색 도구를 호출하지 않음 — 강하게 재지시하여 1회 재시도");
     const retry = await run(
       prompt + "\n\n【다시 한번 강조】 방금 검색 도구를 한 번도 호출하지 않았다. 이번에는 반드시 실시간 웹 검색을 실제로 호출한 뒤에 쓸 것."
     );
-    if ((retry.candidates?.[0]?.groundingMetadata?.webSearchQueries?.length ?? 0) > 0) {
+    if ((retry.grounding?.queries?.length ?? 0) > 0) {
       response = retry;
-      grounding = retry.candidates?.[0]?.groundingMetadata;
+      grounding = retry.grounding;
     }
   }
   const text = response.text;
   if (!text) throw new Error("자료 조사 응답이 비어 있습니다.");
 
-  const { sources, chunkIndexToN } = buildSourceList(grounding?.groundingChunks);
-  let annotated = insertCitationMarkers(text, grounding?.groundingSupports, chunkIndexToN);
+  const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
+  let annotated = insertCitationMarkers(text, grounding?.supports, chunkIndexToN);
   const validated = await validateSources(sources);
   const badNs = new Set(validated.filter((s) => s.url_valid === false || s.tier === "weak").map((s) => s.n));
   annotated = stripInvalidCitationMarkers(annotated, badNs);

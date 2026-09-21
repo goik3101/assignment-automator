@@ -1,5 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "./client";
 import {
   ANTI_AI_TONE_RULES,
   COPYRIGHT_RULES,
@@ -15,7 +15,6 @@ import {
 import { findMissingItems, parseResearchItems } from "@/lib/research/research-items";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
 import { validateSources } from "@/lib/links/validate-sources";
-import { withGeminiRetry } from "./retry";
 import {
   verifyExcerpt,
   verifyAuthorAttribution,
@@ -620,7 +619,6 @@ const BOOK_CANDIDATES_SCHEMA: Schema = {
  * 직접 고름)으로 자연스럽게 폴백한다.
  */
 async function selectBookCandidate(input: GenerateEssayInput): Promise<{ title: string; author?: string } | null> {
-  const ai = getGeminiClient();
   const topic = input.coreTaskInfo.topic;
   const prompt = `
 너는 고등학생 수행평가의 "책 처방/추천" 단계를 위해 후보 책을 제안하는
@@ -642,36 +640,21 @@ ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
 `.trim();
 
   try {
-    const investigation = await withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flash,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          config: { tools: [{ googleSearch: {} }] },
-        }),
-      "generateEssay:selectBookCandidate:investigate"
-    );
+    const investigation = await generate({
+      label: "generateEssay:selectBookCandidate:investigate",
+      role: "main",
+      prompt: prompt,
+      search: {},
+    });
     const investigationText = investigation.text;
     if (!investigationText) return null;
 
-    const extraction = await withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flashLite,
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `아래는 어떤 조사자가 책 후보를 제안하며 남긴 메모다. 이 메모에서 실제로 제안된 책 후보들을 구조화해서 뽑아줘.\n\n[메모]\n${investigationText}`,
-                },
-              ],
-            },
-          ],
-          config: { responseMimeType: "application/json", responseSchema: BOOK_CANDIDATES_SCHEMA },
-        }),
-      "generateEssay:selectBookCandidate:extract"
-    );
+    const extraction = await generate({
+      label: "generateEssay:selectBookCandidate:extract",
+      role: "lite",
+      prompt: `아래는 어떤 조사자가 책 후보를 제안하며 남긴 메모다. 이 메모에서 실제로 제안된 책 후보들을 구조화해서 뽑아줘.\n\n[메모]\n${investigationText}`,
+      schema: BOOK_CANDIDATES_SCHEMA,
+    });
     const raw = extraction.text;
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { candidates: BookCandidate[] };
@@ -723,23 +706,19 @@ async function generateOnce(
   input: GenerateEssayInput,
   elements: CoreTaskInfo["task_elements"]
 ): Promise<Attempt> {
-  const ai = getGeminiClient();
   const prompt = buildPrompt(input, elements);
   console.log("[generateEssay] prompt:\n" + prompt);
 
   const runStageA = (p: string) =>
-    withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flash,
-          contents: [{ role: "user", parts: [{ text: p }] }],
-          config: { tools: [{ googleSearch: {} }] },
-        }),
-      "generateEssay:stepA"
-    );
+    generate({
+      label: "generateEssay:stepA",
+      role: "main",
+      prompt: p,
+      search: {},
+    });
 
   let stageA = await runStageA(prompt);
-  let grounding = stageA.candidates?.[0]?.groundingMetadata;
+  let grounding = stageA.grounding;
 
   // 실제로 관찰된 버그: 검색이 필요한 프롬프트인데도 모델이 검색 도구를
   // 아예 한 번도 호출하지 않고 글을 써버리는 경우가 있다(webSearchQueries=[]
@@ -747,7 +726,7 @@ async function generateOnce(
   // 있다). 이게 재시도(품질 교정) 단계에서 발생하면 원래 있던 출처까지
   // 통째로 사라져서 4단계 전부 미검증으로 퇴보하는 심각한 회귀로 이어졌다
   // — 그래서 stageA 자체에도 같은 안전장치를 적용한다.
-  if ((grounding?.webSearchQueries?.length ?? 0) === 0) {
+  if ((grounding?.queries?.length ?? 0) === 0) {
     console.warn("[generateEssay] stageA가 검색 도구를 한 번도 호출하지 않음 — 강하게 재지시하여 1회 재시도");
     const forcedPrompt =
       prompt +
@@ -755,8 +734,8 @@ async function generateOnce(
       `책 제목·저자·인용구·통계 등 검색으로 검증해야 할 구체적 사실이 하나라도 있다면, 이번에는 ` +
       `반드시 실시간 웹 검색 도구를 최소 한 번 이상 실제로 호출한 뒤에 쓸 것.`;
     const retryStageA = await runStageA(forcedPrompt);
-    const retryGrounding = retryStageA.candidates?.[0]?.groundingMetadata;
-    if ((retryGrounding?.webSearchQueries?.length ?? 0) > 0) {
+    const retryGrounding = retryStageA.grounding;
+    if ((retryGrounding?.queries?.length ?? 0) > 0) {
       stageA = retryStageA;
       grounding = retryGrounding;
     } else {
@@ -768,9 +747,9 @@ async function generateOnce(
   if (!freeText) throw new Error("AI가 빈 응답을 반환했습니다.");
 
   console.log(
-    `[generateEssay] 그라운딩 진단: webSearchQueries=${JSON.stringify(grounding?.webSearchQueries ?? [])} ` +
-      `groundingChunks=${grounding?.groundingChunks?.length ?? 0} groundingSupports=${grounding?.groundingSupports?.length ?? 0} ` +
-      `finishReason=${stageA.candidates?.[0]?.finishReason ?? "?"}`
+    `[generateEssay] 그라운딩 진단: queries=${JSON.stringify(grounding?.queries ?? [])} ` +
+      `groundingChunks=${grounding?.chunks?.length ?? 0} groundingSupports=${grounding?.supports?.length ?? 0} ` +
+      `model=${stageA.provider}/${stageA.model}`
   );
   // 왜 특정 출처가 채택됐는지(예: 서지정보 갖춘 페이지 대신 유튜브만 채택되는
   // 문제) 사후에 진단할 수 있도록, 실제로 돌아온 검색 결과 후보 전체를 로그로
@@ -779,11 +758,11 @@ async function generateOnce(
   // 우리가 관찰할 수 있는 전부다.
   console.log(
     `[generateEssay] 검색 후보 청크 목록: ${JSON.stringify(
-      (grounding?.groundingChunks ?? []).map((c, i) => ({ i, title: c.web?.title, url: c.web?.uri }))
+      (grounding?.chunks ?? []).map((c, i) => ({ i, title: c.web?.title, url: c.web?.uri }))
     )}`
   );
-  const { sources, chunkIndexToN } = buildSourceList(grounding?.groundingChunks);
-  let annotated = insertCitationMarkers(freeText, grounding?.groundingSupports, chunkIndexToN);
+  const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
+  let annotated = insertCitationMarkers(freeText, grounding?.supports, chunkIndexToN);
   const validatedSources = await validateSources(sources);
   if (sources.length > 0 && validatedSources.every((s) => s.url_valid === false)) {
     console.warn("[generateEssay] 검색은 됐지만 모든 출처 링크 검증(HTTP 상태 확인)이 실패함");
@@ -810,16 +789,10 @@ async function generateOnce(
   // 2차: 본문은 그대로 두고, "## 라벨" 제목을 기준으로 단계별 본문만 분리한다
   // (그라운딩 없이, 순수 추출 작업 — generate-plan.ts와 같은 이유).
   const labels = elements.map((e) => e.label);
-  const stageB = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flashLite,
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `
+  const stageB = await generate({
+      label: "generateEssay:stepB",
+      role: "lite",
+      prompt: `
 아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
 요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
 이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
@@ -835,14 +808,8 @@ cited_book_quote 필드에도 그대로 뽑아줘(스키마 설명 참고) — �
 [글]
 ${annotated}
 `.trim(),
-              },
-            ],
-          },
-        ],
-        config: { responseMimeType: "application/json", responseSchema: SECTIONS_SCHEMA },
-      }),
-    "generateEssay:stepB"
-  );
+      schema: SECTIONS_SCHEMA,
+    });
 
   const raw = stageB.text;
   if (!raw) throw new Error("단계 분리 응답이 비어 있습니다.");

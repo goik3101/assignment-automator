@@ -1,6 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
-import { withGeminiRetry } from "@/lib/gemini/retry";
 import { extractSubjectSpec, verifyCandidates, SUBJECT_TYPES, SUBJECT_TYPE_LABEL, type SubjectSpec, type SubjectType } from "@/lib/learning/subject-spec";
 import { needsSubjectSelection } from "@/lib/learning/items";
 import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
@@ -66,7 +65,6 @@ export function isSelectionTask(info: CoreTaskInfo): boolean {
 }
 
 async function generateCandidates(spec: SubjectSpec, subject: string, instructions?: string): Promise<SelectionCandidate[]> {
-  const ai = getGeminiClient();
   const typeLabel = SUBJECT_TYPE_LABEL[spec.subject_type];
   const prompt = `
 고등학생 수행평가에서 학생이 고를 대상의 후보를 ${CANDIDATE_COUNT}개 제안해줘. 최종 선택은 코드가 하니 너는 고르지 말고 후보와 점수만 낸다.
@@ -84,15 +82,12 @@ ${instructions ? `[학생 지침]\n${instructions}\n` : ""}
 - fit은 (조건 충족도 + 자료 확보 가능성 + 고등학생이 다루기 적절한지)의 종합이다. 유명하다는 이유로 높이지 마라.
 - 같은 대상을 다른 표기로 두 번 넣지 마라.
 `.trim();
-  const res = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flash,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json", responseSchema: CANDIDATE_SCHEMA },
-      }),
-    "selection:candidates"
-  );
+  const res = await generate({
+      label: "selection:candidates",
+      role: "main",
+      prompt: prompt,
+      schema: CANDIDATE_SCHEMA,
+    });
   const parsed = JSON.parse(res.text ?? "{}") as { candidates?: { name: string; canonical_id: string; candidate_type: string; fit: number; group: string }[] };
   const anyType = spec.subject_type === "other" || spec.subject_type === "unspecified" || spec.subject_type === "concept";
   const seen = new Set<string>();

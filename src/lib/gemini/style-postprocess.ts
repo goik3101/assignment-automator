@@ -1,6 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
-import { withGeminiRetry } from "@/lib/gemini/retry";
 import { applyRewrites, detectCandidates, parseDoc, render, validateRewrite, type PostKind, type Sentence } from "./style-postprocess-core";
 
 // 학생 문체 후처리 실험 — 기본 OFF.
@@ -74,18 +73,15 @@ ${items.map((s) => `#${s.id}\n앞 문장: ${s.prev ?? "(없음)"}\n대상 문장
 
 async function propose(kind: PostKind, items: Sentence[]): Promise<Map<number, string>> {
   const out = new Map<number, string>();
-  const ai = getGeminiClient();
   for (let i = 0; i < items.length; i += MAX_PER_CALL) {
     const chunk = items.slice(i, i + MAX_PER_CALL);
-    const res = await withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flash,
-          contents: [{ role: "user", parts: [{ text: proposePrompt(kind, chunk) }] }],
-          config: { temperature: 0, responseMimeType: "application/json", responseSchema: PROPOSE_SCHEMA },
-        }),
-      "style-postprocess:propose"
-    );
+    const res = await generate({
+      label: "style-postprocess:propose",
+      role: "main",
+      prompt: proposePrompt(kind, chunk),
+      temperature: 0,
+      schema: PROPOSE_SCHEMA,
+    });
     const parsed = JSON.parse(res.text ?? "{}") as { items?: { id: number; action: string; rewritten?: string | null }[] };
     for (const it of parsed.items ?? []) if (it.action === "rewrite" && it.rewritten) out.set(it.id, it.rewritten);
   }
@@ -95,27 +91,15 @@ async function propose(kind: PostKind, items: Sentence[]): Promise<Map<number, s
 async function verifyMeaning(pairs: { id: number; a: string; b: string }[]): Promise<Set<number>> {
   const ok = new Set<number>();
   if (pairs.length === 0) return ok;
-  const ai = getGeminiClient();
   for (let i = 0; i < pairs.length; i += MAX_PER_CALL) {
     const chunk = pairs.slice(i, i + MAX_PER_CALL);
-    const res = await withGeminiRetry(
-      () =>
-        ai.models.generateContent({
-          model: GEMINI_MODELS.flash,
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `각 쌍의 원문 A와 수정문 B가 사실·의미·어조(단정/추측의 강도)까지 완전히 같은지 엄격하게 판정해라. 조금이라도 다르면 same=false. 확신이 높을 때만 confidence="high".\n\n${chunk.map((p) => `#${p.id}\nA: ${p.a}\nB: ${p.b}`).join("\n\n")}`,
-                },
-              ],
-            },
-          ],
-          config: { temperature: 0, responseMimeType: "application/json", responseSchema: VERIFY_SCHEMA },
-        }),
-      "style-postprocess:verify"
-    );
+    const res = await generate({
+      label: "style-postprocess:verify",
+      role: "main",
+      prompt: `각 쌍의 원문 A와 수정문 B가 사실·의미·어조(단정/추측의 강도)까지 완전히 같은지 엄격하게 판정해라. 조금이라도 다르면 same=false. 확신이 높을 때만 confidence="high".\n\n${chunk.map((p) => `#${p.id}\nA: ${p.a}\nB: ${p.b}`).join("\n\n")}`,
+      temperature: 0,
+      schema: VERIFY_SCHEMA,
+    });
     const parsed = JSON.parse(res.text ?? "{}") as { items?: { id: number; same: boolean; confidence: string }[] };
     for (const it of parsed.items ?? []) if (it.same && it.confidence === "high") ok.add(it.id);
   }

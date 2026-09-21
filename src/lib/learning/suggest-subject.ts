@@ -1,6 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
-import { withGeminiRetry } from "@/lib/gemini/retry";
 import { ACHIEVEMENT_INTERPRETATION_RULES } from "@/lib/gemini/prompts";
 import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
 import { canonicalize } from "@/lib/selection/canonical";
@@ -68,7 +67,6 @@ async function generateRound(params: {
   avoid: string[];
 }): Promise<{ name: string; canonical_id?: string; group?: string; candidate_type: string; reason: string; field_notes: { field: string; note: string }[] }[]> {
   const { spec } = params;
-  const ai = getGeminiClient();
   const typeLabel = SUBJECT_TYPE_LABEL[spec.subject_type];
   const prompt = `
 너는 고등학생이 수행평가에서 다룰 대상을 고르는 것을 돕는 조교다. 아래 과제 조건에 정확히 맞는 실존하는 후보를
@@ -96,32 +94,21 @@ ${params.instructions ? `[학생 지침]\n${params.instructions}\n` : ""}${param
 ${ACHIEVEMENT_INTERPRETATION_RULES}
 `.trim();
 
-  const investigation = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flash,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { tools: [{ googleSearch: {} }] },
-      }),
-    "learning:suggest:investigate"
-  );
+  const investigation = await generate({
+      label: "learning:suggest:investigate",
+      role: "main",
+      prompt: prompt,
+      search: {},
+    });
   const memo = investigation.text;
   if (!memo) return [];
 
-  const extraction = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flashLite,
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: `아래 메모에서 제안된 후보(이름, 종류, 조건 충족 이유, 항목별 한 줄)를 구조화해줘.\n\n${memo}` }],
-          },
-        ],
-        config: { responseMimeType: "application/json", responseSchema: SCHEMA },
-      }),
-    "learning:suggest:extract"
-  );
+  const extraction = await generate({
+      label: "learning:suggest:extract",
+      role: "lite",
+      prompt: `아래 메모에서 제안된 후보(이름, 종류, 조건 충족 이유, 항목별 한 줄)를 구조화해줘.\n\n${memo}`,
+      schema: SCHEMA,
+    });
   try {
     const parsed = JSON.parse(extraction.text ?? "{}") as {
       candidates?: { name: string; canonical_id?: string; group?: string; candidate_type: string; reason: string; field_notes: { field: string; note: string }[] }[];

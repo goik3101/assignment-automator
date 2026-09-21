@@ -17,13 +17,9 @@ export function stripInvalidCitationMarkers(text: string, invalidNs: Set<number>
 
 // Gemini Search Grounding이 돌려주는 타입은 SDK 버전마다 미세하게 다를 수 있어
 // 여기서는 실제로 쓰는 필드만 최소한으로 정의해 느슨하게 받는다.
-export interface GroundingChunkLike {
-  web?: { uri?: string; title?: string };
-}
-export interface GroundingSupportLike {
-  segment?: { startIndex?: number; endIndex?: number };
-  groundingChunkIndices?: number[];
-}
+// 타입은 모델 호출 계층(llm/types.ts)이 정의한다 — 제공자가 달라도 같은 모양으로 정규화해서 넘어온다.
+export type { GroundingChunkLike, GroundingSupportLike } from "../llm/types.ts";
+import type { GroundingChunkLike, GroundingSupportLike } from "../llm/types.ts";
 
 /**
  * groundingChunks(검색 결과 웹페이지 목록)에서 중복 URL을 제거하고
@@ -106,7 +102,9 @@ export function insertCitationMarkers(
     if (ns.length === 0) continue;
 
     const marker = Buffer.from(ns.map((n) => `[${n}]`).join(""), "utf-8");
-    const rawEnd = support.segment!.endIndex ?? 0;
+    // Gemini는 UTF-8 바이트, OpenAI는 UTF-16 글자 오프셋 — unit에 따라 바이트로 통일한다.
+    const rawEndInUnit = support.segment!.endIndex ?? 0;
+    const rawEnd = support.unit === "utf16" ? Buffer.byteLength(text.slice(0, rawEndInUnit), "utf-8") : rawEndInUnit;
     if (rawEnd > buf.length) continue;
     const end = snapToUtf8CharBoundary(buf, rawEnd);
 

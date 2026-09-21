@@ -1,6 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "../gemini/client";
-import { withGeminiRetry } from "../gemini/retry";
 
 // 외부 자료(책/논문/뉴스/통계 등)를 인용할 때 "실제로 원문이 노출된 페이지가
 // 있는지"를 검증하는 범용 모듈. 책 전용 로직이 아니다 — 인용 대상의 종류
@@ -237,25 +236,12 @@ const VERIFICATION_EXTRACT_SCHEMA: Schema = {
 async function extractVerificationOutcome(
   investigationText: string
 ): Promise<{ verified: boolean; excerpt?: string; sourceTitle?: string }> {
-  const ai = getGeminiClient();
-  const resp = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flashLite,
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `아래는 어떤 조사자가 인용 검증을 위해 웹 검색을 하고 남긴 리서치 메모다. 이 메모를 읽고 구조화된 결론을 뽑아줘.\n\n[리서치 메모]\n${investigationText}`,
-              },
-            ],
-          },
-        ],
-        config: { responseMimeType: "application/json", responseSchema: VERIFICATION_EXTRACT_SCHEMA },
-      }),
-    "verifyExcerpt:extract"
-  );
+  const resp = await generate({
+      label: "verifyExcerpt:extract",
+      role: "lite",
+      prompt: `아래는 어떤 조사자가 인용 검증을 위해 웹 검색을 하고 남긴 리서치 메모다. 이 메모를 읽고 구조화된 결론을 뽑아줘.\n\n[리서치 메모]\n${investigationText}`,
+      schema: VERIFICATION_EXTRACT_SCHEMA,
+    });
   const raw = resp.text;
   if (!raw) return { verified: false };
   const parsed = JSON.parse(raw) as { verified: boolean; excerpt: string; sourceTitle: string };
@@ -267,20 +253,16 @@ async function extractVerificationOutcome(
 }
 
 async function runInvestigation(prompt: string) {
-  const ai = getGeminiClient();
-  const resp = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flash,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { tools: [{ googleSearch: {} }] },
-      }),
-    "verifyExcerpt:investigate"
-  );
+  const resp = await generate({
+      label: "verifyExcerpt:investigate",
+      role: "main",
+      prompt: prompt,
+      search: {},
+    });
   const text = resp.text ?? "";
-  const grounding = resp.candidates?.[0]?.groundingMetadata;
-  const queriesTried = grounding?.webSearchQueries ?? [];
-  const chunks = grounding?.groundingChunks ?? [];
+  const grounding = resp.grounding;
+  const queriesTried = grounding?.queries ?? [];
+  const chunks = grounding?.chunks ?? [];
   console.log(
     `[verifyExcerpt] queriesTried=${JSON.stringify(queriesTried)} chunks=${chunks.length} investigationText=${text.slice(0, 400)}`
   );
@@ -499,25 +481,12 @@ const ATTRIBUTION_EXTRACT_SCHEMA: Schema = {
 async function extractAttributionOutcome(
   investigationText: string
 ): Promise<{ found: boolean; author?: string; sourceTitle?: string }> {
-  const ai = getGeminiClient();
-  const resp = await withGeminiRetry(
-    () =>
-      ai.models.generateContent({
-        model: GEMINI_MODELS.flashLite,
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `아래는 어떤 조사자가 서지정보(저자) 검증을 위해 웹 검색을 하고 남긴 리서치 메모다. 이 메모를 읽고 구조화된 결론을 뽑아줘.\n\n[리서치 메모]\n${investigationText}`,
-              },
-            ],
-          },
-        ],
-        config: { responseMimeType: "application/json", responseSchema: ATTRIBUTION_EXTRACT_SCHEMA },
-      }),
-    "verifyAuthorAttribution:extract"
-  );
+  const resp = await generate({
+      label: "verifyAuthorAttribution:extract",
+      role: "lite",
+      prompt: `아래는 어떤 조사자가 서지정보(저자) 검증을 위해 웹 검색을 하고 남긴 리서치 메모다. 이 메모를 읽고 구조화된 결론을 뽑아줘.\n\n[리서치 메모]\n${investigationText}`,
+      schema: ATTRIBUTION_EXTRACT_SCHEMA,
+    });
   const raw = resp.text;
   if (!raw) return { found: false };
   const parsed = JSON.parse(raw) as { found: boolean; author: string; sourceTitle: string };

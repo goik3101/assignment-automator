@@ -1,5 +1,5 @@
+import { generate } from "@/lib/llm";
 import { Type } from "@google/genai";
-import { getGeminiClient, GEMINI_MODELS } from "@/lib/gemini/client";
 import { embedForClustering } from "@/lib/gemini/embeddings";
 import { getServiceClient, parsePgVector } from "@/lib/supabase/service-client";
 import { coreTaskInfoToClusteringText } from "./core-task-text";
@@ -71,16 +71,10 @@ async function confirmSameAssignment(newText: string, candidateClusterId: string
 
   const sampleText = (data as { sample_text: string } | null)?.sample_text;
   if (!sampleText) return false; // 비교할 샘플이 없으면 안전하게 "다른 과제"로 취급
-
-  const ai = getGeminiClient();
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODELS.flashLite,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: `두 수행평가 과제 설명이 사실상 "같은 과제"인지 판단해줘.
+  const response = await generate({
+      label: "identify-cluster.ts:76",
+      role: "lite",
+      prompt: `두 수행평가 과제 설명이 사실상 "같은 과제"인지 판단해줘.
 (학교나 학생이 달라도, 같은 주제와 같은 요구사항이면 같은 과제로 본다.)
 
 [과제 A]
@@ -88,19 +82,12 @@ ${sampleText}
 
 [과제 B]
 ${newText}`,
-          },
-        ],
-      },
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
+      schema: {
         type: Type.OBJECT,
         properties: { same: { type: Type.BOOLEAN } },
         required: ["same"],
       },
-    },
-  });
+    });
 
   try {
     return JSON.parse(response.text ?? "{}").same === true;
