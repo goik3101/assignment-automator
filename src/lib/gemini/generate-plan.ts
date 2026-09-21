@@ -1,3 +1,4 @@
+import { cleanMarkers } from "./citation-cleanup";
 import { generate } from "@/lib/llm";
 import { needsFactSearch } from "@/lib/llm/search-policy";
 import { collectUserNumbers, findStatClaimCandidates } from "./stat-claims";
@@ -510,6 +511,7 @@ export async function generatePlan(
   // 달리 품질 재시도 루프가 없으므로(latency 고려), 프롬프트(FACTUAL_RIGOR_
   // RULES/ANTI_AI_TONE_RULES)로 애초에 덜 나오게 한 뒤, 그래도 남으면 이
   // 결정론적 strip으로 확정 처리한다.
+  content = cleanMarkers(content, new Set(validatedSources.map((x) => x.n)));
   const { content: clicheCleanedContent } = stripClichesFromText(content);
   content = clicheCleanedContent;
   const { content: superlativeCleanedContent } = stripUnsupportedSuperlatives(content);

@@ -1,3 +1,4 @@
+import { dedupeAdjacentMarkers } from "./citation-cleanup";
 import { generate } from "@/lib/llm";
 import { needsFactSearch } from "@/lib/llm/search-policy";
 import { BOOK_TASK_HINT_PATTERN } from "./book-hint";
@@ -736,15 +737,7 @@ async function generateOnce(
   elements: CoreTaskInfo["task_elements"]
 ): Promise<Attempt> {
   const prompt = buildPrompt(input, elements);
-  console.log("[generateEssay] prompt:\n" + prompt);
-
-  // 사실 조사가 필요 없는 창작·계산·기획형 과제에는 검색을 강제하지 않는다(검색 호출당 요금 — search-policy.ts).
-  const wantSearch = needsFactSearch(
-    input.coreTaskInfo.topic,
-    ...input.coreTaskInfo.requirements,
-    ...elements.flatMap((e) => [e.label, e.description]),
-    input.instructions
-  );
+  if (process.env.LOG_PROMPTS === "1") console.log("[generateEssay] prompt:\n" + prompt); // 학생 입력이 섞여 있어 기본은 남기지 않는다
   const runStageA = (p: string) =>
     generate({
       label: "generateEssay:stepA",
@@ -1038,7 +1031,9 @@ export async function generateEssay(
   // 측정/로그용으로만 남겨둔다(재검색 성공률을 이전 라운드와 비교하기 위함).
   const unverifiedQuotes = detectUnverifiedQuotes(attempt.sections, attempt.sources, input.instructions);
   const soleVideoSourceBooks = detectSoleVideoSourceBookMentions(attempt.sections, attempt.sources);
-  const bookMentionsNeedingVerification = extractBookMentionsNeedingVerification(attempt.sections, attempt.sources);
+  // 책 과제가 아닌데(인물 탐구 등) 지나가며 책 제목만 언급한 경우는 원문 검증·인용구 승급 검색(약 60초·검색 6회, 실측)을 돌리지 않는다. 직접 인용구가 있으면 그때는 검증한다.
+  const isBookTask = !!input.presetBook || needsBookCandidateSelection(input, elements);
+  const bookMentionsNeedingVerification = extractBookMentionsNeedingVerification(attempt.sections, attempt.sources).filter((b) => isBookTask || !!b.candidateQuote);
   const lengthIssues = checkLengthCompliance(attempt.sections, elements);
   // 안내문의 필수 항목이 "### 항목명" 소제목으로 존재하고 내용이 있는지 기계적으로
   // 검사한다(analyze.ts가 안내문에서 동적으로 뽑은 required_items 기준).
@@ -1265,7 +1260,7 @@ export async function generateEssay(
           ...(retryAttempt.summaryLines.some((l) => hasForeignScriptCorruption(l)) ? ["전체 요약"] : []),
         ];
         const stillHasUncitedBooks = detectUncitedBookMentions(retryAttempt.sections);
-        const stillNeedsVerification = extractBookMentionsNeedingVerification(retryAttempt.sections, retryAttempt.sources);
+        const stillNeedsVerification = extractBookMentionsNeedingVerification(retryAttempt.sections, retryAttempt.sources).filter((b) => isBookTask || !!b.candidateQuote);
         const stillHasLengthIssues = checkLengthCompliance(retryAttempt.sections, elements);
         const stillMissingItems = detectMissingRequiredItems(retryAttempt.sections);
         if (stillMissingItems.length > 0) {
@@ -1405,6 +1400,31 @@ export async function generateEssay(
         `[generateEssay] 요약(summary_lines)의 책 제목을 본문 기준으로 통일함: "${finalBookMentions[0].title}" (${titleChangedCount}건)`
       );
       attempt = { ...attempt, summaryLines: titleUnifiedSummaryLines };
+    }
+  }
+
+  // 품질 재시도까지 거치고도 분량 범위를 못 맞춘 단계는, 검색 없이 그 단계 글 하나만 한 번 보정한다(전체 재생성은 오히려 분량이 흔들린다 — 실측 1344→1294자).
+  {
+    const remaining = checkLengthCompliance(attempt.sections, elements);
+    if (remaining.length > 0) {
+      const adjusted = await Promise.all(
+        attempt.sections.map(async (sec) => {
+          const issue = remaining.find((i) => i.label === sec.label);
+          if (!issue) return sec;
+          const el = elements.find((e) => e.label === sec.label);
+          try {
+            const next = await adjustSectionLength(sec.content, issue, el?.description ?? "");
+            if (next) {
+              console.log(`[generateEssay] 분량 보정 적용 label="${sec.label}" ${issue.actual}${unitWord(issue.unit)} -> ${issue.unit === "words" ? countWords(next) : countChars(next, issue.countsSpaces)}`);
+              return { ...sec, content: next };
+            }
+          } catch (err) {
+            console.error("[generateEssay] 분량 보정 실패(원문 유지)", err);
+          }
+          return sec;
+        })
+      );
+      attempt = { ...attempt, sections: adjusted };
     }
   }
 
@@ -2072,7 +2092,7 @@ function renumberSectionCitations(content: string, allSources: SourceRef[]): { c
   let nextN = 1;
   const newContent = content.replace(/\[(\d+)\]/g, (match, numStr: string) => {
     const oldN = Number(numStr);
-    if (!sourceByN.has(oldN)) return match;
+    if (!sourceByN.has(oldN)) return ""; // 출처 목록에 없는 번호는 남기지 않는다(눌러 볼 근거가 없는 각주)
     let newN = oldToNew.get(oldN);
     if (newN === undefined) {
       newN = nextN++;
@@ -2080,10 +2100,10 @@ function renumberSectionCitations(content: string, allSources: SourceRef[]): { c
     }
     return `[${newN}]`;
   });
-  const newSources = Array.from(oldToNew.entries())
+  const newSources0 = Array.from(oldToNew.entries())
     .sort((a, b) => a[1] - b[1])
     .map(([oldN, newN]) => ({ ...sourceByN.get(oldN)!, n: newN }));
-  return { content: newContent, sources: newSources };
+  return { content: dedupeAdjacentMarkers(newContent), sources: newSources0 };
 }
 
 // 분량 준수(예: "800자 내외 ±50자")는 프롬프트 문구를 아무리 강하게 써도
@@ -2460,4 +2480,50 @@ function stripForeignScriptFromSummary(summaryLines: string[]): { summaryLines: 
     console.warn(`[generateEssay] 최종 안전장치: 전체 요약(summary_lines)의 이상 문자 ${strippedCount}개 제거함`);
   }
   return { summaryLines: newLines, strippedCount };
+}
+
+
+/**
+ * 분량 범위를 못 맞춘 글 하나를 검색 없이 한 번 보정한다. 모델이 사실·출처를 새로 지어내지 못하도록 결과를 코드로 검증한다:
+ * 각주 번호는 원문에 있던 것만(전부 유지), 따옴표 인용문은 그대로 남아야 하고, 범위에 들어오거나 지금보다 범위에 가까워져야 채택한다.
+ */
+async function adjustSectionLength(content: string, issue: LengthIssue, description: string): Promise<string | null> {
+  const uw = unitWord(issue.unit);
+  const measure = (t: string) => (issue.unit === "words" ? countWords(t) : countChars(t, issue.countsSpaces));
+  const distance = (n: number) => (issue.min > 0 && n < issue.min ? issue.min - n : issue.max > 0 && n > issue.max ? n - issue.max : 0);
+  const shorten = issue.max > 0 && issue.actual > issue.max;
+  const goal = issue.min > 0 && issue.max > 0 ? Math.round((issue.min + issue.max) / 2) : issue.min > 0 ? Math.round(issue.min * 1.1) : Math.round(issue.max * 0.85);
+  const res = await generate({
+    label: "generateEssay:lengthAdjust",
+    role: "main",
+    prompt: `
+아래 글의 분량을 ${lengthRangeText(issue)}(${issue.unit === "words" ? "영어 단어 수" : issue.countsSpaces ? "공백 포함" : "공백 제외"}) 범위로 고쳐서 글 전체를 다시 써줘. 지금은 ${issue.actual}${uw}이고 목표는 약 ${goal}${uw}다.
+${shorten ? "- 핵심 내용과 필수 항목은 남기고 중복·군더더기 표현만 덜어낼 것." : "- 이미 있는 내용을 설명·이유·연결·구체화로 자연스럽게 늘릴 것. 새로운 사실·수치·연도·인물·인용문·출처를 추가하지 말 것(기존에 없는 사실은 쓰지 말 것)."}
+- 기존 문장의 각주 표기([1] 등)와 따옴표로 직접 인용한 문장은 그대로 유지할 것. 각주를 새로 만들거나 번호를 바꾸지 말 것.
+- 글의 언어·문체·형식(소제목 등)은 그대로 유지하고, 분량을 채우려고 같은 말을 반복하지 말 것.
+${description ? `- 이 글이 다뤄야 할 내용: ${description}\n` : ""}결과는 고친 글 본문만 출력할 것(설명·머리말 없이).
+
+[글]
+${content}`.trim(),
+  });
+  const next = res.text.trim();
+  if (!next) return null;
+  const orig = new Set(content.match(/\[\d+\]/g) ?? []);
+  const nextMarkers = new Set(next.match(/\[\d+\]/g) ?? []);
+  if ([...orig].some((m) => !nextMarkers.has(m)) || [...nextMarkers].some((m) => !orig.has(m))) {
+    console.warn(`[generateEssay] 분량 보정 거부(각주 변경) label="${issue.label}"`);
+    return null;
+  }
+  const quotes = [...content.matchAll(/[「『“"]([^」』”"\n]{4,})[」』”"]/g)].map((m) => m[1]);
+  if (quotes.some((q) => !next.includes(q))) {
+    console.warn(`[generateEssay] 분량 보정 거부(인용문 변경) label="${issue.label}"`);
+    return null;
+  }
+  const hangul = (t: string) => (t.match(/[가-힣]/g) ?? []).length / Math.max(1, t.replace(/\s/g, "").length);
+  if (issue.unit === "words" && hangul(next) > 0.05 && hangul(content) <= 0.05) return null;
+  if (distance(measure(next)) >= distance(issue.actual)) {
+    console.warn(`[generateEssay] 분량 보정 거부(범위에 가까워지지 않음) label="${issue.label}" ${issue.actual}->${measure(next)}`);
+    return null;
+  }
+  return next;
 }

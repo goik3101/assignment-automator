@@ -62,6 +62,11 @@ function parseCharLength(t: string): { min: number; max: number } | null {
     return { min: Math.max(0, target - tolerance), max: target + tolerance };
   }
 
+  // "800자 이상 1000자 이하" / "800자 이상, 1000자 이내" — 하한과 상한이 함께 적힌 경우는 둘 다 반영한다
+  const lo = t.match(/(\d{1,6})\s*자\s*이상/);
+  const hi = t.match(/(\d{1,6})\s*자\s*(?:이내|이하)/);
+  if (lo && hi) return { min: Number(lo[1]), max: Number(hi[1]) };
+
   // "800자 이내" / "800자 이하"
   m = t.match(/(\d{1,6})\s*자\s*(이내|이하)/);
   if (m) return { min: 0, max: Number(m[1]) };
@@ -106,6 +111,8 @@ export function distributeSharedLength<T extends { target_length?: ParsedLength 
   const out = elements.map((e) => ({ ...e }));
   for (const [key, idxs] of groups) {
     if (idxs.length < 2 || /각각|각\s?단계|단계별|항목별|마다|각\s?\d/.test(key)) continue;
+    // 하한만/상한만 있는 값("200자 이상")은 단계별 기준일 가능성이 커서 나누지 않는다. 범위("1500자 내외")만 전체 분량으로 본다.
+    if (idxs.some((i) => !(out[i].target_length!.min > 0 && out[i].target_length!.max > 0))) continue;
     for (const i of idxs) {
       const tl = out[i].target_length!;
       out[i].target_length = {

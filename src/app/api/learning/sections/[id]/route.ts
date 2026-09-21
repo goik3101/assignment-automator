@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/api/validate";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLearningUser, jsonError } from "@/lib/learning/auth";
 import { MAX_DRAFT_CHARS } from "@/types/learning";
@@ -9,6 +10,7 @@ import { MAX_DRAFT_CHARS } from "@/types/learning";
 export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/learning/sections/[id]">) {
   try {
     const { id } = await ctx.params;
+    if (!isUuid(id)) return jsonError("찾을 수 없어요.", 404);
     const auth = await requireLearningUser(req);
     if ("error" in auth) return auth.error;
     const { supabase } = auth;

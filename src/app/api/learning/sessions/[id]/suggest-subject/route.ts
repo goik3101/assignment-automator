@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLearningUser, jsonError } from "@/lib/learning/auth";
@@ -12,6 +13,7 @@ export const maxDuration = 180;
 export const POST = routeUsage("learningSuggest", async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]/suggest-subject">) {
   try {
     const { id } = await ctx.params;
+    if (!isUuid(id)) return jsonError("찾을 수 없어요.", 404);
     const auth = await requireLearningUser(req);
     if ("error" in auth) return auth.error;
     const { supabase, user } = auth;

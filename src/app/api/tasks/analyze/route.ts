@@ -1,10 +1,14 @@
 import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeAssignment } from "@/lib/gemini/analyze";
+import { validateAnalyzeInput } from "@/lib/api/validate";
 
 export const POST = routeUsage("analyze", async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
+    }
     const { imageBase64, imageMimeType, topicText, instructions } = body as {
       imageBase64?: string;
       imageMimeType?: string;
@@ -18,6 +22,9 @@ export const POST = routeUsage("analyze", async function POST(req: NextRequest) 
         { status: 400 }
       );
     }
+
+    const invalid = validateAnalyzeInput({ imageBase64, topicText, instructions });
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
 
     const result = await analyzeAssignment({
       imageBase64,

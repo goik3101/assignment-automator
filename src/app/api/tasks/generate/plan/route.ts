@@ -1,3 +1,4 @@
+import { validateCoreTaskInfo } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,7 +21,10 @@ export const maxDuration = 180;
 
 export const POST = routeUsage("plan", async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
+    }
     const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText } =
       body as {
         subject: string;
@@ -39,6 +43,8 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     if (!subject || !coreTaskInfo) {
       return NextResponse.json({ error: "subject와 coreTaskInfo가 필요합니다." }, { status: 400 });
     }
+    const invalidInfo = validateCoreTaskInfo(coreTaskInfo, instructions);
+    if (invalidInfo) return NextResponse.json({ error: invalidInfo }, { status: 400 });
 
     const { identity, supabase } = await resolveIdentity(req);
     const admin = isAdminRequest(req); // 11-6: 관리자는 모든 제한에서 예외

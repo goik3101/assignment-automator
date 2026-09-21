@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/api/validate";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLearningUser, jsonError } from "@/lib/learning/auth";
 import { getLearningUsage } from "@/lib/learning/usage";
@@ -8,6 +9,7 @@ import type { CoreTaskInfo } from "@/types/task";
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]">) {
   try {
     const { id } = await ctx.params;
+    if (!isUuid(id)) return jsonError("찾을 수 없어요.", 404);
     const auth = await requireLearningUser(req);
     if ("error" in auth) return auth.error;
     const { supabase, user, isAdmin } = auth;
@@ -47,6 +49,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/learning/ses
 export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]">) {
   try {
     const { id } = await ctx.params;
+    if (!isUuid(id)) return jsonError("찾을 수 없어요.", 404);
     const auth = await requireLearningUser(req);
     if ("error" in auth) return auth.error;
     const { supabase } = auth;
@@ -78,6 +81,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext<"/api/learning/s
 export async function DELETE(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]">) {
   try {
     const { id } = await ctx.params;
+    if (!isUuid(id)) return jsonError("찾을 수 없어요.", 404);
     const auth = await requireLearningUser(req);
     if ("error" in auth) return auth.error;
     const { supabase } = auth;

@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLearningUser, jsonError } from "@/lib/learning/auth";
@@ -16,6 +17,7 @@ export const maxDuration = 180;
 // 횟수를 쓰지 않고 저장된 결과를 그대로 돌려준다. 실패해도 학생이 쓴 초안은 건드리지 않는다.
 export const POST = routeUsage("learningResearch", async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]/research">) {
   const { id } = await ctx.params;
+  if (!isUuid(id)) return jsonError("찾을 수 없어요.", 404);
   const auth = await requireLearningUser(req);
   if ("error" in auth) return auth.error;
   const { supabase, user, isAdmin } = auth;

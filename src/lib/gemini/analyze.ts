@@ -243,7 +243,7 @@ export async function analyzeAssignment(
   if (!raw) {
     throw new Error("Gemini 분석 응답이 비어 있습니다.");
   }
-  console.log("[analyzeAssignment] raw response:\n" + raw);
+  if (process.env.LOG_PROMPTS === "1") console.log("[analyzeAssignment] raw response:\n" + raw);
 
   interface RawTaskElement {
     type: "text_submission" | "external_production";

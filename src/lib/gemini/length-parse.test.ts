@@ -40,3 +40,11 @@ test("단계마다 다른 분량, '각각' 분량, 단일 단계는 그대로", 
   assert.deepEqual(distributeSharedLength(c).map((e) => e.target_length?.max), [220, 850]);
   assert.deepEqual(distributeSharedLength([a]).map((e) => e.target_length?.max), [220]);
 });
+test("하한과 상한이 함께 적힌 경우", () => {
+  assert.deepEqual(p("3분 분량(공백 포함 800자 이상 1000자 이하)"), { min: 800, max: 1000 });
+  assert.deepEqual(p("800자 이상, 1000자 이내"), { min: 800, max: 1000 });
+});
+test("'각 기사 200자 이상'처럼 하한만 복사된 값은 나누지 않는다", () => {
+  const els = ["a", "b", "c", "d", "e"].map((label) => ({ label, target_length: { min: 200, max: 0, counts_spaces: true }, _lengthText: "200자 이상" }));
+  assert.deepEqual(distributeSharedLength(els).map((e) => e.target_length?.min), [200, 200, 200, 200, 200]);
+});
