@@ -168,7 +168,8 @@ export function extractCitations(text: string, annotations: OutputAnnotation[]):
     byPos.set(k, set);
   }
   const mergedSupports: GroundingSupportLike[] = [...byPos.entries()].map(([pos, set]) => ({ segment: { startIndex: 0, endIndex: pos }, groundingChunkIndices: [...set], unit: "utf16" as const }));
-  return { text: out.replace(/[ \t]{2,}/g, " "), chunks, supports: mergedSupports };
+  // 여기서 공백을 정리하면 위에서 계산한 각주 위치가 어긋난다 — 공백 정리는 각주 삽입 뒤 tidyOutputText가 한다.
+  return { text: out, chunks, supports: mergedSupports };
 }
 
 export interface Normalized {
