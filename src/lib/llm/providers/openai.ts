@@ -47,6 +47,10 @@ export const openaiProvider: LlmProvider = {
       if (status >= 400) throw classifyHttpError(status, json as never, retryAfterMs);
       const resp = json as OpenAiResponse;
       const n = normalizeResponse(resp, search);
+      if (search && n.usage.searchCalls === 0) {
+        // 진단용: 검색을 켰는데(강제 여부 포함) 검색이 0회였던 경우의 요청/응답 형태(본문·키는 남기지 않는다)
+        console.warn(`[openai] 검색 0회 label=${req.label} tool_choice=${String(body.tool_choice)} status=${resp.status} output=${(resp.output ?? []).map((o) => o.type).join(",")}`);
+      }
       const problem = checkBody(resp, n);
       if (problem) {
         // 추론이 출력 한도를 다 써서 본문이 빈 경우: 한도를 두 배로 늘려 한 번만 다시 시도한다.

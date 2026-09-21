@@ -11,7 +11,7 @@ import {
 import type { LearningFeedback, SectionResearch } from "@/types/learning";
 import type { CoreTaskInfo } from "@/types/task";
 
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 const MIN_DRAFT_CHARS = 10;
 const MAX_HISTORY = 10;

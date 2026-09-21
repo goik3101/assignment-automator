@@ -717,7 +717,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                                   {src.title}
                                 </a>
                                 <span className="text-xs text-muted">
-                                  {src.url_valid === false ? "(연결 확인 안 됨)" : src.url_valid ? "(연결 확인됨)" : ""}
+                                  {src.url_valid === false ? "(없는 페이지)" : src.url_valid ? "(연결 확인됨)" : "(자동 확인 불가 — 직접 열어 보세요)"}
                                   {src.tier ? ` · ${SOURCE_TIER_LABEL[src.tier]}` : ""}
                                 </span>
                               </li>

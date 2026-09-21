@@ -1,14 +1,22 @@
 import { getServiceClient } from "@/lib/supabase/service-client";
 import type { SourceRef } from "@/types/task";
 import { classifySourceTier } from "./source-quality";
+import { classifyFetchError, classifyHttpStatus, toUrlValid, type LinkStatus } from "./url-status";
 
 const TIMEOUT_MS = 5000;
 
 interface CheckResult {
-  valid: boolean;
+  status: LinkStatus;
   /** 리다이렉트를 다 따라간 뒤의 최종 URL. 실패하면 원래 URL 그대로. */
   finalUrl: string;
 }
+
+// 봇 차단(403)을 줄이려고 일반 브라우저처럼 요청한다 — 그래도 막히면 죽은 링크가 아니라 "확인 불가"로 처리한다(url-status.ts).
+const BROWSER_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+};
 
 // 라에네크 결과물 감사(2026-09-16)에서 실제로 재확인된 문제: 죽었거나 만료된
 // 도메인이 HTTP 200으로 응답하면서 내용은 없는 "오류/주차 페이지"인 경우가
@@ -43,37 +51,30 @@ async function checkUrl(url: string): Promise<CheckResult> {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     // HEAD를 우선 시도 (더 가볍다). 일부 서버는 HEAD를 막아두므로 실패하면 GET으로 재시도.
-    let res = await fetch(url, { method: "HEAD", signal: controller.signal, redirect: "follow" });
+    let res = await fetch(url, { method: "HEAD", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
     let haveBody = false;
     if (res.status >= 400) {
-      res = await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow" });
+      res = await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
       haveBody = true;
     }
-    // Gemini 검색 그라운딩이 주는 URL은 vertexaisearch.cloud.google.com의 리다이렉트
-    // 링크다 — 학생에게는 실제 도착 사이트 주소를 보여줘야 하므로 리다이렉트를 다
-    // 따라간 뒤의 최종 URL(res.url)을 쓴다.
+    // 검색 그라운딩이 주는 URL이 리다이렉트 링크일 수 있어서(Gemini의 vertexaisearch 등) 리다이렉트를 다 따라간 최종 URL을 쓴다.
     let finalUrl = res.url || url;
-    if (res.status >= 400) return { valid: false, finalUrl };
+    const byStatus = classifyHttpStatus(res.status);
+    if (byStatus !== "valid") return { status: byStatus, finalUrl };
 
-    // HTTP 상태는 정상이어도 내용이 없는 오류/주차 페이지일 수 있으므로, 본문을
-    // 확인한다(HEAD로 끝났으면 body가 없으니 GET을 한 번 더 호출; 위에서 이미
-    // GET을 했으면 그 응답을 재사용). 같은 컨트롤러(같은 5초 예산) 안에서 처리 —
-    // 느린 페이지는 어차피 타임아웃으로 invalid 처리되던 기존 동작과 동일하다.
+    // HTTP 상태는 정상이어도 내용이 없는 오류/주차 페이지일 수 있으므로 본문을 확인한다(같은 5초 예산 안에서).
     try {
-      const bodyRes = haveBody ? res : await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow" });
+      const bodyRes = haveBody ? res : await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
       finalUrl = bodyRes.url || finalUrl;
       const bodyText = await bodyRes.text();
-      if (looksLikeJunkPage(finalUrl, bodyText)) {
-        return { valid: false, finalUrl };
-      }
-      return { valid: true, finalUrl };
+      if (looksLikeJunkPage(finalUrl, bodyText)) return { status: "invalid", finalUrl };
+      return { status: "valid", finalUrl };
     } catch {
-      // 본문 확인 자체가 실패해도(느린 서버 등) 이미 HEAD/GET으로 상태 코드는
-      // 정상 확인했으니 기존처럼 valid로 처리한다 — 과도하게 엄격해지지 않게.
-      return { valid: true, finalUrl };
+      // 본문 확인만 실패(느린 서버 등) — 상태 코드는 정상이었으니 과도하게 엄격해지지 않게 valid로 둔다.
+      return { status: "valid", finalUrl };
     }
-  } catch {
-    return { valid: false, finalUrl: url };
+  } catch (err) {
+    return { status: classifyFetchError(err), finalUrl: url };
   } finally {
     clearTimeout(timer);
   }
@@ -98,10 +99,12 @@ async function logValidations(results: { valid: boolean }[]): Promise<void> {
  */
 export async function validateSources(sources: SourceRef[]): Promise<SourceRef[]> {
   const checks = await Promise.all(sources.map((s) => checkUrl(s.url)));
-  if (checks.length > 0) void logValidations(checks);
+  // 통계에는 확정된 결과(유효/무효)만 남긴다 — 확인 불가(403·시간 초과 등)를 실패율에 섞지 않는다.
+  const definitive = checks.filter((c) => c.status !== "unverifiable").map((c) => ({ valid: c.status === "valid" }));
+  if (definitive.length > 0) void logValidations(definitive);
   return sources.map((s, i) => ({
     ...s,
-    url_valid: checks[i].valid,
+    url_valid: toUrlValid(checks[i].status),
     url: checks[i].finalUrl,
     tier: classifySourceTier(checks[i].finalUrl),
   }));

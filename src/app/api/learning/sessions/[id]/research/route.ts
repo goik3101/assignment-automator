@@ -10,7 +10,7 @@ import {
 } from "@/lib/learning/usage";
 import type { CoreTaskInfo } from "@/types/task";
 
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 // 과제 전체의 자료 조사(항목별로 나눠서 저장). 이미 조사가 끝난 과제는 다시 호출해도
 // 횟수를 쓰지 않고 저장된 결과를 그대로 돌려준다. 실패해도 학생이 쓴 초안은 건드리지 않는다.

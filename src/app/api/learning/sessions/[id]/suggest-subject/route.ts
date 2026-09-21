@@ -6,7 +6,7 @@ import { lookupClusterReadOnly } from "@/lib/selection/scope";
 import { SUBJECT_TYPE_LABEL } from "@/lib/learning/subject-spec";
 import type { CoreTaskInfo } from "@/types/task";
 
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 // "AI 추천" — 다룰 인물/대상 후보 3개. 자료 조사·피드백 횟수에는 포함하지 않는다.
 export const POST = routeUsage("learningSuggest", async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]/suggest-subject">) {

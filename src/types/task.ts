@@ -20,6 +20,8 @@ export interface TaskElement {
     max: number;
     /** 분량 기준이 공백 포함인지. 안내문에 명시 없으면 true(공백 포함). */
     counts_spaces: boolean;
+    /** 분량의 단위. 생략하면 글자수("chars"). 영어 과제의 "120~150 words"는 "words". */
+    unit?: "chars" | "words";
   };
   /** 안내문이 이 단계에서 "반드시 조사/작성하라"고 명시적으로 나열한 필수 항목
    * (항목명만, 안내문 순서대로). analyze.ts가 안내문에서 동적으로 뽑는다 —

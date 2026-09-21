@@ -344,8 +344,20 @@ ${input.previousOutputText}
   );
   // 안내문에 분량이 없으면 모델이 길게 쓰는 경향(gpt-5-mini 실측 4,300자)이 있어 시간·비용이 커지므로 기본 분량을 준다.
   const hasAnyTargetLength = elements.some((e) => e.target_length);
+  // 안내문의 분량 조건은 처음부터 숫자로 못박는다(gpt-5-mini는 지시 없이 쓰면 하한을 밑돌거나 상한을 넘기는 일이 잦고, 사후 재시도는 시간·비용이 든다).
+  // 목표는 범위 안쪽으로 잡는다: 범위가 있으면 가운데, 하한만 있으면 하한의 약 1.15배, 상한만 있으면 상한의 약 80%.
+  const lengthTargetLines = elements
+    .filter((e) => e.target_length)
+    .map((e) => {
+      const { min, max, unit, counts_spaces } = e.target_length!;
+      const uw = unit === "words" ? "단어(words)" : counts_spaces ? "자(공백 포함)" : "자(공백 제외)";
+      const goal = min > 0 && max > 0 ? Math.round((min + max) / 2) : min > 0 ? Math.round(min * 1.15) : Math.round(max * 0.8);
+      const rangeText = min > 0 && max > 0 ? `${min}~${max}${uw}` : min > 0 ? `${min}${uw} 이상` : `${max}${uw} 이하`;
+      return `- "${e.label}" 단계: ${rangeText} — 목표 약 ${goal}${uw}. 반드시 이 범위 안에 들어오게 쓰되, 분량을 채우려고 문장을 늘어놓지 말고 필요한 내용(필수 항목·사실·근거)으로 채울 것.`;
+    });
+  const lengthTargetBlock = lengthTargetLines.length ? `\n【분량 — 반드시 지킬 것】\n${lengthTargetLines.join("\n")}\n` : "";
   const defaultLengthBlock = hasAnyTargetLength
-    ? ""
+    ? lengthTargetBlock
     : "\n[분량 — 안내문에 분량 지시가 없음] 전체를 공백 포함 1,200~1,800자 안팎으로 간결하게 쓸 것(항목이 여러 개면 항목당 150~300자). 이보다 길게 늘어놓지 말 것.\n";
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
@@ -1013,6 +1025,12 @@ export async function generateEssay(
     ...detectForeignScriptCorruption(attempt.sections),
     ...(attempt.summaryLines.some((l) => hasForeignScriptCorruption(l)) ? ["전체 요약"] : []),
   ];
+  if (corruptedSections.length > 0) {
+    // 진단용: 어떤 문자가 이상 문자로 판정됐는지(코드포인트만 — 본문은 남기지 않는다)
+    const cps = new Set<string>();
+    for (const t of [...attempt.sections.map((x) => x.content), ...attempt.summaryLines]) for (const ch of findForeignScriptChars(t)) cps.add("U+" + ch.codePointAt(0)!.toString(16));
+    console.warn(`[generateEssay] 이상 문자 판정 코드포인트: ${[...cps].slice(0, 12).join(",")}`);
+  }
   const uncitedBookMentions = detectUncitedBookMentions(attempt.sections);
   // unverifiedQuotes/soleVideoSourceBooks는 더 이상 여기서 직접 교정 지시를
   // 만드는 데 안 쓴다 — 둘 다 "이 섹션엔 검증된 직접 인용이 없다"는 신호의
@@ -1400,7 +1418,7 @@ export async function generateEssay(
   const lengthWarningByLabel = new Map(
     finalLengthIssues.map((issue) => [
       issue.label,
-      `분량 기준을 완전히 맞추지 못했습니다. 목표: ${lengthRangeText(issue)}, 실제 글자수: ${issue.actual}자(${issue.countsSpaces ? "공백 포함" : "공백 제외"}).`,
+      `분량 기준을 완전히 맞추지 못했습니다. 목표: ${lengthRangeText(issue)}, 실제 ${issue.unit === "words" ? "단어 수" : "글자수"}: ${issue.actual}${unitWord(issue.unit)}${issue.unit === "words" ? "" : `(${issue.countsSpaces ? "공백 포함" : "공백 제외"})`}.`,
     ])
   );
 
@@ -2079,17 +2097,25 @@ interface LengthIssue {
   min: number;
   max: number;
   countsSpaces: boolean;
+  unit?: "chars" | "words";
 }
 
 function countChars(text: string, countsSpaces: boolean): number {
   return countsSpaces ? text.length : text.replace(/\s/g, "").length;
 }
 
+/** 영어 단어 수 — 각주 표기([1])와 마크다운 기호는 세지 않는다. */
+function countWords(text: string): number {
+  return (text.replace(/\[\d+\]/g, " ").match(/[A-Za-z0-9]+(?:['’\-][A-Za-z0-9]+)*/g) ?? []).length;
+}
+
+const unitWord = (unit?: "chars" | "words") => (unit === "words" ? "단어" : "자");
+
 function checkLengthCompliance(sections: RawSection[], elements: CoreTaskInfo["task_elements"]): LengthIssue[] {
   const issues: LengthIssue[] = [];
   for (const el of elements) {
     if (!el.target_length) continue;
-    const { min, max, counts_spaces } = el.target_length;
+    const { min, max, counts_spaces, unit } = el.target_length;
     // 2차 방어선(analyze.ts에서 이미 한 번 걸러내지만, 여기서도 유한하고
     // 현실적인 값인지 다시 확인한다) — Infinity/NaN이 새어 들어오면
     // "최소 Infinity자 이상" 같은 문구가 사용자에게 그대로 노출될 수 있다.
@@ -2099,20 +2125,21 @@ function checkLengthCompliance(sections: RawSection[], elements: CoreTaskInfo["t
     }
     const section = sections.find((s) => s.label === el.label);
     if (!section) continue;
-    const actual = countChars(section.content, counts_spaces);
+    const actual = unit === "words" ? countWords(section.content) : countChars(section.content, counts_spaces);
     const belowMin = min > 0 && actual < min;
     const aboveMax = max > 0 && actual > max;
     if (belowMin || aboveMax) {
-      issues.push({ label: el.label, actual, min, max, countsSpaces: counts_spaces });
+      issues.push({ label: el.label, actual, min, max, countsSpaces: counts_spaces, unit });
     }
   }
   return issues;
 }
 
 function lengthRangeText(issue: LengthIssue): string {
-  if (issue.min > 0 && issue.max > 0) return `${issue.min}~${issue.max}자`;
-  if (issue.min > 0) return `최소 ${issue.min}자 이상`;
-  return `최대 ${issue.max}자 이하`;
+  const u = unitWord(issue.unit);
+  if (issue.min > 0 && issue.max > 0) return `${issue.min}~${issue.max}${u}`;
+  if (issue.min > 0) return `최소 ${issue.min}${u} 이상`;
+  return `최대 ${issue.max}${u} 이하`;
 }
 
 /** 재시도 프롬프트에 넣을, 실제 숫자를 담은 확장/축소 지시. 이미 쓴 내용을
@@ -2120,23 +2147,24 @@ function lengthRangeText(issue: LengthIssue): string {
  * 안 그러면 재시도가 완전히 다른 내용으로 다시 써버려서 분량 문제만 해결하고
  * 다른 품질(색채 묘사 등)이 오히려 나빠질 수 있다. */
 function buildLengthCorrectionMessage(issue: LengthIssue): string {
-  const unit = issue.countsSpaces ? "공백 포함" : "공백 제외";
+  const unit = issue.unit === "words" ? "영어 단어 수" : issue.countsSpaces ? "공백 포함" : "공백 제외";
+  const uw = unitWord(issue.unit);
   const range = lengthRangeText(issue);
   if (issue.min > 0 && issue.actual < issue.min) {
     const shortfall = issue.min - issue.actual;
     return (
-      `[분량 부족 재작성 지시 — 반드시 지킬 것] "${issue.label}" 단계 본문이 현재 ${issue.actual}자` +
+      `[분량 부족 재작성 지시 — 반드시 지킬 것] "${issue.label}" 단계 본문이 현재 ${issue.actual}${uw}` +
       `(${unit})인데 목표는 ${range}다. 이미 쓴 내용을 다 버리고 새로 쓰지 말고, 기존 내용을 ` +
-      `그대로 유지한 채로 그 위에 세부 묘사·구체적 설명·디테일을 추가로 확장할 것 — 대략 ${shortfall}자 ` +
+      `그대로 유지한 채로 그 위에 세부 묘사·구체적 설명·디테일을 추가로 확장할 것 — 대략 ${shortfall}${uw} ` +
       `정도를 더 채우면 되지만, 정확히 그 숫자를 세어 맞추라는 뜻이 아니라 결과가 ${range} 범위 ` +
       `안에 자연스럽게 들어오는 게 목적이다. 너무 조금만 늘려서 여전히 범위에 못 미치지 않게 할 것.`
     );
   }
   const excess = issue.max > 0 ? issue.actual - issue.max : 0;
   return (
-    `[분량 초과 재작성 지시 — 반드시 지킬 것] "${issue.label}" 단계 본문이 현재 ${issue.actual}자` +
+    `[분량 초과 재작성 지시 — 반드시 지킬 것] "${issue.label}" 단계 본문이 현재 ${issue.actual}${uw}` +
     `(${unit})인데 목표는 ${range}다. 핵심 내용과 흐름은 그대로 유지하되 불필요하게 늘어지는 표현을 ` +
-    `정리할 것 — 대략 ${excess}자 정도를 줄이면 되지만, 정확히 그 숫자를 세어 맞추라는 뜻이 아니라 ` +
+    `정리할 것 — 대략 ${excess}${uw} 정도를 줄이면 되지만, 정확히 그 숫자를 세어 맞추라는 뜻이 아니라 ` +
     `결과가 ${range} 범위 안에 자연스럽게 들어오는 게 목적이다. 너무 많이 쳐내서 범위 아래로 ` +
     `내려가지 않게, 핵심 문장과 디테일은 남기고 정말 불필요한 수식어·중복 표현 위주로만 덜어낼 것.`
   );

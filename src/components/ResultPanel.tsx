@@ -92,7 +92,7 @@ function SourceList({ sources }: { sources: SourceRef[] }) {
                   : "text-muted text-xs whitespace-nowrap"
               }
             >
-              {s.url_valid === false ? "(연결 확인 안 됨)" : s.url_valid ? "(연결 확인됨)" : ""}
+              {s.url_valid === false ? "(없는 페이지)" : s.url_valid ? "(연결 확인됨)" : "(자동 확인 불가 — 직접 열어 보세요)"}
             </span>
             {s.tier && (
               <span className="text-muted text-xs whitespace-nowrap">· {SOURCE_TIER_LABEL[s.tier]}</span>

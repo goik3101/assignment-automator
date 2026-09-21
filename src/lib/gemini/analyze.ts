@@ -1,6 +1,8 @@
 import { Type, type Schema } from "@google/genai";
 import { generate, type LlmPart } from "@/lib/llm";
 import { normalizeSubject } from "./normalize-subject";
+import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
+import { fallbackSubject, forceTextSubmissionIfNoExternalHint } from "./analysis-normalize";
 import type { AnalyzeResult } from "@/types/task";
 
 // 기획서 6-0 1단계: 안내문에서 administrative_info(제출기한 등)와
@@ -65,9 +67,9 @@ export const ANALYZE_SCHEMA: Schema = {
               target_length_text: {
                 type: Type.STRING,
                 description:
-                  "이 단계에 분량(글자수) 제약이 안내문에 명시되어 있으면, 그 표현을 최대한 " +
+                  "이 단계에 분량(글자수·단어수·발표 시간) 제약이 안내문에 명시되어 있으면, 그 표현을 최대한 " +
                   "안내문에 적힌 그대로 옮겨 적을 것(숫자를 계산하거나 바꾸지 말고 원문 그대로) — " +
-                  "예: '800자 내외 (±50자 허용)', '500자 이내', '200자 내외'. 분량 제약이 전혀 " +
+                  "예: '800자 내외 (±50자 허용)', '500자 이내', '200자 내외', '120~150 words', '약 3분 분량'. 분량 제약이 전혀 " +
                   "없으면 빈 문자열.",
               },
               target_length_counts_spaces: {
@@ -134,8 +136,8 @@ const SYSTEM_INSTRUCTION = `
   단계의 description에 끼워 넣지 말 것 — 그 지침은 원본 그대로 별도로 이미
   전달되고 있으니, 여기서 다시 요약해서 섞으면 안 되는 특정 단계의 내용이 엉뚱한
   단계에도 새어 들어가는 문제가 생긴다.
-- target_length_text는 그 단계에 **분량(글자수) 제약이 명시된 경우에만**
-  채울 것 — "800자 내외", "500자 이내", "1000자 이상" 처럼 숫자로 된 분량
+- target_length_text는 그 단계에 **분량(글자수·단어수·발표 시간) 제약이 명시된 경우에만**
+  채울 것 — "800자 내외", "500자 이내", "1000자 이상", "120~150 words", "약 3분" 처럼 숫자로 된 분량
   기준이 안내문에 실제로 적혀 있을 때만 그 표현을 원문 그대로 옮겨 적고,
   그런 언급이 전혀 없으면 빈 문자열로 둘 것(추측 금지, 숫자를 계산하거나
   바꿔 쓰지 말 것 — 그대로 베끼기만 할 것). 분량 기준이 특정 단계(예: "2차시
@@ -184,53 +186,6 @@ function normalizeRequiredItems(items: string[] | undefined): string[] | undefin
 // 시키고(target_length_text — 자유 텍스트라 아무리 길어도 파싱이 깨지지
 // 않는다), 실제 숫자 범위 계산은 여기서 정규식으로 코드가 직접 한다 —
 // 정수 계산을 모델에게 맡기지 않는 게 핵심 방어다.
-function parseLengthConstraint(text: string): { min: number; max: number } | null {
-  const t = text.trim();
-  if (!t) return null;
-
-  // "500~600자" / "500-600자" / "500∼600자"
-  let m = t.match(/(\d{1,6})\s*[~\-∼]\s*(\d{1,6})\s*자/);
-  if (m) {
-    const a = Number(m[1]);
-    const b = Number(m[2]);
-    return { min: Math.min(a, b), max: Math.max(a, b) };
-  }
-
-  // "800자 내외 (±50자 허용)" / "800자 내외 ±50자"
-  m = t.match(/(\d{1,6})\s*자\s*내외[^0-9]{0,10}[±+\-]\s*(\d{1,6})\s*자/);
-  if (m) {
-    const target = Number(m[1]);
-    const tolerance = Number(m[2]);
-    return { min: Math.max(0, target - tolerance), max: target + tolerance };
-  }
-
-  // "800자 이내" / "800자 이하"
-  m = t.match(/(\d{1,6})\s*자\s*(이내|이하)/);
-  if (m) return { min: 0, max: Number(m[1]) };
-
-  // "800자 이상"
-  m = t.match(/(\d{1,6})\s*자\s*이상/);
-  if (m) return { min: Number(m[1]), max: 0 };
-
-  // "800자 내외" / "800자 정도" / "800자 가량" (명시적 허용치 없음) → ±10%
-  m = t.match(/(\d{1,6})\s*자\s*(내외|정도|가량)/);
-  if (m) {
-    const target = Number(m[1]);
-    const tolerance = Math.round(target * 0.1);
-    return { min: Math.max(0, target - tolerance), max: target + tolerance };
-  }
-
-  // 그 외 "800자"처럼 숫자+자만 있는 경우도 같은 방식으로 처리
-  m = t.match(/(\d{1,6})\s*자/);
-  if (m) {
-    const target = Number(m[1]);
-    const tolerance = Math.round(target * 0.1);
-    return { min: Math.max(0, target - tolerance), max: target + tolerance };
-  }
-
-  return null;
-}
-
 export interface AnalyzeInput {
   /** base64 인코딩된 이미지 데이터 (data URL 접두사 제외) */
   imageBase64?: string;
@@ -261,13 +216,28 @@ export async function analyzeAssignment(
   ].filter(Boolean);
   parts.push({ text: userTextLines.join("\n\n") });
 
-  const response = await generate({
-    label: "analyze",
-    role: "lite",
-    prompt: parts,
-    system: SYSTEM_INSTRUCTION,
-    schema: ANALYZE_SCHEMA,
-  });
+  const runAnalyze = () =>
+    generate({
+      label: "analyze",
+      role: "lite",
+      prompt: parts,
+      system: SYSTEM_INSTRUCTION,
+      schema: ANALYZE_SCHEMA,
+    });
+  let response = await runAnalyze();
+  // 실측(같은 안내문 4회 분석 중 1회): 항목 나열이 통째로 8~9개의 별개 "단계"로 쪼개지는 오분석. 이런 모양(5개 이상, 항목 나열 없음)이면 한 번만 다시 분석하고 단계가 더 적은 쪽을 쓴다.
+  try {
+    const first = JSON.parse(response.text || "{}") as { core_task_info?: { task_elements?: { required_items?: string[] }[] } };
+    const els = first.core_task_info?.task_elements ?? [];
+    if (els.length >= 5 && els.every((e) => (e.required_items?.length ?? 0) < 2)) {
+      console.warn(`[analyzeAssignment] 단계가 ${els.length}개로 쪼개진 것으로 의심되어 한 번 더 분석함`);
+      const second = await runAnalyze();
+      const n2 = (JSON.parse(second.text || "{}") as typeof first).core_task_info?.task_elements?.length ?? Infinity;
+      if (n2 < els.length) response = second;
+    }
+  } catch {
+    // 재분석은 보조 수단 — 실패해도 첫 결과를 그대로 쓴다
+  }
 
   const raw = response.text;
   if (!raw) {
@@ -295,9 +265,9 @@ export async function analyzeAssignment(
   // 출력은 중첩 optional보다 이런 형태가 더 안정적으로 채워짐) — 둘 다 0이면
   // "분량 제약 없음"이므로 target_length 자체를 생략해서, generate-essay.ts가
   // 이 필드의 존재 여부만으로 검사 대상인지 바로 판단할 수 있게 한다.
-  const task_elements = parsed.core_task_info.task_elements.map((e) => {
+  const task_elements_raw = parsed.core_task_info.task_elements.map((e) => {
     const { target_length_text, target_length_counts_spaces, required_items, items_format, ...rest } = e;
-    const range = target_length_text ? parseLengthConstraint(target_length_text) : null;
+    const range = target_length_text ? parseLengthConstraint(target_length_text, { english: /영어|English/i.test(`${parsed.subject} ${e.label}`) }) : null;
     const items = normalizeRequiredItems(required_items);
     // 모델이 분류한 items_format을 그대로 믿지 않는다 — 실제 테스트에서 "영어 발표
     // 대본"·"독서 비평문"이 sections로 분류돼 말하는 대본/한 편의 비평문이 "### 항목"
@@ -307,6 +277,7 @@ export async function analyzeAssignment(
     return {
       ...rest,
       target_length: range ? { ...range, counts_spaces: target_length_counts_spaces ?? true } : undefined,
+      _lengthText: target_length_text || undefined,
       required_items: items,
       items_format: items
         ? items_format === "sections" && !forcedFlowing
@@ -316,6 +287,8 @@ export async function analyzeAssignment(
     };
   });
 
+  const task_elements = distributeSharedLength(task_elements_raw).map((e) => forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic));
+
   // 최종 안전장치: 프롬프트로 "빈 문자열 금지"를 지시해도(위 스키마 설명 참고)
   // 실제로 빈 문자열이 돌아올 수 있다는 게 이 프로젝트에서 반복 확인된
   // 패턴이다. subject는 다른 행정정보 필드와 달리 뒤에서 essay/plan
@@ -323,7 +296,8 @@ export async function analyzeAssignment(
   // (10종 수행평가 교차 테스트에서 실제로 신조어/앱 기획/포스터 3건이
   // 이렇게 생성 실패했다), 빈 문자열로 남기지 않고 코드가 결정론적으로
   // 채워 넣는다.
-  const subject = normalizeSubject(parsed.subject) || "수행평가";
+  const subject =
+    fallbackSubject(normalizeSubject(parsed.subject), parsed.core_task_info.topic, ...task_elements.map((e) => e.label)) || "수행평가";
   if (!parsed.subject.trim()) {
     console.warn(`[analyzeAssignment] 최종 안전장치: 모델이 과목을 못 채워서 기본값으로 대체함 topic="${parsed.core_task_info.topic}"`);
   }
