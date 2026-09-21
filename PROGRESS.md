@@ -3463,3 +3463,11 @@ source-quality.ts(신설), types/task.ts, AssignmentFlow.tsx, ResultPanel.tsx.
 - `src/lib/llm/`: `generate()`/`generateJson()`/`embedText()` 단일 입구, 제공자(`providers/gemini.ts`, `providers/openai.ts`는 2~6단계에서 구현), 오류 종류(`LlmError`), 요청 단위 호출 기록기(`trace.ts`). 제공자는 `LLM_PROVIDER`(기본 gemini)로만 고르고 파이프라인 안에서 섞지 않는다. 모델은 역할(main/lite)→환경변수로 매핑.
 - 직접 Gemini 호출 22곳(14개 파일)을 AST 코드모드로 전부 계층 호출로 바꿈. SDK 런타임 사용은 `llm/providers/gemini.ts`, `gemini/client.ts`에만 남음. 검색 그라운딩 메타데이터는 `{queries, chunks, supports(unit)}`로 정규화(Gemini=utf8 바이트, OpenAI=utf16 글자).
 - 검증: tsc/eslint 통과, 단위 테스트 41개(계층 5개 신규: 모델 매핑, 재시도/quota, trace, 구조화 출력 오류 구분). Gemini 크레딧이 소진돼 Gemini 실호출 회귀는 못 함.
+
+## 2026-09-22 OpenAI 마이그레이션 안정화 (자율 점검 라운드)
+- 모델 호출은 `src/lib/llm/`(provider 추상화) 한 곳으로 통일. `LLM_PROVIDER=openai`, 모델은 `OPENAI_MODEL_MAIN/LITE`(gpt-5-mini), 임베딩 text-embedding-3-small(768). `OPENAI_API_KEY`(구 `OPEN_API_KEY`는 마이그레이션 동안만 호환).
+- 속도: 수학탐구 178s→약 50s(제목·가정값·계산·예시를 통계 주장으로 오인해 검증하던 호출 제거 `stat-claims.ts`, 탐구/방법 낱말로 검색 강제하던 정책 수정 `search-policy.ts`). 책 과제가 아닌데 지나가며 책을 언급한 경우 원문 검증 생략. maxDuration 180s(essay/plan/regenerate/learning).
+- 분량: `length-parse.ts`(글자수·단어수·발표 시간·하한+상한, 전체 분량은 단계 수로 배분), 프롬프트에 숫자 목표 명시, 재시도 후에도 못 맞춘 단계는 검색 없이 1회 보정(`adjustSectionLength`).
+- 분석 안정화: `analysis-normalize.ts`(외부 제작 표지 없으면 글 제출로 통일, 과목 폴백), 단계가 5개 이상으로 쪼개지면 1회 재분석.
+- 출처: 링크 검증 3상태(`url-status.ts`: 404/410/DNS만 무효, 403/5xx/시간초과는 확인 불가), 최종 본문의 출처 없는 각주·중복 각주 정리(`citation-cleanup.ts`).
+- 입력 검증(`api/validate.ts`), 학습 모드 UUID 검증, 프롬프트/원문 로그는 `LOG_PROMPTS=1`일 때만.

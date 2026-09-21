@@ -142,6 +142,17 @@ export async function researchLearningItems(input: ResearchInput): Promise<Map<s
       grounding = retry.grounding;
     }
   }
+  // 검색은 했는데 본문에 출처 링크가 하나도 안 붙은 응답(실측: 인물 조사 4개 항목 전부 출처 0개)은 자료 조사로서 쓸모가 없다 — 출처를 문장에 직접 붙이라고 한 번만 다시 요청한다.
+  if ((grounding?.chunks?.length ?? 0) === 0) {
+    console.warn("[learning research] 응답에 출처가 하나도 없음 — 출처 표기를 강조해 1회 재시도");
+    const retry = await run(
+      prompt + "\n\n【다시 한번 강조】 방금 응답에는 출처가 하나도 붙지 않았다. 검색으로 확인한 사실 문장마다 그 근거가 된 웹 페이지를 출처로 반드시 붙일 것."
+    );
+    if ((retry.grounding?.chunks?.length ?? 0) > 0) {
+      response = retry;
+      grounding = retry.grounding;
+    }
+  }
   const text = response.text;
   if (!text) throw new Error("자료 조사 응답이 비어 있습니다.");
 
