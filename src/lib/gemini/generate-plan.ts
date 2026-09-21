@@ -1,5 +1,6 @@
 import { generate } from "@/lib/llm";
 import { needsFactSearch } from "@/lib/llm/search-policy";
+import { collectUserNumbers, findStatClaimCandidates } from "./stat-claims";
 import {
   ANTI_AI_TONE_RULES,
   NO_META_COMMENTARY_RULE,
@@ -296,32 +297,21 @@ function parseProductionSteps(physicalText: string): ProductionStep[] {
   return steps;
 }
 
-// 완성된 글에 등장하는 통계/수치 주장에 각주가 없으면 검증 없이 지어낸
-// 것으로 의심한다 — generate-essay.ts의 detectUnverifiedQuotes와 같은
-// 발상이지만, 여기서는 책의 직접 인용이 아니라 통계·수치 주장을 본다.
-const STAT_CLAIM_PATTERN = /\d[\d,]*(?:\.\d+)?\s?(?:%|퍼센트|명|건|원|배|위|개)/g;
-
+// 완성된 글에 등장하는 통계/수치 주장에 각주가 없으면 검증 없이 지어낸 것으로 의심한다. 무엇을 "외부 통계 주장"으로 볼지는
+// stat-claims.ts에서 (사용자 가정값 / 계산·표 / 외부 주장)으로 나눠 판단한다.
 function findUnverifiedStatClaim(
   content: string,
-  sourceById: Map<number, SourceRef>
+  sourceById: Map<number, SourceRef>,
+  opts: { userNumbers: Set<string>; strictExternalOnly: boolean }
 ): { afterEnd: number; sentence: string } | null {
-  STAT_CLAIM_PATTERN.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = STAT_CLAIM_PATTERN.exec(content))) {
-    const afterEnd = m.index + m[0].length;
-    const trailingWindow = content.slice(afterEnd, afterEnd + 60);
+  for (const cand of findStatClaimCandidates(content, opts)) {
+    const trailingWindow = content.slice(cand.afterEnd, cand.afterEnd + 60);
     const citedNs = Array.from(trailingWindow.matchAll(/\[(\d+)\]/g), (mm) => Number(mm[1]));
     const hasTrustworthyCitation = citedNs.some((n) => {
       const src = sourceById.get(n);
       return src && !isWeakQuoteSource(src.url);
     });
-    if (!hasTrustworthyCitation) {
-      const sentenceStart = content.lastIndexOf(".", m.index) + 1;
-      const rest = content.slice(afterEnd);
-      const endRel = rest.search(/[.!?\n]/);
-      const sentenceEnd = endRel === -1 ? content.length : afterEnd + endRel + 1;
-      return { afterEnd, sentence: content.slice(sentenceStart, sentenceEnd).trim() };
-    }
+    if (!hasTrustworthyCitation) return { afterEnd: cand.afterEnd, sentence: cand.sentence };
   }
   return null;
 }
@@ -485,7 +475,13 @@ export async function generatePlan(
   // essay 경로처럼 본문 문자열에 직접 [n]을 삽입하는 방식으로 바꿨다.
   const verifiedItemNames: string[] = [];
   const sourceById = new Map(validatedSources.map((s) => [s.n, s]));
-  const claim = findUnverifiedStatClaim(content, sourceById);
+  const userNumbers = collectUserNumbers(
+    input.instructions,
+    input.coreTaskInfo.topic,
+    ...input.coreTaskInfo.requirements,
+    ...input.coreTaskInfo.task_elements.flatMap((e) => [e.label, e.description, ...(e.required_items ?? [])])
+  );
+  const claim = findUnverifiedStatClaim(content, sourceById, { userNumbers, strictExternalOnly: !wantSearch });
   if (claim) {
     const result = await verifyExcerpt({ name: claim.sentence }, STATISTIC_OR_NEWS_QUERY_TEMPLATES);
     if (result.verified && result.source) {
