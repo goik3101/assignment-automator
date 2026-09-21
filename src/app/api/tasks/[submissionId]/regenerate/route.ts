@@ -1,3 +1,4 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { generateEssay } from "@/lib/gemini/generate-essay";
 import { generatePlan } from "@/lib/gemini/generate-plan";
@@ -14,7 +15,7 @@ import type { EssayResult, PlanResult } from "@/types/task";
 // 클라이언트는 submissionId와 수정 방향(revisionInstructions)만 보내면 된다.
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest, ctx: RouteContext<"/api/tasks/[submissionId]/regenerate">) {
+export const POST = routeUsage("regenerate", async function POST(req: NextRequest, ctx: RouteContext<"/api/tasks/[submissionId]/regenerate">) {
   try {
     const { submissionId } = await ctx.params;
     const { revisionInstructions } = (await req.json()) as { revisionInstructions?: string };
@@ -111,4 +112,4 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/tasks/[subm
       { status: 500 }
     );
   }
-}
+});

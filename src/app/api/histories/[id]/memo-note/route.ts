@@ -1,3 +1,4 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server-client";
 import { generateMemoNote } from "@/lib/gemini/memo-note";
@@ -5,7 +6,7 @@ import type { EssayResult, PlanResult } from "@/types/task";
 
 // F8/9-2: 암기노트. 로그인 사용자 무료. 한 번 생성하면 user_histories.memo_note에
 // 캐시해서 다시 볼 때는 재생성하지 않는다.
-export async function GET(_req: Request, ctx: RouteContext<"/api/histories/[id]/memo-note">) {
+export const GET = routeUsage("memoNote", async function GET(_req: Request, ctx: RouteContext<"/api/histories/[id]/memo-note">) {
   const { id } = await ctx.params;
   const supabase = await getServerSupabase();
   const {
@@ -43,4 +44,4 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/histories/[id]/
   if (updateError) console.error("[memo-note] 캐시 저장 실패", updateError);
 
   return NextResponse.json(memoNote);
-}
+});

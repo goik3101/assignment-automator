@@ -1,3 +1,4 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLearningUser, jsonError } from "@/lib/learning/auth";
 import { suggestSubjectCandidates } from "@/lib/learning/suggest-subject";
@@ -8,7 +9,7 @@ import type { CoreTaskInfo } from "@/types/task";
 export const maxDuration = 60;
 
 // "AI 추천" — 다룰 인물/대상 후보 3개. 자료 조사·피드백 횟수에는 포함하지 않는다.
-export async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]/suggest-subject">) {
+export const POST = routeUsage("learningSuggest", async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]/suggest-subject">) {
   try {
     const { id } = await ctx.params;
     const auth = await requireLearningUser(req);
@@ -47,4 +48,4 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/se
     console.error("[/api/learning/suggest-subject] 실패", err);
     return jsonError("추천을 불러오지 못했어요. 직접 선택하거나 잠시 후 다시 시도해주세요.", 500);
   }
-}
+});

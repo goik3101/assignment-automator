@@ -1,9 +1,10 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { generateExpectedQuestions } from "@/lib/gemini/expected-questions";
 
 // 9-3: 예상 질문 생성. 이미 만든 결과물을 바탕으로 뽑는 가벼운 보조 기능이라
 // 로그인/횟수 제한 없이 제공한다.
-export async function POST(req: NextRequest) {
+export const POST = routeUsage("expectedQuestions", async function POST(req: NextRequest) {
   try {
     const { topic, resultText } = (await req.json()) as { topic?: string; resultText?: string };
     if (!topic || !resultText) {
@@ -18,4 +19,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

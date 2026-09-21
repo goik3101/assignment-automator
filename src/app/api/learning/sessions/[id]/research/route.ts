@@ -1,3 +1,4 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { requireLearningUser, jsonError } from "@/lib/learning/auth";
 import { researchLearningItems } from "@/lib/learning/research";
@@ -13,7 +14,7 @@ export const maxDuration = 60;
 
 // 과제 전체의 자료 조사(항목별로 나눠서 저장). 이미 조사가 끝난 과제는 다시 호출해도
 // 횟수를 쓰지 않고 저장된 결과를 그대로 돌려준다. 실패해도 학생이 쓴 초안은 건드리지 않는다.
-export async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]/research">) {
+export const POST = routeUsage("learningResearch", async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/sessions/[id]/research">) {
   const { id } = await ctx.params;
   const auth = await requireLearningUser(req);
   if ("error" in auth) return auth.error;
@@ -90,4 +91,4 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/learning/se
     console.error("[/api/learning/research] 실패", err);
     return jsonError("자료 조사 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.", 500);
   }
-}
+});

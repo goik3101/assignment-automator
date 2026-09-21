@@ -1,5 +1,6 @@
 import { Type, type Schema } from "@google/genai";
 import { generate, type LlmPart } from "@/lib/llm";
+import { normalizeSubject } from "./normalize-subject";
 import type { AnalyzeResult } from "@/types/task";
 
 // 기획서 6-0 1단계: 안내문에서 administrative_info(제출기한 등)와
@@ -322,7 +323,7 @@ export async function analyzeAssignment(
   // (10종 수행평가 교차 테스트에서 실제로 신조어/앱 기획/포스터 3건이
   // 이렇게 생성 실패했다), 빈 문자열로 남기지 않고 코드가 결정론적으로
   // 채워 넣는다.
-  const subject = parsed.subject.trim() || "수행평가";
+  const subject = normalizeSubject(parsed.subject) || "수행평가";
   if (!parsed.subject.trim()) {
     console.warn(`[analyzeAssignment] 최종 안전장치: 모델이 과목을 못 채워서 기본값으로 대체함 topic="${parsed.core_task_info.topic}"`);
   }

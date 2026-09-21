@@ -1,3 +1,4 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { generateEssay } from "@/lib/gemini/generate-essay";
@@ -18,7 +19,7 @@ import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
 // 걸리는 만큼 여유 있게 60초로 잡아둔다 (Vercel Pro 기준 상한, 15번 챕터 참고).
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
+export const POST = routeUsage("essay", async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken } = body as {
@@ -168,4 +169,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

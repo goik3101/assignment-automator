@@ -1,3 +1,4 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { generatePlan } from "@/lib/gemini/generate-plan";
@@ -17,7 +18,7 @@ import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
 // Pro(60초)가 필요한지 판단한다. (기획서 15, 18, 19번 챕터 참고)
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
+export const POST = routeUsage("plan", async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText } =
@@ -136,4 +137,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

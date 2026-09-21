@@ -1,7 +1,8 @@
+import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeAssignment } from "@/lib/gemini/analyze";
 
-export async function POST(req: NextRequest) {
+export const POST = routeUsage("analyze", async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { imageBase64, imageMimeType, topicText, instructions } = body as {
@@ -33,4 +34,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
