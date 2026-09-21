@@ -1,4 +1,5 @@
 import { generate } from "@/lib/llm";
+import { needsFactSearch } from "@/lib/llm/search-policy";
 import { Type, type Schema } from "@google/genai";
 import {
   ANTI_AI_TONE_RULES,
@@ -133,7 +134,7 @@ function detectMissingRequiredItems(sections: RawSection[]): { label: string; mi
   return result;
 }
 
-const SECTIONS_SCHEMA: Schema = {
+export const SECTIONS_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     summary_lines: {
@@ -583,7 +584,7 @@ interface BookCandidate {
   reason?: string;
 }
 
-const BOOK_CANDIDATES_SCHEMA: Schema = {
+export const BOOK_CANDIDATES_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     candidates: {
@@ -644,7 +645,7 @@ ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
       label: "generateEssay:selectBookCandidate:investigate",
       role: "main",
       prompt: prompt,
-      search: {},
+      search: { force: true }, // 실존하는 책을 확인하는 단계 — 검색이 반드시 필요
     });
     const investigationText = investigation.text;
     if (!investigationText) return null;
@@ -709,12 +710,19 @@ async function generateOnce(
   const prompt = buildPrompt(input, elements);
   console.log("[generateEssay] prompt:\n" + prompt);
 
+  // 사실 조사가 필요 없는 창작·계산·기획형 과제에는 검색을 강제하지 않는다(검색 호출당 요금 — search-policy.ts).
+  const wantSearch = needsFactSearch(
+    input.coreTaskInfo.topic,
+    ...input.coreTaskInfo.requirements,
+    ...elements.flatMap((e) => [e.label, e.description]),
+    input.instructions
+  );
   const runStageA = (p: string) =>
     generate({
       label: "generateEssay:stepA",
       role: "main",
       prompt: p,
-      search: {},
+      search: { force: wantSearch },
     });
 
   let stageA = await runStageA(prompt);
@@ -726,7 +734,7 @@ async function generateOnce(
   // 있다). 이게 재시도(품질 교정) 단계에서 발생하면 원래 있던 출처까지
   // 통째로 사라져서 4단계 전부 미검증으로 퇴보하는 심각한 회귀로 이어졌다
   // — 그래서 stageA 자체에도 같은 안전장치를 적용한다.
-  if ((grounding?.queries?.length ?? 0) === 0) {
+  if (wantSearch && (grounding?.queries?.length ?? 0) === 0) {
     console.warn("[generateEssay] stageA가 검색 도구를 한 번도 호출하지 않음 — 강하게 재지시하여 1회 재시도");
     const forcedPrompt =
       prompt +

@@ -3,7 +3,7 @@ import { generate } from "@/lib/llm";
 
 // 9-3: 예상 질문 생성 (조건부, 구술·발표형 과제일 때만). 이미 만들어진 결과물을
 // 바탕으로 질문만 뽑는 것이라 검색 그라운딩 없이 Flash-Lite로 충분하다.
-const SCHEMA = {
+export const SCHEMA = {
   type: Type.OBJECT,
   properties: {
     questions: {

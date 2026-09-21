@@ -1,0 +1,131 @@
+{
+ "object": "response",
+ "created_at": 1790002206,
+ "status": "completed",
+ "background": false,
+ "billing": {
+  "payer": "developer"
+ },
+ "completed_at": 1790002213,
+ "error": null,
+ "frequency_penalty": 0,
+ "incomplete_details": null,
+ "max_output_tokens": 6000,
+ "max_tool_calls": null,
+ "model": "gpt-5-nano-2025-08-07",
+ "moderation": null,
+ "output": [
+  {
+   "id": "rs_0d6f7abd3efec35e006ab1441f8c9087d0bda26bc110919924",
+   "type": "reasoning",
+   "content": [],
+   "encrypted_content": "gAAAAABqsUQlzR4WH08tgY__0rRtiMaWZPdpMTpVHEEsmUF8HwVP8jNWgNL2YmN5tNkk1uEoNgYuc8GHMFZeINcw4srYTDko6-1P-8WyCDo6UOM4RSLG93D9yiZxfDatJ8HUlzrX0xZxjb88uBr3_wjaRskXQy25arrX9jMAmjE80Tw7jW7qRUrf_d8lplqgvVDst1MhSQO5KoiagaV8Kkk02B3s_kRqwOp1D6dJxkY3N26S4WWndFx5VtHPI0kIw_LqUgMLSs7s_gyzIKhsUL0r235elKmA-EWmxwkWSwjVrjRGaruPUKLLYLs8Rt9OEub-eOlyl4JCgN45njrOlR2dc6THTWJEYNojbxid-64K4YHp6SrNqAeqVWD1BBVf5YeAsBf8YOmGbQ6N1KpDr9D9nJdTVz8WsXE3ERjrQpacv1PL7zveQZiyT2oMMJglKI38WO0Io3_NJuBJUcR8ZlBI9Gj3Dr-BFtWig_u2wc-KdRpEcoub_Ay5Aqy5E3REvfN_yqZtnT3q_OWTbrEpEOBC-SfVH3cKzSFlNSaYi2j-IpX7_kb_3FshP5iDZplfxHt5EDf1xh3achteD6CuG_r09P86diJh6is2oZy9Uju-k_mlTYQeWRiga5Ixww3mbDxIydSsEbwpAaIAntgWj7mfWH5bmJ9YPE_qr43LtQYVk8BDm2iUMK3XBl9a37u27RjOnTpAyVYteM17fy83pxUcCsFEh37zWDmOz7OaYZpS3L4Yj5TmOCCr5ct0l0IZJd_WeOp7jqxjxEPQZUlAxkkIiHiyrKZCNsy98-EXV86tYtqf7NX9zy2MoCq9Ef8Jhp3rkVDm0y9cVDGIb06w1HGCvw4kCGERc9RloCEoI_ygMhAlaH7ArcYQ-643sSO4c75E1Go4FAXbkUuGs9v3TRGyOM0Ilujm1y_5AJ-DEIp7jaKBk5zabXtvQbf3bBvcRbYRwZtzkr0lILm9v_CkH1gYpxnJsx5myDB-IvaFHjo3mD6Uhrhxp0feVYpuEBkXIJzaYLTXgYLYKQoD6w2SAGCQ0q-MMXY3xMpVFRN1pxlrD2JYksbkrSQkogwhXxRI0iuqR2Mp3KFgOfPoF997z2_U94jB_U76ZqMMCqZPdPokOVvTPC39L4J3A_Qvr6XP1MnS5wiC4ae1paUdvNcxe_lTPcDOYBDqY3pIs3gPXhtXrdMKyc0uHucSO32XYXjtA_bCzt7dUEGY0sk6zk88qEIOV0wtI4ojn3cIiBZ2GiJdlxKvT0gc3TKTYEOlgiNGSFkEbKY4Zan-3ookqCEXsIJk6CkOHOkHiWeKacDzjpyQelzmzeu9xpeW75m8n4K1CeGM6BWh6nSbYIOcoqYpy4q10y2SO9Jv3xLYwfJ3iRA7OKVqhLok8K2-uNK3F0CKU5kdDN-xoUjJu-vhhbmISGuTkirpiFuqfN38Zoh9LkUqTPM7qDUKyd8=",
+   "summary": []
+  },
+  {
+   "id": "ws_0d6f7abd3efec35e006ab1441ffed487d092eb0e1b839cca04",
+   "type": "web_search_call",
+   "status": "completed",
+   "action": {
+    "type": "search",
+    "queries": [
+     "Henri Dunant birth year",
+     "Battle of Solferino year"
+    ],
+    "query": "Henri Dunant birth year"
+   }
+  },
+  {
+   "id": "rs_0d6f7abd3efec35e006ab14422b14487d0a241442dd98d8190",
+   "type": "reasoning",
+   "content": [],
+   "encrypted_content": "gAAAAABqsUQlOobTYwl_EVSZ4F-hPkPVlm4g9MSnZk0e-G4kRS9UQuEnxl-el1ZsfmA6Gf7ZoDpe4xPOSmOqiGoK1nN91_iKgD_uzKytU21dwbVGi6d2OsYsSBrLmNtdXmCrwkWcillCd5YFxyt8WuohyXbfwm4EmwlPw10fyA46Sa4ao1f-EIRYwK7gfapBH4jmjjzF49W-H2hLtqPh2GqxRqoldFwHKOGkt8TO87DKvqLSrudap5aHIFFQRaq1x-54Iq30KJ6PjVycHxmeczlSvCWIragPlZTE0QdBkmy_9OYwGNXhCMYfp4Rl2mJP_vZKgsrKyfiOQkPziEL6a-riXAE1MPZmXEMaZ_wJ9dWg3mwXrmF7nsvUCg_-K74Tet7HqI1l1OhDNgkXJUrdb3vqm2XtwoVGHZ5NRRIonGbmRgkQy4WPC1_77mQJMHtkr8lOG3h9Ba67sR5n102rqrgrLRtELceNbSJK99hCKRGc1PbE4t_Gd3HTqhOfiWAkvYRfNJyxeDVA3C5632IzHnZqkS9A5bIHELTlqk4kjW2pPGFs3G8bJ9uRVwZjJFnPxLzhjCyHdwv5cOrBr97p5WebPLsY2KT-i9Eq44r37dIhvKX7yCtxBlBN4OY75JiLqI7iIm-Qs_W4IR1eug7foEXjkmnzEholzQMK5o-v0DvCQ8u80S7qiyHp4Ya3FiCcBHgnDqLz3sE06fEm1mB6dOEtWaPilpPEuL449qnmq-scNnYxEyuQK1ZKkr5BE4n-XIy46W9n0Hal6A5atvhecnwnRQXNMxdGL_V9iJlA-kSkXJCMqXRgZoEhZR55E1bC_KqqyKcbuNHUoODnNFvQKAYsbDxcZm6M298WEHKuEJ_KVtckC9MXjNOFeiPnphzr03IPN_6cLpK70txPN_YmVsG1EdPfMenrLfKosQifj8Cm0rxSJsbAaVbfkjcsPzIFgy7wdAWjuZhiNnvOxktZw5njFFCEkLHI0tj1fTi-bYen5C5AnIhzhZqHVRA6gN9eXzKd9sG5HgppI-WtZADwlT3OUYzrMPwGpcCZMsdQ00M7xaHaCUM1IAhYId_aWXlqnnOl9WUescs788uMnUy1bWlxP2rJHZipHTaSG1X55R0Yz9ClisLkQxUzqx-MzTyPcRZU6pG2bTYbyIqX1_x-b6DR8c3oCAY9ZWTOTpA4FyY0wKL-0VLBmBAdpEAwcC7LS4sqmL0Gqy-pt5FOSbvFtAFlcej7UZskZcoLHDfOCmKrKZN16tLZyuLpfMc27yez3WxM78LSm2ltGZQDVk3OjXry9ltWIAVACWNJZcFR8xAr9588KjMFfLLrj764Bb7X8yZnkRsMmvze4urzzd5WWz9Vh-G3IMSMms1Y9lqS7ia9oaKtOBmkE4UkLQMM-0SsvvV9H97ynLDd0lmf9h7_AS0njiGHCnZkGAmlrWvkwHxa9mUJIe9pspoGtgjK0eQfbQxAxCrmIZBo_Q0aj_1jjrOS1qqyvK9VLr2GsI7a6FSXA3t7n_8y_jenm4hXB53Yro3xD999GgBHVBx9A51xHwVYKIP-dgRQgJs6-1NbKKUi1IZ63S7u8_YZi-6KgpuCF_-H8-kgQH22KTgwg5ixpyArDLERMZWq4RfPHa3cn0rWqxzGYJmM8y8cA2NB9JllCXW8CZY8VF92KWXz6UgMB9bjFzsAhwFbb4DykYcvBgtVgPw2sBk3PSPchwHxPAo_8RXHG42s__k1j_8CY4Zqf4Tidpk_oXWznt84OOaSGaOeqcZFrIhRioQXtTX8hG4Jlp--qyzLkFDq7nHNlmQ19_HhPHfbcQo0mioO7FoAPGI2GyjYwa4alfNh7_h8RpVD003ijrEwgKqDlthWcQZHrEpkBrBbEuwSEmGO8ZncjUrE5P6IY19HPz8Vkhe-oBopGvDp_mx9omqWvtY1ABpnKUjNZRWDM5ENzkjhr3mh8Wf7x4RwfgiDBqgua8NSeMsSFbCWRch7XrosJZ5hW2iigSRJSij-Ti4ZwE7zJ3wlbOYlNTmE63gDcjfF84v-GVwxjIxO2XcGSRvRm6qvY4EOWgg53nb5j2Fx0TZyoLQm4H33YNB1zw8R7DVx1R3s1i8_S-a0CmSCGqo-WieolQOu9JWRCU0mjxNnfJUu56puPePPWS2kDv2bfhAHmTIf9MEpTCwPv8MaBMlW7aDKXCUIV113RP-a_2oC-QKOtcaC-qBFRH6wky8RDxDKglBXq17Tx2vO_CFAzpdTX4yVeHqKsWglSIyChF3U36eEhdzIgQI0hOA9cqiKJuseEHROzKf2Dq9RVpOVNcmzuclem0VYS7emiHQxqiVplI1lF9DLAd_WQWtK9S1qFMFzlcPiNrGHg5Zb3xGCGALFazSlzaMYX5tYfIry-LZSibJNo1E-yg5zyGe3w7dS3qutemsT3Oqk6QzjLmBfuKKrx9v9IHJCFS6IQsa4ftNZFjVSYs-Xgnh7bxJSf5bt6Y98A8deQ9K9dfIT7pepIHvwfcb5iImkVA0niEjtMFBgwfoXGVKXvGZQaXiyi7DKOL72gc9eNBMZ5CnCPbBiaYjD8Rouy1r-jlcM1la1AriXZb7pEtJq-UjqabIon7pTGZNHbFncbNiV2rQoisLJuhJhiS0IxvO2QgAlbooal8zeS3qvcMgTO59desM8Lym_V366Hd5QPRO8ctUi2SvOLwJbIQczrRuPTxEnS0Ss0v5nHDXmTCFx12w7VITBIEfI08nP8kgCUdc2U68rm8SXwY7j5eO52mk6Y9G-vXOp3LWEUQlheLwXktw1qljdm2hUa7wpvuy4Z2c1HzdfF2UODsV3",
+   "summary": []
+  },
+  {
+   "id": "msg_0d6f7abd3efec35e006ab14424c6a087d094fb85378a8b070f",
+   "type": "message",
+   "status": "completed",
+   "content": [
+    {
+     "type": "output_text",
+     "annotations": [
+      {
+       "type": "url_citation",
+       "end_index": 104,
+       "start_index": 22,
+       "title": "Henry Dunant",
+       "url": "https://en.wikipedia.org/wiki/Henry_Dunant?utm_source=openai"
+      },
+      {
+       "type": "url_citation",
+       "end_index": 218,
+       "start_index": 129,
+       "title": "Battle of Solferino",
+       "url": "https://en.wikipedia.org/wiki/Battle_of_Solferino?utm_source=openai"
+      }
+     ],
+     "logprobs": [],
+     "text": "- 앙리 뒤낭은 1828년에 태어났다. ([en.wikipedia.org](https://en.wikipedia.org/wiki/Henry_Dunant?utm_source=openai))\n- 솔페리노 전투는 1859년에 벌어졌다. ([en.wikipedia.org](https://en.wikipedia.org/wiki/Battle_of_Solferino?utm_source=openai))"
+    }
+   ],
+   "role": "assistant"
+  }
+ ],
+ "parallel_tool_calls": true,
+ "presence_penalty": 0,
+ "previous_response_id": null,
+ "prompt_cache_key": null,
+ "prompt_cache_retention": "in_memory",
+ "reasoning": {
+  "context": "current_turn",
+  "effort": "low",
+  "mode": "standard",
+  "summary": null
+ },
+ "safety_identifier": null,
+ "service_tier": "default",
+ "store": true,
+ "temperature": 1,
+ "text": {
+  "format": {
+   "type": "text"
+  },
+  "verbosity": "medium"
+ },
+ "tool_choice": "auto",
+ "tool_usage": {
+  "image_gen": {
+   "input_tokens": 0,
+   "input_tokens_details": {
+    "image_tokens": 0,
+    "text_tokens": 0
+   },
+   "output_tokens": 0,
+   "output_tokens_details": {
+    "image_tokens": 0,
+    "text_tokens": 0
+   },
+   "total_tokens": 0
+  },
+  "web_search": {
+   "num_requests": 1
+  }
+ },
+ "top_logprobs": 0,
+ "top_p": 1,
+ "truncation": "disabled",
+ "usage": {
+  "input_tokens": 8829,
+  "input_tokens_details": {
+   "cache_write_tokens": 0,
+   "cached_tokens": 0
+  },
+  "output_tokens": 435,
+  "output_tokens_details": {
+   "reasoning_tokens": 320
+  },
+  "total_tokens": 9264
+ },
+ "user": null
+}

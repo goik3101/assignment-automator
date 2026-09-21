@@ -36,7 +36,7 @@ export interface SelectedSubject {
   ranking?: { name: string; fit: number; penalty: number; score: number }[];
 }
 
-const CANDIDATE_SCHEMA: Schema = {
+export const CANDIDATE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     candidates: {

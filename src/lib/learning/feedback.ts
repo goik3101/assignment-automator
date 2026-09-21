@@ -28,7 +28,7 @@ const ISSUE_SCHEMA: Schema = {
   required: ["excerpt", "problem", "hint"],
 };
 
-const FEEDBACK_SCHEMA: Schema = {
+export const FEEDBACK_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     summary: { type: Type.STRING, description: "전체 평가 1~2문장" },

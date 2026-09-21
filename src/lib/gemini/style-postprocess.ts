@@ -14,7 +14,7 @@ export const STYLE_POSTPROCESS_FLAGS = {
 
 const MAX_PER_CALL = 12;
 
-const PROPOSE_SCHEMA: Schema = {
+export const PROPOSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     items: {
@@ -32,7 +32,7 @@ const PROPOSE_SCHEMA: Schema = {
   },
   required: ["items"],
 };
-const VERIFY_SCHEMA: Schema = {
+export const VERIFY_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     items: {

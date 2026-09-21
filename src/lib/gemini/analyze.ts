@@ -6,7 +6,7 @@ import type { AnalyzeResult } from "@/types/task";
 // core_task_info(주제·요구사항 등)를 "물리적으로 분리"해서 추출한다.
 // 이 스키마 강제는 그라운딩 없는 이미지 분석 단계에 적용되는 것으로,
 // 검색+생성 단계(5-1)의 그라운딩+JSON 이슈와는 별개다.
-const ANALYZE_SCHEMA: Schema = {
+export const ANALYZE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     subject: {

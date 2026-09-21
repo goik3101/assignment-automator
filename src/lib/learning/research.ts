@@ -127,7 +127,7 @@ export async function researchLearningItems(input: ResearchInput): Promise<Map<s
       label: "learning:research",
       role: "main",
       prompt: p,
-      search: {},
+      search: { force: true }, // 이 단계는 검색 자체가 목적
     });
 
   let response = await run(prompt);

@@ -51,7 +51,7 @@ export async function generate(req: LlmRequest): Promise<LlmResponse> {
         throw err;
       }
       retries++;
-      const delay = BASE_DELAY_MS * 2 ** attempt;
+      const delay = Math.min(err.retryAfterMs ?? BASE_DELAY_MS * 2 ** attempt, 15000);
       console.warn(`[llm retry] ${req.label} ${err.kind} (${attempt + 1}/${MAX_RETRIES + 1}), ${delay}ms 후 재시도`);
       await sleep(delay);
     }
@@ -61,13 +61,20 @@ export async function generate(req: LlmRequest): Promise<LlmResponse> {
 /** 구조화 JSON 출력. 스키마는 req.schema로 넘기고, 파싱된 객체를 돌려준다. */
 export async function generateJson<T>(req: LlmRequest): Promise<{ data: T; response: LlmResponse }> {
   if (!req.schema) throw new LlmError("generateJson에는 schema가 필요합니다.", "bad_request", false);
-  const response = await generate(req);
-  if (!response.text) throw new LlmError(`${req.label}: 구조화 출력이 비어 있습니다.`, "empty_output", false);
-  try {
-    return { data: JSON.parse(response.text) as T, response };
-  } catch {
-    throw new LlmError(`${req.label}: 구조화 출력이 JSON이 아닙니다.`, "invalid_output", false);
+  let last: LlmError | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await generate(req);
+    if (!response.text) {
+      last = new LlmError(`${req.label}: 구조화 출력이 비어 있습니다.`, "empty_output", false);
+      continue;
+    }
+    try {
+      return { data: JSON.parse(response.text) as T, response };
+    } catch {
+      last = new LlmError(`${req.label}: 구조화 출력이 JSON이 아닙니다.`, "invalid_output", false);
+    }
   }
+  throw last!;
 }
 
 export async function embedText(text: string, purpose: "clustering" | "diversity"): Promise<number[]> {

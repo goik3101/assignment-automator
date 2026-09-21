@@ -220,7 +220,7 @@ ${queries.map((q, i) => `${i + 1}. ${q}`).join("\n")}
 `.trim();
 }
 
-const VERIFICATION_EXTRACT_SCHEMA: Schema = {
+export const VERIFICATION_EXTRACT_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     verified: {
@@ -257,7 +257,7 @@ async function runInvestigation(prompt: string) {
       label: "verifyExcerpt:investigate",
       role: "main",
       prompt: prompt,
-      search: {},
+      search: { force: true }, // 이 단계는 검색 자체가 목적
     });
   const text = resp.text ?? "";
   const grounding = resp.grounding;
@@ -465,7 +465,7 @@ ${queries.map((q, i) => `${i + 1}. ${q}`).join("\n")}
 `.trim();
 }
 
-const ATTRIBUTION_EXTRACT_SCHEMA: Schema = {
+export const ATTRIBUTION_EXTRACT_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     found: {

@@ -46,7 +46,7 @@ export interface SubjectSpec {
   student_specified_subject: string | null;
 }
 
-const SPEC_SCHEMA: Schema = {
+export const SPEC_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     subject_type: { type: Type.STRING, enum: [...SUBJECT_TYPES], description: "학생이 골라야 하는 대상의 종류" },
@@ -135,7 +135,7 @@ export interface CandidateVerdict {
   note: string;
 }
 
-const VERIFY_SCHEMA: Schema = {
+export const VERIFY_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     verdicts: {

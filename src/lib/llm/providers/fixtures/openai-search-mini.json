@@ -1,0 +1,131 @@
+{
+ "object": "response",
+ "created_at": 1790002224,
+ "status": "completed",
+ "background": false,
+ "billing": {
+  "payer": "developer"
+ },
+ "completed_at": 1790002234,
+ "error": null,
+ "frequency_penalty": 0,
+ "incomplete_details": null,
+ "max_output_tokens": 6000,
+ "max_tool_calls": null,
+ "model": "gpt-5-mini-2025-08-07",
+ "moderation": null,
+ "output": [
+  {
+   "id": "rs_07b15c4b87596916006ab14430c07087d0800ef1a46da798cb",
+   "type": "reasoning",
+   "content": [],
+   "encrypted_content": "gAAAAABqsUQ6c9bYDaSG_D8t4yd-_ZUB7y3jAwCisDIszW2BbacyjprRmJODUQfL12FS3EuMHVRBH8JmtRFCnZOXq15kSwpCk2PsAinlWSmlEG_PaLsetDhN-RQoKeHPsPFTJPNFt-XQNFDoUqKZmZd9FoCqn5Ohd2kFu5DU_v84DPzBJh3lLlYaPFABbRhcKIVGWip5d7lnyliC0voOyjoJJ5XEOpEHM9oCijyl1NtY6M97pQ9VUEHGdN4p1lGLuXq_FnyXzlgTqPmRTlwrkG97a-v6oAoT1rbC_mqPCzF78f2-bX2U-etanCvLZFYjMcm6zTinZ_DBs7IypyUZcSRUtTGHdWjya8tBCNrqDQMnROC0QT6zmKddZzQU2o1SUxUDNoZ_Me8MGjMCPX0Nf4Pl982KJwSfnP5-Bi293V_cIJc6fvKxkSNXg9wl1QPwr3ei2soGWVWfLA4pekr0RhYMqehts_xbY0oYWRW4ABxh5Kw5QCIm5OqzW5x6T3KWviJKNR3PJkyNApa6DV4yrZC4qGM-ORt9-r3NgJj8MtPtzMwFqCJuL_vmJCIOERDXb3eLkd65h6fyBk0ZbHyqvuvs0xbyB3quft4LPDYKHAACVviuGzEYIQRJXti9Fu7KYe7AQxJSggFowHi4WOafVNE8DlcyoKF1iS-Pb9pA5JbFeN7K4cjRBqt_7FkNyHcs19ZuZaL50rhCA9bFhya82m47ZdkYwBh5RIfGW0QcV5xPJDW8Er2QjiqKCLF0uJt2AaiNES5sQcTnMla78txHfxFTIXpSbcJH2cIV_2GiQch5mELZMueHiBry83UZIs4vlnCbTQHI0oPLnFL7xXEneQ7mKeZb1TTWoo7BLBBH4BtzqacztyC_6MZ4IxXN--xTanYGnB3WhQ9ZcnXNb58w25TYEpdH9gPsvi7SEYC06RKQmgBd8vjw0kVDkA_kHCP2ET-qCfzR7kKZ9DmxLg57N51Un2ldaiSADAcpkpJtPVBNiyusHVL5DVCqg2W5nbFYa06CNF-U-pZtsZtIsGHYt7-cyo-_MEKxdnMiD8iz-l6PUuALVglUmsxpQ3iHt1fTFv34yLheuBJdl4vQOQTWdsQvmBat4-bs81Fclbu0dvdoLtVl23cXieKpTTo4G5m4RLJXFqppYNlEMGYOHiELeF-YYC0qSHVDe_-7WIp_lA1tumEEmscPOvYi05U9Ymlj1JDkPCfZoTrtiYHCE-w6oCRX7NLPL69xcVndm2R8JFWrxA8MqeVfhvgWs-A4AkvYHzYqGV-PYZ-mnRl60RRwS3ybb45et62pdLMgGA_9jwz8-UnjgzcGs747Ygua3-77qnMz-KOIAR3l9hZQUkRbDoHOSMjgb2FPrBryi0LClh2Fuyyk6Xpyy1YFVvXHtCYr81atRc9HG-4c0KavJaWoki_Ut-teTeftW7ImivxBXxA898Ybsd6giledZNeWs6wwGH6X1tJd6VhdFyGgdCeN6v9SE8P2Qf_rkVEoJL-933rDItu9GEGFlFnc7RG5TlRXVhS_Eye9ac38Q5BSjqyAAtRc9nNH7GhNWk2zQjbZOeA_aKbFICte8t2Hb8v8z8-f5FscvJWSi2lx5Y82XigOU5BjrDIlcRh5tTNgbGg3MNfyIBu8U0rUcqXRjZKzzZkXG_zFWVQUyXlCltS-brJlKELlUnmUiRx4-1isZz1ngVYgO7r34Qt00KugxwSKRdUmI6na1Cui7RIeMctYd5u8YkaA1i2H2r0W_uhn68bNCSSPEO-ZPCctRV5RaN06bKl7x3MoaRzw0oaoXL2qx7fzECtR2IxuEsYmekUuAHZsB9irfDvrcEJ-di9dYi1Gyj-IhUXGxaHV_anEWPRdI0ynKlnEaH6JrNWmbtL15eHPcnimvPVVL3xwmN4MO6fLvr9K9giyFRo3NXj1wUdFaGvehzSbZe4pFrJBLbVDRWGKRFln54WYHC5Mk4M=",
+   "summary": []
+  },
+  {
+   "id": "ws_07b15c4b87596916006ab14432263c87d0899b2a80ce5792e0",
+   "type": "web_search_call",
+   "status": "completed",
+   "action": {
+    "type": "search",
+    "queries": [
+     "앙리 뒤낭 생년 Henry Dunant birth year",
+     "솔페리노 전투 연도 Battle of Solferino year 1859"
+    ],
+    "query": "앙리 뒤낭 생년 Henry Dunant birth year"
+   }
+  },
+  {
+   "id": "rs_07b15c4b87596916006ab14436f05087d09af80c357151d58f",
+   "type": "reasoning",
+   "content": [],
+   "encrypted_content": "gAAAAABqsUQ6OnRf7_WnjMaD8P_Bd2EOTE6qZKoGn-awW8Qmn9ZrqGW1XAwNsLD30fHMKvPdHBjRXYfAh-xBQp9RvQlh879e46K-kkgR3w_7xATBh5p4e_0cjU9cCrEaRuH7GpPwMrFS46w1TaM8pIKTMCS_iLPm5myFLrjxllCtSKQ0pQ8ErKQqFp3AgjJJUYOkdwpdXjotWZENwtaTfG61GyxQ5xp_2zPEgynqCmgg3s_gp6MWXASIp6Pyg3oThgJv0zJKT-f9GpXIdmszhvJa-QNf6Qr0__Pk2iAK4k3MooHpgewGo9dcQQuYrhygxUOpRqBsiQeX14RZTkepBmuTqy9mJfSP56ULJjZJugB9xgrYxsMUjA0FrSCnvhaP3_OGVd8h4XeIVT3oBUPhRAYMkpodibh-ga6lfvQ1obzAzOyN-Io5WDIBCAUWcK5wCtHDkbyiu7JG8iAecG_rBy3rc5q8qEDjbAKNJtP3BjrHfx2f5WH-VRp7ukZVwpeZkt4ae0grHvet1o-g4urJayI4LySlcsyViY85rcuhtCUpJjnIUPX-7UJWX8uCF_8YzMKrtxIJjEuaeR4cJYM-NjKhHLInMPEUJ_fgGdRieYtRYw2IlOCWsEJB_z5FPH1RvnoL0mJmERP-1LIpaiNfn6Ve2SQ7qN7H2tUAJDia0PMqWeeNcTd1SKek58PR--ebUrjAo1EMOpcSdgzQtkT_5a7v0Br2_1n1S3lXOamk3LShl7vtoaW-i2yX4pEwGy6Z6h8y2tOQ4lmNmpJFD4eLOfWvDSo3tOvYHAtcHobvY9HnK8UlFm-zw-G_dszCx13016CkSz9X5jOK0wgN-L57I53XRk-SD7v6JkrnDAYgZUjprXpZcXhckw-2Y_5JF1T_RdYR3H1fBkRJkj9yl6KSuQ16IfazIxy_-U0_cNrDtJkllkltm_nGxR83V63Ls79RxCP2_O_Ghb6IjrdS-tTWYwMAG-JhUySIKA9WjAo2ecxlyhLc9znTgyhNyrHz0NwSOYCn-0cR_lLwwh48cnb1XgTq8hO9qGZE6Nz1oXultHs82s-MS2Ir-u5BjEmsbK4TIfT1h_95Xfgc_wfH-XbgLtGOm0NXKd-UyCtNjsGYQqp67Vt-6f7t-lJ89VBds0Z2UzMZz9XXUawCxRtRTtqovY4_sc5dH87c8R-Xj0-rXB_vk-LM3EUAKOIuMDz6CDePgX-H0dltLGfGIrFeZ5vGs59bZN032_FJnUnO1Er19krDDHOubG1QfpO7B4z3jx0dHIolv_2VmaIpTOYBDghWDQvbMl9AbYRXdL26_J8HqnuqKcn-ClSGg15Uxp815UGcZhwJ4DX9nuE_jcunHkceT3FNNN67BVJrWoyvAUNzmm9zeIm9dKhzIsd-T4pElwKchoDH2HVs9lGjvB0PC0q9HFJVMkYWYgFnyQFuCS9b5RpcRIJpdZgNuDINVDR0AYN2Ec9FNcVD-1p1E-qmYJAv5qbaBG-LVmkRmIK8vpKtH_K24atZmhtBri3Chc9YznUwCSWewFNCZ7K03rLCdM4ay5mviSZGIHWBQHBm1xVA1qhR4x7o7dBOhlZOR1LH5W4UqCXDeWiSmavxW_9-3iXFNvQGqDsDVT97jwjU_Q0MejmFrey2awmTASsdETHelzhRSmBiOT65q7goDU2KJfm0lE0CtU78VoD_kLeqr5Bdg_mdfUwhT6hfQCr3FwnWRR_sYLa5alx7Rc_pRpLn1NIvfbM5g54Ow66Ca3R43qm8ElqkWohMf429KIB5Hc19W_5UOfVhXZtL1V-S0pxKOIhHPWYJupCBk_u7_6aknclHirWRFDIwEaQCygbkMHJPAvuWtj_l93AghfSLOE7TUqa6L9ms4B3jVJXSUyQBgK4XElArAjKtGYr095KivKjFyVsTiY_ib-aucFdbiFaC-sdC6c0dKKTYv6EdR5zHoIj2N1niAXEu5O-3rOtVp793eP4YGcTuLqad26XTvggUSQvwGziGGiFSibr2ifCRhCDw5ga0ZlGmJRT7r9HSnml4Z8a3DP-bHCezZOoZ3PY6EhqSdrI3SBBPoa9PXFIwm7TUrv94IcLjl210UgsI6biOtB7Pn6EHFbrZAdunHm2vL1I7O3t_4Th4wulPfgDff75Q3UGC2lSNEtaqunBsuRakz1WwxtIj_AObMF3xOGADOVpr3ocF9_Sr4apR9DFK4k5liOdqCbvT03fAMCyhlHzy2Rfn4TErsCT4qEKWqyXffHGpMTqaY4bwmywhyJOfG-f-Etsb_RryscnCUS5YflAsjZmdGQF7_mSmFdpcF10VJ2VZLE_sceRqi2MSoA0udKqemG0zuTZ0fI4efXrT82TTclVPe_VhhSUtyC0RefmItElPMqODdIf4D30U1_VBoA_KgqV9PB1UnvIjqM0oRZduldFImPAJL9n_0nY3-Pq6iusx78wDPYSXTcne5AcGVeQ1fEbq5wGo8XLmvzaajFQrOriF9v41VsIfgerTiPPTVXob3YzejE5KQGGE2zqV0UQehPew9osRGZ0q454p8KwKMHsbMr0QvN3ypXPvhI9DWS8diYiQ5ehXEyesw7NkaN7sxTBovKSWH_Jf06FEUGNSL6jmjmt8cNyniM6B",
+   "summary": []
+  },
+  {
+   "id": "msg_07b15c4b87596916006ab14438ea2487d08b4eb1c5b37a1b8f",
+   "type": "message",
+   "status": "completed",
+   "content": [
+    {
+     "type": "output_text",
+     "annotations": [
+      {
+       "type": "url_citation",
+       "end_index": 118,
+       "start_index": 36,
+       "title": "Henry Dunant",
+       "url": "https://en.wikipedia.org/wiki/Henry_Dunant?utm_source=openai"
+      },
+      {
+       "type": "url_citation",
+       "end_index": 241,
+       "start_index": 152,
+       "title": "Battle of Solferino",
+       "url": "https://en.wikipedia.org/wiki/Battle_of_Solferino?utm_source=openai"
+      }
+     ],
+     "logprobs": [],
+     "text": "앙리 뒤낭(Henry Dunant)은 1828년에 태어났습니다. ([en.wikipedia.org](https://en.wikipedia.org/wiki/Henry_Dunant?utm_source=openai))  \n솔페리노 전투는 1859년 6월 24일에 일어났습니다. ([en.wikipedia.org](https://en.wikipedia.org/wiki/Battle_of_Solferino?utm_source=openai))"
+    }
+   ],
+   "role": "assistant"
+  }
+ ],
+ "parallel_tool_calls": true,
+ "presence_penalty": 0,
+ "previous_response_id": null,
+ "prompt_cache_key": null,
+ "prompt_cache_retention": "in_memory",
+ "reasoning": {
+  "context": "current_turn",
+  "effort": "low",
+  "mode": "standard",
+  "summary": null
+ },
+ "safety_identifier": null,
+ "service_tier": "default",
+ "store": true,
+ "temperature": 1,
+ "text": {
+  "format": {
+   "type": "text"
+  },
+  "verbosity": "medium"
+ },
+ "tool_choice": "required",
+ "tool_usage": {
+  "image_gen": {
+   "input_tokens": 0,
+   "input_tokens_details": {
+    "image_tokens": 0,
+    "text_tokens": 0
+   },
+   "output_tokens": 0,
+   "output_tokens_details": {
+    "image_tokens": 0,
+    "text_tokens": 0
+   },
+   "total_tokens": 0
+  },
+  "web_search": {
+   "num_requests": 1
+  }
+ },
+ "top_logprobs": 0,
+ "top_p": 1,
+ "truncation": "disabled",
+ "usage": {
+  "input_tokens": 8768,
+  "input_tokens_details": {
+   "cache_write_tokens": 0,
+   "cached_tokens": 0
+  },
+  "output_tokens": 447,
+  "output_tokens_details": {
+   "reasoning_tokens": 256
+  },
+  "total_tokens": 9215
+ },
+ "user": null
+}

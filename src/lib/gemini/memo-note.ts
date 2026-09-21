@@ -6,7 +6,7 @@ import type { EssayResult, PlanResult, MemoNote } from "@/types/task";
 // 새로 검색하거나 사실을 지어내지 않는다 — 이미 있는 텍스트를 압축·요약만 한다.
 // 그래서 검색 그라운딩 없이 저렴한 Flash-Lite로 충분하다.
 
-const MEMO_NOTE_SCHEMA = {
+export const MEMO_NOTE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     keywords: {

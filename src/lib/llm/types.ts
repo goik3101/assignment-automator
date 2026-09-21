@@ -73,6 +73,8 @@ export class LlmError extends Error {
   kind: LlmErrorKind;
   retryable: boolean;
   status?: number;
+  /** 서버가 알려준 재시도 대기 시간(ms). 있으면 지수 백오프 대신 이 값을 쓴다. */
+  retryAfterMs?: number;
   constructor(message: string, kind: LlmErrorKind, retryable: boolean, status?: number) {
     super(message);
     this.name = "LlmError";

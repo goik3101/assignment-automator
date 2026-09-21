@@ -1,4 +1,5 @@
 import { generate } from "@/lib/llm";
+import { needsFactSearch } from "@/lib/llm/search-policy";
 import {
   ANTI_AI_TONE_RULES,
   NO_META_COMMENTARY_RULE,
@@ -330,12 +331,18 @@ export async function generatePlan(
 ): Promise<PlanResult | InsufficientDataResult> {
   const start = Date.now();
 
+  const wantSearch = needsFactSearch(
+    input.coreTaskInfo.topic,
+    ...input.coreTaskInfo.requirements,
+    ...input.coreTaskInfo.task_elements.flatMap((e) => [e.label, e.description]),
+    input.instructions
+  );
   const runStepA = (p: string) =>
     generate({
       label: "generatePlan:stepA",
       role: "main",
       prompt: p,
-      search: {},
+      search: { force: wantSearch },
     });
 
   let stepA;
