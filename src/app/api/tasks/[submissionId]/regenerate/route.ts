@@ -13,7 +13,7 @@ import type { EssayResult, PlanResult } from "@/types/task";
 // F6/9-5: 재생성. 로그인 사용자만, 하루 1회. 이전 결과(user_histories, submissionId로
 // 조회)에서 subject/coreTaskInfo/instructions/clusterId를 그대로 가져오므로,
 // 클라이언트는 submissionId와 수정 방향(revisionInstructions)만 보내면 된다.
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 export const POST = routeUsage("regenerate", async function POST(req: NextRequest, ctx: RouteContext<"/api/tasks/[submissionId]/regenerate">) {
   try {

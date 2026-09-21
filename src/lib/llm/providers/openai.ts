@@ -12,7 +12,7 @@ function apiKey(): string {
   return key;
 }
 
-const timeoutMs = (search: boolean) => Number(process.env.OPENAI_TIMEOUT_MS ?? (search ? 55_000 : 45_000));
+const timeoutMs = (search: boolean) => Number(process.env.OPENAI_TIMEOUT_MS ?? (search ? 90_000 : 75_000));
 
 async function post(path: string, body: unknown, ms: number): Promise<{ status: number; json: unknown; retryAfterMs?: number }> {
   let res: Response;

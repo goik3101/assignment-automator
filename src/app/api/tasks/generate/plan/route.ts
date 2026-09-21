@@ -16,7 +16,7 @@ import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
 // N2: 1차 검색+2차 JSON변환의 2단계 구조라 8~12초 걸릴 가능성이 있다고 예상됨.
 // M1에서 이 경로의 latency_ms를 실측해서, Vercel Hobby(10초 컷)로 충분한지
 // Pro(60초)가 필요한지 판단한다. (기획서 15, 18, 19번 챕터 참고)
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 export const POST = routeUsage("plan", async function POST(req: NextRequest) {
   try {

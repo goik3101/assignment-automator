@@ -17,7 +17,7 @@ import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
 
 // N1: 목표 3~4초대. 계획서(plan) 경로보다 짧을 것으로 예상하지만, 검색 그라운딩이
 // 걸리는 만큼 여유 있게 60초로 잡아둔다 (Vercel Pro 기준 상한, 15번 챕터 참고).
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 export const POST = routeUsage("essay", async function POST(req: NextRequest) {
   try {
