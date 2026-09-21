@@ -1,4 +1,4 @@
-import { dedupeAdjacentMarkers } from "./citation-cleanup";
+import { dedupeAdjacentMarkers, cleanMarkers } from "./citation-cleanup";
 import { generate } from "@/lib/llm";
 import { needsFactSearch } from "@/lib/llm/search-policy";
 import { BOOK_TASK_HINT_PATTERN } from "./book-hint";
@@ -1500,6 +1500,11 @@ export async function generateEssay(
     console.warn(`[generateEssay] 최종 필수 항목 누락(경고 표시): ${JSON.stringify(finalMissingItems)}`);
   }
 
+  // 출처 목록에서 빠진 출처(검증 실패·약한 출처)를 가리키는 각주가 본문에 남으면 눌러 볼 근거가 없다 — 최종 목록에 있는 번호만 남기고 붙어 있는 중복 각주도 정리한다(실측: [5][2][5], 존재하지 않는 [8]).
+  {
+    const finalNs = new Set(attempt.sources.map((x) => x.n));
+    attempt = { ...attempt, sections: attempt.sections.map((sec) => ({ ...sec, content: cleanMarkers(sec.content, finalNs) })) };
+  }
   const markdown = attempt.sections.map((s) => `## ${s.label}\n\n${s.content}`).join("\n\n");
   console.log(`[generateEssay] latency_ms=${Date.now() - start}`);
 
