@@ -738,6 +738,14 @@ async function generateOnce(
 ): Promise<Attempt> {
   const prompt = buildPrompt(input, elements);
   if (process.env.LOG_PROMPTS === "1") console.log("[generateEssay] prompt:\n" + prompt); // 학생 입력이 섞여 있어 기본은 남기지 않는다
+
+  // 사실 조사가 필요 없는 창작·계산·기획형 과제에는 검색을 강제하지 않는다(검색 호출당 요금 — search-policy.ts).
+  const wantSearch = needsFactSearch(
+    input.coreTaskInfo.topic,
+    ...input.coreTaskInfo.requirements,
+    ...elements.flatMap((e) => [e.label, e.description]),
+    input.instructions
+  );
   const runStageA = (p: string) =>
     generate({
       label: "generateEssay:stepA",
