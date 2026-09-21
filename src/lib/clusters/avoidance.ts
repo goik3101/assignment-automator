@@ -26,6 +26,9 @@ export async function getClusterSaturation(
   const supabase = getServiceClient();
   const windowStart = new Date();
   windowStart.setMonth(windowStart.getMonth() - WINDOW_MONTHS);
+  // 임베딩 모델을 바꾼 시점(2026-09-22, OpenAI)보다 오래된 결과물 임베딩은 다른 벡터 공간이라 유사도 비교가 무의미하다 — 계산에서 제외한다(삭제하지 않음).
+  const epoch = process.env.EMBEDDING_EPOCH ? new Date(process.env.EMBEDDING_EPOCH) : null;
+  if (epoch && !Number.isNaN(epoch.getTime()) && epoch > windowStart) windowStart.setTime(epoch.getTime());
 
   const { data, error } = await supabase.rpc("cluster_saturation", {
     p_cluster_id: clusterId,

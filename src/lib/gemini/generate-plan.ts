@@ -342,7 +342,7 @@ export async function generatePlan(
       label: "generatePlan:stepA",
       role: "main",
       prompt: p,
-      search: { force: wantSearch },
+      search: { force: wantSearch, maxCalls: 4 },
     });
 
   let stepA;

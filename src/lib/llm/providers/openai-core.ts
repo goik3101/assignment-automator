@@ -37,6 +37,7 @@ export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutp
   if (req.search) {
     body.tools = [{ type: "web_search", search_context_size: opts.searchContextSize ?? "low" }];
     body.tool_choice = req.search.force ? "required" : "auto";
+    if (req.search.maxCalls) body.max_tool_calls = req.search.maxCalls;
   }
   return body;
 }

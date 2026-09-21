@@ -257,7 +257,7 @@ async function runInvestigation(prompt: string) {
       label: "verifyExcerpt:investigate",
       role: "main",
       prompt: prompt,
-      search: { force: true }, // 이 단계는 검색 자체가 목적
+      search: { force: true, maxCalls: 3 }, // 이 단계는 검색 자체가 목적
     });
   const text = resp.text ?? "";
   const grounding = resp.grounding;

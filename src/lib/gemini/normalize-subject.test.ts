@@ -10,4 +10,8 @@ test("제목이 붙은 과목명은 과목만 남긴다", () => {
 test("정상적인 과목명은 그대로 둔다", () => {
   for (const s of ["국어", "통합사회", "한국지리", "정보", "영어", "미술"]) assert.equal(normalizeSubject(s), s);
 });
+test("알려진 과목명으로 시작하면 그것만 남긴다", () => {
+  assert.equal(normalizeSubject("국어 독서 감상문"), "국어");
+  assert.equal(normalizeSubject("통합사회 신문 제작"), "통합사회");
+});
 test("빈 값은 빈 값", () => assert.equal(normalizeSubject("  "), ""));

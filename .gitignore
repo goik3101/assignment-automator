@@ -43,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 로컬 백업(마이그레이션 전 데이터 사본) — 커밋하지 않는다
+.local-backups/

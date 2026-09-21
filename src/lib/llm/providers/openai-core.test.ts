@@ -108,6 +108,17 @@ test("한글+영문 혼합 본문에서도 UTF-16 위치가 정확하다(바이�
   assert.equal(out, "뒤낭은 Henry Dunant로 불린다[1]. 그는 1901년에 상을 받았다[1].");
 });
 
+test("본문에 연속 공백이 있어도 각주 위치가 어긋나지 않는다(정리된 본문의 글자 위치 그대로)", () => {
+  const link = "([a.com](https://a.com/1))";
+  const text = `가나  다라마. ${link} 바사   아자차. ${link}`;
+  const first = text.indexOf(link);
+  const second = text.lastIndexOf(link);
+  const ann = [first, second].map((i) => ({ type: "url_citation", start_index: i, end_index: i + link.length, url: "https://a.com/1", title: "A" }));
+  const ex = extractCitations(text, ann);
+  const { chunkIndexToN } = buildSourceList(ex.chunks);
+  assert.equal(insertCitationMarkers(ex.text, ex.supports, chunkIndexToN), "가나  다라마[1]. 바사   아자차[1].");
+});
+
 test("오류 분류: 429는 재시도, insufficient_quota는 즉시 실패, 5xx 재시도, 401 인증", () => {
   assert.equal(classifyHttpError(429, { error: { code: "rate_limit_exceeded", message: "slow" } }, 2000).kind, "rate_limit");
   assert.equal(classifyHttpError(429, { error: { code: "rate_limit_exceeded" } }, 2000).retryAfterMs, 2000);

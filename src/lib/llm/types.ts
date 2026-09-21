@@ -16,7 +16,7 @@ export interface LlmRequest {
   /** 있으면 구조화 JSON 출력을 요청한다. */
   schema?: Schema;
   /** 있으면 웹 검색 도구를 켠다. force=true면 검색을 반드시 호출하게 한다(지원하는 제공자에서만). */
-  search?: { force?: boolean };
+  search?: { force?: boolean; /** 한 요청에서 검색 도구를 부를 수 있는 최대 횟수(비용·시간 상한). OpenAI만 적용. */ maxCalls?: number };
   /** 지원하지 않는 모델에서는 무시된다(gpt-5 계열은 temperature를 거부). */
   temperature?: number;
   /** 추론 강도. Gemini는 무시. 검색이 켜진 요청은 최소 "low"로 올려서 보낸다. */

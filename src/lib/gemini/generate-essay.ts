@@ -1,5 +1,6 @@
 import { generate } from "@/lib/llm";
 import { needsFactSearch } from "@/lib/llm/search-policy";
+import { BOOK_TASK_HINT_PATTERN } from "./book-hint";
 import { Type, type Schema } from "@google/genai";
 import {
   ANTI_AI_TONE_RULES,
@@ -132,6 +133,15 @@ function detectMissingRequiredItems(sections: RawSection[]): { label: string; mi
     if (missing.length > 0) result.push({ label: s.label, missing });
   }
   return result;
+}
+
+/** 본문(content)을 되풀이해서 쓰게 하면 출력 토큰이 글 전체만큼 늘어 느리고 비싸다 — 코드가 원문에서 직접 잘라낼 수 있을 때는 메타데이터만 뽑는다. */
+function withoutContent(schema: Schema): Schema {
+  const clone = JSON.parse(JSON.stringify(schema)) as Schema;
+  const items = (clone.properties!.sections as Schema).items as Schema;
+  delete items.properties!.content;
+  items.required = ["label"];
+  return clone;
 }
 
 export const SECTIONS_SCHEMA: Schema = {
@@ -332,6 +342,11 @@ ${input.previousOutputText}
   const flowingEls = elements.filter(
     (el) => el.items_format === "flowing" && (el.required_items?.length ?? 0) >= 2
   );
+  // 안내문에 분량이 없으면 모델이 길게 쓰는 경향(gpt-5-mini 실측 4,300자)이 있어 시간·비용이 커지므로 기본 분량을 준다.
+  const hasAnyTargetLength = elements.some((e) => e.target_length);
+  const defaultLengthBlock = hasAnyTargetLength
+    ? ""
+    : "\n[분량 — 안내문에 분량 지시가 없음] 전체를 공백 포함 1,200~1,800자 안팎으로 간결하게 쓸 것(항목이 여러 개면 항목당 150~300자). 이보다 길게 늘어놓지 말 것.\n";
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
       `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +
@@ -379,7 +394,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${structuredBlock}${flowingBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${defaultLengthBlock}${structuredBlock}${flowingBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${input.presetBook ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${input.presetBook.title}』${input.presetBook.author ? ` (저자: ${input.presetBook.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -518,7 +533,6 @@ ${MULTI_DELIVERABLE_SEPARATION_RULE}
 // 없는 과제(개인 경험 에세이 등)까지 매번 그라운딩 호출을 추가하면 헛수고다.
 // generate-plan.ts의 needsFactVerification()과 같은 종류의 판별(완벽하지
 // 않아도 명백한 신호만 잡는 수준으로 충분).
-const BOOK_TASK_HINT_PATTERN = /책|도서|서적|독서/;
 
 function needsBookCandidateSelection(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): boolean {
   if (BOOK_TASK_HINT_PATTERN.test(input.coreTaskInfo.topic)) return true;
@@ -584,6 +598,8 @@ interface BookCandidate {
   reason?: string;
 }
 
+export const SECTIONS_META_SCHEMA: Schema = withoutContent(SECTIONS_SCHEMA);
+
 export const BOOK_CANDIDATES_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -645,7 +661,7 @@ ${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
       label: "generateEssay:selectBookCandidate:investigate",
       role: "main",
       prompt: prompt,
-      search: { force: true }, // 실존하는 책을 확인하는 단계 — 검색이 반드시 필요
+      search: { force: true, maxCalls: 3 }, // 실존하는 책을 확인하는 단계 — 검색이 반드시 필요
     });
     const investigationText = investigation.text;
     if (!investigationText) return null;
@@ -722,7 +738,7 @@ async function generateOnce(
       label: "generateEssay:stepA",
       role: "main",
       prompt: p,
-      search: { force: wantSearch },
+      search: { force: wantSearch, maxCalls: 4 },
     });
 
   let stageA = await runStageA(prompt);
@@ -797,10 +813,15 @@ async function generateOnce(
   // 2차: 본문은 그대로 두고, "## 라벨" 제목을 기준으로 단계별 본문만 분리한다
   // (그라운딩 없이, 순수 추출 작업 — generate-plan.ts와 같은 이유).
   const labels = elements.map((e) => e.label);
+  // 본문은 코드가 원문에서 직접 자른다(아래 mechanicalSections). 모든 단계를 자를 수 있으면 모델에게는 메타데이터만 뽑게 하고,
+  // 못 자르는 단계가 있을 때만 예전처럼 본문 재현(content)까지 요청한다.
+  const mechanicalSections = splitAnnotatedIntoSections(annotated, labels);
+  const needContentFallback = labels.some((l) => !mechanicalSections.has(l));
   const stageB = await generate({
       label: "generateEssay:stepB",
       role: "lite",
-      prompt: `
+      prompt: (needContentFallback
+        ? `
 아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
 요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
 이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
@@ -812,11 +833,23 @@ async function generateOnce(
 cited_book_quote 필드에도 그대로 뽑아줘(스키마 설명 참고) — 책 제목이 겹낫표
 (《》/『』)로 감싸여 있든 아무 부호 없이 "책 제목: ~"처럼 쓰여 있든 상관없이
 찾아낼 것.
-
+`
+        : `
+아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
+요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
+이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
+그 대상 이름을 뽑아줘(스키마 설명 참고).
+sections에는 각 단계 이름(label)만 적고 본문은 옮겨 적지 마라 — 본문은 프로그램이 따로 처리한다.
+각 단계 이름: ${labels.join(", ")}.
+각 단계에 책을 언급/추천한 내용이 있으면 cited_book_title/cited_book_author/
+cited_book_quote 필드에 뽑아줘(스키마 설명 참고) — 책 제목이 겹낫표
+(《》/『』)로 감싸여 있든 아무 부호 없이 "책 제목: ~"처럼 쓰여 있든 상관없이
+찾아낼 것.
+`) +
+        `
 [글]
-${annotated}
-`.trim(),
-      schema: SECTIONS_SCHEMA,
+${annotated}`.trim(),
+      schema: needContentFallback ? SECTIONS_SCHEMA : SECTIONS_META_SCHEMA,
     });
 
   const raw = stageB.text;
@@ -824,7 +857,7 @@ ${annotated}
   const parsed = JSON.parse(raw) as {
     summary_lines?: string[];
     confirmed_subject?: string;
-    sections: { label: string; content: string; cited_book_title?: string; cited_book_author?: string; cited_book_quote?: string }[];
+    sections: { label: string; content?: string; cited_book_title?: string; cited_book_author?: string; cited_book_quote?: string }[];
   };
 
   // 안전장치: 실제로 그라운딩이 안 됐는데(출처 0개) 본문에 [1][2] 같은 각주 모양이
@@ -837,7 +870,6 @@ ${annotated}
   // parsed.sections(순서·개수가 어긋날 수 있음)가 아니라 원래 요청한 labels를
   // 기준으로 순회해서, 어떤 단계의 메타데이터(cited_book_*)가 누락되거나
   // 순서가 달라도 본문 매칭 자체는 흔들리지 않게 한다.
-  const mechanicalSections = splitAnnotatedIntoSections(annotated, labels);
   const metaByLabel = new Map(parsed.sections.map((s) => [s.label, s]));
 
   const insufficientReasons: string[] = [];

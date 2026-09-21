@@ -98,7 +98,7 @@ ${ACHIEVEMENT_INTERPRETATION_RULES}
       label: "learning:suggest:investigate",
       role: "main",
       prompt: prompt,
-      search: { force: true }, // 이 단계는 검색 자체가 목적
+      search: { force: true, maxCalls: 3 }, // 이 단계는 검색 자체가 목적
     });
   const memo = investigation.text;
   if (!memo) return [];
