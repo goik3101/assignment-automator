@@ -1,5 +1,6 @@
 import { generate } from "@/lib/llm";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers } from "@/lib/gemini/citations";
+import { dedupeAdjacentMarkers } from "@/lib/gemini/citation-cleanup";
 import { FACTUAL_RIGOR_RULES, ACHIEVEMENT_INTERPRETATION_RULES } from "@/lib/gemini/prompts";
 import { stripUnsupportedSuperlatives } from "@/lib/gemini/generate-essay";
 import { validateSources } from "@/lib/links/validate-sources";
@@ -111,7 +112,8 @@ function renumber(content: string, all: SourceRef[]): SectionResearch {
   const sources = [...oldToNew.entries()]
     .sort((a, b) => a[1] - b[1])
     .map(([old, n]) => ({ ...byN.get(old)!, n }));
-  return { content: text, sources };
+  // essay/plan 경로와 같은 최종 정리 — 붙어서 중복된 각주([2][2])를 합친다.
+  return { content: dedupeAdjacentMarkers(text), sources };
 }
 
 /**
