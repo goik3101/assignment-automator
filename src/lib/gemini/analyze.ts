@@ -129,6 +129,19 @@ const SYSTEM_INSTRUCTION = `
   안내문에 적힌 차시 수만큼 각각 별도의 task_element로 나열할 것. 대부분의
   과제는 1~2개지만, 그건 결과일 뿐 목표가 아니다 — 안내문에 몇 개가 적혀
   있는지가 유일한 기준이다.
+- **하나의 글 안에 들어갈 "항목/구성 요소" 목록을 별개의 task_element로 쪼개지 말 것 — 매우 중요.**
+  판단 기준: 그 항목들이 학생 입장에서 서로 독립적으로 완성되는 별개의 결과물(예: 신문의
+  기사 5편 각각, 발표 자료와 보고서처럼 형식 자체가 다른 산출물)이면 각각 별도의
+  task_element로 나열한다. 반대로 그 항목들이 전부 합쳐져야 "한 편의 글"이 완성되는
+  구성요소(예: "문제 설정, 변수, 계산 과정, 수식, 표, 결과, 실생활 의미를 포함하시오"처럼
+  한 보고서 안의 절 제목들)면 그건 task_element를 여러 개로 쪼개는 게 아니라, **하나의
+  task_element**로 두고 그 항목들을 required_items 배열에 넣을 것(items_format은
+  "sections"). 예를 들어 "문제 설정, 변수, 계산 과정, 수식, 표, 그래프 계획, 결과, 실생활
+  의미를 포함한 탐구 보고서를 작성하시오"는 task_elements가 8개가 아니라 **1개**
+  (label: "탐구 보고서", required_items: 8개 항목)여야 한다. 반면 "헤드라인 기사, 배경
+  기사, 인터뷰 기사, 사설, 독자 칼럼 5편을 작성하시오"는 각 기사가 독립된 완성 원고이므로
+  task_elements를 5개로 나열하는 게 맞다(신문 한 지면에 실린다는 것은 형식일 뿐, 기사
+  하나하나가 별개로 완결된 글이기 때문).
 - 알 수 없는 필드는 빈 문자열이나 빈 배열로 둘 것 (추측 금지).
 - task_elements[].description에는 **안내문 자체에 적힌 그 단계의 활동 내용/형식
   설명만** 담을 것. [이번 과제 한정 지침]에 학생이 적은 구체적 사실(예: 특정
@@ -297,7 +310,12 @@ export async function analyzeAssignment(
   // 이렇게 생성 실패했다), 빈 문자열로 남기지 않고 코드가 결정론적으로
   // 채워 넣는다.
   const subject =
-    fallbackSubject(normalizeSubject(parsed.subject), parsed.core_task_info.topic, ...task_elements.map((e) => e.label)) || "수행평가";
+    fallbackSubject(
+      normalizeSubject(parsed.subject),
+      parsed.core_task_info.topic,
+      ...parsed.core_task_info.requirements,
+      ...task_elements.flatMap((e) => [e.label, e.description])
+    ) || "수행평가";
   if (!parsed.subject.trim()) {
     console.warn(`[analyzeAssignment] 최종 안전장치: 모델이 과목을 못 채워서 기본값으로 대체함 topic="${parsed.core_task_info.topic}"`);
   }
