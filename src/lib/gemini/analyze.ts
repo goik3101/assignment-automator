@@ -121,8 +121,12 @@ const SYSTEM_INSTRUCTION = `
 규칙:
 - administrative_info(제출기한, 제출방법, 채점기준 등 "행정정보")와
   core_task_info(주제, 요구사항, 산출물 요소 등 "핵심정보")를 절대 섞지 말고 분리해서 채울 것.
-- 사진 속 글씨가 흐릿하거나 손글씨라 읽기 어렵거나, 핵심 정보가 부족하면
-  추측해서 채우지 말고 insufficient_data를 true로, insufficient_reason에 이유를 한 문장으로 적을 것.
+- 사진 속 글씨가 흐릿하거나 손글씨라 읽기 어렵거나, **core_task_info(주제·산출물 요소)를 채울 수 없을 만큼**
+  핵심 정보가 부족하면 추측해서 채우지 말고 insufficient_data를 true로, insufficient_reason에 이유를 한 문장으로
+  적을 것. **administrative_info(제출기한·제출방법·채점기준)가 안내문에 없는 것은 정상이다 — 학생이 주제 텍스트만
+  입력했거나 안내문에 그 정보가 원래 없는 경우가 흔하다. administrative_info가 비어 있다는 이유만으로
+  insufficient_data를 true로 하지 말 것** — administrative_info는 화면에 참고로 보여줄 뿐이고, 없으면 그냥
+  각 필드를 빈 문자열로 두면 된다.
 - task_elements는 과제가 실제로 요구하는 만큼 빠짐없이 나열할 것. 여러 차시에
   걸쳐 진행되는 과제라면(예: 1차시 A쓰기 → 2차시 B분석 → 3차시 C작성 → 4차시
   D쓰기), 개수를 임의로 줄이거나 비슷해 보이는 차시를 하나로 합치지 말고
