@@ -317,7 +317,9 @@ export async function analyzeAssignment(
       ...task_elements.flatMap((e) => [e.label, e.description])
     ) || "수행평가";
   if (!parsed.subject.trim()) {
-    console.warn(`[analyzeAssignment] 최종 안전장치: 모델이 과목을 못 채워서 기본값으로 대체함 topic="${parsed.core_task_info.topic}"`);
+    // topic(학생 입력이 섞인 텍스트)은 기본 로그에 남기지 않는다 — 필요하면 LOG_PROMPTS=1로 별도 확인.
+    console.warn("[analyzeAssignment] 최종 안전장치: 모델이 과목을 못 채워서 기본값으로 대체함");
+    if (process.env.LOG_PROMPTS === "1") console.warn(`  topic="${parsed.core_task_info.topic}"`);
   }
 
   return {
