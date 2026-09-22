@@ -3471,3 +3471,11 @@ source-quality.ts(신설), types/task.ts, AssignmentFlow.tsx, ResultPanel.tsx.
 - 분석 안정화: `analysis-normalize.ts`(외부 제작 표지 없으면 글 제출로 통일, 과목 폴백), 단계가 5개 이상으로 쪼개지면 1회 재분석.
 - 출처: 링크 검증 3상태(`url-status.ts`: 404/410/DNS만 무효, 403/5xx/시간초과는 확인 불가), 최종 본문의 출처 없는 각주·중복 각주 정리(`citation-cleanup.ts`).
 - 입력 검증(`api/validate.ts`), 학습 모드 UUID 검증, 프롬프트/원문 로그는 `LOG_PROMPTS=1`일 때만.
+
+## 2026-09-23 자율 안정화 2회차 (지시 없이 자체 진행)
+- P1-1 분석 비결정성: analyze 시스템 프롬프트에 "섹션 vs 별개 산출물" 명시 규칙 추가(수학탐구 7단계 쪼개짐 등 재현 실패, 7/7 안정). 과목 폴백이 description/requirements까지 훑도록 확장, "방법"류 낱말 오탐(법) 수정.
+- P0: analyze가 행정정보(제출기한 등) 없음을 이유로 핵심정보 부족(insufficient_data)으로 잘못 판정하던 버그 수정 — administrative_info는 항상 선택 필드임을 명시.
+- P0: 학생 입력(주제 원문)이 기본 로그에 남던 마지막 한 곳(analyze 안전장치 경고) LOG_PROMPTS 게이팅.
+- P1-2 suggest-subject: DB 이력 조회를 LLM 라운드와 병렬화, 순수 텍스트→스키마 변환 호출은 최소 추론(effort=minimal) — 검색/독립검증은 그대로 유지(측정상 개선폭은 제한적 — 지배적 비용은 필수 검색 단계).
+- P1-4: Learning research 경로도 essay/plan과 동일하게 중복 각주 정리 적용.
+- 마이그레이션 0015: 이 환경에는 DB 직접 실행 수단(Postgres 연결/Supabase CLI)이 없어 적용 불가 — 여전히 사용자가 직접 실행해야 함(코드는 미적용 상태에서도 안전하게 저하됨, 이미 확인됨).
