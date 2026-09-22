@@ -86,9 +86,9 @@ ${params.instructions ? `[학생 지침]\n${params.instructions}\n` : ""}${param
   ${typeLabel} 이외의 종류(예: 제도·기관·단체 자체·사건·법률·책·영화·개념)와, 조건을 충족하지 않는 인접 분야의 대상은 내지 마라.
 - 반드시 실시간 웹 검색을 실제로 호출해서 각 후보가 실존하는지와 조건을 직접 충족하는지 확인할 것.
 - 서로 다른 분야·시대·지역에서 고르고, 단순히 유명하거나 검증하기 쉽다는 이유로 고르지 말 것.
-- 후보마다 (1) 이름, (2) 종류, (3) 이 과제의 조건(${spec.constraints.join(", ") || "주제"})을 왜 충족하는지,
-  (4) 학생이 조사할 항목(${spec.required_fields.join(", ") || "주요 내용"}) 각각에 대한 배경 정보를 한 줄씩 적어라.
-  항목별 한 줄은 자료 조사를 시작할 단서 수준으로만 쓰고, 학생이 쓸 답안을 통째로 써 주지 마라.
+- 후보마다 (1) 이름, (2) 종류, (3) 이 과제의 조건(${spec.constraints.join(", ") || "주제"})을 왜 충족하는지 한 줄,
+  (4) 학생이 조사할 항목(${spec.required_fields.join(", ") || "주요 내용"}) 각각에 대한 단서를 짧게 한 줄씩 적어라 — 각 줄은
+  간결하게(속도를 위해 문장을 늘리지 말 것), 자료 조사를 시작할 단서 수준으로만 쓰고, 학생이 쓸 답안을 통째로 써 주지 마라.
   검색으로 확인한 널리 알려진 사실만 쓰고, 확신이 없는 세부 사실(작은 인물 이름·정확한 수치·날짜)은 쓰지 마라.
 - 외국 인물의 이름은 한국에서 통용되는 표준 표기로 띄어쓰기를 지켜 쓰고 필요하면 원어를 괄호로 병기할 것.
 ${ACHIEVEMENT_INTERPRETATION_RULES}
@@ -106,8 +106,10 @@ ${ACHIEVEMENT_INTERPRETATION_RULES}
   const extraction = await generate({
       label: "learning:suggest:extract",
       role: "lite",
-      prompt: `아래 메모에서 제안된 후보(이름, 종류, 조건 충족 이유, 항목별 한 줄)를 구조화해줘.\n\n${memo}`,
+      prompt: `아래 메모에서 제안된 후보(이름, 종류, 조건 충족 이유, 항목별 한 줄)를 구조화해줘. 메모에 이미 정리된 내용을 스키마에 옮겨 담기만 하면 된다 — 새로 판단하거나 다듬지 말 것.\n\n${memo}`,
       schema: SCHEMA,
+      // 순수 텍스트→스키마 옮겨담기라 깊은 추론이 필요 없다 — 판단(종류·조건 충족)은 이미 investigate/뒤이은 verify가 한다.
+      effort: "minimal",
     });
   try {
     const parsed = JSON.parse(extraction.text ?? "{}") as {
@@ -136,6 +138,11 @@ export async function suggestSubjectCandidates(params: {
   history?: HistoryEntry[];
   rng?: () => number;
 }): Promise<SuggestResult> {
+  // LLM 라운드(수십 초, 순차)와 독립적인 이력 조회를 처음부터 병렬로 시작해둔다 — 끝에서 await만 하면
+  // 그동안 LLM 호출 시간에 묻혀 이 조회 시간이 전체 지연에 더해지지 않는다.
+  const historyPromise = params.history ? Promise.resolve(params.history) : params.scopeKey ? loadSelectionHistory("subject") : Promise.resolve([]);
+  historyPromise.catch(() => {}); // 병렬로 먼저 시작만 해두는 것 — 실패해도 여기서 앱을 죽이지 않는다(아래 await에서 처리)
+
   const spec = await extractSubjectSpec(params);
   if (spec.needs_clarification) {
     return { spec, candidates: [], needsClarification: true, rejected: [] };
@@ -185,7 +192,7 @@ export async function suggestSubjectCandidates(params: {
   }
 
   // 검증을 통과한 후보 풀에서 WANT개를 코드가 고른다(같은 사용자·같은 수행평가·전체 이력 + 별칭·의미 계열 반영).
-  const history = params.history ?? (params.scopeKey ? await loadSelectionHistory("subject") : []);
+  const history = await historyPromise;
   let remaining: (SelectionCandidate & { cand: SubjectCandidate })[] = pool.map((p) => ({ name: p.cand.name, key: p.key, group: p.group, fit: 0.8, cand: p.cand }));
   const chosen: SubjectCandidate[] = [];
   while (chosen.length < WANT && remaining.length > 0) {
