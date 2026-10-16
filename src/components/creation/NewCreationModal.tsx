@@ -15,6 +15,9 @@ import {
   X,
 } from "lucide-react";
 import type { AdministrativeInfo, AnalyzeResult, CoreTaskInfo, TaskElement } from "@/types/task";
+import { mergeInstructions, QUESTION_CAP, type PreAnswer, type PreQuestion } from "@/lib/questions/questions-pure";
+import { getAiMode, AI_MODE_INFO } from "@/lib/ui/ai-pref";
+import QuestionStep from "./QuestionStep";
 import { useAuth } from "@/lib/supabase/use-auth";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
@@ -58,7 +61,7 @@ function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
   });
 }
 
-type Stage = "input" | "analyzing" | "choose";
+type Stage = "input" | "analyzing" | "choose" | "questions";
 type InputKind = "image" | "text";
 
 const fieldCls =
@@ -96,6 +99,12 @@ export default function NewCreationModal({
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [latest, setLatest] = useState<LatestHistory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 제작 전 질문(AI가 만들어줘요를 고른 뒤): 질문은 한 번에 하나씩 서버에서 받아 온다.
+  const [qAnswers, setQAnswers] = useState<PreAnswer[]>([]);
+  const [question, setQuestion] = useState<PreQuestion | null>(null);
+  const [qLoading, setQLoading] = useState(false);
+  const [aiMode] = useState(() => getAiMode());
 
   useEffect(() => {
     // 마운트 후에만 무작위로 고른다(SSR과 값이 달라 hydration 오류가 나지 않게).
@@ -197,13 +206,78 @@ export default function NewCreationModal({
     }
   }
 
+  function finishQuestions(answers: PreAnswer[]) {
+    if (!core) return;
+    onStartAi({
+      subject: subject.trim(),
+      coreTaskInfo: core,
+      adminInfo: admin,
+      instructions: mergeInstructions(instructions, answers),
+      turnstileToken,
+    });
+  }
+
+  // 다음 질문을 서버에 물어본다. 실패하거나 더 물을 게 없으면 바로 만들기를 시작한다(질문 때문에 막히지 않게).
+  async function fetchNextQuestion(answers: PreAnswer[]) {
+    if (!core) return;
+    setQLoading(true);
+    setQuestion(null);
+    try {
+      const res = await fetch("/api/tasks/questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: subject.trim(), coreTaskInfo: core, instructions, answers, mode: aiMode }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { question?: PreQuestion | null };
+      if (!res.ok || !data.question) {
+        finishQuestions(answers);
+        return;
+      }
+      setQuestion(data.question);
+    } catch {
+      finishQuestions(answers);
+    } finally {
+      setQLoading(false);
+    }
+  }
+
   function startAi() {
     if (!core) return;
-    onStartAi({ subject: subject.trim(), coreTaskInfo: core, adminInfo: admin, instructions, turnstileToken });
+    setStage("questions");
+    setQAnswers([]);
+    void fetchNextQuestion([]);
+  }
+
+  function submitAnswer(a: PreAnswer) {
+    const next = [...qAnswers, a];
+    setQAnswers(next);
+    if (next.length >= QUESTION_CAP[aiMode]) {
+      finishQuestions(next);
+      return;
+    }
+    void fetchNextQuestion(next);
   }
 
   const subjectMissing = !subject.trim();
   const needCaptcha = !user && !!TURNSTILE_SITE_KEY && !turnstileToken;
+
+  /* ───────────── 제작 전 질문 ───────────── */
+  if (stage === "questions") {
+    const cap = QUESTION_CAP[aiMode];
+    return (
+      <Modal title="만들기 전에 한 가지만" onClose={onClose} width={560} hideTitle>
+        <QuestionStep
+          question={question}
+          loading={qLoading}
+          index={qAnswers.length + 1}
+          cap={cap}
+          modeLabel={AI_MODE_INFO[aiMode].label}
+          onAnswer={submitAnswer}
+          onSkipAll={() => finishQuestions(qAnswers)}
+        />
+      </Modal>
+    );
+  }
 
   /* ───────────── 분석 중 ───────────── */
   if (stage === "analyzing") {

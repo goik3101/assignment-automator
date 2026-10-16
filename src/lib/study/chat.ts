@@ -5,37 +5,17 @@ import { ANTI_AI_TONE_RULES } from "@/lib/gemini/prompts";
 import { dedupeAdjacentMarkers } from "@/lib/gemini/citation-cleanup";
 import type { StudyContext } from "./context";
 
-export interface ChatTurn {
-  role: "user" | "assistant";
-  content: string;
-}
-
-const MAX_TURNS = 12;
-const MAX_TURN_CHARS = 4000;
-
-/** 클라이언트가 보낸 대화를 안전한 형태로 다듬는다(역할·길이·개수 제한, 마지막은 반드시 user). */
-export function sanitizeTurns(raw: unknown): ChatTurn[] {
-  if (!Array.isArray(raw)) return [];
-  const turns = raw
-    .map((t) => {
-      const o = t as { role?: unknown; content?: unknown };
-      if ((o?.role !== "user" && o?.role !== "assistant") || typeof o.content !== "string") return null;
-      const content = o.content.trim().slice(0, MAX_TURN_CHARS);
-      return content ? ({ role: o.role, content } as ChatTurn) : null;
-    })
-    .filter((t): t is ChatTurn => t !== null)
-    .slice(-MAX_TURNS);
-  while (turns.length > 0 && turns[turns.length - 1].role !== "user") turns.pop();
-  return turns;
-}
+import { sanitizeTurns, type ChatTurn } from "./turns";
+export { sanitizeTurns };
+export type { ChatTurn };
 
 const SYSTEM = `
 너는 한국 고등학생의 수행평가를 곁에서 돕는 AI 조교다.
-- 학생이 올린 안내문(사진·글)이나 [과제 자료]가 있으면 그 내용을 기준으로 답한다. 자료에 없는 내용은 "자료에는 없어요"라고 말하고 지어내지 않는다.
+- [과제 자료]나 학생이 올린 안내문(사진·글)이 주어졌을 때만 그 내용을 기준으로 답하고, 거기에 없는 내용은 "자료에는 없어요"라고 말하며 지어내지 않는다. 그런 자료가 없는 일반 질문에는 자료 얘기를 꺼내지 말고 바로 답한다.
 - 사실(날짜·수치·인물·책 정보)을 말할 때는 확실한 것만 말하고, 확인이 필요한 최신·세부 사실은 검색으로 확인한다. 모르면 모른다고 말한다.
 - 학생 본인의 경험·감정·생각은 학생이 말해 준 것만 쓴다. 대신 지어내지 않는다.
 - 학생이 글쓰기를 요청하면 도와준다. 단, 학생이 그대로 제출할 글에는 아래 문체 규칙을 따른다.
-- 답은 한국어로, 요점부터, 짧고 구체적으로 쓴다. 필요할 때만 짧은 목록을 쓰고 제목·굵은 글씨·이모지는 쓰지 않는다.
+- 답은 한국어로, 요점부터, 짧고 구체적으로 쓴다(대부분 5~8문장 안). 필요할 때만 짧은 목록을 쓰고, 소제목·굵은 글씨·이모지·"체크리스트" 같은 구획은 만들지 않는다.
 - 안내문 사진이 주어지면 먼저 무엇을 해야 하는 과제인지(주제·요구사항·분량·제출 조건)를 파악해서 질문에 답한다.
 `.trim();
 

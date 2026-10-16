@@ -10,7 +10,8 @@ import {
   StudyLimitError,
   type StudyKind,
 } from "./usage";
-import { loadStudyContext, parseContextRef, type StudyContext } from "./context";
+import { loadStudyContext, type StudyContext } from "./context";
+import { parseContextRef } from "./context-pure";
 
 export interface StudyRequestCtx {
   req: NextRequest;

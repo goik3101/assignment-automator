@@ -15,6 +15,8 @@ import {
   type SubjectCandidate,
 } from "@/types/learning";
 import { learningApi, STATUS_LABEL } from "./api";
+import { ArrowLeft, ArrowRight, Check, GraduationCap, TriangleAlert, X } from "lucide-react";
+import StudyRail from "@/components/study/StudyRail";
 
 type SaveState = "saved" | "saving" | "unsaved" | "error";
 type Pane = "material" | "write";
@@ -50,8 +52,8 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={[
-        "shrink-0 rounded-full px-2 py-0.5 text-[11px]",
-        done ? "bg-accent text-accent-foreground font-bold" : "border border-border text-muted",
+        "shrink-0 rounded-md px-1.5 py-0.5 text-[11px]",
+        done ? "bg-accent font-bold text-accent-foreground" : "border border-border text-muted",
       ].join(" ")}
     >
       {STATUS_LABEL[status] ?? status}
@@ -66,10 +68,10 @@ function IssueList({ title, issues }: { title: string; issues: { excerpt: string
       <h4 className="mb-1.5 text-xs font-semibold text-muted">{title}</h4>
       <ul className="space-y-2">
         {issues.map((it, i) => (
-          <li key={i} className="rounded-md border border-border bg-background p-3 text-sm">
+          <li key={i} className="rounded-xl border border-border bg-background p-3.5 text-sm">
             {it.excerpt && <p className="mb-1 text-xs text-muted">&ldquo;{it.excerpt}&rdquo;</p>}
             <p>{it.problem}</p>
-            {it.hint && <p className="mt-1 text-xs text-accent">힌트: {it.hint}</p>}
+            {it.hint && <p className="mt-1.5 text-xs text-muted">힌트: {it.hint}</p>}
           </li>
         ))}
       </ul>
@@ -98,16 +100,16 @@ function FeedbackPanel({ fb }: { fb: LearningFeedback }) {
         <p className="text-sm font-medium">{fb.summary}</p>
         <span
           className={[
-            "shrink-0 rounded-full px-2.5 py-0.5 text-xs",
-            fb.readyToComplete ? "bg-accent text-accent-foreground font-bold" : "border border-border text-muted",
+            "shrink-0 rounded-md px-2 py-0.5 text-xs",
+            fb.readyToComplete ? "bg-accent font-bold text-accent-foreground" : "border border-border text-muted",
           ].join(" ")}
         >
           {fb.readyToComplete ? "완료해도 좋아요" : "조금 더 다듬어봐요"}
         </span>
       </div>
       {fb.answer && (
-        <div className="rounded-md border border-accent/40 bg-accent/5 p-3 text-sm">
-          <p className="mb-1 text-xs font-semibold text-accent">질문에 대한 답</p>
+        <div className="rounded-xl border border-border-strong bg-raised p-4 text-sm">
+          <p className="mb-1 text-xs font-semibold text-faint">질문에 대한 답</p>
           <p className="whitespace-pre-wrap">{fb.answer}</p>
         </div>
       )}
@@ -120,8 +122,8 @@ function FeedbackPanel({ fb }: { fb: LearningFeedback }) {
           <ul className="space-y-1.5 text-sm">
             {fb.requirementCoverage.map((r, i) => (
               <li key={i} className="flex gap-2">
-                <span aria-label={r.met ? "충족" : "미충족"} className={r.met ? "text-accent" : "text-amber-600"}>
-                  {r.met ? "✓" : "!"}
+                <span aria-label={r.met ? "충족" : "미충족"} className={["shrink-0", r.met ? "text-foreground" : "text-danger"].join(" ")}>
+                  {r.met ? <Check size={15} strokeWidth={2.2} /> : <TriangleAlert size={15} strokeWidth={1.9} />}
                 </span>
                 <span>
                   {r.requirement}
@@ -203,7 +205,7 @@ function SubjectPicker({
       <p className="mb-4 text-sm text-muted">
         이 과제는 다룰 대상을 직접 정해야 해요. 정한 대상을 기준으로 자료를 조사해 드려요.
       </p>
-      <div role="tablist" className="mb-4 inline-flex rounded-full border border-border p-0.5 text-sm">
+      <div role="tablist" className="mb-4 inline-flex gap-0.5 rounded-xl bg-raised p-1 text-sm">
         {(["ai", "direct"] as const).map((t) => (
           <button
             key={t}
@@ -211,8 +213,8 @@ function SubjectPicker({
             aria-selected={tab === t}
             onClick={() => setTab(t)}
             className={[
-              "rounded-full px-4 py-1.5 transition-colors",
-              tab === t ? "bg-accent text-accent-foreground" : "text-muted hover:text-foreground",
+              "rounded-lg px-4 py-1.5 font-semibold transition-colors",
+              tab === t ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
             ].join(" ")}
           >
             {t === "ai" ? "AI 추천" : "직접 선택하기"}
@@ -231,7 +233,7 @@ function SubjectPicker({
             <button
               onClick={suggest}
               disabled={loading}
-              className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
             >
               {loading ? "후보를 찾고 있어요..." : "후보 3개 추천받기"}
             </button>
@@ -284,12 +286,12 @@ function SubjectPicker({
             onChange={(e) => setName(e.target.value)}
             maxLength={80}
             placeholder="예: 앙리 뒤낭"
-            className="min-w-0 flex-1 rounded-full border border-foreground/50 bg-background px-4 py-1.5 text-sm"
+            className="h-10 min-w-0 flex-1 rounded-xl border border-border-strong bg-background px-4 text-sm placeholder:text-faint focus:border-foreground"
           />
           <button
             type="submit"
             disabled={!name.trim() || saving}
-            className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             정하기
           </button>
@@ -303,7 +305,7 @@ function SubjectPicker({
       )}
 
       {error && (
-        <p role="alert" className="mt-3 text-sm text-red-600">
+        <p role="alert" className="mt-3 text-sm text-danger">
           {error}
         </p>
       )}
@@ -328,6 +330,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
   const [pane, setPane] = useState<Pane>("write");
   const [notice, setNotice] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
+  const [studyOpen, setStudyOpen] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [question, setQuestion] = useState("");
   const [askOpen, setAskOpen] = useState(false);
@@ -526,9 +529,9 @@ export default function LearningWorkspace({ id }: { id: string }) {
   if (loadError) {
     return (
       <div className="mx-auto max-w-md px-6 py-20 text-center">
-        <p className="mb-4 text-sm text-red-600">{loadError}</p>
-        <Link href="/learning" className="text-sm text-accent underline underline-offset-2">
-          학습 모드 목록으로
+        <p className="mb-4 text-sm text-danger">{loadError}</p>
+        <Link href="/" className="text-sm underline underline-offset-2">
+          내 창작물로
         </Link>
       </div>
     );
@@ -546,10 +549,11 @@ export default function LearningWorkspace({ id }: { id: string }) {
     <div className="px-4 py-6 md:px-8">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Link href="/learning" className="text-xs text-muted hover:text-foreground">
-            ← 학습 모드
+          <Link href="/" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground">
+            <ArrowLeft size={15} strokeWidth={1.8} />
+            내 창작물
           </Link>
-          <h1 className="mt-1 truncate text-[22px] font-bold tracking-tight">{session.title}</h1>
+          <h1 className="mt-2 truncate text-2xl font-bold tracking-tight">{session.title}</h1>
           <p className="mt-0.5 text-xs text-muted">
             {session.subject}
             {session.focus_subject && (
@@ -568,8 +572,15 @@ export default function LearningWorkspace({ id }: { id: string }) {
           <span title="자료 조사와 피드백을 합쳐 하루에 쓸 수 있는 횟수">
             {usage.unlimited ? "AI 사용 무제한(관리자)" : `오늘 AI ${usage.used}/${usage.limit}회 사용`}
           </span>
+          <button
+            onClick={() => setStudyOpen(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border-strong px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-raised"
+          >
+            <GraduationCap size={15} strokeWidth={1.7} />
+            공부 도구
+          </button>
           {assembled && (
-            <button onClick={() => setShowAll((v) => !v)} className="rounded-full border border-border px-3 py-1 hover:text-foreground">
+            <button onClick={() => setShowAll((v) => !v)} className="inline-flex h-9 items-center rounded-xl border border-border-strong px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-raised">
               {showAll ? "작성 화면으로" : "내가 쓴 내용 모아보기"}
             </button>
           )}
@@ -577,7 +588,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
       </header>
 
       {notice && (
-        <p role="alert" className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        <p role="alert" className="mb-4 rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
           {notice}
         </p>
       )}
@@ -605,7 +616,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
           <button
             onClick={handleResearch}
             disabled={researching || usageLeft <= 0}
-            className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {researching
               ? "자료를 조사하고 있어요... (최대 1분)"
@@ -613,7 +624,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                 ? "다시 조사하기"
                 : "자료 조사 시작"}
           </button>
-          {usageLeft <= 0 && <p className="mt-2 text-xs text-red-600">오늘 사용할 수 있는 횟수를 모두 썼어요.</p>}
+          {usageLeft <= 0 && <p className="mt-2 text-xs text-danger">오늘 사용할 수 있는 횟수를 모두 썼어요.</p>}
           <p className="mt-3 text-xs text-muted">자료 없이 바로 작성을 시작해도 돼요. 왼쪽 항목을 골라 써 내려가면 자동으로 저장돼요.</p>
         </section>
       )}
@@ -644,8 +655,8 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     onClick={() => setSelectedId(s.id)}
                     aria-current={s.id === selectedId ? "true" : undefined}
                     className={[
-                      "flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm font-semibold transition-colors",
-                      s.id === selectedId ? "border-foreground bg-accent/10" : "border-border hover:border-foreground/60",
+                      "flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors",
+                      s.id === selectedId ? "border-foreground bg-raised" : "border-border text-muted hover:border-border-strong hover:text-foreground",
                     ].join(" ")}
                   >
                     <span className="truncate">
@@ -661,7 +672,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
           {selected && (
             <div className="min-w-0 space-y-5">
               {allDone && (
-                <p className="rounded-md border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-accent">
+                <p className="rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
                   모든 항목을 완료했어요. 위의 &ldquo;내가 쓴 내용 모아보기&rdquo;에서 한 번에 확인하고 복사할 수 있어요.
                 </p>
               )}
@@ -672,17 +683,17 @@ export default function LearningWorkspace({ id }: { id: string }) {
                 <button
                   onClick={handleComplete}
                   disabled={!draft.trim() || selected.status === "completed"}
-                  className="rounded-full border border-foreground/50 px-5 py-1.5 text-sm font-semibold hover:opacity-70 disabled:opacity-40"
+                  className="inline-flex h-9 items-center justify-center rounded-xl border border-border-strong px-4 text-sm font-semibold transition-colors hover:bg-raised disabled:opacity-40"
                 >
                   {selected.status === "completed" ? "완료됨" : "이 항목 완료"}
                 </button>
-                <div className="inline-flex rounded-full border border-border p-0.5 text-xs lg:hidden">
+                <div className="inline-flex gap-0.5 rounded-lg bg-raised p-0.5 text-xs lg:hidden">
                   {(["material", "write"] as Pane[]).map((p) => (
                     <button
                       key={p}
                       onClick={() => setPane(p)}
                       aria-pressed={pane === p}
-                      className={["rounded-full px-3 py-1", pane === p ? "bg-accent text-accent-foreground" : "text-muted"].join(" ")}
+                      className={["rounded-md px-3 py-1 font-semibold", pane === p ? "bg-surface text-foreground shadow-sm" : "text-muted"].join(" ")}
                     >
                       {p === "material" ? "자료" : "작성"}
                     </button>
@@ -748,7 +759,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                       {state === "saved" && "저장됨"}
                       {state === "unsaved" && "저장 대기 중..."}
                       {state === "error" && (
-                        <button onClick={() => void saveDraft(selected.id)} className="text-red-600 underline underline-offset-2">
+                        <button onClick={() => void saveDraft(selected.id)} className="text-danger underline underline-offset-2">
                           저장 실패 · 다시 저장
                         </button>
                       )}
@@ -760,13 +771,13 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     onChange={(e) => onDraftChange(selected.id, e.target.value)}
                     rows={14}
                     placeholder="자료를 읽고 내 말로 직접 써보세요. 쓰는 대로 자동 저장돼요."
-                    className="w-full resize-y rounded-2xl border border-foreground/40 bg-background px-4 py-3 text-sm leading-relaxed"
+                    className="w-full resize-y rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-[1.8] placeholder:text-faint focus:border-foreground"
                   />
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>
                       {draft.length.toLocaleString()} / {MAX_DRAFT_CHARS.toLocaleString()}자
                     </span>
-                    {selected.status === "completed" && <span className="text-accent">완료한 항목이에요. 고치면 &ldquo;수정 중&rdquo;으로 바뀌어요.</span>}
+                    {selected.status === "completed" && <span>완료한 항목이에요. 고치면 &ldquo;수정 중&rdquo;으로 바뀌어요.</span>}
                   </div>
 
                   {askOpen && (
@@ -780,7 +791,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                         onChange={(e) => setQuestion(e.target.value)}
                         maxLength={300}
                         placeholder="예: 이 문장에서 ‘which’를 써도 되나요?"
-                        className="w-full rounded-full border border-foreground/50 bg-background px-4 py-1.5 text-sm"
+                        className="h-10 w-full rounded-xl border border-border-strong bg-background px-4 text-sm placeholder:text-faint focus:border-foreground"
                       />
                     </div>
                   )}
@@ -789,7 +800,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     <button
                       onClick={handleFeedback}
                       disabled={feedbackBusy || draft.trim().length < 10 || usageLeft <= 0}
-                      className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground disabled:opacity-40"
+                      className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
                     >
                       {feedbackBusy ? "살펴보는 중..." : "AI 피드백 받기"}
                     </button>
@@ -798,7 +809,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     </button>
                   </div>
                   {draft.trim().length < 10 && <p className="text-xs text-muted">10자 이상 직접 쓰면 피드백을 받을 수 있어요.</p>}
-                  {usageLeft <= 0 && <p className="text-xs text-red-600">오늘 사용할 수 있는 AI 횟수를 모두 썼어요. 작성한 내용은 그대로 저장돼요.</p>}
+                  {usageLeft <= 0 && <p className="text-xs text-danger">오늘 사용할 수 있는 AI 횟수를 모두 썼어요. 작성한 내용은 그대로 저장돼요.</p>}
                 </section>
               </div>
 
@@ -808,20 +819,35 @@ export default function LearningWorkspace({ id }: { id: string }) {
                 <button
                   onClick={() => selectedIdx > 0 && setSelectedId(sections[selectedIdx - 1].id)}
                   disabled={selectedIdx <= 0}
-                  className="text-muted hover:text-foreground disabled:opacity-30"
+                  className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-foreground disabled:opacity-30"
                 >
-                  ← 이전 항목
+                  <ArrowLeft size={14} strokeWidth={1.8} /> 이전 항목
                 </button>
                 <button
                   onClick={() => selectedIdx < sections.length - 1 && setSelectedId(sections[selectedIdx + 1].id)}
                   disabled={selectedIdx >= sections.length - 1}
-                  className="text-muted hover:text-foreground disabled:opacity-30"
+                  className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-foreground disabled:opacity-30"
                 >
-                  다음 항목 →
+                  다음 항목 <ArrowRight size={14} strokeWidth={1.8} />
                 </button>
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {studyOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && setStudyOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-label="공부 도구" className="flex h-full w-full max-w-[420px] animate-[popIn_0.22s_ease-out] flex-col border-l border-border-strong bg-background">
+            <div className="flex items-center justify-between px-5 pt-5">
+              <h2 className="text-lg font-bold tracking-tight">공부 도구</h2>
+              <button onClick={() => setStudyOpen(false)} aria-label="닫기" className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground">
+                <X size={16} strokeWidth={1.8} />
+              </button>
+            </div>
+            <p className="px-5 pt-1 text-xs leading-relaxed text-muted">조사 자료와 내가 쓴 글을 바탕으로 만들어요.</p>
+            <StudyRail studyRef={{ kind: "learning", id }} title={session.title} className="min-h-0 flex-1 overflow-y-auto p-5" />
+          </div>
         </div>
       )}
     </div>
