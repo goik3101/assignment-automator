@@ -61,7 +61,7 @@ export default function Sidebar() {
           open ? "flex" : "hidden md:flex",
         ].join(" ")}
       >
-        <div className={["flex h-16 items-center px-4", collapsed ? "md:justify-center" : "justify-between"].join(" ")}>
+        <div className={["hidden h-16 items-center px-4 md:flex", collapsed ? "md:justify-center" : "justify-between"].join(" ")}>
           {!collapsed && (
             <Link href="/" aria-label="studed 홈" onClick={() => setOpen(false)}>
               <Logo variant="wordmark" height={22} />
@@ -76,7 +76,7 @@ export default function Sidebar() {
           </button>
         </div>
 
-        <div className="px-3">
+        <div className="px-3 pt-3 md:pt-0">
           <button
             onClick={startNew}
             title="새 창작물"

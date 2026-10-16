@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 
 export default function DeleteHistoryButton({ id }: { id: string }) {
   const router = useRouter();
@@ -29,17 +30,9 @@ export default function DeleteHistoryButton({ id }: { id: string }) {
       disabled={loading}
       aria-label="히스토리 삭제"
       title="삭제"
-      className="shrink-0 rounded-md p-1.5 text-muted hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950"
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-faint transition-colors hover:bg-raised hover:text-danger disabled:opacity-40"
     >
-      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
-        <path
-          d="M5 6h10M8.5 6V4.5h3V6M6 6l.6 9.4a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9L14 6"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <Trash2 size={16} strokeWidth={1.7} />
     </button>
   );
 }

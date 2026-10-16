@@ -263,7 +263,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: { topic?: s
           </p>
         )}
 
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-5 gap-y-9">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-5 gap-y-9">
           <div>
             <button
               onClick={() => onNew()}

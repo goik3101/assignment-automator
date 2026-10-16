@@ -1,5 +1,7 @@
 "use client";
 
+import { BookOpen, Sparkles, Trash2, Undo2 } from "lucide-react";
+
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/supabase/use-auth";
 
@@ -71,10 +73,11 @@ export default function TrashPage() {
   }
 
   return (
-    <div className="w-full px-6 py-6 md:px-8">
-      <h1 className="mb-8 text-[22px] font-bold tracking-tight">휴지통</h1>
+    <div className="mx-auto w-full max-w-3xl px-6 py-8 md:px-10">
+      <h1 className="text-2xl font-bold tracking-tight">휴지통</h1>
+      <p className="mb-8 mt-1.5 text-sm text-muted">삭제한 작업은 여기서 되돌리거나 완전히 지울 수 있어요.</p>
       {error && (
-        <p role="alert" className="mb-5 rounded-xl border border-red-500/60 px-4 py-3 text-sm text-red-500">
+        <p role="alert" className="mb-5 rounded-xl border border-danger/50 px-4 py-3 text-sm text-danger">
           {error}
         </p>
       )}
@@ -82,20 +85,25 @@ export default function TrashPage() {
       {user && rows === null && <p className="text-sm text-muted">불러오는 중…</p>}
       {user && rows && rows.length === 0 && <p className="text-sm text-muted">휴지통이 비어 있어요.</p>}
       {rows && rows.length > 0 && (
-        <ul className="max-w-2xl divide-y divide-border border-y border-border">
+        <ul className="space-y-2">
           {rows.map((r) => (
-            <li key={r.key} className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold">{r.title}</p>
-                <p className="mt-0.5 text-xs text-muted">
-                  {r.kind === "learning" ? "학습 모드" : "AI 모드"} · {r.subject} · {new Date(r.at).toLocaleDateString("ko-KR")} 삭제
-                </p>
+            <li key={r.key} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                {r.kind === "learning" ? <BookOpen size={16} strokeWidth={1.7} className="shrink-0 text-faint" aria-label="학습 모드" /> : <Sparkles size={16} strokeWidth={1.7} className="shrink-0 text-faint" aria-label="AI 모드" />}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{r.title}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {r.subject} · {new Date(r.at).toLocaleDateString("ko-KR")} 삭제
+                  </p>
+                </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button onClick={() => act(r, "restore")} className="rounded-full border border-foreground px-3 py-1 text-xs font-bold hover:opacity-70">
+                <button onClick={() => act(r, "restore")} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-strong px-3 text-[13px] font-semibold transition-colors hover:bg-raised">
+                  <Undo2 size={14} strokeWidth={1.8} />
                   복원
                 </button>
-                <button onClick={() => act(r, "delete")} className="rounded-full border border-red-500/70 px-3 py-1 text-xs font-bold text-red-500 hover:opacity-70">
+                <button onClick={() => act(r, "delete")} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-danger/50 px-3 text-[13px] font-semibold text-danger transition-colors hover:bg-danger/10">
+                  <Trash2 size={14} strokeWidth={1.8} />
                   영구 삭제
                 </button>
               </div>

@@ -123,6 +123,13 @@ docs/
   planning.md                    -- 원본 기획서 전문 (의사결정 근거)
 ```
 
+## 화면·학습 도구 구조 (2026-10 개편)
+
+- 디자인 토큰은 `src/app/globals.css`(검정/회색 단색, `bg-surface`·`bg-raised`·`border-border-strong`·`text-faint`·`text-danger`). 폰트는 Pretendard Variable. 아이콘은 이모지가 아니라 `lucide-react`만 쓴다. 공통 모달/버튼은 `src/components/ui/`.
+- 홈(`components/home/HomeDashboard.tsx`): AI 모드 결과물과 학습 모드 과제를 한 격자로 보여주고, 아래 고정 입력창(`components/chat/ChatDock.tsx`)으로 새 안내문·기존 과제에 질문한다. "새 창작물" 모달은 `components/creation/NewCreationModal.tsx`(사진/텍스트 → 분석 → AI가 만들어줘요/직접 작성할게요 → AI면 제작 전 질문). `/learning` 목록은 홈으로 리다이렉트된다.
+- 학습 도구(요약·플래시카드·퀴즈·가상 시험·AI 채팅): UI는 `components/study/`(결과물 상세는 오른쪽 레일, 학습 모드는 "공부 도구" 서랍), API는 `/api/study/*`·`/api/chat`. **과제 내용은 클라이언트가 보낸 본문이 아니라 id만 받아 서버가 RLS 세션으로 직접 읽는다**(`lib/study/context.ts`). 종류별 하루 횟수 제한은 `lib/study/usage.ts`(`study_usage_events`, 마이그레이션 0016 — 미적용이면 서버 메모리로 대신 센다). 테스트 가능한 순수 함수는 alias import 없는 파일(`context-pure.ts`·`turns.ts`·`quiz-validate.ts`·`questions-pure.ts`)에 둔다.
+- 제작 전 질문(`/api/tasks/questions`, `lib/questions/`): 질문은 한 번에 하나씩, 개수 상한(빠르게 2/나에게 맞추기 4)은 모델이 아니라 코드가 강제한다. 개인 경험은 지어내지 않고 학생이 "나중에 직접 쓸게요"를 고르면 빈칸으로 남긴다. 모드는 브라우저에 저장(`lib/ui/ai-pref.ts`).
+
 ## 자주 헷갈릴 수 있는 부분
 
 - `core_task_info`(핵심정보)와 `administrative_info`(행정정보)는 이미지 분석

@@ -8,9 +8,9 @@ import type { SettingsTab } from "@/lib/settings/open";
 export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("general");
   return (
-    <div className="w-full px-6 py-6 md:px-8">
-      <h1 className="mb-6 text-[22px] font-bold tracking-tight">설정</h1>
-      <div className="max-w-3xl overflow-hidden rounded-2xl border border-border bg-surface">
+    <div className="mx-auto w-full max-w-3xl px-6 py-8 md:px-10">
+      <h1 className="mb-6 text-2xl font-bold tracking-tight">설정</h1>
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
         <SettingsPanel tab={tab} onTab={setTab} />
       </div>
     </div>

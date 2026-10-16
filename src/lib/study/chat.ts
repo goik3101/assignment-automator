@@ -55,7 +55,9 @@ export async function answerChat(params: {
 
   const text = res.text.trim();
   if (!text) throw new Error("빈 응답");
-  const { sources, chunkIndexToN } = buildSourceList(res.grounding?.chunks);
+  // 링크로 렌더링되는 값이라 http(s)만 받는다(javascript: 같은 주소가 섞여 들어와도 화면에 나가지 않게).
+  const safeChunks = (res.grounding?.chunks ?? []).map((c) => (c.web?.uri && /^https?:\/\//i.test(c.web.uri) ? c : {}));
+  const { sources, chunkIndexToN } = buildSourceList(safeChunks);
   const annotated = insertCitationMarkers(text, res.grounding?.supports, chunkIndexToN).trim();
   // 실제로 본문에 인용된 출처만 남기고, 등장 순서대로 1번부터 다시 매긴다.
   const order = new Map<number, number>();

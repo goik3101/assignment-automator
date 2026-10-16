@@ -167,7 +167,7 @@ export default function ChatDock() {
         <ChatView
           chat={folded ? { ...chat, messages: [] } : chat}
           allowImage={!target}
-          placeholder={target ? `“${target.title}”에 대해 무엇이든 물어보세요` : "무엇이든 물어보세요. 새 안내문 사진을 붙여도 돼요"}
+          placeholder={target ? `“${target.title}”에 대해 무엇이든 물어보세요` : "무엇이든 물어보세요"}
           header={picker}
           messagesClassName="max-h-[44vh]"
           disabledReason={user ? null : "로그인하면 질문할 수 있어요"}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FileText, Wrench } from "lucide-react";
 import { getServerSupabase } from "@/lib/supabase/server-client";
 import DeleteHistoryButton from "@/components/DeleteHistoryButton";
 import { getTrashedSubmissionIds } from "@/lib/histories/trash";
@@ -13,8 +14,8 @@ export default async function HistoriesPage() {
 
   if (!user) {
     return (
-      <div className="mx-auto max-w-2xl px-6 py-12">
-        <p className="text-sm text-muted">히스토리를 보려면 로그인해주세요.</p>
+      <div className="mx-auto max-w-3xl px-6 py-12 md:px-10">
+        <p className="text-sm text-muted">로그인하면 만든 결과물의 히스토리를 볼 수 있어요.</p>
       </div>
     );
   }
@@ -29,24 +30,30 @@ export default async function HistoriesPage() {
   const histories = allHistories?.filter((h) => !trashed.has(h.submission_id));
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
-      <h1 className="mb-6 text-[22px] font-bold tracking-tight">히스토리</h1>
+    <div className="mx-auto max-w-3xl px-6 py-8 md:px-10">
+      <h1 className="text-2xl font-bold tracking-tight">히스토리</h1>
+      <p className="mb-8 mt-1.5 text-sm text-muted">AI가 만들어 준 결과물을 만든 순서대로 모았어요.</p>
 
-      {error && <p className="text-sm text-red-600">불러오는 중 오류가 발생했습니다.</p>}
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          히스토리를 불러오지 못했어요. 새로고침해 주세요.
+        </p>
+      )}
       {!error && (!histories || histories.length === 0) && (
-        <p className="text-sm text-muted">아직 생성한 결과물이 없어요.</p>
+        <p className="text-sm text-muted">아직 만든 결과물이 없어요. 왼쪽의 “새 창작물”로 시작해 보세요.</p>
       )}
 
       <ul className="space-y-2">
         {histories?.map((h) => (
           <li
             key={h.id}
-            className="flex items-center gap-2 rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-accent"
+            className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3.5 transition-colors hover:border-border-strong"
           >
             <Link href={`/histories/${h.id}`} className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{h.title || h.subject}</span>
-                <span className="shrink-0 text-xs text-muted">
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate text-[15px] font-semibold">{h.title || h.subject}</span>
+                <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted">
+                  {h.output_type === "essay" ? <FileText size={13} strokeWidth={1.7} /> : <Wrench size={13} strokeWidth={1.7} />}
                   {h.output_type === "essay" ? "완성 원고" : "실행 계획"}
                 </span>
               </div>

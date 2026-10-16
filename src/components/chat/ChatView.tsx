@@ -67,12 +67,14 @@ export default function ChatView({
   const [text, setText] = useState("");
   const [image, setImage] = useState<PreparedImage | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // 대화 목록 안에서만 맨 아래로 내린다(scrollIntoView는 바깥 페이지까지 같이 스크롤해 버린다).
+    const el = listRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [chat.messages.length, chat.busy]);
 
   function autosize() {
@@ -111,7 +113,7 @@ export default function ChatView({
   return (
     <div className="flex min-h-0 flex-col">
       {(hasMessages || empty) && (
-        <div className={`min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-4 ${messagesClassName}`} aria-live="polite">
+        <div ref={listRef} className={`min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-4 ${messagesClassName}`} aria-live="polite">
           {!hasMessages && empty}
           {chat.messages.map((m) => (
             <Message key={m.id} m={m} />
@@ -127,7 +129,6 @@ export default function ChatView({
               {chat.error}
             </p>
           )}
-          <div ref={endRef} />
         </div>
       )}
 
