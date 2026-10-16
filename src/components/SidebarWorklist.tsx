@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BookOpen, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/supabase/use-auth";
 
 interface WorkItem {
@@ -13,8 +14,8 @@ interface WorkItem {
   at: string;
 }
 
-// Figma 사이드바의 "작업 목록": 제목 / 모드 태그(학습모드📚, AI모드✨). 학습 과제와 자동
-// 작성 히스토리를 한 목록으로 보여준다(히스토리는 읽기 전용 조회). 목록이 비면 그리지 않는다.
+// 사이드바의 "작업 목록": 제목 + 모드 아이콘(학습 모드 = 책, AI 모드 = 반짝임). 학습 과제와 자동
+// 작성 히스토리를 한 목록으로 보여준다(히스토리는 읽기 전용 조회). 목록이 비면 비워둔다.
 export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth();
   const pathname = usePathname();
@@ -55,30 +56,32 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
     };
   }, [user, pathname]);
 
-  if (!user || items.length === 0) return null;
+  if (!user || items.length === 0) return <div className="flex-1" />;
 
   return (
-    <div className="mt-5 px-2">
-      <p className="mb-1.5 px-2.5 text-xs font-bold">작업 목록</p>
-      <ul className="space-y-0.5">
-        {items.map((it) => (
-          <li key={it.key}>
-            <Link
-              href={it.href}
-              onClick={onNavigate}
-              title={it.title}
-              className={[
-                "flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
-                pathname === it.href ? "bg-accent/15 text-foreground" : "text-foreground hover:bg-accent/10",
-              ].join(" ")}
-            >
-              <span className="truncate">{it.title}</span>
-              <span className="shrink-0 text-[10px]" aria-label={it.mode === "learning" ? "학습 모드" : "AI 모드"}>
-                {it.mode === "learning" ? "학습모드📚" : "AI모드✨"}
-              </span>
-            </Link>
-          </li>
-        ))}
+    <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
+      <p className="mb-1.5 px-3 text-xs font-semibold text-faint">작업 목록</p>
+      <ul className="min-h-0 space-y-0.5 overflow-y-auto">
+        {items.map((it) => {
+          const Icon = it.mode === "learning" ? BookOpen : Sparkles;
+          return (
+            <li key={it.key}>
+              <Link
+                href={it.href}
+                onClick={onNavigate}
+                title={it.title}
+                aria-current={pathname === it.href ? "page" : undefined}
+                className={[
+                  "flex h-9 items-center gap-2.5 rounded-lg px-3 text-[13px] transition-colors",
+                  pathname === it.href ? "bg-raised text-foreground" : "text-muted hover:bg-raised hover:text-foreground",
+                ].join(" ")}
+              >
+                <Icon size={14} strokeWidth={1.8} className="shrink-0" aria-label={it.mode === "learning" ? "학습 모드" : "AI 모드"} />
+                <span className="truncate">{it.title}</span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

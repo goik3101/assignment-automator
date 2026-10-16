@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { LogOut, Mail, Settings, UserRound } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useAdminStatus } from "@/lib/admin/use-admin-status";
+import { openSettings } from "@/lib/settings/open";
 
-/** 사이드바 하단에 들어가는 로그인/로그아웃 위젯. 로그인/비로그인 상태를 카드
- * 형태로 구분해서 보여준다. 계정 아이콘은 아이콘 세트를 받으면 앞에 붙일 것 —
- * 그 전까지는 텍스트+상태 점만 사용. */
+/** 사이드바 하단의 계정 영역. 로그인 상태면 이름 + 설정 + 로그아웃, 아니면 이메일 로그인 폼. */
 export default function AuthBar() {
   const { user, loading } = useAuth();
   const { isAdmin, setIsAdmin } = useAdminStatus();
@@ -33,52 +33,45 @@ export default function AuthBar() {
     });
     setSending(false);
     if (error) {
-      setError("전송 실패. 이메일을 확인해주세요.");
+      setError("전송에 실패했어요. 이메일 주소를 확인해 주세요.");
       return;
     }
     setSent(true);
   }
 
   async function handleLogout() {
-    const supabase = getBrowserSupabase();
-    await supabase.auth.signOut();
+    await getBrowserSupabase().auth.signOut();
   }
 
   if (loading) return null;
 
-  // isAdmin을 user보다 먼저 확인한다 — 관리자 코드 로그인 시 예약 계정으로
-  // 실제 Supabase 세션도 함께 발급되므로(개인화/히스토리 기능용) user도
-  // 항상 채워져 있는데, 그 예약 계정의 실제 이메일 대신 "관리자"로 보여주는
-  // 게 맞다. 관리자 세션 쿠키가 이 화면이 보여줄 정체성의 최종 기준이다.
-  if (isAdmin) {
+  // isAdmin을 user보다 먼저 확인한다 — 관리자 코드 로그인 시 예약 계정으로 실제 Supabase 세션도 함께
+  // 발급되므로 user도 항상 채워져 있는데, 그 예약 계정의 실제 이메일 대신 "관리자"로 보여주는 게 맞다.
+  if (isAdmin || user) {
+    const name = isAdmin ? "관리자" : (user?.email ?? "").split("@")[0] || "사용자";
     return (
-      <div className="rounded-2xl border border-accent/30 bg-accent/5 p-2.5">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-          <p className="truncate text-xs text-foreground">관리자</p>
+      <div className="flex items-center gap-2.5 rounded-xl px-1.5 py-1">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border-strong bg-raised text-muted">
+          <UserRound size={16} strokeWidth={1.7} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold">{name}</p>
+          {!isAdmin && <p className="truncate text-[11px] text-faint">{user?.email}</p>}
         </div>
         <button
-          onClick={handleAdminLogout}
-          className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
+          onClick={() => openSettings("account")}
+          aria-label="설정"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground"
         >
-          로그아웃
+          <Settings size={16} strokeWidth={1.7} />
         </button>
-      </div>
-    );
-  }
-
-  if (user) {
-    return (
-      <div className="rounded-2xl border border-accent/30 bg-accent/5 p-2.5">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-          <p className="truncate text-xs text-foreground">{user.email}</p>
-        </div>
         <button
-          onClick={handleLogout}
-          className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
+          onClick={isAdmin ? handleAdminLogout : handleLogout}
+          aria-label="로그아웃"
+          title="로그아웃"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground"
         >
-          로그아웃
+          <LogOut size={16} strokeWidth={1.7} />
         </button>
       </div>
     );
@@ -86,32 +79,31 @@ export default function AuthBar() {
 
   if (sent) {
     return (
-      <div className="rounded-2xl border border-border bg-background p-2.5">
-        <p className="text-xs text-muted">{email}로 링크를 보냈어요. 메일함을 확인해주세요.</p>
+      <div className="flex items-start gap-2 rounded-xl border border-border bg-surface p-3">
+        <Mail size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-muted" />
+        <p className="text-xs leading-relaxed text-muted">{email}로 로그인 링크를 보냈어요. 메일함을 확인해 주세요.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-background p-2.5 space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full border border-muted" aria-hidden />
-        <p className="text-xs text-muted">로그인 전</p>
-      </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+    <div className="space-y-2 rounded-xl border border-border bg-surface p-3">
+      <p className="text-xs font-semibold">로그인하면 작업이 저장돼요</p>
       <input
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        placeholder="이메일로 로그인"
-        className="w-full rounded-full border border-border bg-surface px-2.5 py-1.5 text-xs"
+        placeholder="이메일 주소"
+        aria-label="이메일 주소"
+        className="h-9 w-full rounded-lg border border-border-strong bg-background px-3 text-[13px] placeholder:text-faint"
       />
+      {error && <p className="text-xs text-danger">{error}</p>}
       <button
         onClick={handleSendLink}
         disabled={!email.includes("@") || sending}
-        className="w-full rounded-full border border-border px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
+        className="h-9 w-full rounded-lg bg-accent text-[13px] font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
       >
-        {sending ? "전송 중..." : "로그인 링크 받기"}
+        {sending ? "보내는 중..." : "로그인 링크 받기"}
       </button>
     </div>
   );

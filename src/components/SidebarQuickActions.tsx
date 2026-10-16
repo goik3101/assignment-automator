@@ -1,14 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { MessageSquareText, Moon, Settings, Sun, Trash2 } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
 
 const STORAGE_KEY = "studed-theme";
 
-// Figma 사이드바 하단의 "휴지통", "피드백/문의", "테마 변경". 테마 전환은 ThemeToggle(설정 페이지)과
-// 같은 저장 키·data-theme 속성을 그대로 쓰므로 두 곳 중 어디서 바꿔도 동일하게 동작한다.
-// 상태를 들고 있지 않고 클릭 시점의 data-theme를 읽어 뒤집기만 한다.
-export default function SidebarQuickActions({ onNavigate }: { onNavigate?: () => void }) {
+// 사이드바 하단: 휴지통 / 피드백·문의 / 테마 변경 / 설정. 테마 전환은 ThemeToggle(설정 페이지)과 같은
+// 저장 키·data-theme 속성을 쓰므로 어디서 바꿔도 동일하게 동작한다. 상태를 들고 있지 않고 클릭
+// 시점의 data-theme를 읽어 뒤집기만 한다(아이콘은 CSS로 라이트/다크에 맞춰 바뀐다).
+export default function SidebarQuickActions({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   function toggleTheme() {
     const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
@@ -19,42 +26,39 @@ export default function SidebarQuickActions({ onNavigate }: { onNavigate?: () =>
     }
   }
 
-  const item = "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-accent/10";
+  const item = [
+    "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground",
+    collapsed ? "md:justify-center md:px-0" : "",
+  ].join(" ");
+  const iconProps = { size: 16, strokeWidth: 1.7 } as const;
 
   return (
     <div className="mb-2 space-y-0.5">
-      <button onClick={() => { onNavigate?.(); openSettings("general"); }} className={item}>
-        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
-          <circle cx="10" cy="10" r="2.6" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M10 3v1.6M10 15.4V17M17 10h-1.6M4.6 10H3M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1M14.8 14.8l-1.1-1.1M6.3 6.3 5.2 5.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-        </svg>
-        설정
-      </button>
-      <Link href="/trash" onClick={onNavigate} className={item}>
-        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
-          <path d="M4 6h12M8 6V4h4v2M6 6l.7 10h6.6L14 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        휴지통
+      <Link href="/trash" onClick={onNavigate} className={item} title="휴지통">
+        <Trash2 {...iconProps} className="shrink-0" />
+        {!collapsed && "휴지통"}
       </Link>
-      <button onClick={() => { onNavigate?.(); openSettings("general"); }} className={item}>
-        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
-          <circle cx="10" cy="10" r="7.2" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M8 8a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.6M10 14v.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        피드백/문의
+      <button
+        onClick={() => {
+          onNavigate?.();
+          openSettings("general");
+        }}
+        className={item}
+        title="피드백/문의"
+      >
+        <MessageSquareText {...iconProps} className="shrink-0" />
+        {!collapsed && "피드백/문의"}
       </button>
-      <button onClick={toggleTheme} className={item}>
-        <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0">
-          <circle cx="10" cy="10" r="3.6" stroke="currentColor" strokeWidth="1.5" />
-          <path
-            d="M10 2v1.6M10 16.4V18M18 10h-1.6M3.6 10H2M15.5 4.5l-1.1 1.1M5.6 14.4l-1.1 1.1M15.5 15.5l-1.1-1.1M5.6 5.6 4.5 4.5"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-          />
-        </svg>
-        테마 변경
+      <button onClick={toggleTheme} className={item} title="테마 변경">
+        <Sun {...iconProps} className="hidden shrink-0 dark:block" />
+        <Moon {...iconProps} className="shrink-0 dark:hidden" />
+        {!collapsed && "테마 변경"}
       </button>
+      {collapsed && (
+        <button onClick={() => openSettings("general")} className={item} title="설정">
+          <Settings {...iconProps} className="shrink-0" />
+        </button>
+      )}
     </div>
   );
 }

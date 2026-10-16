@@ -1,17 +1,15 @@
+import { FlaskConical } from "lucide-react";
 import OpenSettingsButton from "@/components/settings/OpenSettingsButton";
 
 export default function Footer() {
   return (
-    <footer className="border-t border-border px-6 py-4 text-xs text-muted">
-      <div className="mx-auto max-w-2xl space-y-2">
-        <OpenSettingsButton className="block text-left text-[11px] leading-snug text-muted underline-offset-2 hover:text-foreground hover:underline">
-          🚧 studed는 아직 테스트(베타) 버전이에요. 이상하거나 잘못된 결과를 발견하시면
-          알려주세요 — 더 나은 서비스를 만드는 데 큰 도움이 됩니다.
+    <footer className="border-t border-border px-6 py-3 text-xs text-faint md:px-10">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
+        <OpenSettingsButton className="flex items-center gap-1.5 text-left transition-colors hover:text-foreground">
+          <FlaskConical size={13} strokeWidth={1.7} className="shrink-0" />
+          <span>베타 버전이에요. 이상한 결과를 발견하면 알려 주세요.</span>
         </OpenSettingsButton>
-        <div className="flex items-center justify-between">
-          <span>studed — 겹치지 않는, 출처 있는 수행평가 도우미</span>
-          <OpenSettingsButton className="underline underline-offset-2 hover:text-foreground">문의하기</OpenSettingsButton>
-        </div>
+        <span>studed</span>
       </div>
     </footer>
   );
