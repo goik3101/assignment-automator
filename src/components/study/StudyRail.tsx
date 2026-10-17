@@ -9,6 +9,7 @@ import FlashcardsModal from "./FlashcardsModal";
 import QuizModal from "./QuizModal";
 import ExamModal from "./ExamModal";
 import type { StudyRef } from "./useStudyData";
+import { useT } from "@/lib/i18n";
 
 type Tool = "summary" | "flashcards" | "quiz" | "exam";
 
@@ -35,27 +36,30 @@ export default function StudyRail({
   className?: string;
   lockedReason?: string;
 }) {
+  const t = useT();
   const [tool, setTool] = useState<Tool | null>(null);
   const chat = useChat(studyRef);
   const locked = !studyRef;
   const close = () => setTool(null);
 
   return (
-    <aside aria-label="공부 도구" className={["flex min-h-0 flex-col gap-6", className].join(" ")}>
+    <aside aria-label={t("공부 도구")} className={["flex min-h-0 flex-col gap-7 lg:overflow-y-auto", className].join(" ")}>
       <section>
-        <h2 className="mb-3 text-xs font-semibold text-faint">공부 도구</h2>
-        <div className="grid grid-cols-2 gap-2.5">
+        <h2 className="mb-3 text-[13px] font-semibold text-muted">{t("만들기")}</h2>
+        <div className="grid grid-cols-2 gap-3">
           {TOOLS.map(({ id, label, hint, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTool(id)}
               disabled={locked}
-              className="group flex flex-col items-start gap-3 rounded-2xl bg-surface p-4 text-left transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface"
+              className="group flex min-h-[76px] items-center gap-3.5 rounded-2xl bg-surface px-4 py-3.5 text-left transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface"
             >
-              <Icon size={20} strokeWidth={1.6} className="text-muted transition-colors group-hover:text-foreground" />
-              <span>
-                <span className="block text-[14px] font-bold leading-tight">{label}</span>
-                <span className="mt-0.5 block text-[11.5px] leading-snug text-muted">{hint}</span>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-background text-foreground/80 transition-colors group-hover:text-foreground">
+                <Icon size={22} strokeWidth={1.6} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-bold leading-tight">{t(label)}</span>
+                <span className="mt-1 block truncate text-xs leading-snug text-muted">{t(hint)}</span>
               </span>
             </button>
           ))}
@@ -63,34 +67,35 @@ export default function StudyRail({
         {locked && lockedReason && <p className="mt-3 text-xs leading-relaxed text-muted">{lockedReason}</p>}
       </section>
 
-      <section aria-label="AI 채팅" className="flex min-h-[360px] flex-1 flex-col">
+      <section aria-label={t("AI 채팅")} className="flex min-h-[300px] flex-1 flex-col lg:min-h-[420px]">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="inline-flex items-center gap-1.5 text-xs font-semibold text-faint">
-            <MessageCircle size={13} strokeWidth={1.8} />
-            AI 채팅
+          <h2 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-muted">
+            <MessageCircle size={14} strokeWidth={1.8} />
+            {t("AI 채팅")}
           </h2>
           {chat.messages.length > 0 && (
             <button
               onClick={chat.reset}
-              className="inline-flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-foreground"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-foreground"
             >
               <SquarePen size={12} strokeWidth={1.8} />
-              새 대화
+              {t("새 대화")}
             </button>
           )}
         </div>
         <ChatView
           chat={chat}
-          placeholder="이 과제에 대해 무엇이든 물어보세요"
-          disabledReason={locked ? "결과물이 저장되면 쓸 수 있어요" : null}
+          className="flex-1 justify-between"
+          placeholder={t("이 과제에 대해 무엇이든 물어보세요")}
+          disabledReason={locked ? t("결과물이 저장되면 쓸 수 있어요") : null}
           messagesClassName="max-h-[46vh] lg:max-h-none"
           empty={
-            <div className="rounded-xl border border-dashed border-border-strong p-4 text-[13px] leading-relaxed text-muted">
-              “{title}”에 대해 궁금한 점을 물어보세요. 예를 들어 이런 질문을 할 수 있어요.
+            <div className="rounded-2xl bg-surface p-4 text-[13px] leading-relaxed text-muted">
+              {t("“{title}”에 대해 궁금한 점을 물어보세요. 예를 들어 이런 질문을 할 수 있어요.", { title })}
               <ul className="mt-2 space-y-1 text-foreground/80">
-                <li>· 발표에서 나올 만한 질문 알려줘</li>
-                <li>· 이 부분을 더 쉽게 설명해 줘</li>
-                <li>· 결론을 어떻게 말하면 좋을까?</li>
+                <li>{t("· 발표에서 나올 만한 질문 알려줘")}</li>
+                <li>{t("· 이 부분을 더 쉽게 설명해 줘")}</li>
+                <li>{t("· 결론을 어떻게 말하면 좋을까?")}</li>
               </ul>
             </div>
           }

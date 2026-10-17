@@ -3,6 +3,7 @@
 import Modal from "@/components/ui/Modal";
 import StudyState, { CachedNote } from "./StudyState";
 import { useStudyData, type StudyRef } from "./useStudyData";
+import { useT } from "@/lib/i18n";
 
 interface Summary {
   headline: string;
@@ -11,10 +12,11 @@ interface Summary {
 }
 
 export default function SummaryModal({ studyRef, onClose }: { studyRef: StudyRef; onClose: () => void }) {
+  const t = useT();
   const { data, error, loading, fromCache, refresh } = useStudyData<Summary>(studyRef, "summary");
   return (
-    <Modal title="핵심 요약" onClose={onClose} width={640} busy={loading}>
-      <StudyState loading={loading} error={error} onRetry={refresh} loadingText="핵심만 골라 정리하고 있어요...">
+    <Modal title={t("핵심 요약")} onClose={onClose} width={640} busy={loading}>
+      <StudyState loading={loading} error={error} onRetry={refresh} loadingText={t("핵심만 골라 정리하고 있어요...")}>
         {data && (
           <div>
             <p className="text-xl font-bold leading-snug tracking-tight">{data.headline}</p>
@@ -28,7 +30,7 @@ export default function SummaryModal({ studyRef, onClose }: { studyRef: StudyRef
             </ul>
             {data.keyTerms.length > 0 && (
               <div className="mt-7">
-                <h3 className="mb-2.5 text-xs font-semibold text-faint">꼭 알아둘 용어</h3>
+                <h3 className="mb-2.5 text-xs font-semibold text-faint">{t("꼭 알아둘 용어")}</h3>
                 <dl className="divide-y divide-border rounded-xl border border-border">
                   {data.keyTerms.map((k, i) => (
                     <div key={i} className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr] sm:gap-4">

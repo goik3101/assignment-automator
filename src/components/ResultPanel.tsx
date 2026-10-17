@@ -8,6 +8,7 @@ import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
 import { SOURCE_TIER_LABEL } from "@/lib/links/source-quality";
 import Button from "@/components/ui/Button";
 import { ClaimCheckNote, MD_COMPONENTS, ProductionNotes } from "@/components/result/ResultExtras";
+import { useT } from "@/lib/i18n";
 
 // 결과 카드 위쪽의 경고 배너. 조용히 최종본인 척 내보내지 않고 정직하게 알리기 위한 것들이다.
 //  - caution: 검증이 안 됐거나 기준에 못 미침(출처 없음·분량·필수 항목)
@@ -33,9 +34,10 @@ function Notice({ tone = "caution", title, children }: { tone?: "caution" | "dan
 // N6/N8: 검색 출처가 하나도 없으면 카드 맨 위에 눈에 띄게 알린다. result.noSourcesWarning(서버가 계산)은 출처가 0개라는 것만이 아니라
 // "애초에 검증이 필요한 사실 주장이 있었는지"까지 함께 확인된 값이다(순수 격려 편지 같은 글에는 뜨지 않는다).
 function NoSourcesWarning() {
+  const t = useT();
   return (
-    <Notice title="이 내용은 검색으로 검증되지 않았어요">
-      책 제목·저자·인용구 같은 구체적 사실이 있다면, 실제로 존재하는 내용인지 직접 검색해서 확인한 뒤 제출하세요.
+    <Notice title={t("이 내용은 검색으로 검증되지 않았어요")}>
+      {t("책 제목·저자·인용구 같은 구체적 사실이 있다면, 실제로 존재하는 내용인지 직접 검색해서 확인한 뒤 제출하세요.")}
     </Notice>
   );
 }
@@ -47,9 +49,10 @@ function LengthWarning({ message }: { message: string }) {
 
 // 책 저자를 검색으로 대조했는데 실제로 다른 저자로 확인된 경우(재시도 후에도 못 고쳤을 때)만 뜬다 — 단순한 "출처 없음"보다 확실한 오류라 구분한다.
 function AuthorWarning({ message }: { message: string }) {
+  const t = useT();
   return (
     <Notice tone="danger" title={message}>
-      제출 전에 직접 검색해서 저자를 확인해 주세요.
+      {t("제출 전에 직접 검색해서 저자를 확인해 주세요.")}
     </Notice>
   );
 }
@@ -60,21 +63,22 @@ function StructureWarning({ message }: { message: string }) {
 }
 
 function SourceList({ sources }: { sources: SourceRef[] }) {
+  const t = useT();
   if (sources.length === 0) return null;
   return (
     <div className="mt-8 border-t border-border pt-5">
-      <h4 className="mb-1 text-sm font-bold">출처</h4>
+      <h4 className="mb-1 text-sm font-bold">{t("출처")}</h4>
       <p className="mb-3 text-xs leading-relaxed text-muted">
-        “연결 확인됨”은 주소가 열린다는 뜻일 뿐, 그 페이지가 문장의 내용을 뒷받침한다는 뜻은 아니에요. 중요한 사실은 링크를 열어 직접 확인하세요.
+        {t("“연결 확인됨”은 주소가 열린다는 뜻일 뿐, 그 페이지가 문장의 내용을 뒷받침한다는 뜻은 아니에요. 중요한 사실은 링크를 열어 직접 확인하세요.")}
       </p>
       <ol className="space-y-2 text-sm">
         {sources.map((s) => {
           const status =
             s.url_valid === false
-              ? { icon: CircleX, label: "없는 페이지", cls: "text-danger" }
+              ? { icon: CircleX, label: t("없는 페이지"), cls: "text-danger" }
               : s.url_valid
-                ? { icon: CircleCheck, label: "연결 확인됨", cls: "text-muted" }
-                : { icon: CircleHelp, label: "자동 확인 불가 — 직접 열어 보세요", cls: "text-muted" };
+                ? { icon: CircleCheck, label: t("연결 확인됨"), cls: "text-muted" }
+                : { icon: CircleHelp, label: t("자동 확인 불가 — 직접 열어 보세요"), cls: "text-muted" };
           const Icon = status.icon;
           return (
             <li key={s.n} className="flex gap-2.5">
@@ -88,7 +92,7 @@ function SourceList({ sources }: { sources: SourceRef[] }) {
                     <Icon size={12} strokeWidth={1.8} />
                     {status.label}
                   </span>
-                  {s.tier && <span className="text-faint">{SOURCE_TIER_LABEL[s.tier]}</span>}
+                  {s.tier && <span className="text-faint">{t(SOURCE_TIER_LABEL[s.tier])}</span>}
                 </p>
               </div>
             </li>
@@ -101,6 +105,7 @@ function SourceList({ sources }: { sources: SourceRef[] }) {
 
 // F6/9-5: 재생성 요청 UI. submissionId가 있는(=로그인 상태에서 저장된) 결과에만 붙는다.
 function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: string) => Promise<void> }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -114,7 +119,7 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
           className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
         >
           <PencilLine size={14} strokeWidth={1.7} />
-          마음에 안 들어요, 수정 요청하기 (하루 1회)
+          {t("마음에 안 들어요, 수정 요청하기 (하루 1회)")}
         </button>
       </div>
     );
@@ -123,14 +128,14 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
   return (
     <div className="mt-6 space-y-3 border-t border-border pt-4">
       <label htmlFor="regen-text" className="block text-[13px] font-semibold">
-        어떤 방향으로 고치고 싶은지 적어 주세요
+        {t("어떤 방향으로 고치고 싶은지 적어 주세요")}
       </label>
       <textarea
         id="regen-text"
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={2}
-        placeholder="예: 좀 더 개인적인 경험을 넣어서, 문체를 더 편하게"
+        placeholder={t("예: 좀 더 개인적인 경험을 넣어서, 문체를 더 편하게")}
         className="w-full rounded-xl border border-border-strong bg-background px-4 py-3 text-sm placeholder:text-faint focus:border-foreground"
       />
       {error && (
@@ -151,16 +156,16 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
               setOpen(false);
               setText("");
             } catch (err) {
-              setError(err instanceof Error ? err.message : "다시 만들지 못했어요.");
+              setError(err instanceof Error ? err.message : t("다시 만들지 못했어요."));
             } finally {
               setLoading(false);
             }
           }}
         >
-          {loading ? "다시 만드는 중..." : "다시 만들기"}
+          {loading ? t("다시 만드는 중...") : t("다시 만들기")}
         </Button>
         <Button size="sm" onClick={() => setOpen(false)} disabled={loading}>
-          취소
+          {t("취소")}
         </Button>
       </div>
     </div>
@@ -170,6 +175,7 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
 // 결과 공유 링크. submissionId가 있는(=로그인 상태에서 저장된) 결과에만 붙는다.
 // 클릭하면 공유 토큰을 발급받아(이미 있으면 재사용) 그 링크를 클립보드에 복사한다.
 function ShareButton({ submissionId }: { submissionId: string }) {
+  const t = useT();
   const [state, setState] = useState<"idle" | "loading" | "copied" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -178,14 +184,14 @@ function ShareButton({ submissionId }: { submissionId: string }) {
     setErrorMessage(null);
     try {
       const res = await fetch(`/api/histories/${submissionId}/share`, { method: "POST" });
-      if (!res.ok) throw new Error((await res.json()).error ?? "공유 링크를 만들지 못했어요.");
+      if (!res.ok) throw new Error((await res.json()).error ?? t("공유 링크를 만들지 못했어요."));
       const { shareToken } = (await res.json()) as { shareToken: string };
       await navigator.clipboard.writeText(`${window.location.origin}/share/${shareToken}`);
       setState("copied");
       setTimeout(() => setState("idle"), 2500);
     } catch (err) {
       setState("error");
-      setErrorMessage(err instanceof Error ? err.message : "공유 링크를 만들지 못했어요.");
+      setErrorMessage(err instanceof Error ? err.message : t("공유 링크를 만들지 못했어요."));
     }
   }
 
@@ -197,7 +203,11 @@ function ShareButton({ submissionId }: { submissionId: string }) {
         className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground disabled:opacity-40"
       >
         <Link2 size={14} strokeWidth={1.7} />
-        {state === "loading" ? "링크 만드는 중..." : state === "copied" ? "링크를 복사했어요 (로그인 없이 읽을 수 있어요)" : "읽기 링크 복사"}
+        {state === "loading"
+          ? t("링크 만드는 중...")
+          : state === "copied"
+            ? t("링크를 복사했어요 (로그인 없이 읽을 수 있어요)")
+            : t("읽기 링크 복사")}
       </button>
       {state === "error" && (
         <p role="alert" className="mt-1 text-xs text-danger">
@@ -210,6 +220,7 @@ function ShareButton({ submissionId }: { submissionId: string }) {
 
 // 9-3: 예상 질문 생성 (구술·발표형 과제일 때만 조건부 노출). 로그인/횟수 제한 없음.
 function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText: string }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [questions, setQuestions] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -226,10 +237,10 @@ function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic, resultText }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "예상 질문을 만들지 못했어요.");
+      if (!res.ok) throw new Error((await res.json()).error ?? t("예상 질문을 만들지 못했어요."));
       setQuestions((await res.json()).questions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "예상 질문을 만들지 못했어요.");
+      setError(err instanceof Error ? err.message : t("예상 질문을 만들지 못했어요."));
     } finally {
       setLoading(false);
     }
@@ -243,7 +254,7 @@ function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText
           className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
         >
           <MessageSquareQuote size={14} strokeWidth={1.7} />
-          발표 후 받을 만한 예상 질문 보기
+          {t("발표 후 받을 만한 예상 질문 보기")}
         </button>
       </div>
     );
@@ -251,10 +262,10 @@ function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText
 
   return (
     <div className="mt-4 rounded-xl border border-border bg-background p-4">
-      <p className="mb-2 text-xs font-semibold text-faint">예상 질문</p>
+      <p className="mb-2 text-xs font-semibold text-faint">{t("예상 질문")}</p>
       {loading && (
         <p role="status" className="text-sm text-muted">
-          예상 질문을 만드는 중이에요...
+          {t("예상 질문을 만드는 중이에요...")}
         </p>
       )}
       {error && (
@@ -296,11 +307,12 @@ export function EssayPanel({
   /** 화면 제목이 이미 따로 있을 때(결과물 상세) 카드 안 제목을 숨긴다. */
   hideHeading?: boolean;
 }) {
+  const t = useT();
   return (
     <section className="rounded-3xl bg-surface p-6 md:p-10">
       {!hideHeading && (
         <div className="mb-5">
-          <p className="text-xs font-semibold text-faint">완성 원고</p>
+          <p className="text-xs font-semibold text-faint">{t("완성 원고")}</p>
           <h3 className="mt-1 text-lg font-bold tracking-tight">{label}</h3>
         </div>
       )}
@@ -346,11 +358,12 @@ export function PlanPanel({
   /** 화면 제목이 이미 따로 있을 때(결과물 상세) 카드 안 제목을 숨긴다. */
   hideHeading?: boolean;
 }) {
+  const t = useT();
   return (
     <section className="rounded-3xl bg-surface p-6 md:p-10">
       {!hideHeading && (
         <div className="mb-5">
-          <p className="text-xs font-semibold text-faint">완성된 글</p>
+          <p className="text-xs font-semibold text-faint">{t("완성된 글")}</p>
           <h3 className="mt-1 text-lg font-bold tracking-tight">{label}</h3>
         </div>
       )}
@@ -363,7 +376,7 @@ export function PlanPanel({
       <SourceList sources={result.sources} />
       {result.productionSteps.length > 0 && (
         <div className="mt-8 border-t border-border pt-5">
-          <h4 className="mb-3 text-sm font-bold">위 글 외에 직접 만들어야 하는 부분</h4>
+          <h4 className="mb-3 text-sm font-bold">{t("위 글 외에 직접 만들어야 하는 부분")}</h4>
           <ol className="space-y-2">
             {[...result.productionSteps]
               .sort((a, b) => a.order - b.order)
@@ -373,7 +386,7 @@ export function PlanPanel({
                     <span className="mr-2 tabular-nums text-faint">{step.order}</span>
                     {step.task}
                   </p>
-                  <span className="shrink-0 text-xs text-muted">약 {step.estimated_minutes}분</span>
+                  <span className="shrink-0 text-xs text-muted">{t("약 {n}분", { n: step.estimated_minutes })}</span>
                 </li>
               ))}
           </ol>

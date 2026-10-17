@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { useLang, useT } from "@/lib/i18n";
 
 /** 학습 도구 공통: 만드는 중 / 실패(다시 시도) / 완성 화면을 한 틀로 보여준다. */
 export default function StudyState({
@@ -18,6 +19,7 @@ export default function StudyState({
   loadingText: string;
   children: ReactNode;
 }) {
+  const t = useT();
   if (loading) {
     return (
       <div role="status" className="flex flex-col items-center gap-3 py-16 text-center">
@@ -33,7 +35,7 @@ export default function StudyState({
         <p className="max-w-sm text-sm leading-relaxed text-muted">{error}</p>
         <Button size="sm" onClick={onRetry}>
           <RefreshCw size={14} strokeWidth={1.8} />
-          다시 시도
+          {t("다시 시도")}
         </Button>
       </div>
     );
@@ -42,16 +44,20 @@ export default function StudyState({
 }
 
 export function CachedNote({ at, onRefresh, busy }: { at: number | null; onRefresh: () => void; busy?: boolean }) {
+  const { lang, t } = useLang();
+  const time = at
+    ? new Date(at).toLocaleString(lang === "en" ? "en-US" : "ko-KR", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : "";
   return (
     <div className="mt-6 flex items-center justify-between gap-3 border-t border-border pt-4 text-xs text-faint">
-      <span>{at ? `${new Date(at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })}에 만든 내용이에요` : "방금 만들었어요"}</span>
+      <span>{at ? t("{time}에 만든 내용이에요", { time }) : t("방금 만들었어요")}</span>
       <button
         onClick={onRefresh}
         disabled={busy}
         className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-foreground disabled:opacity-40"
       >
         <RefreshCw size={12} strokeWidth={1.8} />
-        다시 만들기
+        {t("다시 만들기")}
       </button>
     </div>
   );

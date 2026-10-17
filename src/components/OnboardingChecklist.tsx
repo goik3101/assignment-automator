@@ -1,3 +1,5 @@
+import { useT } from "@/lib/i18n";
+
 const STEPS = ["안내문 업로드 또는 주제 입력", "지침 작성 (선택)", "분석하기"];
 
 /**
@@ -6,11 +8,12 @@ const STEPS = ["안내문 업로드 또는 주제 입력", "지침 작성 (선�
  * 함 — 그 전까지는 장식이 아니라 "다음에 뭘 해야 하는지"를 보여주는 안내 용도.
  */
 export default function OnboardingChecklist({ completed }: { completed: [boolean, boolean, boolean] }) {
+  const t = useT();
   const doneCount = completed.filter(Boolean).length;
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-5">
-      <p className="mb-3 text-xs font-medium text-muted">시작하기 {doneCount}/3</p>
+      <p className="mb-3 text-xs font-medium text-muted">{t("시작하기 {done}/3", { done: doneCount })}</p>
       <ol className="space-y-2.5">
         {STEPS.map((label, i) => {
           const done = completed[i];
@@ -24,7 +27,7 @@ export default function OnboardingChecklist({ completed }: { completed: [boolean
               >
                 {i + 1}
               </span>
-              <span className={done ? "text-foreground" : "text-muted"}>{label}</span>
+              <span className={done ? "text-foreground" : "text-muted"}>{t(label)}</span>
             </li>
           );
         })}

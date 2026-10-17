@@ -6,6 +6,7 @@ import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import StudyState, { CachedNote } from "./StudyState";
 import { useStudyData, type StudyRef } from "./useStudyData";
+import { useT } from "@/lib/i18n";
 
 interface Card {
   front: string;
@@ -23,6 +24,7 @@ function shuffled<T>(list: T[]): T[] {
 }
 
 function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
+  const t = useT();
   const [queue, setQueue] = useState<Card[]>(cards);
   const [i, setI] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -64,7 +66,9 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
           <span className="text-xl font-medium text-faint"> / {queue.length}</span>
         </p>
         <p className="text-sm text-muted">
-          {unsure.length === 0 ? "전부 알고 있어요. 이제 가상 시험으로 확인해 볼까요?" : `헷갈린 카드가 ${unsure.length}장 있어요. 한 번 더 보면 확실히 기억나요.`}
+          {unsure.length === 0
+            ? t("전부 알고 있어요. 이제 가상 시험으로 확인해 볼까요?")
+            : t("헷갈린 카드가 {n}장 있어요. 한 번 더 보면 확실히 기억나요.", { n: unsure.length })}
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           {unsure.length > 0 && (
@@ -79,12 +83,12 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
               }}
             >
               <RotateCcw size={15} strokeWidth={1.8} />
-              헷갈린 카드만 다시 ({unsure.length}장)
+              {t("헷갈린 카드만 다시 ({n}장)", { n: unsure.length })}
             </Button>
           )}
           <Button onClick={onRestart}>
             <Shuffle size={15} strokeWidth={1.8} />
-            처음부터 섞어서 보기
+            {t("처음부터 섞어서 보기")}
           </Button>
         </div>
       </div>
@@ -96,7 +100,7 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
       <div className="mb-4 flex items-center justify-between text-xs text-faint">
         <span className="tabular-nums">
           {i + 1} / {queue.length}
-          {round > 1 && ` · ${round}번째 복습`}
+          {round > 1 && ` ${t("· {n}번째 복습", { n: round })}`}
         </span>
         <div className="h-1 w-32 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuenow={i} aria-valuemin={0} aria-valuemax={queue.length}>
           <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${(i / queue.length) * 100}%` }} />
@@ -105,18 +109,18 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
 
       <button
         onClick={() => setFlipped((v) => !v)}
-        aria-label={flipped ? "카드 앞면 보기" : "카드 뒷면(정답) 보기"}
+        aria-label={flipped ? t("카드 앞면 보기") : t("카드 뒷면(정답) 보기")}
         className={[
           "flex min-h-[280px] w-full flex-col items-center justify-center rounded-3xl p-10 text-center transition-colors",
           flipped ? "bg-foreground text-background" : "bg-surface hover:bg-raised",
         ].join(" ")}
       >
-        <span className={["mb-3 text-xs font-semibold", flipped ? "text-background/60" : "text-faint"].join(" ")}>{flipped ? "정답" : "질문"}</span>
+        <span className={["mb-3 text-xs font-semibold", flipped ? "text-background/60" : "text-faint"].join(" ")}>{flipped ? t("정답") : t("질문")}</span>
         <span className={["font-bold leading-snug tracking-tight", flipped ? "text-xl" : "text-[22px]"].join(" ")}>
           {flipped ? card.back : card.front}
         </span>
-        {!flipped && hint && card.hint && <span className="mt-4 text-sm text-muted">힌트: {card.hint}</span>}
-        {!flipped && <span className="mt-6 text-xs text-faint">눌러서 정답 보기 · Space</span>}
+        {!flipped && hint && card.hint && <span className="mt-4 text-sm text-muted">{t("힌트: {hint}", { hint: card.hint })}</span>}
+        {!flipped && <span className="mt-6 text-xs text-faint">{t("눌러서 정답 보기 · Space")}</span>}
       </button>
 
       <div className="mt-4 flex items-center justify-between gap-3">
@@ -124,22 +128,22 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
           <>
             <Button variant="ghost" size="sm" onClick={() => setHint(true)} disabled={!card.hint || hint}>
               <Lightbulb size={14} strokeWidth={1.8} />
-              힌트
+              {t("힌트")}
             </Button>
             <Button variant="primary" onClick={() => setFlipped(true)}>
-              정답 보기
+              {t("정답 보기")}
             </Button>
           </>
         ) : (
           <>
             <Button onClick={() => next(false)} className="flex-1">
               <X size={15} strokeWidth={1.9} />
-              헷갈려요
+              {t("헷갈려요")}
               <ArrowLeft size={13} strokeWidth={1.8} className="text-faint" aria-hidden />
             </Button>
             <Button variant="primary" onClick={() => next(true)} className="flex-1">
               <Check size={15} strokeWidth={2} />
-              알아요
+              {t("알아요")}
               <ArrowRight size={13} strokeWidth={1.8} className="opacity-60" aria-hidden />
             </Button>
           </>
@@ -150,19 +154,20 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
 }
 
 export default function FlashcardsModal({ studyRef, onClose }: { studyRef: StudyRef; onClose: () => void }) {
+  const t = useT();
   const { data, error, loading, fromCache, refresh } = useStudyData<{ cards: Card[] }>(studyRef, "flashcards", { count: 10 });
   const [seed, setSeed] = useState(0);
   const cards = useMemo(() => (data ? (seed === 0 ? data.cards : shuffled(data.cards)) : []), [data, seed]);
   return (
-    <Modal title="플래시카드" onClose={onClose} width={600} busy={loading}>
-      <StudyState loading={loading} error={error} onRetry={refresh} loadingText="외울 것만 골라 카드로 만들고 있어요...">
+    <Modal title={t("플래시카드")} onClose={onClose} width={600} busy={loading}>
+      <StudyState loading={loading} error={error} onRetry={refresh} loadingText={t("외울 것만 골라 카드로 만들고 있어요...")}>
         {data && data.cards.length > 0 ? (
           <>
             <Deck key={seed} cards={cards} onRestart={() => setSeed((s) => s + 1)} />
             <CachedNote at={fromCache} onRefresh={() => { setSeed(0); void refresh(); }} busy={loading} />
           </>
         ) : (
-          data && <p className="py-10 text-center text-sm text-muted">카드로 만들 만한 내용이 부족해요.</p>
+          data && <p className="py-10 text-center text-sm text-muted">{t("카드로 만들 만한 내용이 부족해요.")}</p>
         )}
       </StudyState>
     </Modal>

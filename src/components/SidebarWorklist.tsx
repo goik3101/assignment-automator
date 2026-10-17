@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookOpen, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/supabase/use-auth";
+import { useT } from "@/lib/i18n";
 
 interface WorkItem {
   key: string;
@@ -17,6 +18,7 @@ interface WorkItem {
 // 사이드바의 "작업 목록": 제목 + 모드 아이콘(학습 모드 = 책, AI 모드 = 반짝임). 학습 과제와 자동
 // 작성 히스토리를 한 목록으로 보여준다(히스토리는 읽기 전용 조회). 목록이 비면 비워둔다.
 export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useT();
   const { user } = useAuth();
   const pathname = usePathname();
   const [items, setItems] = useState<WorkItem[]>([]);
@@ -60,7 +62,7 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
 
   return (
     <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
-      <p className="mb-1.5 px-3 text-xs font-semibold text-faint">작업 목록</p>
+      <p className="mb-1.5 px-3 text-xs font-semibold text-faint">{t("작업 목록")}</p>
       <ul className="min-h-0 space-y-0.5 overflow-y-auto">
         {items.map((it) => {
           const Icon = it.mode === "learning" ? BookOpen : Sparkles;
@@ -76,7 +78,7 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
                   pathname === it.href ? "bg-raised text-foreground" : "text-muted hover:bg-raised hover:text-foreground",
                 ].join(" ")}
               >
-                <Icon size={14} strokeWidth={1.8} className="shrink-0" aria-label={it.mode === "learning" ? "학습 모드" : "AI 모드"} />
+                <Icon size={14} strokeWidth={1.8} className="shrink-0" aria-label={it.mode === "learning" ? t("학습 모드") : t("AI 모드")} />
                 <span className="truncate">{it.title}</span>
               </Link>
             </li>

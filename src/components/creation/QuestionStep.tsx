@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { useT } from "@/lib/i18n";
 import type { PreAnswer, PreQuestion } from "@/lib/questions/questions-pure";
 
 /**
@@ -26,6 +27,7 @@ export default function QuestionStep({
   onAnswer: (a: PreAnswer) => void;
   onSkipAll: () => void;
 }) {
+  const t = useT();
   const [text, setText] = useState("");
   const [otherOpen, setOtherOpen] = useState(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -46,8 +48,8 @@ export default function QuestionStep({
       <div role="status" className="flex flex-col items-center gap-4 py-10 text-center">
         <LoaderCircle size={26} strokeWidth={1.6} className="animate-spin text-muted" />
         <div>
-          <p className="text-base font-bold">꼭 필요한 것만 확인하고 있어요</p>
-          <p className="mt-1 text-sm text-muted">질문이 필요 없으면 바로 만들기를 시작해요.</p>
+          <p className="text-base font-bold">{t("꼭 필요한 것만 확인하고 있어요")}</p>
+          <p className="mt-1 text-sm text-muted">{t("질문이 필요 없으면 바로 만들기를 시작해요.")}</p>
         </div>
       </div>
     );
@@ -61,7 +63,7 @@ export default function QuestionStep({
       <div className="mb-5 flex items-center justify-between text-xs text-faint">
         <span>{modeLabel}</span>
         <span className="tabular-nums">
-          질문 {index} / 최대 {cap}
+          {t("질문 {index} / 최대 {cap}", { index, cap })}
         </span>
       </div>
       <h2 className="text-xl font-bold leading-snug tracking-tight">{question.text}</h2>
@@ -83,7 +85,7 @@ export default function QuestionStep({
       )}
 
       {personal && question.options.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2" aria-label="답변 예시">
+        <div className="mt-4 flex flex-wrap gap-2" aria-label={t("답변 예시")}>
           {question.options.map((o) => (
             <button
               key={o}
@@ -99,7 +101,7 @@ export default function QuestionStep({
       {(personal || otherOpen) && (
         <div className="mt-4">
           <label className="sr-only" htmlFor="q-text">
-            내 답
+            {t("내 답")}
           </label>
           <textarea
             id="q-text"
@@ -108,12 +110,12 @@ export default function QuestionStep({
             onChange={(e) => setText(e.target.value)}
             rows={3}
             maxLength={500}
-            placeholder={personal ? "내 이야기를 한두 문장으로 적어 주세요" : "직접 적어 주세요"}
+            placeholder={personal ? t("내 이야기를 한두 문장으로 적어 주세요") : t("직접 적어 주세요")}
             className="w-full resize-none rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-relaxed placeholder:text-faint focus:border-foreground"
           />
           <div className="mt-2 flex justify-end">
             <Button variant="primary" size="md" disabled={!text.trim()} onClick={() => answer("answered", text.trim())}>
-              다음
+              {t("다음")}
             </Button>
           </div>
         </div>
@@ -122,20 +124,20 @@ export default function QuestionStep({
       <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4 text-[13px]">
         {!personal && question.allowOther && !otherOpen && (
           <button onClick={() => setOtherOpen(true)} className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground">
-            직접 입력하기
+            {t("직접 입력하기")}
           </button>
         )}
         {personal ? (
           <button onClick={() => answer("later")} className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground">
-            나중에 직접 쓸게요
+            {t("나중에 직접 쓸게요")}
           </button>
         ) : (
           <button onClick={() => answer("delegate")} className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground">
-            AI가 알아서 정해 주세요
+            {t("AI가 알아서 정해 주세요")}
           </button>
         )}
         <button onClick={onSkipAll} className="ml-auto font-medium text-faint transition-colors hover:text-foreground">
-          질문 건너뛰고 바로 만들기
+          {t("질문 건너뛰고 바로 만들기")}
         </button>
       </div>
     </div>

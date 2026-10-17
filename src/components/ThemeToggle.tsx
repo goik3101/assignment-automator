@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 
 type Theme = "light" | "dark";
 
@@ -15,6 +16,7 @@ function getSystemTheme(): Theme {
  * hydration 전에 이미 data-theme를 반영해뒀으므로, 여기서는 그 값을 읽어와
  * 버튼 상태만 맞춘다. */
 export default function ThemeToggle() {
+  const t = useT();
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {
@@ -36,13 +38,13 @@ export default function ThemeToggle() {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-sm font-medium">화면 테마</p>
-        <p className="text-xs text-muted">{theme === "dark" ? "다크 모드" : "라이트 모드"}</p>
+        <p className="text-sm font-medium">{t("화면 테마")}</p>
+        <p className="text-xs text-muted">{theme === "dark" ? t("다크 모드") : t("라이트 모드")}</p>
       </div>
       <button
         onClick={toggle}
-        aria-label={theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}
-        title={theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}
+        aria-label={theme === "dark" ? t("라이트 모드로 전환") : t("다크 모드로 전환")}
+        title={theme === "dark" ? t("라이트 모드로 전환") : t("다크 모드로 전환")}
         className="flex items-center gap-2 rounded-full border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-background"
       >
         <span className="shrink-0">
@@ -67,7 +69,7 @@ export default function ThemeToggle() {
             </svg>
           )}
         </span>
-        <span>{theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}</span>
+        <span>{theme === "dark" ? t("라이트 모드로 전환") : t("다크 모드로 전환")}</span>
       </button>
     </div>
   );

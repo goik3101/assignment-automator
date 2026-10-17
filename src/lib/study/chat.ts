@@ -28,8 +28,11 @@ export async function answerChat(params: {
   turns: ChatTurn[];
   image?: { base64: string; mimeType: string } | null;
   context?: StudyContext | null;
+  /** 화면 언어(쿠키). en이면 영어로 답한다. */
+  lang?: "ko" | "en";
 }): Promise<ChatAnswer> {
   const { turns, image, context } = params;
+  const lang = params.lang ?? context?.lang ?? "ko";
   const transcript = turns.map((t) => `${t.role === "user" ? "학생" : "AI"}: ${t.content}`).join("\n\n");
 
   const prompt =
@@ -45,7 +48,7 @@ export async function answerChat(params: {
   const res = await generate({
     label: "study:chat",
     role: "main",
-    system: SYSTEM,
+    system: lang === "en" ? `${SYSTEM}\n- 답은 영어로 쓴다(위의 "한국어로"보다 이 지시가 우선). 학생이 다른 언어를 명시하면 그 언어를 따른다.` : SYSTEM,
     prompt: parts,
     // 모델이 필요하다고 판단할 때만 검색한다(강제 아님) — 호출당 비용이 있어 최대 2회.
     search: { force: false, maxCalls: 2 },

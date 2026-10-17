@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLang } from "@/lib/i18n";
 
 export type StudyRef = { kind: "history" | "learning" | "submission"; id: string };
 
@@ -41,7 +42,9 @@ export function useStudyData<T>(ref: StudyRef, tool: string, body: Record<string
   const [loading, setLoading] = useState(true);
   const [fromCache, setFromCache] = useState<number | null>(null);
   const bodyRef = useRef(body);
-  const cacheKey = `${ref.kind}:${ref.id}:${tool}`;
+  // 화면 언어가 바뀌면 다른 언어로 만든 자료를 다시 쓰지 않도록 언어를 키에 넣는다(서버가 쿠키의 언어로 만든다).
+  const { lang } = useLang();
+  const cacheKey = `${ref.kind}:${ref.id}:${tool}:${lang}`;
 
   const load = useCallback(
     async (force: boolean) => {

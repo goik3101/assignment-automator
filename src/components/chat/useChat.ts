@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useT } from "@/lib/i18n";
 import type { SourceRef } from "@/types/task";
 import type { PreparedImage } from "@/lib/ui/image";
 
@@ -20,6 +21,7 @@ const nextId = () => `m${Date.now().toString(36)}${(counter++).toString(36)}`;
 
 /** 질문을 /api/chat으로 보내고 대화 상태를 들고 있는 훅. */
 export function useChat(initialContext: ChatContextRef = null) {
+  const t = useT();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,17 +54,17 @@ export function useChat(initialContext: ChatContextRef = null) {
           }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error((data as { error?: string }).error ?? "답변을 받지 못했어요.");
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? t("답변을 받지 못했어요."));
         const { reply, sources } = data as { reply: string; sources?: SourceRef[] };
         setMessages((prev) => [...prev, { id: nextId(), role: "assistant", content: reply, sources }]);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "답변을 받지 못했어요. 잠시 후 다시 시도해 주세요.");
+        setError(err instanceof Error ? err.message : t("답변을 받지 못했어요. 잠시 후 다시 시도해 주세요."));
       } finally {
         setBusy(false);
       }
     },
-    [busy, messages, context]
+    [busy, messages, context, t]
   );
 
   const reset = useCallback(() => {

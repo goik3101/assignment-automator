@@ -6,6 +6,7 @@ import { BookOpen, Ellipsis, FileText, ImagePlus, Plus, Search, Settings, Sparkl
 import { openSettings } from "@/lib/settings/open";
 import { useAuth } from "@/lib/supabase/use-auth";
 import HomeChat from "@/components/chat/HomeChat";
+import { useLang, useT } from "@/lib/i18n";
 
 interface HistoryRow {
   id: string;
@@ -50,6 +51,7 @@ export interface NewPrefill {
 
 /** 점선 + 카드. 누르면 바로 아래에 "이미지 업로드 / 텍스트 업로드" 메뉴가 열린다. */
 function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -69,7 +71,7 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-label="새 창작물 만들기"
+        aria-label={t("새 창작물 만들기")}
         aria-expanded={open}
         aria-haspopup="menu"
         className="group/new flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border-strong text-muted transition-colors hover:bg-surface hover:text-foreground"
@@ -77,7 +79,7 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
         <span className="grid h-11 w-11 place-items-center rounded-full border border-current transition-transform group-hover/new:scale-105">
           <Plus size={20} strokeWidth={1.6} />
         </span>
-        <span className="text-[13px] font-semibold">새 창작물</span>
+        <span className="text-[13px] font-semibold">{t("새 창작물")}</span>
       </button>
       {open && (
         <ul role="menu" className="absolute left-0 top-full z-10 mt-2 w-full min-w-[150px] rounded-xl border border-border-strong bg-surface p-1 shadow-xl">
@@ -92,7 +94,7 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
                 className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:bg-raised"
               >
                 <Icon size={15} strokeWidth={1.7} className="text-muted" />
-                {label}
+                {t(label)}
               </button>
             </li>
           ))}
@@ -102,9 +104,13 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
   );
 }
 
-const dateFmt = new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric" });
+const dateFmts = {
+  ko: new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric" }),
+  en: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }),
+};
 
 function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void }) {
+  const { lang, t } = useLang();
   const [menu, setMenu] = useState(false);
   const pct = c.kind === "learning" && c.total ? Math.round((c.done / c.total) * 100) : 0;
   return (
@@ -117,14 +123,14 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
               {c.subject}
             </span>
             {c.kind === "learning" ? (
-              <BookOpen size={14} strokeWidth={1.7} className="shrink-0 text-faint" aria-label="학습 모드" />
+              <BookOpen size={14} strokeWidth={1.7} className="shrink-0 text-faint" aria-label={t("학습 모드")} />
             ) : (
-              <Sparkles size={14} strokeWidth={1.7} className="shrink-0 text-faint" aria-label="AI 모드" />
+              <Sparkles size={14} strokeWidth={1.7} className="shrink-0 text-faint" aria-label={t("AI 모드")} />
             )}
           </div>
           {c.kind === "auto" ? (
             <p className="mt-3 flex-1 overflow-hidden whitespace-pre-line break-words text-[11px] leading-[1.65] text-muted [mask-image:linear-gradient(to_bottom,black_65%,transparent)]">
-              {c.preview || "내용이 없어요."}
+              {c.preview || t("내용이 없어요.")}
             </p>
           ) : (
             <div className="mt-3 flex flex-1 flex-col justify-end">
@@ -132,14 +138,14 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
                 {c.done}
                 <span className="text-base font-medium text-faint"> / {c.total}</span>
               </p>
-              <p className="mt-0.5 text-[11px] text-muted">항목 작성 완료</p>
+              <p className="mt-0.5 text-[11px] text-muted">{t("항목 작성 완료")}</p>
             </div>
           )}
           {c.kind === "learning" ? (
             <div
               className="mt-3 h-1 overflow-hidden rounded-full bg-raised"
               role="progressbar"
-              aria-label="진행률"
+              aria-label={t("진행률")}
               aria-valuenow={pct}
               aria-valuemin={0}
               aria-valuemax={100}
@@ -147,18 +153,18 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
               <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${pct}%` }} />
             </div>
           ) : (
-            <p className="mt-3 text-[11px] text-faint">{c.output === "essay" ? "완성 원고" : "실행 계획"}</p>
+            <p className="mt-3 text-[11px] text-faint">{c.output === "essay" ? t("완성 원고") : t("실행 계획")}</p>
           )}
         </div>
         <div className="mt-2.5 flex items-baseline justify-between gap-2 pr-7">
           <p className="truncate text-[14px] font-semibold">{c.title}</p>
-          <p className="shrink-0 text-[11px] text-faint">{dateFmt.format(new Date(c.at))}</p>
+          <p className="shrink-0 text-[11px] text-faint">{dateFmts[lang].format(new Date(c.at))}</p>
         </div>
       </Link>
       <div className="absolute bottom-0 right-0">
         <button
           onClick={() => setMenu((v) => !v)}
-          aria-label="더보기"
+          aria-label={t("더보기")}
           aria-expanded={menu}
           className="grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-raised hover:text-foreground"
         >
@@ -169,12 +175,12 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
             <button
               onClick={() => {
                 setMenu(false);
-                if (window.confirm("휴지통으로 옮길까요? 휴지통에서 되돌릴 수 있어요.")) onDelete(c);
+                if (window.confirm(t("휴지통으로 옮길까요? 휴지통에서 되돌릴 수 있어요."))) onDelete(c);
               }}
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-danger transition-colors hover:bg-raised"
             >
               <Trash2 size={14} strokeWidth={1.7} />
-              휴지통으로
+              {t("휴지통으로")}
             </button>
           </div>
         )}
@@ -189,6 +195,7 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
  */
 export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
   const { user } = useAuth();
+  const t = useT();
   const [histories, setHistories] = useState<HistoryRow[] | null>(null);
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -247,101 +254,112 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
     try {
       const url = c.kind === "auto" ? `/api/histories/${c.id}` : `/api/learning/sessions/${c.id}`;
       const res = await fetch(url, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "삭제하지 못했어요.");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t("삭제하지 못했어요."));
       if (c.kind === "auto") setHistories((prev) => prev?.filter((r) => r.id !== c.id) ?? null);
       else setSessions((prev) => prev?.filter((r) => r.id !== c.id) ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "삭제하지 못했어요.");
+      setError(err instanceof Error ? err.message : t("삭제하지 못했어요."));
     }
   }
 
+  const displayName = user ? ((user.user_metadata?.full_name as string | undefined) ?? (user.user_metadata?.name as string | undefined) ?? user.email?.split("@")[0] ?? "") : "";
+  const greeting = displayName ? t("{name}님, 무엇을 만들어 볼까요?", { name: displayName }) : t("무엇을 만들어 볼까요?");
   const loaded = !user || (histories !== null && sessions !== null);
   const empty = loaded && cards.length === 0;
 
   return (
     <div className="relative flex min-h-[calc(100vh-49px)] flex-col">
-      <div className="flex-1 px-6 pb-16 pt-8 md:px-10">
-        <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight">수행평가 및 과제</h1>
-          <div className="flex items-center gap-2">
-            {user && cards.length > 0 && (
-              <div role="tablist" aria-label="보기 분류" className="flex gap-0.5 rounded-xl bg-raised p-1">
-                {FILTERS.map((f) => (
-                  <button
-                    key={f.id}
-                    role="tab"
-                    aria-selected={filter === f.id}
-                    onClick={() => setFilter(f.id)}
-                    className={[
-                      "h-8 rounded-lg px-3 text-[13px] font-semibold transition-colors",
-                      filter === f.id ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
-                    ].join(" ")}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {searchOpen && (
-              <>
-                <label className="sr-only" htmlFor="home-search">
-                  결과물 검색
-                </label>
-                <input
-                  id="home-search"
-                  autoFocus
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="제목이나 과목으로 검색"
-                  className="h-9 w-48 rounded-xl border border-border-strong bg-background px-3.5 text-[13px] placeholder:text-faint"
-                />
-              </>
-            )}
-            <button
-              onClick={() => {
-                setSearchOpen((v) => !v);
-                if (searchOpen) setQuery("");
-              }}
-              aria-label="검색"
-              aria-pressed={searchOpen}
-              className="grid h-9 w-9 place-items-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-foreground"
-            >
-              <Search size={18} strokeWidth={1.7} />
-            </button>
-            <button
-              onClick={() => openSettings()}
-              aria-label="설정"
-              className="grid h-9 w-9 place-items-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-foreground"
-            >
-              <Settings size={18} strokeWidth={1.7} />
-            </button>
-          </div>
-        </header>
+      <div className="flex-1 px-5 pb-16 pt-6 md:px-10">
+        {/* 오른쪽 위: 검색·설정만 조용히 둔다(제목 대신 아래 인사말이 첫 화면의 중심) */}
+        <div className="mb-2 flex items-center justify-end gap-1.5 md:mb-0">
+          {searchOpen && (
+            <>
+              <label className="sr-only" htmlFor="home-search">
+                {t("결과물 검색")}
+              </label>
+              <input
+                id="home-search"
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t("제목이나 과목으로 검색")}
+                className="h-9 w-40 rounded-full bg-surface px-4 text-[13px] placeholder:text-faint sm:w-56"
+              />
+            </>
+          )}
+          <button
+            onClick={() => {
+              setSearchOpen((v) => !v);
+              if (searchOpen) setQuery("");
+            }}
+            aria-label={t("검색")}
+            aria-pressed={searchOpen}
+            className="grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-raised hover:text-foreground"
+          >
+            <Search size={18} strokeWidth={1.7} />
+          </button>
+          <button
+            onClick={() => openSettings()}
+            aria-label={t("설정")}
+            className="grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-raised hover:text-foreground"
+          >
+            <Settings size={18} strokeWidth={1.7} />
+          </button>
+        </div>
 
-        {/* 스크린샷 구조: 제목 아래에 업로드 버튼 두 개, 그 아래에 질문 입력창, 그다음에 카드 격자 */}
-        <section aria-label="새 안내문 올리기와 질문" className="mb-12 flex flex-col gap-3">
-          <div className="flex flex-wrap gap-3">
+        {/* 가운데 정렬 첫 화면: 인사말 → 올리기 카드 두 장 → 질문 입력창 (그 아래에 내 결과물 격자) */}
+        <section aria-label={t("새 안내문 올리기와 질문")} className="mx-auto mb-14 flex w-full max-w-[680px] flex-col items-center gap-5 pt-4 md:pt-10">
+          <h1 className="text-center text-[26px] font-bold leading-tight tracking-tight md:text-[32px]">{greeting}</h1>
+          <div className="grid w-full max-w-[420px] grid-cols-2 gap-3">
             <button
               onClick={() => onNew({ kind: "image" })}
-              className="inline-flex h-12 items-center gap-2.5 rounded-full bg-surface px-6 text-[15px] font-semibold transition-colors hover:bg-raised"
+              className="flex flex-col items-start gap-6 rounded-3xl bg-surface p-4 text-left transition-colors hover:bg-raised"
             >
-              <ImagePlus size={18} strokeWidth={1.7} />
-              사진 업로드
+              <ImagePlus size={22} strokeWidth={1.6} />
+              <span>
+                <span className="block text-[15px] font-bold">{t("사진 업로드")}</span>
+                <span className="mt-0.5 block text-xs text-muted">{t("안내문 사진")}</span>
+              </span>
             </button>
             <button
               onClick={() => onNew({ kind: "text" })}
-              className="inline-flex h-12 items-center gap-2.5 rounded-full bg-surface px-6 text-[15px] font-semibold transition-colors hover:bg-raised"
+              className="flex flex-col items-start gap-6 rounded-3xl bg-surface p-4 text-left transition-colors hover:bg-raised"
             >
-              <Type size={18} strokeWidth={1.7} />
-              텍스트로 붙여넣기
+              <Type size={22} strokeWidth={1.6} />
+              <span>
+                <span className="block text-[15px] font-bold">{t("텍스트로 붙여넣기")}</span>
+                <span className="mt-0.5 block text-xs text-muted">{t("복사한 안내문")}</span>
+              </span>
             </button>
           </div>
           <HomeChat />
         </section>
 
+        {user && cards.length > 0 && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold tracking-tight">{t("내 창작물")}</h2>
+            <div role="tablist" aria-label={t("보기 분류")} className="flex gap-0.5 rounded-full bg-surface p-1">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  role="tab"
+                  aria-selected={filter === f.id}
+                  onClick={() => setFilter(f.id)}
+                  className={[
+                    "h-8 rounded-full px-3.5 text-[13px] font-semibold transition-colors",
+                    filter === f.id ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground",
+                  ].join(" ")}
+                >
+                  {t(f.label)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {error && (
           <p role="alert" className="mb-5 rounded-xl border border-danger/50 px-4 py-3 text-sm text-danger">
-            {error}
+            {t(error)}
           </p>
         )}
 
@@ -353,18 +371,18 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         </div>
 
         {user && cards.length > 0 && visible.length === 0 && (
-          <p className="mt-10 text-sm text-muted">조건에 맞는 결과물이 없어요.</p>
+          <p className="mt-10 text-sm text-muted">{t("조건에 맞는 결과물이 없어요.")}</p>
         )}
 
         {(empty || !user) && (
-          <section aria-label="시작하기" className="mt-12 max-w-2xl">
+          <section aria-label={t("시작하기")} className="mt-12 max-w-2xl">
             <h2 className="text-base font-bold">
-              {user ? "아직 만든 결과물이 없어요" : "수행평가 안내문을 올려 보세요"}
+              {user ? t("아직 만든 결과물이 없어요") : t("수행평가 안내문을 올려 보세요")}
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-muted">
               {user
-                ? "사진이나 텍스트로 안내문을 올리면 요구사항을 정리해 주고, AI가 만들거나 직접 쓰는 방식을 고를 수 있어요."
-                : "안내문 사진이나 주제만 있으면 돼요. 로그인하면 만든 결과물이 여기에 모여요."}
+                ? t("사진이나 텍스트로 안내문을 올리면 요구사항을 정리해 주고, AI가 만들거나 직접 쓰는 방식을 고를 수 있어요.")
+                : t("안내문 사진이나 주제만 있으면 돼요. 로그인하면 만든 결과물이 여기에 모여요.")}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {STARTERS.map(({ icon: Icon, label, topic }) => (
@@ -374,7 +392,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
                   className="inline-flex h-10 items-center gap-2 rounded-full bg-surface px-5 text-[13px] font-semibold transition-colors hover:bg-raised"
                 >
                   <Icon size={15} strokeWidth={1.7} className="text-muted" />
-                  {label}
+                  {t(label)}
                 </button>
               ))}
               <button
@@ -382,7 +400,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
                 className="inline-flex h-10 items-center gap-2 rounded-xl px-3 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
               >
                 <ImagePlus size={15} strokeWidth={1.7} />
-                사진으로 시작
+                {t("사진으로 시작")}
               </button>
             </div>
           </section>

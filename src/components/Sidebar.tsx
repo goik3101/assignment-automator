@@ -11,6 +11,7 @@ import { openNewCreation } from "@/lib/ui/new-creation";
 import SidebarWorklist from "./SidebarWorklist";
 import SidebarQuickActions from "./SidebarQuickActions";
 import SettingsModal from "./settings/SettingsModal";
+import { useT } from "@/lib/i18n";
 
 const NAV = [
   { href: "/", label: "내 창작물 관리", icon: LayoutGrid },
@@ -18,6 +19,7 @@ const NAV = [
 ] as const;
 
 export default function Sidebar() {
+  const t = useT();
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -40,12 +42,12 @@ export default function Sidebar() {
     <>
       {/* 모바일: 상단 바 + 메뉴 버튼 */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3 md:hidden">
-        <Link href="/" aria-label="studed 홈">
+        <Link href="/" aria-label={t("studed 홈")}>
           <Logo variant="wordmark" height={20} />
         </Link>
         <button
           onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "메뉴 닫기" : "메뉴 열기"}
+          aria-label={open ? t("메뉴 닫기") : t("메뉴 열기")}
           aria-expanded={open}
           className="grid h-9 w-9 place-items-center rounded-lg border border-border-strong"
         >
@@ -63,13 +65,13 @@ export default function Sidebar() {
       >
         <div className={["hidden h-16 items-center px-4 md:flex", collapsed ? "md:justify-center" : "justify-between"].join(" ")}>
           {!collapsed && (
-            <Link href="/" aria-label="studed 홈" onClick={() => setOpen(false)}>
+            <Link href="/" aria-label={t("studed 홈")} onClick={() => setOpen(false)}>
               <Logo variant="wordmark" height={22} />
             </Link>
           )}
           <button
             onClick={() => setCollapsed((v) => !v)}
-            aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
+            aria-label={collapsed ? t("사이드바 펼치기") : t("사이드바 접기")}
             className="hidden h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground md:grid"
           >
             {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.7} /> : <PanelLeftClose size={18} strokeWidth={1.7} />}
@@ -79,39 +81,39 @@ export default function Sidebar() {
         <div className="px-3 pt-3 md:pt-0">
           <button
             onClick={startNew}
-            title="새 창작물"
+            title={t("새 창작물")}
             className={[
               "flex h-11 w-full items-center gap-2.5 rounded-xl bg-accent px-3.5 text-[14px] font-bold text-accent-foreground transition-opacity hover:opacity-90",
               collapsed ? "md:justify-center md:px-0" : "",
             ].join(" ")}
           >
             <Plus size={18} strokeWidth={2.2} className="shrink-0" />
-            {!collapsed && <span>새 창작물</span>}
+            {!collapsed && <span>{t("새 창작물")}</span>}
           </button>
         </div>
 
-        <nav aria-label="주 메뉴" className="mt-3 space-y-0.5 px-3">
+        <nav aria-label={t("주 메뉴")} className="mt-3 space-y-0.5 px-3">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               onClick={() => setOpen(false)}
-              title={label}
+              title={t(label)}
               className={linkClass(pathname === href || (href !== "/" && pathname.startsWith(href)))}
             >
               <Icon size={18} strokeWidth={1.7} className="shrink-0" />
-              {!collapsed && <span>{label}</span>}
+              {!collapsed && <span>{t(label)}</span>}
             </Link>
           ))}
           {isAdmin && (
             <Link
               href="/admin"
               onClick={() => setOpen(false)}
-              title="관리자 대시보드"
+              title={t("관리자 대시보드")}
               className={linkClass(pathname.startsWith("/admin"))}
             >
               <ShieldCheck size={18} strokeWidth={1.7} className="shrink-0" />
-              {!collapsed && <span>관리자 대시보드</span>}
+              {!collapsed && <span>{t("관리자 대시보드")}</span>}
             </Link>
           )}
         </nav>

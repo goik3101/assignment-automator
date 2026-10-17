@@ -1,13 +1,15 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import Breadcrumb from "@/components/Breadcrumb";
 import { getServerSupabase } from "@/lib/supabase/server-client";
 import { EssayPanel, PlanPanel } from "@/components/ResultPanel";
 import StudyRail from "@/components/study/StudyRail";
 import type { EssayResult, PlanResult } from "@/types/task";
+import { getT } from "@/lib/i18n/server";
 
 export default async function HistoryDetailPage(props: PageProps<"/histories/[id]">) {
   const { id } = await props.params;
+  const { t, lang } = await getT();
   const supabase = await getServerSupabase();
   const {
     data: { user },
@@ -16,7 +18,7 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
   if (!user) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-12">
-        <p className="text-sm text-muted">로그인하면 만든 결과물을 볼 수 있어요.</p>
+        <p className="text-sm text-muted">{t("로그인하면 만든 결과물을 볼 수 있어요.")}</p>
       </div>
     );
   }
@@ -39,21 +41,18 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 md:px-10">
-      <Link href="/" className="mb-5 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground">
-        <ArrowLeft size={15} strokeWidth={1.8} />
-        내 창작물
-      </Link>
+      <Breadcrumb title={title} />
       <header className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         <p className="mt-2 flex items-center gap-2 text-[13px] text-muted">
-          <Sparkles size={13} strokeWidth={1.7} aria-label="AI 모드" />
+          <Sparkles size={13} strokeWidth={1.7} aria-label={t("AI 모드")} />
           {history.subject}
           <span aria-hidden>·</span>
-          {new Date(history.created_at).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })}
+          {new Date(history.created_at).toLocaleDateString(lang === "en" ? "en-US" : "ko-KR", { year: "numeric", month: "long", day: "numeric" })}
         </p>
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,32%)] lg:items-start">
         <div className="min-w-0">
           {result ? (
             result.type === "essay" ? (
@@ -63,14 +62,14 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
             )
           ) : (
             <p role="alert" className="rounded-xl border border-danger/50 px-4 py-3 text-sm text-danger">
-              결과를 불러오지 못했어요. 새로고침해도 안 되면 문의해 주세요.
+              {t("결과를 불러오지 못했어요. 새로고침해도 안 되면 문의해 주세요.")}
             </p>
           )}
         </div>
         <StudyRail
           studyRef={{ kind: "history", id: history.id }}
           title={title}
-          className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto"
+          className="lg:sticky lg:top-6 lg:h-[calc(100vh-10rem)]"
         />
       </div>
     </div>

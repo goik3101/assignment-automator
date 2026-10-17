@@ -17,6 +17,8 @@ import {
 import { learningApi, STATUS_LABEL } from "./api";
 import { ArrowLeft, ArrowRight, Check, TriangleAlert } from "lucide-react";
 import StudyRail from "@/components/study/StudyRail";
+import Breadcrumb from "@/components/Breadcrumb";
+import { useT } from "@/lib/i18n";
 
 type SaveState = "saved" | "saving" | "unsaved" | "error";
 type Pane = "material" | "write";
@@ -48,6 +50,7 @@ function writeLocal(sectionId: string, draft: string, synced: boolean) {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const t = useT();
   const done = status === "completed";
   return (
     <span
@@ -56,12 +59,13 @@ function StatusBadge({ status }: { status: string }) {
         done ? "bg-accent font-bold text-accent-foreground" : "border border-border text-muted",
       ].join(" ")}
     >
-      {STATUS_LABEL[status] ?? status}
+      {t(STATUS_LABEL[status] ?? status)}
     </span>
   );
 }
 
 function IssueList({ title, issues }: { title: string; issues: { excerpt: string; problem: string; hint: string }[] }) {
+  const t = useT();
   if (issues.length === 0) return null;
   return (
     <div>
@@ -71,7 +75,7 @@ function IssueList({ title, issues }: { title: string; issues: { excerpt: string
           <li key={i} className="rounded-xl border border-border bg-background p-3.5 text-sm">
             {it.excerpt && <p className="mb-1 text-xs text-muted">&ldquo;{it.excerpt}&rdquo;</p>}
             <p>{it.problem}</p>
-            {it.hint && <p className="mt-1.5 text-xs text-muted">힌트: {it.hint}</p>}
+            {it.hint && <p className="mt-1.5 text-xs text-muted">{t("힌트:")} {it.hint}</p>}
           </li>
         ))}
       </ul>
@@ -85,8 +89,8 @@ function PlainList({ title, items }: { title: string; items: string[] }) {
     <div>
       <h4 className="mb-1.5 text-xs font-semibold text-muted">{title}</h4>
       <ul className="list-disc space-y-1 pl-5 text-sm">
-        {items.map((t, i) => (
-          <li key={i}>{t}</li>
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
         ))}
       </ul>
     </div>
@@ -94,8 +98,9 @@ function PlainList({ title, items }: { title: string; items: string[] }) {
 }
 
 function FeedbackPanel({ fb }: { fb: LearningFeedback }) {
+  const t = useT();
   return (
-    <section aria-label="AI 피드백" className="space-y-4 rounded-2xl border border-border bg-surface p-5">
+    <section aria-label={t("AI 피드백")} className="space-y-4 rounded-2xl border border-border bg-surface p-5">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium">{fb.summary}</p>
         <span
@@ -104,25 +109,25 @@ function FeedbackPanel({ fb }: { fb: LearningFeedback }) {
             fb.readyToComplete ? "bg-accent font-bold text-accent-foreground" : "border border-border text-muted",
           ].join(" ")}
         >
-          {fb.readyToComplete ? "완료해도 좋아요" : "조금 더 다듬어봐요"}
+          {fb.readyToComplete ? t("완료해도 좋아요") : t("조금 더 다듬어봐요")}
         </span>
       </div>
       {fb.answer && (
         <div className="rounded-xl border border-border-strong bg-raised p-4 text-sm">
-          <p className="mb-1 text-xs font-semibold text-faint">질문에 대한 답</p>
+          <p className="mb-1 text-xs font-semibold text-faint">{t("질문에 대한 답")}</p>
           <p className="whitespace-pre-wrap">{fb.answer}</p>
         </div>
       )}
-      <PlainList title="잘 쓴 부분" items={fb.strengths} />
-      <PlainList title="빠진 내용" items={fb.missing} />
-      <IssueList title="사실관계 확인" issues={fb.factIssues} />
+      <PlainList title={t("잘 쓴 부분")} items={fb.strengths} />
+      <PlainList title={t("빠진 내용")} items={fb.missing} />
+      <IssueList title={t("사실관계 확인")} issues={fb.factIssues} />
       {fb.requirementCoverage.length > 0 && (
         <div>
-          <h4 className="mb-1.5 text-xs font-semibold text-muted">과제 요구사항 충족</h4>
+          <h4 className="mb-1.5 text-xs font-semibold text-muted">{t("과제 요구사항 충족")}</h4>
           <ul className="space-y-1.5 text-sm">
             {fb.requirementCoverage.map((r, i) => (
               <li key={i} className="flex gap-2">
-                <span aria-label={r.met ? "충족" : "미충족"} className={["shrink-0", r.met ? "text-foreground" : "text-danger"].join(" ")}>
+                <span aria-label={r.met ? t("충족") : t("미충족")} className={["shrink-0", r.met ? "text-foreground" : "text-danger"].join(" ")}>
                   {r.met ? <Check size={15} strokeWidth={2.2} /> : <TriangleAlert size={15} strokeWidth={1.9} />}
                 </span>
                 <span>
@@ -134,8 +139,8 @@ function FeedbackPanel({ fb }: { fb: LearningFeedback }) {
           </ul>
         </div>
       )}
-      <IssueList title="문장·문법" issues={fb.languageIssues} />
-      <PlainList title="다음에 할 일" items={fb.nextSteps} />
+      <IssueList title={t("문장·문법")} issues={fb.languageIssues} />
+      <PlainList title={t("다음에 할 일")} items={fb.nextSteps} />
     </section>
   );
 }
@@ -147,6 +152,7 @@ function SubjectPicker({
   sessionId: string;
   onChosen: (name: string, mode: "direct" | "ai" | "none") => void;
 }) {
+  const t = useT();
   const [tab, setTab] = useState<"ai" | "direct">("ai");
   const [candidates, setCandidates] = useState<SubjectCandidate[] | null>(null);
   const [target, setTarget] = useState<{ typeLabel: string; constraints: string[] } | null>(null);
@@ -201,23 +207,23 @@ function SubjectPicker({
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-6">
-      <h2 className="mb-1 text-xl font-bold">다룰 인물/대상 정하기</h2>
+      <h2 className="mb-1 text-xl font-bold">{t("다룰 인물/대상 정하기")}</h2>
       <p className="mb-4 text-sm text-muted">
-        이 과제는 다룰 대상을 직접 정해야 해요. 정한 대상을 기준으로 자료를 조사해 드려요.
+        {t("이 과제는 다룰 대상을 직접 정해야 해요. 정한 대상을 기준으로 자료를 조사해 드려요.")}
       </p>
       <div role="tablist" className="mb-4 inline-flex gap-0.5 rounded-xl bg-raised p-1 text-sm">
-        {(["ai", "direct"] as const).map((t) => (
+        {(["ai", "direct"] as const).map((id) => (
           <button
-            key={t}
+            key={id}
             role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
             className={[
               "rounded-lg px-4 py-1.5 font-semibold transition-colors",
-              tab === t ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
+              tab === id ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
             ].join(" ")}
           >
-            {t === "ai" ? "AI 추천" : "직접 선택하기"}
+            {id === "ai" ? t("AI 추천") : t("직접 선택하기")}
           </button>
         ))}
       </div>
@@ -226,7 +232,8 @@ function SubjectPicker({
         <div className="space-y-3">
           {target && !clarify && (
             <p className="text-xs text-muted">
-              이 과제는 <b>{target.typeLabel}</b>을(를) 고르는 과제예요{target.constraints.length ? ` (조건: ${target.constraints.join(", ")})` : ""}.
+              {t("이 과제는 {type}을(를) 고르는 과제예요", { type: target.typeLabel })}
+              {target.constraints.length ? ` (${t("조건:")} ${target.constraints.join(", ")})` : ""}.
             </p>
           )}
           {!candidates && (
@@ -235,7 +242,7 @@ function SubjectPicker({
               disabled={loading}
               className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
             >
-              {loading ? "후보를 찾고 있어요..." : "후보 3개 추천받기"}
+              {loading ? t("후보를 찾고 있어요...") : t("후보 3개 추천받기")}
             </button>
           )}
           {candidates && (
@@ -263,7 +270,7 @@ function SubjectPicker({
               ))}
               <li>
                 <button onClick={suggest} disabled={loading} className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
-                  {loading ? "다시 찾는 중..." : "다른 후보 보기"}
+                  {loading ? t("다시 찾는 중...") : t("다른 후보 보기")}
                 </button>
               </li>
             </ul>
@@ -278,14 +285,14 @@ function SubjectPicker({
           className="flex gap-2"
         >
           <label className="sr-only" htmlFor="subject-direct">
-            인물/대상 이름
+            {t("인물/대상 이름")}
           </label>
           <input
             id="subject-direct"
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={80}
-            placeholder="예: 앙리 뒤낭"
+            placeholder={t("예: 앙리 뒤낭")}
             className="h-10 min-w-0 flex-1 rounded-xl border border-border-strong bg-background px-4 text-sm placeholder:text-faint focus:border-foreground"
           />
           <button
@@ -293,20 +300,20 @@ function SubjectPicker({
             disabled={!name.trim() || saving}
             className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
-            정하기
+            {t("정하기")}
           </button>
         </form>
       )}
 
       {clarify && (
         <p className="mt-3 rounded-xl border border-border px-4 py-3 text-sm text-muted">
-          {clarify} 대상을 직접 정해서 입력해 주세요.
+          {t(clarify)} {t("대상을 직접 정해서 입력해 주세요.")}
         </p>
       )}
 
       {error && (
         <p role="alert" className="mt-3 text-sm text-danger">
-          {error}
+          {t(error)}
         </p>
       )}
       <button
@@ -314,13 +321,14 @@ function SubjectPicker({
         disabled={saving}
         className="mt-5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
       >
-        정해진 대상이 없는 과제예요 (건너뛰기)
+        {t("정해진 대상이 없는 과제예요 (건너뛰기)")}
       </button>
     </section>
   );
 }
 
 export default function LearningWorkspace({ id }: { id: string }) {
+  const t = useT();
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<SessionPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -411,8 +419,8 @@ export default function LearningWorkspace({ id }: { id: string }) {
   }, [saveState]);
 
   useEffect(() => {
-    const t = timers.current;
-    return () => Object.values(t).forEach(clearTimeout);
+    const pendingTimers = timers.current;
+    return () => Object.values(pendingTimers).forEach(clearTimeout);
   }, []);
 
   const sections = useMemo(() => data?.sections ?? [], [data]);
@@ -517,25 +525,25 @@ export default function LearningWorkspace({ id }: { id: string }) {
     [sections, drafts]
   );
 
-  if (authLoading) return <div className="px-8 py-10 text-sm text-muted">불러오는 중...</div>;
+  if (authLoading) return <div className="px-8 py-10 text-sm text-muted">{t("불러오는 중...")}</div>;
   if (!user) {
     return (
       <div className="mx-auto max-w-md px-6 py-20 text-center text-sm text-muted">
-        학습 모드는 로그인 후에 이용할 수 있어요. 왼쪽 아래에서 로그인해주세요.
+        {t("학습 모드는 로그인 후에 이용할 수 있어요. 왼쪽 아래에서 로그인해주세요.")}
       </div>
     );
   }
   if (loadError) {
     return (
       <div className="mx-auto max-w-md px-6 py-20 text-center">
-        <p className="mb-4 text-sm text-danger">{loadError}</p>
+        <p className="mb-4 text-sm text-danger">{t(loadError)}</p>
         <Link href="/" className="text-sm underline underline-offset-2">
-          내 창작물로
+          {t("내 창작물로")}
         </Link>
       </div>
     );
   }
-  if (!data) return <div className="px-8 py-10 text-sm text-muted">학습 과제를 불러오는 중...</div>;
+  if (!data) return <div className="px-8 py-10 text-sm text-muted">{t("학습 과제를 불러오는 중...")}</div>;
 
   const { session, usage } = data;
   const needSubject = data.needsSubjectSelection && !session.focus_subject && session.subject_mode !== "none";
@@ -548,19 +556,16 @@ export default function LearningWorkspace({ id }: { id: string }) {
     <div className="mx-auto w-full max-w-[1280px] px-4 py-6 md:px-8">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <Link href="/" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground">
-            <ArrowLeft size={15} strokeWidth={1.8} />
-            내 창작물
-          </Link>
-          <h1 className="mt-2 truncate text-2xl font-bold tracking-tight">{session.title}</h1>
+          <Breadcrumb title={session.title} />
+          <h1 className="truncate text-2xl font-bold tracking-tight">{session.title}</h1>
           <p className="mt-0.5 text-xs text-muted">
             {session.subject}
             {session.focus_subject && (
               <>
-                {" · "}다루는 대상: {session.focus_subject}
+                {" · "}{t("다루는 대상:")} {session.focus_subject}
                 {!researchDone && (
                   <button onClick={() => setChangingSubject(true)} className="ml-2 underline underline-offset-2 hover:text-foreground">
-                    변경
+                    {t("변경")}
                   </button>
                 )}
               </>
@@ -568,22 +573,22 @@ export default function LearningWorkspace({ id }: { id: string }) {
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted">
-          <span title="자료 조사와 피드백을 합쳐 하루에 쓸 수 있는 횟수">
-            {usage.unlimited ? "AI 사용 무제한(관리자)" : `오늘 AI ${usage.used}/${usage.limit}회 사용`}
+          <span title={t("자료 조사와 피드백을 합쳐 하루에 쓸 수 있는 횟수")}>
+            {usage.unlimited ? t("AI 사용 무제한(관리자)") : t("오늘 AI {used}/{limit}회 사용", { used: usage.used, limit: usage.limit })}
           </span>
           {assembled && (
             <button onClick={() => setShowAll((v) => !v)} className="inline-flex h-9 items-center rounded-xl border border-border-strong px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-raised">
-              {showAll ? "작성 화면으로" : "내가 쓴 내용 모아보기"}
+              {showAll ? t("작성 화면으로") : t("내가 쓴 내용 모아보기")}
             </button>
           )}
         </div>
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,32%)] lg:items-start">
       <div className="min-w-0">
       {notice && (
         <p role="alert" className="mb-4 rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
-          {notice}
+          {t(notice)}
         </p>
       )}
 
@@ -601,46 +606,46 @@ export default function LearningWorkspace({ id }: { id: string }) {
 
       {!needSubject && !changingSubject && !researchDone && (
         <section className="mb-6 rounded-2xl border border-border bg-surface p-6">
-          <h2 className="mb-1 text-xl font-bold">자료 조사</h2>
+          <h2 className="mb-1 text-xl font-bold">{t("자료 조사")}</h2>
           <p className="mb-1 text-sm text-muted">
-            과제에서 작성할 항목 {sections.length}개에 필요한 자료를 한 번에 조사해서 항목별로 나눠 보여드려요.
-            자료를 읽고 답변은 직접 작성하게 돼요.
+            {t("과제에서 작성할 항목 {n}개에 필요한 자료를 한 번에 조사해서 항목별로 나눠 보여드려요.", { n: sections.length })}{" "}
+            {t("자료를 읽고 답변은 직접 작성하게 돼요.")}
           </p>
-          <p className="mb-4 text-xs text-muted">AI 사용 횟수를 1회 써요. 조사에 실패하면 차감되지 않아요.</p>
+          <p className="mb-4 text-xs text-muted">{t("AI 사용 횟수를 1회 써요. 조사에 실패하면 차감되지 않아요.")}</p>
           <button
             onClick={handleResearch}
             disabled={researching || usageLeft <= 0}
             className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {researching
-              ? "자료를 조사하고 있어요... (최대 1분)"
+              ? t("자료를 조사하고 있어요... (최대 1분)")
               : session.research_status === "failed"
-                ? "다시 조사하기"
-                : "자료 조사 시작"}
+                ? t("다시 조사하기")
+                : t("자료 조사 시작")}
           </button>
-          {usageLeft <= 0 && <p className="mt-2 text-xs text-danger">오늘 사용할 수 있는 횟수를 모두 썼어요.</p>}
-          <p className="mt-3 text-xs text-muted">자료 없이 바로 작성을 시작해도 돼요. 왼쪽 항목을 골라 써 내려가면 자동으로 저장돼요.</p>
+          {usageLeft <= 0 && <p className="mt-2 text-xs text-danger">{t("오늘 사용할 수 있는 횟수를 모두 썼어요.")}</p>}
+          <p className="mt-3 text-xs text-muted">{t("자료 없이 바로 작성을 시작해도 돼요. 왼쪽 항목을 골라 써 내려가면 자동으로 저장돼요.")}</p>
         </section>
       )}
 
       {showAll ? (
         <section className="rounded-2xl border border-border bg-surface p-6">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-bold">내가 쓴 내용</h2>
+            <h2 className="text-xl font-bold">{t("내가 쓴 내용")}</h2>
             <button
               onClick={() => void navigator.clipboard.writeText(assembled).then(() => setNotice("복사했어요."))}
               className="rounded-md border border-border px-3 py-1.5 text-xs hover:text-accent"
             >
-              전체 복사
+              {t("전체 복사")}
             </button>
           </div>
           <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">{assembled}</pre>
         </section>
       ) : (
         <div className="space-y-6">
-          <nav aria-label="작성 항목">
+          <nav aria-label={t("작성 항목")}>
             <p className="mb-2 text-xs text-muted">
-              {doneCount}/{sections.length} 항목 완료
+              {t("{done}/{total} 항목 완료", { done: doneCount, total: sections.length })}
             </p>
             <ul className="flex gap-2 overflow-x-auto pb-2">
               {sections.map((s, i) => (
@@ -667,7 +672,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
             <div className="min-w-0 space-y-5">
               {allDone && (
                 <p className="rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
-                  모든 항목을 완료했어요. 위의 &ldquo;내가 쓴 내용 모아보기&rdquo;에서 한 번에 확인하고 복사할 수 있어요.
+                  {t("모든 항목을 완료했어요. 위의 “내가 쓴 내용 모아보기”에서 한 번에 확인하고 복사할 수 있어요.")}
                 </p>
               )}
 
@@ -679,7 +684,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                   disabled={!draft.trim() || selected.status === "completed"}
                   className="inline-flex h-9 items-center justify-center rounded-xl border border-border-strong px-4 text-sm font-semibold transition-colors hover:bg-raised disabled:opacity-40"
                 >
-                  {selected.status === "completed" ? "완료됨" : "이 항목 완료"}
+                  {selected.status === "completed" ? t("완료됨") : t("이 항목 완료")}
                 </button>
                 <div className="inline-flex gap-0.5 rounded-lg bg-raised p-0.5 text-xs lg:hidden">
                   {(["material", "write"] as Pane[]).map((p) => (
@@ -689,7 +694,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                       aria-pressed={pane === p}
                       className={["rounded-md px-3 py-1 font-semibold", pane === p ? "bg-surface text-foreground shadow-sm" : "text-muted"].join(" ")}
                     >
-                      {p === "material" ? "자료" : "작성"}
+                      {p === "material" ? t("자료") : t("작성")}
                     </button>
                   ))}
                 </div>
@@ -698,10 +703,10 @@ export default function LearningWorkspace({ id }: { id: string }) {
 
               <div className="space-y-5">
                 <section
-                  aria-label="조사 자료"
+                  aria-label={t("조사 자료")}
                   className={[pane === "material" ? "block" : "hidden", "lg:block", "min-w-0 rounded-2xl border border-border bg-surface p-5"].join(" ")}
                 >
-                  <h3 className="mb-3 text-sm font-semibold">자료 읽기</h3>
+                  <h3 className="mb-3 text-sm font-semibold">{t("자료 읽기")}</h3>
                   {selected.research ? (
                     <>
                       <article className="prose prose-sm max-w-none prose-neutral dark:prose-invert">
@@ -709,10 +714,10 @@ export default function LearningWorkspace({ id }: { id: string }) {
                       </article>
                       {selected.research.sources.length > 0 && (
                         <div className="mt-5 border-t border-border pt-4">
-                          <h4 className="mb-1 text-xs font-semibold text-muted">출처</h4>
+                          <h4 className="mb-1 text-xs font-semibold text-muted">{t("출처")}</h4>
                           <p className="mb-2 text-xs text-muted">
-                            &ldquo;연결 확인됨&rdquo;은 주소가 열린다는 뜻일 뿐, 그 페이지가 내용을 뒷받침한다는 뜻은 아니에요.
-                            중요한 사실은 링크를 열어 직접 확인하세요.
+                            {t("“연결 확인됨”은 주소가 열린다는 뜻일 뿐, 그 페이지가 내용을 뒷받침한다는 뜻은 아니에요.")}{" "}
+                            {t("중요한 사실은 링크를 열어 직접 확인하세요.")}
                           </p>
                           <ol className="space-y-1 text-sm">
                             {selected.research.sources.map((src) => (
@@ -722,8 +727,8 @@ export default function LearningWorkspace({ id }: { id: string }) {
                                   {src.title}
                                 </a>
                                 <span className="text-xs text-muted">
-                                  {src.url_valid === false ? "(없는 페이지)" : src.url_valid ? "(연결 확인됨)" : "(자동 확인 불가 — 직접 열어 보세요)"}
-                                  {src.tier ? ` · ${SOURCE_TIER_LABEL[src.tier]}` : ""}
+                                  {src.url_valid === false ? t("(없는 페이지)") : src.url_valid ? t("(연결 확인됨)") : t("(자동 확인 불가 — 직접 열어 보세요)")}
+                                  {src.tier ? ` · ${t(SOURCE_TIER_LABEL[src.tier])}` : ""}
                                 </span>
                               </li>
                             ))}
@@ -732,29 +737,29 @@ export default function LearningWorkspace({ id }: { id: string }) {
                       )}
                     </>
                   ) : researchDone ? (
-                    <p className="text-sm text-muted">이 항목의 자료는 찾지 못했어요. 과제 안내문과 다른 항목의 자료를 참고해서 써보세요.</p>
+                    <p className="text-sm text-muted">{t("이 항목의 자료는 찾지 못했어요. 과제 안내문과 다른 항목의 자료를 참고해서 써보세요.")}</p>
                   ) : (
                     <p className="text-sm text-muted">
-                      아직 자료를 조사하지 않았어요. 위에서 &ldquo;자료 조사 시작&rdquo;을 누르면 이 항목의 자료가 여기 나타나요.
+                      {t("아직 자료를 조사하지 않았어요. 위에서 “자료 조사 시작”을 누르면 이 항목의 자료가 여기 나타나요.")}
                     </p>
                   )}
                 </section>
 
                 <section
-                  aria-label="내 답변"
+                  aria-label={t("내 답변")}
                   className={[pane === "write" ? "block" : "hidden", "lg:block", "min-w-0 space-y-3"].join(" ")}
                 >
                   <div className="flex items-center justify-between">
                     <label htmlFor="learning-draft" className="text-sm font-bold">
-                      내 답변
+                      {t("내 답변")}
                     </label>
                     <span className="text-xs text-muted" aria-live="polite">
-                      {state === "saving" && "저장 중..."}
-                      {state === "saved" && "저장됨"}
-                      {state === "unsaved" && "저장 대기 중..."}
+                      {state === "saving" && t("저장 중...")}
+                      {state === "saved" && t("저장됨")}
+                      {state === "unsaved" && t("저장 대기 중...")}
                       {state === "error" && (
                         <button onClick={() => void saveDraft(selected.id)} className="text-danger underline underline-offset-2">
-                          저장 실패 · 다시 저장
+                          {t("저장 실패 · 다시 저장")}
                         </button>
                       )}
                     </span>
@@ -764,27 +769,27 @@ export default function LearningWorkspace({ id }: { id: string }) {
                     value={draft}
                     onChange={(e) => onDraftChange(selected.id, e.target.value)}
                     rows={14}
-                    placeholder="자료를 읽고 내 말로 직접 써보세요. 쓰는 대로 자동 저장돼요."
+                    placeholder={t("자료를 읽고 내 말로 직접 써보세요. 쓰는 대로 자동 저장돼요.")}
                     className="w-full resize-y rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-[1.8] placeholder:text-faint focus:border-foreground"
                   />
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span>
-                      {draft.length.toLocaleString()} / {MAX_DRAFT_CHARS.toLocaleString()}자
+                      {t("{n} / {max}자", { n: draft.length.toLocaleString(), max: MAX_DRAFT_CHARS.toLocaleString() })}
                     </span>
-                    {selected.status === "completed" && <span>완료한 항목이에요. 고치면 &ldquo;수정 중&rdquo;으로 바뀌어요.</span>}
+                    {selected.status === "completed" && <span>{t("완료한 항목이에요. 고치면 “수정 중”으로 바뀌어요.")}</span>}
                   </div>
 
                   {askOpen && (
                     <div>
                       <label htmlFor="learning-question" className="mb-1 block text-xs text-muted">
-                        표현·문법이 궁금하면 질문을 적어주세요 (피드백과 함께 답해요)
+                        {t("표현·문법이 궁금하면 질문을 적어주세요 (피드백과 함께 답해요)")}
                       </label>
                       <input
                         id="learning-question"
                         value={question}
                         onChange={(e) => setQuestion(e.target.value)}
                         maxLength={300}
-                        placeholder="예: 이 문장에서 ‘which’를 써도 되나요?"
+                        placeholder={t("예: 이 문장에서 ‘which’를 써도 되나요?")}
                         className="h-10 w-full rounded-xl border border-border-strong bg-background px-4 text-sm placeholder:text-faint focus:border-foreground"
                       />
                     </div>
@@ -796,14 +801,14 @@ export default function LearningWorkspace({ id }: { id: string }) {
                       disabled={feedbackBusy || draft.trim().length < 10 || usageLeft <= 0}
                       className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
                     >
-                      {feedbackBusy ? "살펴보는 중..." : "AI 피드백 받기"}
+                      {feedbackBusy ? t("살펴보는 중...") : t("AI 피드백 받기")}
                     </button>
                     <button onClick={() => setAskOpen((v) => !v)} className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
-                      {askOpen ? "질문 닫기" : "표현/문법 질문하기"}
+                      {askOpen ? t("질문 닫기") : t("표현/문법 질문하기")}
                     </button>
                   </div>
-                  {draft.trim().length < 10 && <p className="text-xs text-muted">10자 이상 직접 쓰면 피드백을 받을 수 있어요.</p>}
-                  {usageLeft <= 0 && <p className="text-xs text-danger">오늘 사용할 수 있는 AI 횟수를 모두 썼어요. 작성한 내용은 그대로 저장돼요.</p>}
+                  {draft.trim().length < 10 && <p className="text-xs text-muted">{t("10자 이상 직접 쓰면 피드백을 받을 수 있어요.")}</p>}
+                  {usageLeft <= 0 && <p className="text-xs text-danger">{t("오늘 사용할 수 있는 AI 횟수를 모두 썼어요. 작성한 내용은 그대로 저장돼요.")}</p>}
                 </section>
               </div>
 
@@ -815,14 +820,14 @@ export default function LearningWorkspace({ id }: { id: string }) {
                   disabled={selectedIdx <= 0}
                   className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-foreground disabled:opacity-30"
                 >
-                  <ArrowLeft size={14} strokeWidth={1.8} /> 이전 항목
+                  <ArrowLeft size={14} strokeWidth={1.8} /> {t("이전 항목")}
                 </button>
                 <button
                   onClick={() => selectedIdx < sections.length - 1 && setSelectedId(sections[selectedIdx + 1].id)}
                   disabled={selectedIdx >= sections.length - 1}
                   className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-foreground disabled:opacity-30"
                 >
-                  다음 항목 <ArrowRight size={14} strokeWidth={1.8} />
+                  {t("다음 항목")} <ArrowRight size={14} strokeWidth={1.8} />
                 </button>
               </div>
             </div>
@@ -833,7 +838,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
       <StudyRail
         studyRef={{ kind: "learning", id }}
         title={session.title}
-        className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto"
+        className="lg:sticky lg:top-6 lg:h-[calc(100vh-10rem)]"
       />
       </div>
     </div>

@@ -2,9 +2,11 @@
 
 import { useState, type ReactNode } from "react";
 import type { MemoNote } from "@/types/task";
+import { useT } from "@/lib/i18n";
 
 // F8/9-2: 히스토리 상세 화면의 "결과 보기 / 암기노트" 탭. 로그인 사용자 무료.
 export default function MemoNoteTabs({ historyId, children }: { historyId: string; children: ReactNode }) {
+  const t = useT();
   const [tab, setTab] = useState<"result" | "memo">("result");
   const [memo, setMemo] = useState<MemoNote | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,10 +19,10 @@ export default function MemoNoteTabs({ historyId, children }: { historyId: strin
     setError(null);
     try {
       const res = await fetch(`/api/histories/${historyId}/memo-note`);
-      if (!res.ok) throw new Error((await res.json()).error ?? "암기노트를 불러오지 못했습니다.");
+      if (!res.ok) throw new Error((await res.json()).error ?? t("암기노트를 불러오지 못했습니다."));
       setMemo(await res.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "암기노트를 불러오지 못했습니다.");
+      setError(err instanceof Error ? err.message : t("암기노트를 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
@@ -36,7 +38,7 @@ export default function MemoNoteTabs({ historyId, children }: { historyId: strin
             (tab === "result" ? "border-accent text-accent" : "border-transparent text-muted")
           }
         >
-          결과 보기
+          {t("결과 보기")}
         </button>
         <button
           onClick={openMemoTab}
@@ -45,7 +47,7 @@ export default function MemoNoteTabs({ historyId, children }: { historyId: strin
             (tab === "memo" ? "border-accent text-accent" : "border-transparent text-muted")
           }
         >
-          암기노트
+          {t("암기노트")}
         </button>
       </div>
 
@@ -53,11 +55,11 @@ export default function MemoNoteTabs({ historyId, children }: { historyId: strin
 
       {tab === "memo" && (
         <div className="rounded-2xl border border-border bg-surface p-6">
-          {loading && <p className="text-sm text-muted">암기노트를 만드는 중...</p>}
+          {loading && <p className="text-sm text-muted">{t("암기노트를 만드는 중...")}</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
           {memo && (
             <>
-              <h3 className="mb-2 text-xs font-medium text-muted">키워드</h3>
+              <h3 className="mb-2 text-xs font-medium text-muted">{t("키워드")}</h3>
               <div className="mb-6 flex flex-wrap gap-2">
                 {memo.keywords.map((k) => (
                   <span key={k} className="rounded-full bg-accent/10 px-3 py-1 text-xs text-accent">
@@ -65,7 +67,7 @@ export default function MemoNoteTabs({ historyId, children }: { historyId: strin
                   </span>
                 ))}
               </div>
-              <h3 className="mb-2 text-xs font-medium text-muted">핵심 요약</h3>
+              <h3 className="mb-2 text-xs font-medium text-muted">{t("핵심 요약")}</h3>
               <ul className="list-disc space-y-1.5 pl-5 text-sm">
                 {memo.summary_points.map((p, i) => (
                   <li key={i}>{p}</li>

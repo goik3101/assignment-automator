@@ -6,6 +6,7 @@ import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import StudyState, { CachedNote } from "./StudyState";
 import { useStudyData, type StudyRef } from "./useStudyData";
+import { useT } from "@/lib/i18n";
 
 interface Question {
   type: "choice" | "ox";
@@ -16,6 +17,7 @@ interface Question {
 }
 
 function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: () => void }) {
+  const t = useT();
   const [list, setList] = useState(questions);
   const [i, setI] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
@@ -45,7 +47,11 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
           <span className="text-xl font-medium text-faint"> / {list.length}</span>
         </p>
         <p className="text-sm text-muted">
-          {pct === 100 ? "전부 맞혔어요. 내용을 잘 이해하고 있어요." : pct >= 70 ? "잘 이해하고 있어요. 틀린 문제만 다시 풀어 볼까요?" : "아직 헷갈리는 부분이 있어요. 틀린 문제를 다시 풀어 보세요."}
+          {pct === 100
+            ? t("전부 맞혔어요. 내용을 잘 이해하고 있어요.")
+            : pct >= 70
+              ? t("잘 이해하고 있어요. 틀린 문제만 다시 풀어 볼까요?")
+              : t("아직 헷갈리는 부분이 있어요. 틀린 문제를 다시 풀어 보세요.")}
         </p>
         <div className="flex flex-wrap justify-center gap-2">
           {wrong.length > 0 && (
@@ -60,10 +66,10 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
               }}
             >
               <RotateCcw size={15} strokeWidth={1.8} />
-              틀린 문제만 다시 ({wrong.length}문제)
+              {t("틀린 문제만 다시 ({n}문제)", { n: wrong.length })}
             </Button>
           )}
-          <Button onClick={onRetryAll}>처음부터 다시 풀기</Button>
+          <Button onClick={onRetryAll}>{t("처음부터 다시 풀기")}</Button>
         </div>
       </div>
     );
@@ -76,7 +82,7 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
           <span className="tabular-nums">
             {i + 1} / {list.length}
           </span>
-          <span className="tabular-nums">맞힌 문제 {score}</span>
+          <span className="tabular-nums">{t("맞힌 문제 {n}", { n: score })}</span>
         </div>
         <div className="h-1 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={i + (answered ? 1 : 0)}>
           <div className="h-full rounded-full bg-foreground transition-all duration-300" style={{ width: `${((i + (answered ? 1 : 0)) / list.length) * 100}%` }} />
@@ -108,8 +114,8 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-background/70 text-xs font-semibold tabular-nums text-foreground">{idx + 1}</span>
                 )}
                 <span className="flex-1">{c}</span>
-                {answered && isAnswer && <CircleCheck size={18} strokeWidth={1.8} className="shrink-0" aria-label="정답" />}
-                {answered && isPicked && !isAnswer && <CircleX size={18} strokeWidth={1.8} className="shrink-0" aria-label="오답" />}
+                {answered && isAnswer && <CircleCheck size={18} strokeWidth={1.8} className="shrink-0" aria-label={t("정답")} />}
+                {answered && isPicked && !isAnswer && <CircleX size={18} strokeWidth={1.8} className="shrink-0" aria-label={t("오답")} />}
               </button>
             </li>
           );
@@ -118,13 +124,13 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
 
       {answered && (
         <div role="status" className="mt-5 rounded-2xl bg-surface p-5">
-          <p className="mb-1 text-xs font-semibold text-faint">{picked === q.answerIndex ? "맞았어요" : "아쉬워요"}</p>
+          <p className="mb-1 text-xs font-semibold text-faint">{picked === q.answerIndex ? t("맞았어요") : t("아쉬워요")}</p>
           <p className="text-sm leading-relaxed text-muted">{q.explanation}</p>
         </div>
       )}
       <div className="mt-5 flex justify-end">
         <Button variant="primary" onClick={next} disabled={!answered}>
-          {i + 1 === list.length ? "결과 보기" : "다음 문제"}
+          {i + 1 === list.length ? t("결과 보기") : t("다음 문제")}
         </Button>
       </div>
     </div>
@@ -132,18 +138,19 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
 }
 
 export default function QuizModal({ studyRef, onClose }: { studyRef: StudyRef; onClose: () => void }) {
+  const t = useT();
   const { data, error, loading, fromCache, refresh } = useStudyData<{ questions: Question[] }>(studyRef, "quiz", { count: 6 });
   const [run, setRun] = useState(0);
   return (
-    <Modal title="퀴즈" onClose={onClose} width={620} busy={loading}>
-      <StudyState loading={loading} error={error} onRetry={refresh} loadingText="내용을 읽고 문제를 만들고 있어요...">
+    <Modal title={t("퀴즈")} onClose={onClose} width={620} busy={loading}>
+      <StudyState loading={loading} error={error} onRetry={refresh} loadingText={t("내용을 읽고 문제를 만들고 있어요...")}>
         {data && data.questions.length > 0 ? (
           <>
             <Runner key={run} questions={data.questions} onRetryAll={() => setRun((r) => r + 1)} />
             <CachedNote at={fromCache} onRefresh={() => { setRun((r) => r + 1); void refresh(); }} busy={loading} />
           </>
         ) : (
-          data && <p className="py-10 text-center text-sm text-muted">문제로 만들 만한 내용이 부족해요.</p>
+          data && <p className="py-10 text-center text-sm text-muted">{t("문제로 만들 만한 내용이 부족해요.")}</p>
         )}
       </StudyState>
     </Modal>

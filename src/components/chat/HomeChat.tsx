@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, Check, ChevronDown, FilePlus2, Sparkles, SquarePen } from "lucide-react";
 import { useAuth } from "@/lib/supabase/use-auth";
+import { useT } from "@/lib/i18n";
 import ChatView from "./ChatView";
 import { useChat, type ChatContextRef } from "./useChat";
 
@@ -19,6 +20,7 @@ interface PickItem {
  */
 export default function HomeChat() {
   const { user } = useAuth();
+  const t = useT();
   const chat = useChat(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [items, setItems] = useState<PickItem[] | null>(null);
@@ -77,14 +79,14 @@ export default function HomeChat() {
         onClick={() => setPickerOpen((v) => !v)}
         aria-expanded={pickerOpen}
         aria-haspopup="listbox"
-        className="inline-flex h-8 max-w-[260px] items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-2.5 text-[12.5px] font-semibold transition-colors hover:border-foreground"
+        className="inline-flex h-8 max-w-[260px] items-center gap-1.5 rounded-full bg-surface px-3 text-[12.5px] font-semibold transition-colors hover:bg-raised"
       >
         {target ? (
           target.ref.kind === "learning" ? <BookOpen size={13} strokeWidth={1.8} className="shrink-0" /> : <Sparkles size={13} strokeWidth={1.8} className="shrink-0" />
         ) : (
           <FilePlus2 size={13} strokeWidth={1.8} className="shrink-0" />
         )}
-        <span className="truncate">{target ? target.title : "새 안내문으로 질문"}</span>
+        <span className="truncate">{target ? target.title : t("새 안내문으로 질문")}</span>
         <ChevronDown size={13} strokeWidth={1.8} className="shrink-0 text-muted" />
       </button>
       {hasMessages && (
@@ -95,14 +97,14 @@ export default function HomeChat() {
           className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground"
         >
           <SquarePen size={13} strokeWidth={1.8} />
-          새 대화
+          {t("새 대화")}
         </button>
       )}
       {pickerOpen && (
         <ul
           role="listbox"
-          aria-label="질문할 과제"
-          className="absolute bottom-10 left-0 z-30 max-h-64 w-72 overflow-y-auto rounded-xl border border-border-strong bg-surface p-1 shadow-xl"
+          aria-label={t("질문할 과제")}
+          className="absolute bottom-10 left-0 z-30 max-h-64 w-72 max-w-[calc(100vw-2.5rem)] overflow-y-auto rounded-2xl bg-background p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.18)]"
         >
           <li>
             <button
@@ -112,12 +114,12 @@ export default function HomeChat() {
               className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-raised"
             >
               <FilePlus2 size={14} strokeWidth={1.7} className="shrink-0 text-muted" />
-              <span className="flex-1 truncate">새 안내문으로 질문</span>
+              <span className="flex-1 truncate">{t("새 안내문으로 질문")}</span>
               {!target && <Check size={14} strokeWidth={2} />}
             </button>
           </li>
-          {items === null && <li className="px-2.5 py-2 text-xs text-muted">불러오는 중...</li>}
-          {items?.length === 0 && <li className="px-2.5 py-2 text-xs text-muted">아직 만든 과제가 없어요.</li>}
+          {items === null && <li className="px-2.5 py-2 text-xs text-muted">{t("불러오는 중...")}</li>}
+          {items?.length === 0 && <li className="px-2.5 py-2 text-xs text-muted">{t("아직 만든 과제가 없어요.")}</li>}
           {items?.map((it) => (
             <li key={it.key}>
               <button
@@ -145,15 +147,15 @@ export default function HomeChat() {
   );
 
   return (
-    <section aria-label="AI에게 질문하기" className="w-full max-w-2xl">
+    <section aria-label={t("AI에게 질문하기")} className="w-full">
       <ChatView
         chat={chat}
         composerFirst
         allowImage={!target}
-        placeholder={target ? `“${target.title}”에 대해 무엇이든 물어보세요` : "무엇이든 물어보기"}
+        placeholder={target ? t("“{title}”에 대해 무엇이든 물어보세요", { title: target.title }) : t("무엇이든 물어보기")}
         header={picker}
-        messagesClassName="max-h-[52vh] rounded-2xl border border-border bg-surface p-4"
-        disabledReason={user ? null : "로그인하면 질문할 수 있어요"}
+        messagesClassName="max-h-[52vh] rounded-3xl bg-surface p-5"
+        disabledReason={user ? null : t("로그인하면 질문할 수 있어요")}
       />
     </section>
   );

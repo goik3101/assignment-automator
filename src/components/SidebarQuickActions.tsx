@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { MessageSquareText, Moon, Settings, Sun, Trash2 } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
+import { useT } from "@/lib/i18n";
+import LanguageToggle from "./LanguageToggle";
 
 const STORAGE_KEY = "studed-theme";
 
@@ -16,6 +18,8 @@ export default function SidebarQuickActions({
   collapsed?: boolean;
   onNavigate?: () => void;
 }) {
+  const t = useT();
+
   function toggleTheme() {
     const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
@@ -34,9 +38,9 @@ export default function SidebarQuickActions({
 
   return (
     <div className="mb-2 space-y-0.5">
-      <Link href="/trash" onClick={onNavigate} className={item} title="휴지통">
+      <Link href="/trash" onClick={onNavigate} className={item} title={t("휴지통")}>
         <Trash2 {...iconProps} className="shrink-0" />
-        {!collapsed && "휴지통"}
+        {!collapsed && t("휴지통")}
       </Link>
       <button
         onClick={() => {
@@ -44,18 +48,23 @@ export default function SidebarQuickActions({
           openSettings("general");
         }}
         className={item}
-        title="피드백/문의"
+        title={t("피드백/문의")}
       >
         <MessageSquareText {...iconProps} className="shrink-0" />
-        {!collapsed && "피드백/문의"}
+        {!collapsed && t("피드백/문의")}
       </button>
-      <button onClick={toggleTheme} className={item} title="테마 변경">
+      <button onClick={toggleTheme} className={item} title={t("테마 변경")}>
         <Sun {...iconProps} className="hidden shrink-0 dark:block" />
         <Moon {...iconProps} className="shrink-0 dark:hidden" />
-        {!collapsed && "테마 변경"}
+        {!collapsed && t("테마 변경")}
       </button>
+      {!collapsed && (
+        <div className="px-1 pt-1.5 [&>div]:w-full [&_button]:flex-1">
+          <LanguageToggle variant="compact" />
+        </div>
+      )}
       {collapsed && (
-        <button onClick={() => openSettings("general")} className={item} title="설정">
+        <button onClick={() => openSettings("general")} className={item} title={t("설정")}>
           <Settings {...iconProps} className="shrink-0" />
         </button>
       )}

@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/supabase/use-auth";
 import { useAdminStatus } from "@/lib/admin/use-admin-status";
 import type { SettingsTab } from "@/lib/settings/open";
 import ThemeToggle from "@/components/ThemeToggle";
+import LanguageToggle from "@/components/LanguageToggle";
+import { useT } from "@/lib/i18n";
 import { Check, ShieldCheck, SlidersHorizontal, Sparkles, UserRound, type LucideIcon } from "lucide-react";
 import { AI_MODE_INFO, getAiMode, setAiMode } from "@/lib/ui/ai-pref";
 import type { AiMode } from "@/lib/questions/questions-pure";
@@ -26,6 +28,7 @@ const fieldCls = "w-full rounded-xl border border-border-strong bg-surface px-3.
 
 // 설정 모달과 /settings 페이지가 함께 쓰는 본문(탭 4개). 값 저장·탈퇴·로그아웃은 기존 API를 그대로 쓴다.
 export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab: (t: SettingsTab) => void }) {
+  const t = useT();
   const { user, loading } = useAuth();
   const { isAdmin, setIsAdmin } = useAdminStatus();
   const router = useRouter();
@@ -97,18 +100,18 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
   return (
     <div className="flex h-full min-h-0 flex-col md:flex-row">
       <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-3 md:w-48 md:flex-col md:overflow-visible md:border-b-0 md:border-r">
-        {TABS.map((t) => (
+        {TABS.map((tb) => (
           <button
-            key={t.id}
-            onClick={() => onTab(t.id)}
-            aria-current={tab === t.id ? "page" : undefined}
+            key={tb.id}
+            onClick={() => onTab(tb.id)}
+            aria-current={tab === tb.id ? "page" : undefined}
             className={[
               "flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
-              tab === t.id ? "bg-raised text-foreground" : "text-muted hover:bg-raised hover:text-foreground",
+              tab === tb.id ? "bg-raised text-foreground" : "text-muted hover:bg-raised hover:text-foreground",
             ].join(" ")}
           >
-            <t.icon size={16} strokeWidth={1.7} className="shrink-0" />
-            {t.label}
+            <tb.icon size={16} strokeWidth={1.7} className="shrink-0" />
+            {t(tb.label)}
           </button>
         ))}
       </nav>
@@ -119,13 +122,16 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
             <section className={sectionCls}>
               <ThemeToggle />
             </section>
+            <section className={sectionCls}>
+              <LanguageToggle />
+            </section>
             <section id="feedback" className={sectionCls}>
-              <h2 className="text-sm font-bold">문의·피드백</h2>
+              <h2 className="text-sm font-bold">{t("문의·피드백")}</h2>
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={3}
-                placeholder="불편한 점이나 제안해주실 내용을 적어주세요"
+                placeholder={t("불편한 점이나 제안해주실 내용을 적어주세요")}
                 className={`${fieldCls} py-2.5`}
               />
               <button
@@ -133,11 +139,11 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
                 disabled={!feedback.trim()}
                 className="inline-flex h-9 items-center rounded-xl border border-border-strong px-4 text-sm font-semibold transition-colors hover:bg-raised disabled:opacity-40"
               >
-                제출
+                {t("제출")}
               </button>
-              {feedbackSent && <p className="text-xs text-muted">전달했어요. 감사합니다!</p>}
+              {feedbackSent && <p className="text-xs text-muted">{t("전달했어요. 감사합니다!")}</p>}
             </section>
-            <p className="text-xs text-muted">이용약관 · 개인정보처리방침 (준비 중)</p>
+            <p className="text-xs text-muted">{t("이용약관 · 개인정보처리방침 (준비 중)")}</p>
           </>
         )}
 
@@ -145,35 +151,35 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
           <>
             {loading ? null : !user ? (
               <section className={sectionCls}>
-                <h2 className="text-sm font-bold">로그인 전</h2>
-                <p className="text-sm text-muted">왼쪽 아래에서 이메일로 로그인할 수 있어요.</p>
+                <h2 className="text-sm font-bold">{t("로그인 전")}</h2>
+                <p className="text-sm text-muted">{t("왼쪽 아래에서 이메일로 로그인할 수 있어요.")}</p>
               </section>
             ) : (
               <section className={sectionCls}>
-                <h2 className="text-sm font-bold">계정 정보</h2>
-                <p className="text-sm text-muted">{isAdmin ? "관리자 (예약 계정)" : user.email}</p>
+                <h2 className="text-sm font-bold">{t("계정 정보")}</h2>
+                <p className="text-sm text-muted">{isAdmin ? t("관리자 (예약 계정)") : user.email}</p>
                 <button onClick={handleLogout} className="inline-flex h-9 items-center rounded-xl border border-border-strong px-4 text-sm font-semibold transition-colors hover:bg-raised">
-                  로그아웃
+                  {t("로그아웃")}
                 </button>
               </section>
             )}
             {!isAdmin && (
               <p className="text-right">
                 <Link href="/admin/login" className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
-                  코드로 로그인하기
+                  {t("코드로 로그인하기")}
                 </Link>
               </p>
             )}
             {user && !isAdmin && (
               <section className="space-y-3 rounded-2xl border border-danger/50 p-5">
-                <h2 className="text-sm font-bold text-danger">계정 탈퇴</h2>
-                <p className="text-xs text-muted">탈퇴하면 히스토리를 포함한 모든 개인 데이터가 삭제되며 되돌릴 수 없습니다.</p>
+                <h2 className="text-sm font-bold text-danger">{t("계정 탈퇴")}</h2>
+                <p className="text-xs text-muted">{t("탈퇴하면 히스토리를 포함한 모든 개인 데이터가 삭제되며 되돌릴 수 없습니다.")}</p>
                 {!confirmingDelete ? (
                   <button
                     onClick={() => setConfirmingDelete(true)}
                     className="inline-flex h-9 items-center rounded-xl border border-danger/60 px-4 text-sm font-semibold text-danger transition-colors hover:bg-danger/10"
                   >
-                    계정 탈퇴
+                    {t("계정 탈퇴")}
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -182,10 +188,10 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
                       disabled={deleting}
                       className="inline-flex h-9 items-center rounded-xl bg-danger px-4 text-sm font-semibold text-white disabled:opacity-40"
                     >
-                      {deleting ? "삭제 중..." : "정말 삭제할게요"}
+                      {deleting ? t("삭제 중...") : t("정말 삭제할게요")}
                     </button>
                     <button onClick={() => setConfirmingDelete(false)} className="inline-flex h-9 items-center rounded-xl border border-border-strong px-4 text-sm font-semibold transition-colors hover:bg-raised">
-                      취소
+                      {t("취소")}
                     </button>
                   </div>
                 )}
@@ -196,41 +202,41 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
 
         {tab === "personal" &&
           (!user ? (
-            <p className="text-sm text-muted">개인화 정보 설정은 로그인 후 이용할 수 있어요.</p>
+            <p className="text-sm text-muted">{t("개인화 정보 설정은 로그인 후 이용할 수 있어요.")}</p>
           ) : (
             <section className={sectionCls}>
-              <h2 className="text-sm font-bold">개인화 정보 (선택)</h2>
-              <p className="text-xs text-muted">결과물에 자연스럽게 녹아들어요. 학교명은 받지 않습니다.</p>
+              <h2 className="text-sm font-bold">{t("개인화 정보 (선택)")}</h2>
+              <p className="text-xs text-muted">{t("결과물에 자연스럽게 녹아들어요. 학교명은 받지 않습니다.")}</p>
               <div>
-                <label className="mb-1 block text-xs text-muted">관심사·경험</label>
+                <label className="mb-1 block text-xs text-muted">{t("관심사·경험")}</label>
                 <textarea
                   value={interests}
                   onChange={(e) => setInterests(e.target.value)}
                   rows={3}
-                  placeholder="예: 축구를 좋아함, 반려동물을 키움"
+                  placeholder={t("예: 축구를 좋아함, 반려동물을 키움")}
                   className={`${fieldCls} py-2.5`}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted">교과서 출판사</label>
+                <label className="mb-1 block text-xs text-muted">{t("교과서 출판사")}</label>
                 <input
                   value={textbookPublisher}
                   onChange={(e) => setTextbookPublisher(e.target.value)}
-                  placeholder="예: 미래엔, 천재교육"
+                  placeholder={t("예: 미래엔, 천재교육")}
                   className={`${fieldCls} h-10`}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted">학교 유형</label>
+                <label className="mb-1 block text-xs text-muted">{t("학교 유형")}</label>
                 <select
                   value={schoolType}
                   onChange={(e) => setSchoolType(e.target.value)}
                   className={`${fieldCls} h-10`}
                 >
-                  <option value="">선택 안 함</option>
-                  {SCHOOL_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                  <option value="">{t("선택 안 함")}</option>
+                  {SCHOOL_TYPES.map((s) => (
+                    <option key={s} value={s}>
+                      {t(s)}
                     </option>
                   ))}
                 </select>
@@ -240,7 +246,7 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
                 disabled={saveState === "saving"}
                 className="inline-flex h-9 items-center rounded-xl bg-accent px-4 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
               >
-                {saveState === "saving" ? "저장 중..." : saveState === "saved" ? "저장됨" : "저장"}
+                {saveState === "saving" ? t("저장 중...") : saveState === "saved" ? t("저장됨") : t("저장")}
               </button>
             </section>
           ))}
@@ -253,6 +259,7 @@ export default function SettingsPanel({ tab, onTab }: { tab: SettingsTab; onTab:
 
 // "만드는 방식" — 제작 전에 학생에게 묻는 질문의 양을 정한다. 브라우저에 저장되어 로그인 없이도 쓸 수 있다.
 function AiTab() {
+  const t = useT();
   const [mode, setMode] = useState<AiMode>("fast");
   useEffect(() => {
     // 저장된 값은 클라이언트에서만 읽을 수 있어 마운트 후에 반영한다.
@@ -263,9 +270,9 @@ function AiTab() {
     <>
       <section className={sectionCls} aria-labelledby="ai-mode-title">
         <h2 id="ai-mode-title" className="text-sm font-bold">
-          만드는 방식
+          {t("만드는 방식")}
         </h2>
-        <p className="text-xs leading-relaxed text-muted">AI가 결과물을 만들기 전에 몇 가지를 물어볼 수 있어요. 질문은 결과물에 실제로 영향을 주는 것만 하고, 필요 없으면 묻지 않아요.</p>
+        <p className="text-xs leading-relaxed text-muted">{t("AI가 결과물을 만들기 전에 몇 가지를 물어볼 수 있어요. 질문은 결과물에 실제로 영향을 주는 것만 하고, 필요 없으면 묻지 않아요.")}</p>
         <div role="radiogroup" aria-labelledby="ai-mode-title" className="grid gap-2.5 sm:grid-cols-2">
           {(Object.keys(AI_MODE_INFO) as AiMode[]).map((m) => (
             <button
@@ -282,22 +289,22 @@ function AiTab() {
               ].join(" ")}
             >
               <span className="flex w-full items-center justify-between text-sm font-bold">
-                {AI_MODE_INFO[m].label}
+                {t(AI_MODE_INFO[m].label)}
                 {mode === m && <Check size={16} strokeWidth={2.2} aria-hidden />}
               </span>
-              <span className="text-[13px] leading-relaxed text-muted">{AI_MODE_INFO[m].summary}</span>
+              <span className="text-[13px] leading-relaxed text-muted">{t(AI_MODE_INFO[m].summary)}</span>
             </button>
           ))}
         </div>
-        {mode === "fast" && <p className="text-xs text-faint">기본값이에요.</p>}
+        {mode === "fast" && <p className="text-xs text-faint">{t("기본값이에요.")}</p>}
       </section>
       <section className={sectionCls}>
-        <h2 className="text-sm font-bold">AI 사용 안내</h2>
+        <h2 className="text-sm font-bold">{t("AI 사용 안내")}</h2>
         <ul className="space-y-1.5 text-sm text-muted">
-          <li>· 완성 원고·실행 계획 만들기: 로그인 시 하루 2회</li>
-          <li>· 결과 수정 요청(다시 만들기): 하루 1회</li>
-          <li>· 학습 모드(자료 조사 + 피드백): 하루 5회</li>
-          <li>· 요약·플래시카드·퀴즈·가상 시험·AI 채팅: 종류별로 하루 횟수 제한이 있어요</li>
+          <li>{t("· 완성 원고·실행 계획 만들기: 로그인 시 하루 2회")}</li>
+          <li>{t("· 결과 수정 요청(다시 만들기): 하루 1회")}</li>
+          <li>{t("· 학습 모드(자료 조사 + 피드백): 하루 5회")}</li>
+          <li>{t("· 요약·플래시카드·퀴즈·가상 시험·AI 채팅: 종류별로 하루 횟수 제한이 있어요")}</li>
         </ul>
       </section>
     </>

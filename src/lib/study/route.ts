@@ -12,6 +12,7 @@ import {
 } from "./usage";
 import { loadStudyContext, type StudyContext } from "./context";
 import { parseContextRef } from "./context-pure";
+import { LANG_COOKIE, parseLang, type Lang } from "@/lib/i18n/core";
 
 export interface StudyRequestCtx {
   req: NextRequest;
@@ -22,6 +23,8 @@ export interface StudyRequestCtx {
   key: string | null;
   /** parseContextRef + loadStudyContext로 불러온 과제 내용(요청에 context가 있었다면). */
   context: StudyContext | null;
+  /** 화면 언어(쿠키) — 학습 자료·채팅 답변의 언어. */
+  lang: Lang;
 }
 
 const json = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -61,6 +64,7 @@ export async function runStudyRoute(
       return json("로그인 후 이용할 수 있어요.", 401);
     }
     const key = actorKey(identity);
+    const lang = parseLang(req.cookies.get(LANG_COOKIE)?.value);
 
     let context: StudyContext | null = null;
     if (opts.requireContext || body.context) {
@@ -69,6 +73,7 @@ export async function runStudyRoute(
       if (!identity.userId) return json("로그인 후 이용할 수 있어요.", 401);
       context = await loadStudyContext(supabase, ref);
       if (!context) return json("대상 과제를 찾을 수 없거나 아직 내용이 없어요.", 404);
+      context.lang = lang;
     }
 
     try {
@@ -78,7 +83,7 @@ export async function runStudyRoute(
       throw err;
     }
 
-    const result = await handler({ req, body, supabase, identity, isAdmin, key, context });
+    const result = await handler({ req, body, supabase, identity, isAdmin, key, context, lang });
     await recordStudyUsage(isAdmin ? null : key, opts.kind);
 
     const response = NextResponse.json(result);

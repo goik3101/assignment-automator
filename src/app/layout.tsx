@@ -2,15 +2,18 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import Footer from "@/components/Footer";
+import { LangProvider } from "@/lib/i18n";
+import { getLang } from "@/lib/i18n/server";
 
 export const metadata: Metadata = {
   title: "studed",
   description: "겹치지 않는, 출처 있는 수행평가 도우미",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const lang = await getLang();
   return (
-    <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
+    <html lang={lang} className="h-full antialiased" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
         {/* 한글 UI 서체: Pretendard Variable(필요한 글자만 내려받는 dynamic subset). */}
@@ -31,11 +34,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className="min-h-full bg-background text-foreground md:flex">
-        <Sidebar />
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <main className="flex-1">{children}</main>
-          <Footer />
-        </div>
+        <LangProvider initial={lang}>
+          <Sidebar />
+          <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </div>
+        </LangProvider>
       </body>
     </html>
   );

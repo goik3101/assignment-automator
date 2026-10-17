@@ -16,6 +16,8 @@ export interface StudyContext {
   text: string;
   /** 어떤 종류의 자료인지(프롬프트 문구용). */
   sourceLabel: string;
+  /** 화면 언어(쿠키). en이면 학습 자료·답변도 영어로 만든다. */
+  lang?: "ko" | "en";
 }
 
 export async function loadStudyContext(supabase: SupabaseClient, ref: StudyContextRef): Promise<StudyContext | null> {

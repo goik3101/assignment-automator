@@ -4,18 +4,20 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ImagePlus, LoaderCircle, SendHorizontal, X } from "lucide-react";
+import { useT } from "@/lib/i18n";
 import { prepareImage, type PreparedImage } from "@/lib/ui/image";
 import type { ChatMessage, useChat } from "./useChat";
 
 type Chat = ReturnType<typeof useChat>;
 
 function Message({ m }: { m: ChatMessage }) {
+  const t = useT();
   if (m.role === "user") {
     return (
       <div className="flex flex-col items-end gap-1.5">
         {m.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={m.imageUrl} alt="첨부한 안내문" className="max-h-40 rounded-lg border border-border object-contain" />
+          <img src={m.imageUrl} alt={t("첨부한 안내문")} className="max-h-40 rounded-lg border border-border object-contain" />
         )}
         <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-raised px-4 py-2.5 text-[14px] leading-relaxed">
           {m.content}
@@ -54,6 +56,7 @@ export default function ChatView({
   empty,
   disabledReason,
   composerFirst = false,
+  className = "",
 }: {
   chat: Chat;
   placeholder: string;
@@ -66,7 +69,9 @@ export default function ChatView({
   disabledReason?: string | null;
   /** true면 입력창이 위, 대화가 그 아래에 펼쳐진다(홈 화면). 기본은 대화 위·입력창 아래(채팅 레일). */
   composerFirst?: boolean;
+  className?: string;
 }) {
+  const t = useT();
   const [text, setText] = useState("");
   const [image, setImage] = useState<PreparedImage | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -107,7 +112,7 @@ export default function ChatView({
         return prepared;
       });
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : "이미지를 불러오지 못했어요.");
+      setImageError(err instanceof Error ? t(err.message) : t("이미지를 불러오지 못했어요."));
     }
   }
 
@@ -122,7 +127,7 @@ export default function ChatView({
           {chat.busy && (
             <p role="status" className="flex items-center gap-2 text-[13px] text-muted">
               <LoaderCircle size={14} strokeWidth={1.8} className="animate-spin" />
-              답을 쓰는 중이에요
+              {t("답을 쓰는 중이에요")}
             </p>
           )}
           {chat.error && (
@@ -139,16 +144,16 @@ export default function ChatView({
             <div className="flex items-center gap-2 px-3 pt-3">
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image.previewUrl} alt="첨부할 안내문 미리보기" className="h-14 w-14 rounded-lg border border-border object-cover" />
+                <img src={image.previewUrl} alt={t("첨부할 안내문 미리보기")} className="h-14 w-14 rounded-lg border border-border object-cover" />
                 <button
                   onClick={() => setImage(null)}
-                  aria-label="첨부 사진 지우기"
+                  aria-label={t("첨부 사진 지우기")}
                   className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-surface text-muted hover:text-foreground"
                 >
                   <X size={11} strokeWidth={2} />
                 </button>
               </div>
-              <p className="text-xs text-muted">이 사진을 안내문으로 보고 답해요</p>
+              <p className="text-xs text-muted">{t("이 사진을 안내문으로 보고 답해요")}</p>
             </div>
           )}
           <div className="flex items-end gap-1.5 p-2">
@@ -156,8 +161,8 @@ export default function ChatView({
               <>
                 <button
                   onClick={() => fileRef.current?.click()}
-                  aria-label="안내문 사진 첨부"
-                  title="안내문 사진 첨부"
+                  aria-label={t("안내문 사진 첨부")}
+                  title={t("안내문 사진 첨부")}
                   className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-foreground"
                 >
                   <ImagePlus size={19} strokeWidth={1.7} />
@@ -167,7 +172,7 @@ export default function ChatView({
                   type="file"
                   accept="image/*"
                   className="sr-only"
-                  aria-label="안내문 사진 선택"
+                  aria-label={t("안내문 사진 선택")}
                   onChange={(e) => {
                     void onPick(e.target.files?.[0] ?? null);
                     e.target.value = "";
@@ -176,7 +181,7 @@ export default function ChatView({
               </>
             )}
             <label className="min-w-0 flex-1">
-              <span className="sr-only">질문 입력</span>
+              <span className="sr-only">{t("질문 입력")}</span>
               <textarea
                 ref={areaRef}
                 value={text}
@@ -200,7 +205,7 @@ export default function ChatView({
             <button
               onClick={() => void submit()}
               disabled={!text.trim() || chat.busy || !!disabledReason}
-              aria-label="보내기"
+              aria-label={t("보내기")}
               className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
             >
               <SendHorizontal size={18} strokeWidth={1.9} />
@@ -216,7 +221,7 @@ export default function ChatView({
   );
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <div className={`flex min-h-0 flex-col ${className}`}>
       {composerFirst ? (
         <>
           {composerBlock}

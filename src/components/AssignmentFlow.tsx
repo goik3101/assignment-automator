@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CircleAlert, LoaderCircle } from "lucide-react";
+import { CircleAlert, LoaderCircle } from "lucide-react";
+import Breadcrumb from "./Breadcrumb";
 import type {
   AdministrativeInfo,
   CoreTaskInfo,
@@ -13,6 +14,7 @@ import type {
 import { EssayPanel, PlanPanel } from "./ResultPanel";
 import StudyRail from "./study/StudyRail";
 import { useAuth } from "@/lib/supabase/use-auth";
+import { useT } from "@/lib/i18n";
 import HomeDashboard, { type NewPrefill } from "./home/HomeDashboard";
 import NewCreationModal, { type AiStartPayload } from "./creation/NewCreationModal";
 import { consumeOpenNewFlag, onOpenNewCreation } from "@/lib/ui/new-creation";
@@ -43,6 +45,7 @@ interface GenerationContext {
 
 export default function AssignmentFlow() {
   const { user } = useAuth();
+  const t = useT();
   const [step, setStep] = useState<Step>("home");
   // 새 창작물 모달(사진/텍스트 입력 → 분석 → AI/직접 작성 선택). 열 때 미리 채울 값도 함께 받는다.
   const [newOpen, setNewOpen] = useState<NewPrefill | null>(null);
@@ -77,7 +80,7 @@ export default function AssignmentFlow() {
       next[idx] = {
         element,
         status: "error",
-        message: err instanceof Error ? err.message : "생성 중 문제가 생겼어요.",
+        message: err instanceof Error ? err.message : t("생성 중 문제가 생겼어요."),
       };
       return next;
     });
@@ -117,7 +120,7 @@ export default function AssignmentFlow() {
               referenceFactsText,
             }),
           });
-          if (!res.ok) throw new Error((await res.json()).error ?? "생성에 실패했어요.");
+          if (!res.ok) throw new Error((await res.json()).error ?? t("생성에 실패했어요."));
           const result: EssayResult | PlanResult | InsufficientDataResult = await res.json();
           if (result.type === "insufficient_data") setItemInsufficient(idx, element, result.reason);
           else setItemDone(idx, element, result);
@@ -150,7 +153,7 @@ export default function AssignmentFlow() {
           turnstileToken: c.turnstileToken,
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "생성에 실패했어요.");
+      if (!res.ok) throw new Error((await res.json()).error ?? t("생성에 실패했어요."));
       const result: EssayResult | PlanResult | InsufficientDataResult = await res.json();
 
       if (result.type === "insufficient_data") {
@@ -183,7 +186,7 @@ export default function AssignmentFlow() {
         const [first, ...rest] = textStages;
         setItemDone(first.idx, first.element, result);
         for (const { element, idx } of rest) {
-          setItemError(idx, element, new Error("이 단계는 따로 표시되지 않았어요. 위 결과를 확인해 주세요."));
+          setItemError(idx, element, new Error(t("이 단계는 따로 표시되지 않았어요. 위 결과를 확인해 주세요.")));
         }
       }
       return { confirmedSubject: result.confirmedSubject, markdown: result.markdown };
@@ -226,18 +229,18 @@ export default function AssignmentFlow() {
     const item = items[idx];
     if (item.status !== "done") return;
     const submissionId = item.result.submissionId;
-    if (!submissionId) throw new Error("로그인 후 이용할 수 있어요.");
+    if (!submissionId) throw new Error(t("로그인 후 이용할 수 있어요."));
 
     const res = await fetch(`/api/tasks/${submissionId}/regenerate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ revisionInstructions }),
     });
-    if (!res.ok) throw new Error((await res.json()).error ?? "다시 만들지 못했어요.");
+    if (!res.ok) throw new Error((await res.json()).error ?? t("다시 만들지 못했어요."));
 
     const result: EssayResult | PlanResult | InsufficientDataResult = await res.json();
     if (result.type === "insufficient_data") {
-      throw new Error(result.reason || "자료가 부족해 다시 만들기 어려웠어요.");
+      throw new Error(result.reason || t("자료가 부족해 다시 만들기 어려웠어요."));
     }
 
     // 완성 원고는 요소 여러 개가 한 번에 재생성되므로(같은 submissionId를 공유), 이 결과를 클릭한 패널 하나가
@@ -299,28 +302,22 @@ export default function AssignmentFlow() {
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 md:px-10 md:py-10">
       <header className="mb-8">
-        <button
-          onClick={() => setStep("home")}
-          className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
-        >
-          <ArrowLeft size={15} strokeWidth={1.8} />
-          홈으로
-        </button>
-        <h1 className="text-2xl font-bold tracking-tight">{info?.topic ?? "새 창작물"}</h1>
-        {ctx && <p className="mt-1.5 text-sm text-muted">{ctx.subject} · AI가 만든 결과물</p>}
+        <Breadcrumb title={info?.topic ?? t("새 창작물")} onHome={() => setStep("home")} />
+        <h1 className="text-2xl font-bold tracking-tight">{info?.topic ?? t("새 창작물")}</h1>
+        {ctx && <p className="mt-1.5 text-sm text-muted">{t("{subject} · AI가 만든 결과물", { subject: ctx.subject })}</p>}
         {loadingCount > 0 && (
           <p role="status" className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-muted">
             <LoaderCircle size={14} strokeWidth={1.8} className="animate-spin" />
-            자료를 조사하고 글을 쓰는 중이에요. 최대 2~3분 걸릴 수 있어요.
+            {t("자료를 조사하고 글을 쓰는 중이에요. 최대 2~3분 걸릴 수 있어요.")}
           </p>
         )}
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,32%)] lg:items-start">
       <div className="min-w-0 space-y-6">
         {essaySummaryLines.length > 0 && (
           <div className="rounded-2xl border border-border bg-surface p-5">
-            <p className="mb-2.5 text-xs font-semibold text-faint">전체 요약</p>
+            <p className="mb-2.5 text-xs font-semibold text-faint">{t("전체 요약")}</p>
             <ul className="space-y-1.5 text-sm leading-relaxed">
               {essaySummaryLines.map((line, i) => (
                 <li key={i} className="flex gap-2.5">
@@ -339,7 +336,7 @@ export default function AssignmentFlow() {
                 className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-6 text-sm text-muted"
               >
                 <LoaderCircle size={16} strokeWidth={1.8} className="animate-spin" />
-                {item.element.label} 만드는 중...
+                {t("{label} 만드는 중...", { label: item.element.label })}
               </div>
             );
           }
@@ -358,7 +355,7 @@ export default function AssignmentFlow() {
               <div key={idx} className="flex gap-3 rounded-2xl border border-border-strong p-5 text-sm text-muted">
                 <CircleAlert size={18} strokeWidth={1.7} className="mt-0.5 shrink-0" />
                 <p>
-                  <b className="text-foreground">{item.element.label}</b>: 자료가 부족해 정확하게 만들기 어려웠어요. ({item.reason})
+                  <b className="text-foreground">{item.element.label}</b>: {t("자료가 부족해 정확하게 만들기 어려웠어요. ({reason})", { reason: item.reason })}
                 </p>
               </div>
             );
@@ -387,15 +384,15 @@ export default function AssignmentFlow() {
       </div>
         <StudyRail
           studyRef={submissionId ? { kind: "submission", id: submissionId } : null}
-          title={info?.topic ?? "이 과제"}
+          title={info?.topic ?? t("이 과제")}
           lockedReason={
             loadingCount > 0
-              ? "결과물이 완성되면 쓸 수 있어요."
+              ? t("결과물이 완성되면 쓸 수 있어요.")
               : user
-                ? "저장된 결과물이 있어야 쓸 수 있어요."
-                : "로그인하면 결과물이 저장되고, 요약·퀴즈·시험·채팅을 쓸 수 있어요."
+                ? t("저장된 결과물이 있어야 쓸 수 있어요.")
+                : t("로그인하면 결과물이 저장되고, 요약·퀴즈·시험·채팅을 쓸 수 있어요.")
           }
-          className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto"
+          className="lg:sticky lg:top-6 lg:h-[calc(100vh-10rem)]"
         />
       </div>
 
