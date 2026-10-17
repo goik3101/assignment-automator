@@ -30,7 +30,7 @@ import {
 } from "@/lib/verification/excerpt-verification";
 import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
 import { bigramSimilarity, canonicalize, compactName, sameEntity } from "@/lib/selection/canonical";
-import { rewriteUnquoted, findQuoteResidue } from "@/lib/gemini/quote-cleanup";
+import { rewriteUnquoted, findQuoteResidue, stripQuotesWhere } from "@/lib/gemini/quote-cleanup";
 import { postprocessStyle, STYLE_POSTPROCESS_FLAGS } from "@/lib/gemini/style-postprocess";
 import { selectFromCandidates, type HistoryEntry } from "@/lib/selection/score";
 import { selectSubjectForTask, type SelectedSubject } from "@/lib/selection/subject-selection";
@@ -1912,38 +1912,28 @@ export function stripWeaklySourcedQuotes(
 
   const newSections = sections.map((s) => {
     const original = s.content;
-    let out = "";
-    let cursor = 0;
-    for (const m of original.matchAll(QUOTE_PATTERN)) {
-      const offset = m.index ?? 0;
-      if (offset < cursor) continue; // 앞선 재구성이 이미 소비한 구간
-      const quoteText = m[1] ?? m[2] ?? m[3] ?? m[4] ?? "";
-      const afterEnd = offset + m[0].length;
-      const trailingWindow = original.slice(afterEnd, afterEnd + 60);
-      const citedNs = Array.from(trailingWindow.matchAll(/\[(\d+)\]/g), (mm) => Number(mm[1]));
-      const hasTrustworthyCitation = citedNs.some((n) => {
-        const src = sourceById.get(n);
-        return src && !isWeakQuoteSource(src.url);
-      });
-      const isMarketingCopy = looksLikeMarketingCopy(quoteText);
-      if (hasTrustworthyCitation && !isMarketingCopy) continue;
-
-      // 따옴표만 벗기면 "…던졌다.라며"처럼 문장부호·조사가 남는다 — 인용문과 뒤따르는 인용 조사를 함께 재구성한다.
-      const rw = rewriteUnquoted(quoteText, original.slice(afterEnd));
-      const candidate = rw.text + original.slice(afterEnd + rw.consumed, afterEnd + rw.consumed + 40);
-      if (rw.uncertain || findQuoteResidue(candidate).length > 0) {
-        console.warn(`[generateEssay] 최종 안전장치: 인용구를 문법적으로 안전하게 바꿀 수 없어 따옴표 유지 label="${s.label}" quote="${quoteText.slice(0, 40)}"`);
-        continue;
-      }
-      strippedCount++;
-      console.warn(
-        `[generateEssay] 최종 안전장치: ${isMarketingCopy ? "저자 소개/마케팅 카피" : "약한/무 출처"} 인용구의 따옴표를 강제로 제거함 label="${s.label}" quote="${quoteText.slice(0, 40)}"`
-      );
-      out += original.slice(cursor, offset) + rw.text;
-      cursor = afterEnd + rw.consumed;
-    }
-    out += original.slice(cursor);
-    return out === original ? s : { ...s, content: out };
+    // 따옴표만 벗기면 "…던졌다.라며"처럼 문장부호·조사가 남는다 — 정리는 quote-cleanup.ts의 stripQuotesWhere가 맡는다.
+    const result = stripQuotesWhere(
+      original,
+      QUOTE_PATTERN,
+      (quoteText, afterEnd) => {
+        const trailingWindow = original.slice(afterEnd, afterEnd + 60);
+        const citedNs = Array.from(trailingWindow.matchAll(/\[(\d+)\]/g), (mm) => Number(mm[1]));
+        const hasTrustworthyCitation = citedNs.some((n) => {
+          const src = sourceById.get(n);
+          return src && !isWeakQuoteSource(src.url);
+        });
+        return !(hasTrustworthyCitation && !looksLikeMarketingCopy(quoteText));
+      },
+      (quoteText) =>
+        console.warn(`[generateEssay] 최종 안전장치: 인용구를 문법적으로 안전하게 바꿀 수 없어 따옴표 유지 label="${s.label}" quote="${quoteText.slice(0, 40)}"`),
+      (quoteText) =>
+        console.warn(
+          `[generateEssay] 최종 안전장치: ${looksLikeMarketingCopy(quoteText) ? "저자 소개/마케팅 카피" : "약한/무 출처"} 인용구의 따옴표를 강제로 제거함 label="${s.label}" quote="${quoteText.slice(0, 40)}"`
+        )
+    );
+    strippedCount += result.strippedCount;
+    return result.content === original ? s : { ...s, content: result.content };
   });
 
   return { sections: newSections, strippedCount };
