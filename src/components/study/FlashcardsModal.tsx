@@ -107,11 +107,11 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
         onClick={() => setFlipped((v) => !v)}
         aria-label={flipped ? "카드 앞면 보기" : "카드 뒷면(정답) 보기"}
         className={[
-          "flex min-h-[240px] w-full flex-col items-center justify-center rounded-2xl border p-8 text-center transition-colors",
-          flipped ? "border-foreground bg-raised" : "border-border-strong bg-background hover:border-foreground",
+          "flex min-h-[280px] w-full flex-col items-center justify-center rounded-3xl p-10 text-center transition-colors",
+          flipped ? "bg-foreground text-background" : "bg-surface hover:bg-raised",
         ].join(" ")}
       >
-        <span className="mb-3 text-xs font-semibold text-faint">{flipped ? "정답" : "질문"}</span>
+        <span className={["mb-3 text-xs font-semibold", flipped ? "text-background/60" : "text-faint"].join(" ")}>{flipped ? "정답" : "질문"}</span>
         <span className={["font-bold leading-snug tracking-tight", flipped ? "text-xl" : "text-[22px]"].join(" ")}>
           {flipped ? card.back : card.front}
         </span>

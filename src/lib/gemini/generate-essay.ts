@@ -16,6 +16,7 @@ import {
   RESEARCH_MATERIAL_RULES,
   NO_REFERENCE_LIST_RULE,
   NO_STEP_REPETITION_RULE,
+  sourceEconomyRule,
 } from "./prompts";
 import { findMissingItems, parseResearchItems } from "@/lib/research/research-items";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
@@ -23,6 +24,7 @@ import { validateSources, getCachedPageText } from "@/lib/links/validate-sources
 import {
   buildNewspaperBlock,
   inferDeliverableForm,
+  isProseForm,
   splitProductionNotes,
   stripMetaNoteLines,
   stripModelReferenceBlock,
@@ -31,6 +33,10 @@ import {
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
+import { lengthGuideLines } from "@/lib/essay/length-plan";
+import { buildFormRulesBlock } from "@/lib/essay/form-rules";
+import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
+import { needsExcerpt } from "@/lib/essay/excerpt-need";
 import {
   verifyExcerpt,
   verifyAuthorAttribution,
@@ -338,6 +344,99 @@ function detectLanguageMismatches(
   return mismatched;
 }
 
+// 검색·책·인용구 규칙은 과제가 실제로 필요로 할 때만 프롬프트에 넣는다(모든 과제에 책 인용구 규칙 약 80줄이 들어가 검색을 늘리고 시간을 잡아먹었다).
+const SEARCH_CALL_RULE_BOOK = `【검색 도구를 실제로 호출할 것 — 매우 중요】 책 제목·저자·줄거리·인용구·역사적
+사실·통계처럼 검색으로 검증 가능한 구체적 사실이 필요한 단계가 하나라도 있다면,
+그 사실을 쓰기 전에 반드시 실시간 웹 검색 도구를 실제로 최소 한 번 이상 호출해서
+확인할 것. 이미 잘 알려진 유명한 책이나 상식이라고 생각되더라도 예외 없이
+검색으로 재확인한 뒤 쓸 것 — "이미 아는 내용이니 검색은 생략해도 된다"고
+판단하지 말 것. 검색 없이 책 제목/저자/인용구를 써서는 절대 안 된다. 후보가
+여러 개 검색되면, 아래 【책 존재/서지정보 확인】 기준으로 신뢰도가 높은(서지정보를
+텍스트로 명확히 갖춘) 페이지를 우선 각주로 채택하고, 위키형·커뮤니티형·동영상
+플랫폼은 다른 후보가 없을 때만 보조적으로 쓸 것.`;
+
+const SEARCH_CALL_RULE_GENERIC = `【검색 도구를 실제로 호출할 것 — 매우 중요】 역사적 사실·인물 정보·통계·연도처럼 검색으로
+검증 가능한 구체적 사실이 필요한 단계가 하나라도 있다면, 그 사실을 쓰기 전에 반드시 실시간 웹 검색 도구를
+실제로 호출해서 확인할 것. 이미 아는 내용이라도 검색으로 재확인한 뒤 쓸 것. 검색 없이 연도·수치·고유명을
+써서는 안 된다. 신뢰도가 높은 페이지(공식 기관·원문·신뢰 매체)를 우선 각주로 채택하고, 위키형·커뮤니티형·
+동영상 플랫폼은 다른 후보가 없을 때만 보조적으로 쓸 것.`;
+
+function excerptSearchRule(): string {
+  return `【인상 깊은 구절은 검색어를 한 번만 던지고 포기하지 말 것 — 매우 중요】 책 제목·
+저자만 검색해서는 원문이 노출된 페이지가 잘 안 잡힌다. "책 제목 + 저자" 검색
+하나로 안 나오면 거기서 멈추지 말고, 아래처럼 서로 다른 각도의 검색어를
+순서대로 여러 번 시도할 것 — 앞선 검색어에서 이미 원문이 확인되면 뒤 검색어는
+생략해도 된다:
+${BOOK_EXCERPT_QUERY_TEMPLATES.map((q, i) => `  ${i + 1}. ${q({ name: "<책 제목>", attribution: "<저자>" })}`).join("\n")}
+이렇게 검색어를 바꿔가며 여러 번 시도했는데도 원문이 노출된 페이지를 끝내 못
+찾으면, 그때만 아래 【인용구 확인】 규칙대로 패러프레이즈로 전환할 것 — 검색을
+한 번만 해보고 바로 포기하지 말 것.`;
+}
+
+const BIBLIO_RULE = `【책 존재/서지정보 확인 — 특정 사이트 이름이 아니라 "내용 형태"로 판단할 것 —
+매우 중요】 책 제목·저자 같은 사실을 인용할 때, 교보문고·알라딘·예스24처럼
+이름을 정해둔 특정 사이트만 검색하지 말 것 — 그렇게 하면 절판/독립출판/
+도서관 전용 자료/외국 원서 번역서처럼 그런 사이트에 없는 책은 계속 검증에
+실패하게 되고, 결과적으로 그 사이트들에 잘 걸리는 유명 베스트셀러 위주로만
+추천이 쏠리게 된다. 대신 검색은 넓게 하되(서점, 출판사 공식 페이지, 국립중앙
+도서관 등 도서관 정보, 신뢰 가능한 서평 등 어디든 상관없이), 검색으로 찾은
+페이지가 아래 조건을 만족하는지 "내용"으로 판단할 것:
+  - 그 페이지 안에 "책 제목 + 저자 + 출판사 + 출간연도(또는 ISBN)"가 함께
+    명시되어 있으면 서지정보가 확인된 것으로 본다 — 어느 사이트인지는
+    상관없다.
+  - 여러 사람이 자유롭게 고쳐 쓸 수 있는 위키형 구조(나무위키류)나, 익명
+    질문·답변/커뮤니티 게시판형 구조(레딧류)의 페이지는 신뢰도가 낮다고
+    판단할 것 — 이건 사이트 "이름"이 아니라 "편집 가능한 위키 구조인지",
+    "익명 게시판 구조인지"로 판단하는 것이다.
+  - 동영상 플랫폼(유튜브 등) 페이지도 마찬가지로 신뢰도가 낮다고 판단할 것 —
+    자막이나 설명란에 서지정보가 텍스트로 적혀 있어도, 영상 본편 내용과 실제로
+    일치하는지는 원문 대조가 불가능하기 때문이다. 위키형·커뮤니티형·동영상
+    플랫폼은 서지정보 확인의 "보조 자료"로만 쓰고, 절대 그 하나만으로 단독
+    출처를 채택하지 말 것 — 반드시 서지정보를 텍스트로 갖춘 다른 페이지(서점,
+    출판사, 도서관, 서평 등 형태 무관)를 추가로 검색해서 그 페이지를 실제
+    각주로 쓸 것.
+  - 서로 다른 독립된 두 개 이상의 페이지에서 같은 서지정보(제목+저자+출판사)가
+    일치하게 확인되면 신뢰도가 더 높다고 볼 것.`;
+
+const EXCERPT_VERIFY_RULE = `【인용구(원문 구절) 확인은 책 존재 확인과 별개로 반드시 따로 할 것 — 매우
+중요】 위에서 책 존재/서지정보가 확인됐다고 해서 인용구까지 검증된 것으로
+착각하지 말 것. 인용하려는 문장(또는 그와 매우 유사한 표현)이 검색된 "텍스트"
+페이지 안에 실제로 노출되어 있는지 별도로 확인할 것 — 동영상 페이지의
+자막/설명란은 이 확인 용도로 쓰지 말 것(원문 대조 불가능).
+  - 원문 노출로 인정하는 페이지 유형(예시일 뿐 아래와 형태만 같으면 어느
+    사이트든 상관없다): 전자책 미리보기(리디북스, 전자책 샘플 등), 서점의
+    "책속으로"/샘플 보기, 구글도서 미리보기, 발행처의 발췌 페이지 — 즉 원문
+    편집 권한이 있는 주체(서점·전자책 플랫폼·발행처)가 올린 페이지.
+  - 원문 노출로 인정하지 않는 페이지 유형: 줄거리·소개·요약만 있고 원문
+    자체는 안 보이는 페이지("이 책은 ~에 대한 이야기다" 같은 요약 문장은
+    원문이 아니다), 동영상 페이지, 위키형/커뮤니티 게시판형 페이지의 재인용,
+    개인 블로그의 리뷰/독후감 페이지(티스토리, 네이버 블로그, 브런치 등 —
+    원문을 그대로 옮긴 것처럼 보여도 원문 편집 권한이 없는 개인이 옮긴
+    것이라 정확한 일치를 보장할 수 없다).
+  - 【서점 상세페이지 안에서도 섹션을 구분할 것 — 매우 중요】 서점 상세페이지는
+    보통 "책 소개"(출판사가 책을 홍보하려고 쓴 카피)와 "책속으로"/"미리보기"
+    (실제 책 본문)가 다른 섹션으로 나뉜다. 반드시 후자에서만 인용할 것 —
+    "책 소개" 카피는 페이지에 실제로 있는 텍스트라도 책 "본문"이 아니다.
+    "저자는", "이 책은", "작가는"처럼 3인칭으로 저자·책을 소개하는 문장으로
+    시작하거나 "강연", "호응을 얻었다", "베스트셀러", "화제를 모았다" 같은
+    광고성 수사가 들어간 문장은 절대 "인상 깊은 구절"로 인용하지 말 것 —
+    그건 마케팅 카피이지 책 속 문장(대사·서술·조언 등)이 아니다.
+  - 그 구절이 실제로 노출된 걸 확인했으면 따옴표로 직접 인용하고 [n] 각주를
+    붙일 것.
+  - 확인하지 못했으면 절대 따옴표로 직접 인용하지 말 것. 하지만 그렇다고
+    "인상 깊은 구절" 같은 항목 자체를 빼버리지도 말 것 — 대신 "이 책에서는
+    대략 이런 취지의 이야기를 한다"처럼 패러프레이즈(간접 인용, 따옴표 없이)로
+    반드시 그 자리를 채워 쓸 것. 별도의 "직접 인용 아님" 안내 문구는 화면에
+    덧붙이지 말 것 — 따옴표를 썼는지 안 썼는지 자체로 구분되게만 하면 된다.
+    직접 인용(따옴표)은 원문이 실제로 확인된 경우로만 제한하되, 항목 자체는
+    검증 여부와 무관하게 항상 채워져 있어야 한다.`;
+
+const SEPARATE_SEARCH_RULE_BOOK_EXCERPT = `책 제목, 저자, 인상 깊은 구절은 서로 다른 사실이니 검색도 한 번의 포괄적인
+질의로 뭉뚱그리지 말고 각각 따로 검색해서, 전체 글이 출처 하나에만 계속
+의존하지 않게 할 것.`;
+
+const SEPARATE_SEARCH_RULE_BOOK = `책 제목과 저자는 서로 다른 사실이니 검색도 한 번의 포괄적인 질의로 뭉뚱그리지 말고 각각 확인해서, 전체 글이 출처 하나에만 계속 의존하지 않게 할 것.`;
+
 function buildPrompt(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): string {
   const continuityBlock = input.previousOutputText
     ? `
@@ -372,7 +471,6 @@ ${input.previousOutputText}
       "\n"
     : "";
   // 안내문에 분량이 없으면 모델이 길게 쓰는 경향(gpt-5-mini 실측 4,300자)이 있어 시간·비용이 커지므로 기본 분량을 준다.
-  const hasAnyTargetLength = elements.some((e) => e.target_length);
   // 안내문의 분량 조건은 처음부터 숫자로 못박는다(gpt-5-mini는 지시 없이 쓰면 하한을 밑돌거나 상한을 넘기는 일이 잦고, 사후 재시도는 시간·비용이 든다).
   // 목표는 범위 안쪽으로 잡는다: 범위가 있으면 가운데, 하한만 있으면 하한의 약 1.15배, 상한만 있으면 상한의 약 80%.
   const lengthTargetLines = elements
@@ -385,11 +483,28 @@ ${input.previousOutputText}
       return `- "${e.label}" 단계: ${rangeText} — 목표 약 ${goal}${uw}. 반드시 이 범위 안에 들어오게 쓰되, 분량을 채우려고 문장을 늘어놓지 말고 필요한 내용(필수 항목·사실·근거)으로 채울 것.`;
     });
   const lengthTargetBlock = lengthTargetLines.length ? `\n【분량 — 반드시 지킬 것】\n${lengthTargetLines.join("\n")}\n` : "";
-  const defaultLengthBlock = hasAnyTargetLength
-    ? lengthTargetBlock
-    : newspaperEls.length
-      ? "\n[분량 — 안내문에 분량 지시가 없음] 조사 자료 단계는 항목당 150~300자(전체 700~1,200자), 신문 단계는 공백 포함 900~1,400자 안팎으로 간결하게 쓸 것. 이보다 길게 늘어놓지 말 것.\n"
-      : "\n[분량 — 안내문에 분량 지시가 없음] 전체를 공백 포함 1,200~1,800자 안팎으로 간결하게 쓸 것(항목이 여러 개면 항목당 150~300자). 이보다 길게 늘어놓지 말 것.\n";
+  // 안내문에 분량이 없는 단계는 역할·항목 수로 정한 권장 범위를 준다(length-plan.ts) — 모든 단계에 같은 글자 수를 주지 않고, 부족 여부는 글자 수가 아니라 필수 항목 충족으로 본다.
+  const guideLines = lengthGuideLines(elements);
+  const defaultLengthBlock =
+    lengthTargetBlock +
+    (guideLines.length
+      ? "\n[분량 가이드 — 안내문에 분량 지시가 없는 단계] 필요한 내용을 다 담기 위한 권장 범위다. 항목마다 필요한 설명·근거는 충분히 쓰되 같은 사실을 반복해 분량을 채우지 말고, 반대로 중요한 설명을 빼서 줄이지도 말 것.\n" + guideLines.join("\n") + "\n"
+      : "");
+  const formRulesBlock = buildFormRulesBlock(elements);
+  // 책 과제인가 / 인상 깊은 구절(원문 인용)을 요구하는가에 따라 검색·인용 규칙의 범위를 정한다(essay/excerpt-need.ts).
+  const isBookPrompt = !!input.presetBook || needsBookCandidateSelection(input, elements);
+  const wantsExcerpt = needsExcerpt([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""]);
+  const searchRulesBlock = !isBookPrompt
+    ? SEARCH_CALL_RULE_GENERIC
+    : [
+        SEARCH_CALL_RULE_BOOK,
+        wantsExcerpt ? excerptSearchRule() : "",
+        BIBLIO_RULE,
+        wantsExcerpt ? EXCERPT_VERIFY_RULE : "",
+        wantsExcerpt ? SEPARATE_SEARCH_RULE_BOOK_EXCERPT : SEPARATE_SEARCH_RULE_BOOK,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
       `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +
@@ -437,7 +552,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${defaultLengthBlock}${structuredBlock}${flowingBlock}${newspaperBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${defaultLengthBlock}${structuredBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${input.presetBook ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${input.presetBook.title}』${input.presetBook.author ? ` (저자: ${input.presetBook.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -479,93 +594,14 @@ ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물
    바꿔서라도 반드시 그 항목을 채울 것 — "항목을 아예 안 쓰는 것"은 어떤 경우에도
    올바른 대응이 아니다.
 
-【검색 도구를 실제로 호출할 것 — 매우 중요】 책 제목·저자·줄거리·인용구·역사적
-사실·통계처럼 검색으로 검증 가능한 구체적 사실이 필요한 단계가 하나라도 있다면,
-그 사실을 쓰기 전에 반드시 실시간 웹 검색 도구를 실제로 최소 한 번 이상 호출해서
-확인할 것. 이미 잘 알려진 유명한 책이나 상식이라고 생각되더라도 예외 없이
-검색으로 재확인한 뒤 쓸 것 — "이미 아는 내용이니 검색은 생략해도 된다"고
-판단하지 말 것. 검색 없이 책 제목/저자/인용구를 써서는 절대 안 된다. 후보가
-여러 개 검색되면, 아래 【책 존재/서지정보 확인】 기준으로 신뢰도가 높은(서지정보를
-텍스트로 명확히 갖춘) 페이지를 우선 각주로 채택하고, 위키형·커뮤니티형·동영상
-플랫폼은 다른 후보가 없을 때만 보조적으로 쓸 것.
-
-【인상 깊은 구절은 검색어를 한 번만 던지고 포기하지 말 것 — 매우 중요】 책 제목·
-저자만 검색해서는 원문이 노출된 페이지가 잘 안 잡힌다. "책 제목 + 저자" 검색
-하나로 안 나오면 거기서 멈추지 말고, 아래처럼 서로 다른 각도의 검색어를
-순서대로 여러 번 시도할 것 — 앞선 검색어에서 이미 원문이 확인되면 뒤 검색어는
-생략해도 된다:
-${BOOK_EXCERPT_QUERY_TEMPLATES.map((q, i) => `  ${i + 1}. ${q({ name: "<책 제목>", attribution: "<저자>" })}`).join("\n")}
-이렇게 검색어를 바꿔가며 여러 번 시도했는데도 원문이 노출된 페이지를 끝내 못
-찾으면, 그때만 아래 【인용구 확인】 규칙대로 패러프레이즈로 전환할 것 — 검색을
-한 번만 해보고 바로 포기하지 말 것.
-
-【책 존재/서지정보 확인 — 특정 사이트 이름이 아니라 "내용 형태"로 판단할 것 —
-매우 중요】 책 제목·저자 같은 사실을 인용할 때, 교보문고·알라딘·예스24처럼
-이름을 정해둔 특정 사이트만 검색하지 말 것 — 그렇게 하면 절판/독립출판/
-도서관 전용 자료/외국 원서 번역서처럼 그런 사이트에 없는 책은 계속 검증에
-실패하게 되고, 결과적으로 그 사이트들에 잘 걸리는 유명 베스트셀러 위주로만
-추천이 쏠리게 된다. 대신 검색은 넓게 하되(서점, 출판사 공식 페이지, 국립중앙
-도서관 등 도서관 정보, 신뢰 가능한 서평 등 어디든 상관없이), 검색으로 찾은
-페이지가 아래 조건을 만족하는지 "내용"으로 판단할 것:
-  - 그 페이지 안에 "책 제목 + 저자 + 출판사 + 출간연도(또는 ISBN)"가 함께
-    명시되어 있으면 서지정보가 확인된 것으로 본다 — 어느 사이트인지는
-    상관없다.
-  - 여러 사람이 자유롭게 고쳐 쓸 수 있는 위키형 구조(나무위키류)나, 익명
-    질문·답변/커뮤니티 게시판형 구조(레딧류)의 페이지는 신뢰도가 낮다고
-    판단할 것 — 이건 사이트 "이름"이 아니라 "편집 가능한 위키 구조인지",
-    "익명 게시판 구조인지"로 판단하는 것이다.
-  - 동영상 플랫폼(유튜브 등) 페이지도 마찬가지로 신뢰도가 낮다고 판단할 것 —
-    자막이나 설명란에 서지정보가 텍스트로 적혀 있어도, 영상 본편 내용과 실제로
-    일치하는지는 원문 대조가 불가능하기 때문이다. 위키형·커뮤니티형·동영상
-    플랫폼은 서지정보 확인의 "보조 자료"로만 쓰고, 절대 그 하나만으로 단독
-    출처를 채택하지 말 것 — 반드시 서지정보를 텍스트로 갖춘 다른 페이지(서점,
-    출판사, 도서관, 서평 등 형태 무관)를 추가로 검색해서 그 페이지를 실제
-    각주로 쓸 것.
-  - 서로 다른 독립된 두 개 이상의 페이지에서 같은 서지정보(제목+저자+출판사)가
-    일치하게 확인되면 신뢰도가 더 높다고 볼 것.
-
-【인용구(원문 구절) 확인은 책 존재 확인과 별개로 반드시 따로 할 것 — 매우
-중요】 위에서 책 존재/서지정보가 확인됐다고 해서 인용구까지 검증된 것으로
-착각하지 말 것. 인용하려는 문장(또는 그와 매우 유사한 표현)이 검색된 "텍스트"
-페이지 안에 실제로 노출되어 있는지 별도로 확인할 것 — 동영상 페이지의
-자막/설명란은 이 확인 용도로 쓰지 말 것(원문 대조 불가능).
-  - 원문 노출로 인정하는 페이지 유형(예시일 뿐 아래와 형태만 같으면 어느
-    사이트든 상관없다): 전자책 미리보기(리디북스, 전자책 샘플 등), 서점의
-    "책속으로"/샘플 보기, 구글도서 미리보기, 발행처의 발췌 페이지 — 즉 원문
-    편집 권한이 있는 주체(서점·전자책 플랫폼·발행처)가 올린 페이지.
-  - 원문 노출로 인정하지 않는 페이지 유형: 줄거리·소개·요약만 있고 원문
-    자체는 안 보이는 페이지("이 책은 ~에 대한 이야기다" 같은 요약 문장은
-    원문이 아니다), 동영상 페이지, 위키형/커뮤니티 게시판형 페이지의 재인용,
-    개인 블로그의 리뷰/독후감 페이지(티스토리, 네이버 블로그, 브런치 등 —
-    원문을 그대로 옮긴 것처럼 보여도 원문 편집 권한이 없는 개인이 옮긴
-    것이라 정확한 일치를 보장할 수 없다).
-  - 【서점 상세페이지 안에서도 섹션을 구분할 것 — 매우 중요】 서점 상세페이지는
-    보통 "책 소개"(출판사가 책을 홍보하려고 쓴 카피)와 "책속으로"/"미리보기"
-    (실제 책 본문)가 다른 섹션으로 나뉜다. 반드시 후자에서만 인용할 것 —
-    "책 소개" 카피는 페이지에 실제로 있는 텍스트라도 책 "본문"이 아니다.
-    "저자는", "이 책은", "작가는"처럼 3인칭으로 저자·책을 소개하는 문장으로
-    시작하거나 "강연", "호응을 얻었다", "베스트셀러", "화제를 모았다" 같은
-    광고성 수사가 들어간 문장은 절대 "인상 깊은 구절"로 인용하지 말 것 —
-    그건 마케팅 카피이지 책 속 문장(대사·서술·조언 등)이 아니다.
-  - 그 구절이 실제로 노출된 걸 확인했으면 따옴표로 직접 인용하고 [n] 각주를
-    붙일 것.
-  - 확인하지 못했으면 절대 따옴표로 직접 인용하지 말 것. 하지만 그렇다고
-    "인상 깊은 구절" 같은 항목 자체를 빼버리지도 말 것 — 대신 "이 책에서는
-    대략 이런 취지의 이야기를 한다"처럼 패러프레이즈(간접 인용, 따옴표 없이)로
-    반드시 그 자리를 채워 쓸 것. 별도의 "직접 인용 아님" 안내 문구는 화면에
-    덧붙이지 말 것 — 따옴표를 썼는지 안 썼는지 자체로 구분되게만 하면 된다.
-    직접 인용(따옴표)은 원문이 실제로 확인된 경우로만 제한하되, 항목 자체는
-    검증 여부와 무관하게 항상 채워져 있어야 한다.
-
-책 제목, 저자, 인상 깊은 구절은 서로 다른 사실이니 검색도 한 번의 포괄적인
-질의로 뭉뚱그리지 말고 각각 따로 검색해서, 전체 글이 출처 하나에만 계속
-의존하지 않게 할 것.
+${searchRulesBlock}
 ${ANTI_AI_TONE_RULES}
 ${FACTUAL_RIGOR_RULES}
 ${ACHIEVEMENT_INTERPRETATION_RULES}
 ${COPYRIGHT_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${NO_REFERENCE_LIST_RULE}
+${sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...elements.map((e) => e.description)]), !!input.presetBook)}
 ${elements.length > 1 || structuredEls.length > 0 ? NO_STEP_REPETITION_RULE : ""}
 ${CITATION_JUDGMENT_RULE}
 ${PERSPECTIVE_RULE}
@@ -834,37 +870,17 @@ async function generateOnce(
   );
   const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
   let annotated = insertCitationMarkers(freeText, grounding?.supports, chunkIndexToN);
-  const validatedSources = await validateSources(sources);
-  if (sources.length > 0 && validatedSources.every((s) => s.url_valid === false)) {
-    console.warn("[generateEssay] 검색은 됐지만 모든 출처 링크 검증(HTTP 상태 확인)이 실패함");
-  }
-
-  // 라에네크 결과물 감사(2026-09-16)에서 실제로 발견된 문제: 출처 6개 중 1개가
-  // (제목은 "newsmp.com"인데 실제 도착 URL은 se-cu.com/ndsoft/error.html —
-  // 죽은 도메인이 돌려주는 안내 페이지) 검증에 실패했는데도, 그 출처를 가리키는
-  // [4] 각주는 본문에 그대로 남아 학생에게 "검증된 참고문헌"처럼 보였다.
-  // validateSources()가 개별 출처마다 url_valid를 매기지만, 지금까지는 "전체
-  // 출처가 0개"인 극단적 경우에만 각주를 통째로 지웠을 뿐 "일부만 무효"인
-  // 훨씬 흔한 경우는 그대로 방치돼 있었다 — 검증 실패로 확인된 출처 번호만
-  // 콕 집어 각주 표시를 지운다(문장 내용은 그대로 보존, 표시만 제거).
-  // 링크 검증 실패뿐 아니라 "블로그·개인" 등급(source-quality.ts) 출처도 핵심 사실의 근거로 쓰지
-  // 않는다 — 열리는 것과 근거로 쓸 만한 것은 다르다(각주 표시만 제거, 문장은 보존).
-  const invalidNs = new Set(
-    validatedSources.filter((s) => s.url_valid === false || s.tier === "weak").map((s) => s.n)
-  );
-  if (invalidNs.size > 0) {
-    console.warn(`[generateEssay] 검증 실패한 출처를 가리키는 각주 제거: [${[...invalidNs].join(",")}]`);
-    annotated = stripInvalidCitationMarkers(annotated, invalidNs);
-  }
+  // 링크 확인(HTTP)과 단계 분리(stage B)는 서로 입력이 겹치지 않아 동시에 돌린다(각주 정리는 둘 다 끝난 뒤 적용).
+  const validatePromise = validateSources(sources);
+  const preAnnotated = annotated;
 
   // 2차: 본문은 그대로 두고, "## 라벨" 제목을 기준으로 단계별 본문만 분리한다
   // (그라운딩 없이, 순수 추출 작업 — generate-plan.ts와 같은 이유).
   const labels = elements.map((e) => e.label);
   // 본문은 코드가 원문에서 직접 자른다(아래 mechanicalSections). 모든 단계를 자를 수 있으면 모델에게는 메타데이터만 뽑게 하고,
   // 못 자르는 단계가 있을 때만 예전처럼 본문 재현(content)까지 요청한다.
-  const mechanicalSections = splitAnnotatedIntoSections(annotated, labels);
-  const needContentFallback = labels.some((l) => !mechanicalSections.has(l));
-  const stageB = await generate({
+  const needContentFallback = labels.some((l) => !splitAnnotatedIntoSections(preAnnotated, labels).has(l));
+  const stageBPromise = generate({
       label: "generateEssay:stepB",
       role: "lite",
       prompt: (needContentFallback
@@ -895,9 +911,33 @@ cited_book_quote 필드에 뽑아줘(스키마 설명 참고) — 책 제목이 
 `) +
         `
 [글]
-${annotated}`.trim(),
+${preAnnotated}`.trim(),
       schema: needContentFallback ? SECTIONS_SCHEMA : SECTIONS_META_SCHEMA,
     });
+  const [validatedSources, stageB] = await Promise.all([validatePromise, stageBPromise]);
+  if (sources.length > 0 && validatedSources.every((s) => s.url_valid === false)) {
+    console.warn("[generateEssay] 검색은 됐지만 모든 출처 링크 검증(HTTP 상태 확인)이 실패함");
+  }
+
+  // 라에네크 결과물 감사(2026-09-16)에서 실제로 발견된 문제: 출처 6개 중 1개가
+  // (제목은 "newsmp.com"인데 실제 도착 URL은 se-cu.com/ndsoft/error.html —
+  // 죽은 도메인이 돌려주는 안내 페이지) 검증에 실패했는데도, 그 출처를 가리키는
+  // [4] 각주는 본문에 그대로 남아 학생에게 "검증된 참고문헌"처럼 보였다.
+  // validateSources()가 개별 출처마다 url_valid를 매기지만, 지금까지는 "전체
+  // 출처가 0개"인 극단적 경우에만 각주를 통째로 지웠을 뿐 "일부만 무효"인
+  // 훨씬 흔한 경우는 그대로 방치돼 있었다 — 검증 실패로 확인된 출처 번호만
+  // 콕 집어 각주 표시를 지운다(문장 내용은 그대로 보존, 표시만 제거).
+  // 링크 검증 실패뿐 아니라 "블로그·개인" 등급(source-quality.ts) 출처도 핵심 사실의 근거로 쓰지
+  // 않는다 — 열리는 것과 근거로 쓸 만한 것은 다르다(각주 표시만 제거, 문장은 보존).
+  const invalidNs = new Set(
+    validatedSources.filter((s) => s.url_valid === false || s.tier === "weak").map((s) => s.n)
+  );
+  if (invalidNs.size > 0) {
+    console.warn(`[generateEssay] 검증 실패한 출처를 가리키는 각주 제거: [${[...invalidNs].join(",")}]`);
+    annotated = stripInvalidCitationMarkers(annotated, invalidNs);
+  }
+
+  const mechanicalSections = splitAnnotatedIntoSections(annotated, labels);
 
   const raw = stageB.text;
   if (!raw) throw new Error("단계 분리 응답이 비어 있습니다.");
@@ -906,6 +946,11 @@ ${annotated}`.trim(),
     confirmed_subject?: string;
     sections: { label: string; content?: string; cited_book_title?: string; cited_book_author?: string; cited_book_quote?: string }[];
   };
+  // stage B는 링크 확인과 동시에 돌아서 무효 출처 각주가 아직 남은 글을 봤다 — 요약·폴백 본문에서도 같은 각주를 지운다.
+  if (invalidNs.size > 0) {
+    parsed.summary_lines = (parsed.summary_lines ?? []).map((l) => stripInvalidCitationMarkers(l, invalidNs));
+    for (const sec of parsed.sections) if (sec.content) sec.content = stripInvalidCitationMarkers(sec.content, invalidNs);
+  }
 
   // 안전장치: 실제로 그라운딩이 안 됐는데(출처 0개) 본문에 [1][2] 같은 각주 모양이
   // 남아있으면 근거 없는 각주이므로 지운다.
@@ -953,6 +998,60 @@ ${annotated}`.trim(),
     summaryLines: parsed.summary_lines ?? [],
     confirmedSubject: parsed.confirmed_subject ?? "",
   };
+}
+
+const SOURCE_JUDGE_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    results: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.INTEGER },
+          source: { type: Type.INTEGER, description: "문장의 핵심 주장이 본문에 실제로 있는 출처 번호. 없거나 확실치 않으면 0" },
+        },
+        required: ["id", "source"],
+      },
+    },
+  },
+  required: ["results"],
+};
+
+/**
+ * 출처를 줄이려고 고른 몇 개의 출처 페이지가, 원래 다른 출처가 달려 있던 문장도 뒷받침하는지 작은 모델이 한 번에 확인한다(출처 대조 — 연도·수치로 확인할 수 없는 서술 문장용).
+ * 확실하지 않으면 0으로 답하게 해서 원래 출처를 그대로 둔다. 실패하면 빈 결과(= 아무것도 옮기지 않음).
+ */
+async function judgeSourceSupport(
+  items: { key: string; text: string }[],
+  chosen: number[],
+  pageTexts: PageTexts
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const pages = chosen.filter((n) => typeof pageTexts.get(n) === "string" && (pageTexts.get(n) as string).length > 200);
+  if (items.length === 0 || pages.length === 0) return out;
+  try {
+    const res = await generate({
+      label: "generateEssay:sourceJudge",
+      role: "lite",
+      effort: "minimal",
+      prompt:
+        "아래 [문장]들이 각각 [출처 본문] 중 어느 출처의 내용으로 뒷받침되는지 판정해줘. 문장의 핵심 주장(누가·무엇을·언제·왜)이 그 출처 본문에 실제로 있어야 한다. " +
+        "비슷한 주제일 뿐이거나 확실하지 않으면 source를 0으로 답할 것(후하게 판정하지 말 것). 출처 본문은 영어일 수 있다.\n\n" +
+        pages.map((n) => `[출처 ${n} 본문]\n${(pageTexts.get(n) as string).slice(0, 6000)}`).join("\n\n") +
+        "\n\n" +
+        items.map((it, i) => `[문장 ${i}] ${it.text}`).join("\n"),
+      schema: SOURCE_JUDGE_SCHEMA,
+    });
+    const parsed = JSON.parse(res.text ?? "{}") as { results?: { id: number; source: number }[] };
+    for (const r of parsed.results ?? []) {
+      const it = items[r.id];
+      if (it && pages.includes(r.source)) out.set(it.key, r.source);
+    }
+  } catch (err) {
+    console.warn("[generateEssay] 출처 판정 실패(원래 출처 유지)", err);
+  }
+  return out;
 }
 
 const COVERAGE_SCHEMA: Schema = {
@@ -1018,7 +1117,7 @@ export async function generateEssay(
   // 분석 단계가 안내문 문장을 required_items로 베껴 sections로 분류해도 여기서 바로잡는다(deliverable.ts).
   const elements = input.coreTaskInfo.task_elements
     .filter((e) => e.type === "text_submission")
-    .map((e) => (e.items_format === "sections" && inferDeliverableForm(e) ? { ...e, items_format: "flowing" as const } : e));
+    .map((e) => (e.items_format === "sections" && (inferDeliverableForm(e) || isProseForm(e)) ? { ...e, items_format: "flowing" as const } : e));
 
   // 3단계: 후보 생성 ↔ 검증 분리. F6 재생성(previousOutputText 있음)은
   // 이전 버전에서 이미 책이 확정돼 있으므로 다시 고르지 않는다(안 그러면
@@ -1136,7 +1235,11 @@ export async function generateEssay(
   const unverifiedQuotes = detectUnverifiedQuotes(attempt.sections, attempt.sources, input.instructions);
   const soleVideoSourceBooks = detectSoleVideoSourceBookMentions(attempt.sections, attempt.sources);
   // 책 과제가 아닌데(인물 탐구 등) 지나가며 책 제목만 언급한 경우는 원문 검증·인용구 승급 검색(약 60초·검색 6회, 실측)을 돌리지 않는다. 직접 인용구가 있으면 그때는 검증한다.
-  const bookMentionsNeedingVerification = extractBookMentionsNeedingVerification(attempt.sections, attempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote);
+  // 안내문이 원문 구절을 요구하지 않으면(예: 한 줄 서평) 인용구 검색·검증(실측 60~100초)을 돌리지 않는다.
+  const excerptRequired = needsExcerpt([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""]);
+  const bookMentionsNeedingVerification = excerptRequired
+    ? extractBookMentionsNeedingVerification(attempt.sections, attempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote)
+    : [];
   const lengthIssues = checkLengthCompliance(attempt.sections, elements);
   // 안내문의 필수 항목이 "### 항목명" 소제목으로 존재하고 내용이 있는지 기계적으로
   // 검사한다(analyze.ts가 안내문에서 동적으로 뽑은 required_items 기준).
@@ -1189,7 +1292,9 @@ export async function generateEssay(
     console.warn(`[generateEssay] 저자 불일치 감지: ${JSON.stringify(authorMismatches)}`);
   }
 
-  if (
+  // 검색·재작성이 필요한 문제만 전체 재시도(검색 포함, 30~100초)로 보낸다. 분량 미달·반복·소제목 없는 단계의 항목 누락은 그 단계만 검색 없이 고친다(아래 repairLocally, 약 5~10초) —
+  // 분량은 마지막의 adjustSectionLength가 맡는다(전체 재생성은 오히려 분량이 흔들린다는 실측).
+  const needsFullRetry =
     cliches.length > 0 ||
     unsupportedSuperlatives.length > 0 ||
     languageMismatches.length > 0 ||
@@ -1198,12 +1303,12 @@ export async function generateEssay(
     corruptedSections.length > 0 ||
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
-    lengthIssues.length > 0 ||
     missingItems.length > 0 ||
-    flowingGaps.length > 0 ||
-    repetitionIssue ||
-    authorMismatches.length > 0
-  ) {
+    authorMismatches.length > 0;
+  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue)) {
+    attempt = await repairLocally(attempt, elements, flowingGaps, repetitionIssue ? repeatedPairs : []);
+  }
+  if (needsFullRetry) {
     console.warn(
       `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} unsupportedSuperlatives=${JSON.stringify(unsupportedSuperlatives)} languageMismatches=${JSON.stringify(languageMismatches)} presetBookMismatch=${presetBookMismatch} corruptedSections=${JSON.stringify(corruptedSections)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
     );
@@ -1387,7 +1492,7 @@ export async function generateEssay(
           ...(retryAttempt.summaryLines.some((l) => hasForeignScriptCorruption(l)) ? ["전체 요약"] : []),
         ];
         const stillHasUncitedBooks = isBookTask ? detectUncitedBookMentions(retryAttempt.sections) : [];
-        const stillNeedsVerification = extractBookMentionsNeedingVerification(retryAttempt.sections, retryAttempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote);
+        const stillNeedsVerification = excerptRequired ? extractBookMentionsNeedingVerification(retryAttempt.sections, retryAttempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote) : [];
         const stillHasLengthIssues = checkLengthCompliance(retryAttempt.sections, elements);
         const stillMissingItems = detectMissingRequiredItems(retryAttempt.sections);
         if (stillMissingItems.length > 0) {
@@ -1643,6 +1748,22 @@ export async function generateEssay(
       return { ...s, content, claimCheck };
     }),
   };
+
+  // 출처 수 정리: 많이 쓰이고 신뢰도 높은 출처로 모으되(보통 3개, 안내문이 개수를 요구하면 그 수), 고른 출처가 문장을 뒷받침하지 못하면 원래 출처를 살린다(limitSources).
+  {
+    const wanted = requiredSourceCount([...input.coreTaskInfo.requirements, ...elements.map((e) => e.description)]);
+    const limit = Math.min(8, Math.max(2, wanted ?? 3));
+    const contentsNow = attempt.sections.map((s) => s.content);
+    const base = retainedAtLimit(contentsNow, attempt.sources, limit, pageTexts);
+    const forced = base.items.length > 0 ? await judgeSourceSupport(base.items.slice(0, 24), base.chosen, pageTexts) : new Map<string, number>();
+    const lim = limitSources(contentsNow, attempt.sources, limit, pageTexts, forced);
+    if (lim.sources.length < attempt.sources.length) {
+      console.log(
+        `[generateEssay] 출처 정리 ${attempt.sources.length}→${lim.sources.length}개 (한도 ${limit}, 각주 옮김 ${lim.stats.repointed}, 원래 출처 유지 ${lim.stats.retained})`
+      );
+    }
+    attempt = { ...attempt, sources: lim.sources, sections: attempt.sections.map((s, i) => ({ ...s, content: lim.contents[i] })) };
+  }
 
   // "### 제작 참고"(학생이 직접 구해 넣을 사진·그림 안내)는 제출 내용이 아니므로 본문에서 떼어 따로 보여 준다.
   attempt = {
@@ -2668,7 +2789,89 @@ function stripForeignScriptFromSummary(summaryLines: string[]): { summaryLines: 
  * 분량 범위를 못 맞춘 글 하나를 검색 없이 한 번 보정한다. 모델이 사실·출처를 새로 지어내지 못하도록 결과를 코드로 검증한다:
  * 각주 번호는 원문에 있던 것만(전부 유지), 따옴표 인용문은 그대로 남아야 하고, 범위에 들어오거나 지금보다 범위에 가까워져야 채택한다.
  */
+/** 검색 없이 해당 단계만 고친다 — 소제목 없는 단계의 필수 항목 누락, 다른 단계와 거의 같은 문장. 고친 결과가 검증을 못 통과하면 원문을 그대로 둔다. */
+async function repairLocally(
+  attempt: Attempt,
+  elements: CoreTaskInfo["task_elements"],
+  gaps: CoverageGap[],
+  repeated: ReturnType<typeof findRepeatedStatements>
+): Promise<Attempt> {
+  const markersOf = (t: string) => t.match(/\[\d+\]/g) ?? [];
+  const allMarkers = new Set(attempt.sections.flatMap((s) => markersOf(s.content)));
+  const jobs = attempt.sections.map(async (sec) => {
+    const issues: string[] = [];
+    const gap = gaps.find((g) => g.label === sec.label);
+    if (gap) issues.push(`다음 내용이 다뤄지지 않았다 — 이 단계의 형식에 맞게 실제 문장으로 추가할 것: ${gap.missing.join(", ")}`);
+    // 되풀이는 뒤쪽 단계(b)의 문장을 다른 표현으로 고친다(앞 단계는 사실을 정리한 자료이므로 그대로 둔다).
+    const dups = repeated.filter((p) => p.b.label === sec.label);
+    if (dups.length > 0) {
+      const quoted = dups.slice(0, 5).map((p) => `"${p.b.text.replace(/\[\d+\]/g, "").slice(0, 60)}…"`).join(" / ");
+      issues.push(`앞 단계의 문장과 거의 같은 문장이 되풀이됐다 — 사실(연도·이름·수치)은 그대로 두고 이 단계의 형식에 맞는 다른 문장으로 고칠 것: ${quoted}`);
+    }
+    if (issues.length === 0) return sec;
+    const el = elements.find((e) => e.label === sec.label);
+    const others = attempt.sections
+      .filter((s) => s.label !== sec.label)
+      .map((s) => `## ${s.label}\n${s.content}`)
+      .join("\n\n");
+    try {
+      const res = await generate({
+        label: "generateEssay:repair",
+        role: "main",
+        effort: "low",
+        prompt: `
+아래는 수행평가 한 단계의 원고다. 지적된 문제만 고쳐서 이 단계 본문 전체를 다시 써줘.
+- 지적되지 않은 문장과 사실(연도·이름·수치), [n] 각주 표기는 그대로 둘 것. 각주 번호를 새로 만들거나 바꾸지 말 것.
+- 새로 쓰는 문장은 이 글과 [같은 과제의 다른 단계]에 이미 있는 사실만 바탕으로 쓰고, 새 연도·수치·고유명·인용문을 만들지 말 것. 다른 단계의 문장에 붙은 [n]은 같은 사실을 쓸 때 그대로 붙여도 된다.
+- 소제목(###)·표·"(학생 감상 초안 …)" 표시 등 기존 형식은 유지하고, 설명·머리말 없이 본문만 출력할 것.
+${el ? `- 이 단계가 다뤄야 할 내용: ${el.description}\n` : ""}
+[고칠 문제]
+${issues.map((i) => `- ${i}`).join("\n")}
+
+[같은 과제의 다른 단계]
+${others || "(없음)"}
+
+[이 단계 원고]
+${sec.content}`.trim(),
+      });
+      const next = res.text.trim();
+      if (!next) return sec;
+      const nextMarkers = markersOf(next);
+      if (nextMarkers.some((m) => !allMarkers.has(m))) return sec; // 없는 각주 번호를 만들었다
+      const origMarkers = markersOf(sec.content);
+      if (origMarkers.length > 0 && nextMarkers.length < origMarkers.length * 0.7) return sec; // 각주가 눈에 띄게 사라졌다
+      if (next.length < sec.content.length * 0.7 || next.length > sec.content.length * 1.8) return sec;
+      console.log(`[generateEssay] 부분 보완 적용 label="${sec.label}" (${sec.content.length}→${next.length}자) ${issues.length}건`);
+      return { ...sec, content: next };
+    } catch (err) {
+      console.error("[generateEssay] 부분 보완 실패(원문 유지)", err);
+      return sec;
+    }
+  });
+  return { ...attempt, sections: await Promise.all(jobs) };
+}
+
+/**
+ * 분량 보정. 한 번에 목표를 넘겨 반대쪽으로 벗어나면(실측: 1222자 → 1888자, 목표 1350~1650) 그 결과를 바탕으로 한 번 더 반대 방향으로 보정하고,
+ * 원래보다 범위에 가까워졌을 때만 쓴다.
+ */
 async function adjustSectionLength(content: string, issue: LengthIssue, description: string): Promise<string | null> {
+  const measure = (t: string) => (issue.unit === "words" ? countWords(t) : countChars(t, issue.countsSpaces));
+  const distance = (n: number) => (issue.min > 0 && n < issue.min ? issue.min - n : issue.max > 0 && n > issue.max ? n - issue.max : 0);
+  const first = await adjustSectionLengthOnce(content, issue, description);
+  if (first.accepted) return first.accepted;
+  if (!first.candidate) return null;
+  const candidateLen = measure(first.candidate);
+  if (distance(candidateLen) === 0) return first.candidate;
+  const second = await adjustSectionLengthOnce(first.candidate, { ...issue, actual: candidateLen }, description);
+  return second.accepted && distance(measure(second.accepted)) < distance(issue.actual) ? second.accepted : null;
+}
+
+async function adjustSectionLengthOnce(
+  content: string,
+  issue: LengthIssue,
+  description: string
+): Promise<{ accepted?: string; candidate?: string }> {
   const uw = unitWord(issue.unit);
   const measure = (t: string) => (issue.unit === "words" ? countWords(t) : countChars(t, issue.countsSpaces));
   const distance = (n: number) => (issue.min > 0 && n < issue.min ? issue.min - n : issue.max > 0 && n > issue.max ? n - issue.max : 0);
@@ -2688,23 +2891,23 @@ ${description ? `- 이 글이 다뤄야 할 내용: ${description}\n` : ""}결�
 ${content}`.trim(),
   });
   const next = res.text.trim();
-  if (!next) return null;
+  if (!next) return {};
   const orig = new Set(content.match(/\[\d+\]/g) ?? []);
   const nextMarkers = new Set(next.match(/\[\d+\]/g) ?? []);
   if ([...orig].some((m) => !nextMarkers.has(m)) || [...nextMarkers].some((m) => !orig.has(m))) {
     console.warn(`[generateEssay] 분량 보정 거부(각주 변경) label="${issue.label}"`);
-    return null;
+    return {};
   }
   const quotes = [...content.matchAll(/[「『“"]([^」』”"\n]{4,})[」』”"]/g)].map((m) => m[1]);
   if (quotes.some((q) => !next.includes(q))) {
     console.warn(`[generateEssay] 분량 보정 거부(인용문 변경) label="${issue.label}"`);
-    return null;
+    return {};
   }
   const hangul = (t: string) => (t.match(/[가-힣]/g) ?? []).length / Math.max(1, t.replace(/\s/g, "").length);
-  if (issue.unit === "words" && hangul(next) > 0.05 && hangul(content) <= 0.05) return null;
+  if (issue.unit === "words" && hangul(next) > 0.05 && hangul(content) <= 0.05) return {};
   if (distance(measure(next)) >= distance(issue.actual)) {
     console.warn(`[generateEssay] 분량 보정 거부(범위에 가까워지지 않음) label="${issue.label}" ${issue.actual}->${measure(next)}`);
-    return null;
+    return { candidate: next };
   }
-  return next;
+  return { accepted: next };
 }

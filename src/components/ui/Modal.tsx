@@ -39,7 +39,7 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !busy) onClose();
       }}
@@ -50,7 +50,7 @@ export default function Modal({
         aria-modal="true"
         aria-label={title}
         style={{ maxWidth: width }}
-        className="relative max-h-[92vh] w-full animate-[popIn_0.22s_ease-out] overflow-y-auto rounded-2xl border border-border-strong bg-surface p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:p-8"
+        className="relative max-h-[92vh] w-full animate-[popIn_0.22s_ease-out] overflow-y-auto rounded-3xl bg-background p-6 shadow-[0_24px_80px_rgba(0,0,0,0.25)] sm:p-9"
       >
         <button
           data-modal-close

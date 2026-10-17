@@ -5,6 +5,8 @@ import { collectUserNumbers, findStatClaimCandidates } from "./stat-claims";
 import {
   ANTI_AI_TONE_RULES,
   NO_META_COMMENTARY_RULE,
+  NO_REFERENCE_LIST_RULE,
+  sourceEconomyRule,
   PERSPECTIVE_RULE,
   MULTI_DELIVERABLE_SEPARATION_RULE,
   FACTUAL_RIGOR_RULES,
@@ -20,6 +22,8 @@ import {
 import { validateSources } from "@/lib/links/validate-sources";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
 import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList } from "./generate-essay";
+import { stripMetaNoteLines, stripModelReferenceBlock } from "@/lib/essay/deliverable";
+import { limitSources, requiredSourceCount } from "@/lib/essay/source-select";
 import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
 
 // 사용자 요청(2026-09-13): 예전엔 이 경로가 "무엇을 조사/작성할지"만 안내하는
@@ -222,6 +226,8 @@ ${ANTI_AI_TONE_RULES}
 ${FACTUAL_RIGOR_RULES}
 ${ACHIEVEMENT_INTERPRETATION_RULES}
 ${NO_META_COMMENTARY_RULE}
+${NO_REFERENCE_LIST_RULE}
+${sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]))}
 ${PERSPECTIVE_RULE}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
 `.trim();
@@ -333,7 +339,7 @@ export async function generatePlan(
       label: "generatePlan:stepA",
       role: "main",
       prompt: p,
-      search: { force: wantSearch, maxCalls: 4 },
+      search: { force: wantSearch, maxCalls: 2 },
     });
 
   let stepA;
@@ -522,6 +528,15 @@ export async function generatePlan(
       console.warn("[generatePlan] 최종 안전장치: 미검증 자기 생성 참고문헌 목록 제거함");
       content = refListCleanedContent;
     }
+  }
+
+  // 모델이 스스로 붙인 참고 목록·작업 설명 줄을 걷어내고, 출처를 필요한 만큼(보통 3개)으로 정리한다(essay 경로와 같은 이유 — essay/source-select.ts).
+  content = stripMetaNoteLines(stripModelReferenceBlock(content).content).content;
+  if (validatedSources.length > 0) {
+    const wanted = requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]);
+    const lim = limitSources([content], validatedSources, Math.min(8, Math.max(2, wanted ?? 3)));
+    content = lim.contents[0];
+    validatedSources = lim.sources;
   }
 
   content = tidyOutputText(content);

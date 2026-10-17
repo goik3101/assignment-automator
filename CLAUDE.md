@@ -92,6 +92,9 @@ src/
       identify-cluster.ts       -- M2: 클러스터 식별 (생성 이전에 반드시 먼저 호출)
       avoidance.ts               -- M3: 비율 기반 억제 (라플라스 스무딩 + 3개월 롤링윈도우)
       save-result-embedding.ts  -- M2/M3: 결과물 임베딩 저장 + 재생성 시 버전 관리(is_current)
+    essay/                        -- 완성 원고 품질 규칙(순수 함수, alias import 없음): deliverable(신문 등 산출물 형식·참고목록/작업설명 제거),
+                                     length-plan(단계 역할별 분량 가이드), form-rules(글 종류별 작성 방식), source-select(출처 2~3개로 정리),
+                                     claim-check(문장↔출처 페이지 대조), coverage·repetition(누락·반복 검사), excerpt-need(원문 구절 요구 여부)
     links/
       validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
     admin/

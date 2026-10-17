@@ -13,14 +13,14 @@
 /* 색은 전부 토큰으로만 쓴다. 기본은 검정/회색 단색(포인트 색 없음 — accent는 전경색)이고,
    깊이는 색이 아니라 면(surface → raised)의 단계와 얇은 선으로 만든다. */
 :root {
-  --background: #fafafa;
-  --surface: #ffffff;
-  --raised: #f1f1f3;
-  --foreground: #0b0b0c;
-  --muted: #62626b;
-  --faint: #9a9aa3;
-  --border: #e4e4e8;
-  --border-strong: #c6c6cd;
+  --background: #ffffff;
+  --surface: #f6f6f7;
+  --raised: #ececef;
+  --foreground: #111113;
+  --muted: #6b6b73;
+  --faint: #a1a1aa;
+  --border: #ececef;
+  --border-strong: #dcdce1;
   --accent: #0b0b0c;
   --accent-foreground: #fafafa;
   --danger: #c2413a;
@@ -44,14 +44,14 @@
 /* 라이트/다크 수동 토글 (ThemeToggle.tsx): layout.tsx의 인라인 스크립트가
    방문 즉시 data-theme을 확정해서 넣어주므로, 여기서는 그 값만 보면 된다. */
 :root[data-theme="dark"] {
-  --background: #0a0a0b;
-  --surface: #121214;
-  --raised: #1a1a1d;
+  --background: #0c0c0d;
+  --surface: #161618;
+  --raised: #202023;
   --foreground: #f4f4f5;
   --muted: #9b9ba3;
-  --faint: #64646c;
-  --border: #25252a;
-  --border-strong: #3b3b42;
+  --faint: #6a6a72;
+  --border: #212125;
+  --border-strong: #2f2f35;
   --accent: #f4f4f5;
   --accent-foreground: #0a0a0b;
   --danger: #e5645c;

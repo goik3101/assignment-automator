@@ -134,7 +134,7 @@ export default function ChatView({
       );
   const composerBlock = (
     <>
-        <div className="rounded-2xl border border-border-strong bg-surface transition-colors focus-within:border-foreground">
+        <div className="rounded-3xl bg-surface transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--foreground)]">
           {image && (
             <div className="flex items-center gap-2 px-3 pt-3">
               <div className="relative">

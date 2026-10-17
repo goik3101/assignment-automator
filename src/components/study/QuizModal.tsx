@@ -71,13 +71,18 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between text-xs text-faint">
-        <span className="tabular-nums">
-          문제 {i + 1} / {list.length}
-        </span>
-        <span className="tabular-nums">맞힌 문제 {score}</span>
+      <div className="mb-6">
+        <div className="mb-2 flex items-center justify-between text-xs text-faint">
+          <span className="tabular-nums">
+            {i + 1} / {list.length}
+          </span>
+          <span className="tabular-nums">맞힌 문제 {score}</span>
+        </div>
+        <div className="h-1 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={i + (answered ? 1 : 0)}>
+          <div className="h-full rounded-full bg-foreground transition-all duration-300" style={{ width: `${((i + (answered ? 1 : 0)) / list.length) * 100}%` }} />
+        </div>
       </div>
-      <p className="text-[17px] font-bold leading-relaxed tracking-tight">{q.question}</p>
+      <p className="text-[19px] font-bold leading-relaxed tracking-tight">{q.question}</p>
 
       <ul className={["mt-5 gap-2.5", q.type === "ox" ? "grid grid-cols-2" : "flex flex-col"].join(" ")}>
         {q.choices.map((c, idx) => {
@@ -91,16 +96,16 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
                 disabled={answered}
                 aria-pressed={isPicked}
                 className={[
-                  "flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-[14.5px] leading-snug transition-colors",
-                  q.type === "ox" ? "justify-center py-6 text-2xl font-bold" : "",
-                  state === "idle" ? "border-border-strong hover:border-foreground hover:bg-raised" : "",
-                  state === "right" ? "border-foreground bg-raised font-semibold" : "",
-                  state === "wrong" ? "border-danger/70 text-danger" : "",
-                  state === "dim" ? "border-border text-faint" : "",
+                  "flex w-full items-center gap-3 rounded-2xl px-4 py-4 text-left text-[15px] leading-snug transition-colors",
+                  q.type === "ox" ? "justify-center py-7 text-2xl font-bold" : "",
+                  state === "idle" ? "bg-surface hover:bg-raised" : "",
+                  state === "right" ? "bg-foreground font-semibold text-background" : "",
+                  state === "wrong" ? "bg-danger/10 text-danger" : "",
+                  state === "dim" ? "bg-surface text-faint" : "",
                 ].join(" ")}
               >
                 {q.type === "choice" && (
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-xs font-semibold tabular-nums">{idx + 1}</span>
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-background/70 text-xs font-semibold tabular-nums text-foreground">{idx + 1}</span>
                 )}
                 <span className="flex-1">{c}</span>
                 {answered && isAnswer && <CircleCheck size={18} strokeWidth={1.8} className="shrink-0" aria-label="정답" />}
@@ -112,7 +117,7 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
       </ul>
 
       {answered && (
-        <div role="status" className="mt-5 rounded-xl border border-border bg-background p-4">
+        <div role="status" className="mt-5 rounded-2xl bg-surface p-5">
           <p className="mb-1 text-xs font-semibold text-faint">{picked === q.answerIndex ? "맞았어요" : "아쉬워요"}</p>
           <p className="text-sm leading-relaxed text-muted">{q.explanation}</p>
         </div>

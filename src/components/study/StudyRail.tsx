@@ -50,7 +50,7 @@ export default function StudyRail({
               key={id}
               onClick={() => setTool(id)}
               disabled={locked}
-              className="group flex flex-col items-start gap-2.5 rounded-xl border border-border-strong p-3.5 text-left transition-colors hover:border-foreground hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border-strong disabled:hover:bg-transparent"
+              className="group flex flex-col items-start gap-3 rounded-2xl bg-surface p-4 text-left transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface"
             >
               <Icon size={20} strokeWidth={1.6} className="text-muted transition-colors group-hover:text-foreground" />
               <span>

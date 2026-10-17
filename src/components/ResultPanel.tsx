@@ -17,8 +17,8 @@ function Notice({ tone = "caution", title, children }: { tone?: "caution" | "dan
     <div
       role="note"
       className={[
-        "mb-4 flex gap-3 rounded-xl border px-4 py-3",
-        tone === "danger" ? "border-danger/60 bg-danger/10" : "border-border-strong bg-raised",
+        "mb-4 flex gap-3 rounded-2xl px-4 py-3.5",
+        tone === "danger" ? "bg-danger/10" : "bg-background",
       ].join(" ")}
     >
       <TriangleAlert size={17} strokeWidth={1.7} className={["mt-0.5 shrink-0", tone === "danger" ? "text-danger" : "text-muted"].join(" ")} />
@@ -297,7 +297,7 @@ export function EssayPanel({
   hideHeading?: boolean;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 md:p-8">
+    <section className="rounded-3xl bg-surface p-6 md:p-10">
       {!hideHeading && (
         <div className="mb-5">
           <p className="text-xs font-semibold text-faint">완성 원고</p>
@@ -347,7 +347,7 @@ export function PlanPanel({
   hideHeading?: boolean;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 md:p-8">
+    <section className="rounded-3xl bg-surface p-6 md:p-10">
       {!hideHeading && (
         <div className="mb-5">
           <p className="text-xs font-semibold text-faint">완성된 글</p>

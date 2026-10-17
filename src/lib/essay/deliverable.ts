@@ -145,8 +145,7 @@ export function buildNewspaperBlock({ label, requiredItems, materialLabels }: Ne
     );
   }
   lines.push(
-    `- 문체: 사실 보도 문체("~했다")로 쓰고 "(해석)", "[자료]" 같은 작업용 표기는 쓰지 말 것. 출처로 확인되지 않은 인터뷰·발언·통계를 따옴표나 수치로 만들지 말 것.`,
-    `- 분량: 공백 포함 900~1,400자 안팎(안내문에 분량이 있으면 그것이 우선).`
+    `- 문체: 사실 보도 문체("~했다")로 쓰고 "(해석)", "[자료]" 같은 작업용 표기는 쓰지 말 것. 출처로 확인되지 않은 인터뷰·발언·통계를 따옴표나 수치로 만들지 말 것.`
   );
   if (materialLabels.length > 0) {
     lines.push(
@@ -174,4 +173,11 @@ export function stripMetaNoteLines(content: string): { content: string; removed:
     return !strip;
   });
   return { content: removed ? kept.join("\n").replace(/\n{3,}/g, "\n\n") : content, removed };
+}
+
+// 소제목 없이 이어서 읽히는 글(논설문·감상문·편지 등)을 분석 단계가 "항목별 조사 자료"(sections)로 분류하는 변동이 실측됐다(같은 안내문이 어떤 때는 flowing, 어떤 때는 sections).
+// 이런 글을 불릿 사실 나열로 쓰면 글이 아니라 메모가 된다 — 단계 이름이 줄글을 가리키면 sections를 flowing으로 바로잡는다(필수 항목은 그대로 누락 검사에 쓴다).
+const PROSE_LABEL = /논설|논술|에세이|수필|감상문|독후감|칼럼|비평|편지|일기|연설문|발표문|스피치|소설|짧은\s*글|서평/;
+export function isProseForm(el: { label: string }): boolean {
+  return PROSE_LABEL.test(el.label);
 }

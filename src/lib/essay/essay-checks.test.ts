@@ -5,6 +5,7 @@ import {
   classifyRequiredItem,
   inferDeliverableForm,
   splitProductionNotes,
+  isProseForm,
   stripMetaNoteLines,
   stripModelReferenceBlock,
   stripWorkMarkers,
@@ -159,4 +160,11 @@ test("모델이 붙인 주석 머리말 줄도 지운다", () => {
   const r = stripMetaNoteLines(src);
   assert.equal(r.removed, 2);
   assert.equal(r.content, ["본문이다.[1]", "(웃으며) 안녕하세요."].join(NL));
+});
+
+test("줄글 형식 단계 이름만 줄글로 본다", () => {
+  assert.equal(isProseForm({ label: "논설문(찬반 논증문)" }), true);
+  assert.equal(isProseForm({ label: "독서 감상문" }), true);
+  assert.equal(isProseForm({ label: "탐구 보고서" }), false);
+  assert.equal(isProseForm({ label: "자료 수집" }), false);
 });

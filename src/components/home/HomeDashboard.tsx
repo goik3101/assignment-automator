@@ -72,7 +72,7 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
         aria-label="새 창작물 만들기"
         aria-expanded={open}
         aria-haspopup="menu"
-        className="group/new flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border-strong text-muted transition-colors hover:border-foreground hover:text-foreground"
+        className="group/new flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border-strong text-muted transition-colors hover:bg-surface hover:text-foreground"
       >
         <span className="grid h-11 w-11 place-items-center rounded-full border border-current transition-transform group-hover/new:scale-105">
           <Plus size={20} strokeWidth={1.6} />
@@ -111,9 +111,9 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
     <div className="group/card relative">
       <Link href={c.href} className="block">
         {/* 종이 한 장 같은 카드: 위쪽엔 과목·모드, 가운데는 내용 미리보기, 아래는 날짜(또는 진행률) */}
-        <div className="flex aspect-[3/4] flex-col rounded-xl border border-border bg-surface p-4 transition-all duration-200 group-hover/card:-translate-y-0.5 group-hover/card:border-border-strong group-hover/card:shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+        <div className="flex aspect-[3/4] flex-col rounded-3xl bg-surface p-5 transition-all duration-200 group-hover/card:-translate-y-0.5 group-hover/card:bg-raised">
           <div className="flex items-center justify-between gap-2">
-            <span className="max-w-[70%] truncate rounded-md border border-border-strong px-1.5 py-0.5 text-[11px] font-semibold text-muted">
+            <span className="max-w-[70%] truncate rounded-full bg-background px-2.5 py-0.5 text-[11px] font-semibold text-muted">
               {c.subject}
             </span>
             {c.kind === "learning" ? (
@@ -323,14 +323,14 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
           <div className="flex flex-wrap gap-3">
             <button
               onClick={() => onNew({ kind: "image" })}
-              className="inline-flex h-12 items-center gap-2.5 rounded-xl border border-border-strong px-6 text-[15px] font-semibold transition-colors hover:border-foreground hover:bg-raised"
+              className="inline-flex h-12 items-center gap-2.5 rounded-full bg-surface px-6 text-[15px] font-semibold transition-colors hover:bg-raised"
             >
               <ImagePlus size={18} strokeWidth={1.7} />
               사진 업로드
             </button>
             <button
               onClick={() => onNew({ kind: "text" })}
-              className="inline-flex h-12 items-center gap-2.5 rounded-xl border border-border-strong px-6 text-[15px] font-semibold transition-colors hover:border-foreground hover:bg-raised"
+              className="inline-flex h-12 items-center gap-2.5 rounded-full bg-surface px-6 text-[15px] font-semibold transition-colors hover:bg-raised"
             >
               <Type size={18} strokeWidth={1.7} />
               텍스트로 붙여넣기
@@ -371,7 +371,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
                 <button
                   key={label}
                   onClick={() => onNew({ topic })}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-border-strong px-4 text-[13px] font-semibold transition-colors hover:border-foreground hover:bg-raised"
+                  className="inline-flex h-10 items-center gap-2 rounded-full bg-surface px-5 text-[13px] font-semibold transition-colors hover:bg-raised"
                 >
                   <Icon size={15} strokeWidth={1.7} className="text-muted" />
                   {label}

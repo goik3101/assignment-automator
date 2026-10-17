@@ -11,7 +11,7 @@ const DRAFT_MARK = "(학생 감상 초안";
 
 function DraftBadge() {
   return (
-    <span className="not-prose mb-1.5 inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-raised px-2 py-1 text-xs font-medium text-muted">
+    <span className="not-prose mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-background px-2.5 py-1 text-xs font-medium text-muted">
       <PencilLine size={12} strokeWidth={1.8} />
       AI가 쓴 초안이에요 — 본인 생각과 경험으로 고쳐 쓰세요
     </span>
@@ -40,7 +40,7 @@ export const MD_COMPONENTS: Components = {
 export function ProductionNotes({ notes }: { notes: { label?: string; text: string }[] }) {
   if (notes.length === 0) return null;
   return (
-    <details className="mt-6 rounded-xl border border-border bg-background px-4 py-3">
+    <details className="mt-6 rounded-2xl bg-background px-5 py-4">
       <summary className="cursor-pointer text-sm font-semibold">제작 참고 — 제출하는 글이 아니에요</summary>
       <div className="mt-3 space-y-4">
         {notes.map((n, i) => (
@@ -74,7 +74,7 @@ export function ClaimCheckNote({ checks }: { checks: ClaimCheckSummary[] }) {
   if (total.checked === 0) return null;
   const confirmed = total.supported + total.repointed;
   return (
-    <div className="mt-6 rounded-xl border border-border bg-background px-4 py-3 text-xs leading-relaxed text-muted">
+    <div className="mt-6 rounded-2xl bg-background px-5 py-4 text-xs leading-relaxed text-muted">
       <p className="text-sm font-semibold text-foreground">출처 대조 결과</p>
       <p className="mt-1">
         연도·수치·영문 이름이 들어 있는 인용 문장 {total.checked}개를 인용한 페이지 본문과 맞춰 봤어요. {confirmed}개에서 그 값이 확인됐고
