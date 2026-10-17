@@ -11,7 +11,9 @@ import type {
   TaskElement,
 } from "@/types/task";
 import { EssayPanel, PlanPanel } from "./ResultPanel";
-import HomeDashboard from "./home/HomeDashboard";
+import StudyRail from "./study/StudyRail";
+import { useAuth } from "@/lib/supabase/use-auth";
+import HomeDashboard, { type NewPrefill } from "./home/HomeDashboard";
 import NewCreationModal, { type AiStartPayload } from "./creation/NewCreationModal";
 import { consumeOpenNewFlag, onOpenNewCreation } from "@/lib/ui/new-creation";
 import { isPresentationTask } from "@/lib/util/presentation";
@@ -40,9 +42,10 @@ interface GenerationContext {
 }
 
 export default function AssignmentFlow() {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>("home");
   // 새 창작물 모달(사진/텍스트 입력 → 분석 → AI/직접 작성 선택). 열 때 미리 채울 값도 함께 받는다.
-  const [newOpen, setNewOpen] = useState<{ topic?: string; image?: File | null } | null>(null);
+  const [newOpen, setNewOpen] = useState<NewPrefill | null>(null);
   const [ctx, setCtx] = useState<GenerationContext | null>(null);
   const ctxRef = useRef<GenerationContext | null>(null);
 
@@ -271,6 +274,7 @@ export default function AssignmentFlow() {
       onStartAi={handleStart}
       initialTopic={newOpen.topic}
       initialImage={newOpen.image ?? null}
+      initialKind={newOpen.kind}
     />
   );
 
@@ -285,9 +289,11 @@ export default function AssignmentFlow() {
 
   const info = ctx?.coreTaskInfo ?? null;
   const loadingCount = items.filter((i) => i.status === "loading").length;
+  // 학습 도구(요약·카드·퀴즈·시험·채팅)는 저장된 결과물(submissionId)이 있어야 쓸 수 있다 — 로그인 사용자만 저장된다.
+  const submissionId = items.flatMap((i) => (i.status === "done" && i.result.submissionId ? [i.result.submissionId] : []))[0];
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-8 md:px-8 md:py-12">
+    <div className="mx-auto w-full max-w-[1200px] px-6 py-8 md:px-10 md:py-10">
       <header className="mb-8">
         <button
           onClick={() => setStep("home")}
@@ -306,7 +312,8 @@ export default function AssignmentFlow() {
         )}
       </header>
 
-      <div className="space-y-6">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <div className="min-w-0 space-y-6">
         {essaySummaryLines.length > 0 && (
           <div className="rounded-2xl border border-border bg-surface p-5">
             <p className="mb-2.5 text-xs font-semibold text-faint">전체 요약</p>
@@ -373,6 +380,19 @@ export default function AssignmentFlow() {
             />
           );
         })}
+      </div>
+        <StudyRail
+          studyRef={submissionId ? { kind: "submission", id: submissionId } : null}
+          title={info?.topic ?? "이 과제"}
+          lockedReason={
+            loadingCount > 0
+              ? "결과물이 완성되면 쓸 수 있어요."
+              : user
+                ? "저장된 결과물이 있어야 쓸 수 있어요."
+                : "로그인하면 결과물이 저장되고, 요약·퀴즈·시험·채팅을 쓸 수 있어요."
+          }
+          className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto"
+        />
       </div>
 
       {modal}

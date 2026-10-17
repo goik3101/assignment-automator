@@ -13,7 +13,7 @@ export interface ChatMessage {
   imageUrl?: string;
 }
 
-export type ChatContextRef = { kind: "history" | "learning"; id: string } | null;
+export type ChatContextRef = { kind: "history" | "learning" | "submission"; id: string } | null;
 
 let counter = 0;
 const nextId = () => `m${Date.now().toString(36)}${(counter++).toString(36)}`;

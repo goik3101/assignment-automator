@@ -72,16 +72,18 @@ export default function NewCreationModal({
   onStartAi,
   initialTopic = "",
   initialImage = null,
+  initialKind,
 }: {
   onClose: () => void;
   onStartAi: (payload: AiStartPayload) => void;
   initialTopic?: string;
   initialImage?: File | null;
+  initialKind?: "image" | "text";
 }) {
   const router = useRouter();
   const { user } = useAuth();
   const [stage, setStage] = useState<Stage>("input");
-  const [kind, setKind] = useState<InputKind>(initialTopic && !initialImage ? "text" : "image");
+  const [kind, setKind] = useState<InputKind>(initialKind ?? (initialTopic && !initialImage ? "text" : "image"));
   const [imageFile, setImageFile] = useState<File | null>(initialImage);
   const [preview, setPreview] = useState<string | null>(() => (initialImage ? URL.createObjectURL(initialImage) : null));
   const [dragging, setDragging] = useState(false);

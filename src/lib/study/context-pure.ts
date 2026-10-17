@@ -1,5 +1,6 @@
 // 서버 라우트와 테스트가 같이 쓰는 순수 함수들(alias import 없음 — node:test에서 바로 불러올 수 있게).
-export type StudyContextRef = { kind: "history" | "learning"; id: string };
+/** history = user_histories.id, submission = 생성 직후 받는 submissionId(user_histories.submission_id), learning = 학습 세션 id */
+export type StudyContextRef = { kind: "history" | "learning" | "submission"; id: string };
 
 export const MAX_CONTEXT_CHARS = 14000;
 
@@ -8,7 +9,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parseContextRef(raw: unknown): StudyContextRef | null {
   const r = raw as { kind?: unknown; id?: unknown } | null;
   if (!r || typeof r !== "object") return null;
-  if ((r.kind !== "history" && r.kind !== "learning") || typeof r.id !== "string" || !UUID.test(r.id)) return null;
+  if ((r.kind !== "history" && r.kind !== "learning" && r.kind !== "submission") || typeof r.id !== "string" || !UUID.test(r.id)) return null;
   return { kind: r.kind, id: r.id };
 }
 

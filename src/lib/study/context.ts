@@ -19,12 +19,10 @@ export interface StudyContext {
 }
 
 export async function loadStudyContext(supabase: SupabaseClient, ref: StudyContextRef): Promise<StudyContext | null> {
-  if (ref.kind === "history") {
-    const { data } = await supabase
-      .from("user_histories")
-      .select("id, title, subject, raw_text_result")
-      .eq("id", ref.id)
-      .maybeSingle();
+  if (ref.kind === "history" || ref.kind === "submission") {
+    // submission: 방금 만든 결과물은 화면이 history id를 모른다 — submissionId로 현재 버전(is_current)을 찾는다.
+    const base = supabase.from("user_histories").select("id, title, subject, raw_text_result");
+    const { data } = await (ref.kind === "history" ? base.eq("id", ref.id) : base.eq("submission_id", ref.id).eq("is_current", true)).maybeSingle();
     if (!data) return null;
     let text = "";
     try {
@@ -35,7 +33,7 @@ export async function loadStudyContext(supabase: SupabaseClient, ref: StudyConte
     }
     return {
       kind: "history",
-      id: ref.id,
+      id: (data as { id: string }).id,
       title: (data.title as string | null) || (data.subject as string),
       subject: data.subject as string,
       text: clip(text),

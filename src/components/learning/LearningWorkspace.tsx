@@ -15,7 +15,7 @@ import {
   type SubjectCandidate,
 } from "@/types/learning";
 import { learningApi, STATUS_LABEL } from "./api";
-import { ArrowLeft, ArrowRight, Check, GraduationCap, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, TriangleAlert } from "lucide-react";
 import StudyRail from "@/components/study/StudyRail";
 
 type SaveState = "saved" | "saving" | "unsaved" | "error";
@@ -330,7 +330,6 @@ export default function LearningWorkspace({ id }: { id: string }) {
   const [pane, setPane] = useState<Pane>("write");
   const [notice, setNotice] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
-  const [studyOpen, setStudyOpen] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [question, setQuestion] = useState("");
   const [askOpen, setAskOpen] = useState(false);
@@ -546,7 +545,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
   const state = selected ? (saveState[selected.id] ?? "saved") : "saved";
 
   return (
-    <div className="px-4 py-6 md:px-8">
+    <div className="mx-auto w-full max-w-[1280px] px-4 py-6 md:px-8">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Link href="/" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground">
@@ -572,13 +571,6 @@ export default function LearningWorkspace({ id }: { id: string }) {
           <span title="자료 조사와 피드백을 합쳐 하루에 쓸 수 있는 횟수">
             {usage.unlimited ? "AI 사용 무제한(관리자)" : `오늘 AI ${usage.used}/${usage.limit}회 사용`}
           </span>
-          <button
-            onClick={() => setStudyOpen(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border-strong px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-raised"
-          >
-            <GraduationCap size={15} strokeWidth={1.7} />
-            공부 도구
-          </button>
           {assembled && (
             <button onClick={() => setShowAll((v) => !v)} className="inline-flex h-9 items-center rounded-xl border border-border-strong px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-raised">
               {showAll ? "작성 화면으로" : "내가 쓴 내용 모아보기"}
@@ -587,6 +579,8 @@ export default function LearningWorkspace({ id }: { id: string }) {
         </div>
       </header>
 
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <div className="min-w-0">
       {notice && (
         <p role="alert" className="mb-4 rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
           {notice}
@@ -643,14 +637,14 @@ export default function LearningWorkspace({ id }: { id: string }) {
           <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">{assembled}</pre>
         </section>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
-          <nav aria-label="작성 항목" className="lg:sticky lg:top-6 lg:self-start">
+        <div className="space-y-6">
+          <nav aria-label="작성 항목">
             <p className="mb-2 text-xs text-muted">
               {doneCount}/{sections.length} 항목 완료
             </p>
-            <ul className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
+            <ul className="flex gap-2 overflow-x-auto pb-2">
               {sections.map((s, i) => (
-                <li key={s.id} className="shrink-0 lg:shrink">
+                <li key={s.id} className="shrink-0">
                   <button
                     onClick={() => setSelectedId(s.id)}
                     aria-current={s.id === selectedId ? "true" : undefined}
@@ -702,7 +696,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                 </div>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-2">
+              <div className="space-y-5">
                 <section
                   aria-label="조사 자료"
                   className={[pane === "material" ? "block" : "hidden", "lg:block", "min-w-0 rounded-2xl border border-border bg-surface p-5"].join(" ")}
@@ -835,21 +829,13 @@ export default function LearningWorkspace({ id }: { id: string }) {
           )}
         </div>
       )}
-
-      {studyOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && setStudyOpen(false)}>
-          <div role="dialog" aria-modal="true" aria-label="공부 도구" className="flex h-full w-full max-w-[420px] animate-[popIn_0.22s_ease-out] flex-col border-l border-border-strong bg-background">
-            <div className="flex items-center justify-between px-5 pt-5">
-              <h2 className="text-lg font-bold tracking-tight">공부 도구</h2>
-              <button onClick={() => setStudyOpen(false)} aria-label="닫기" className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground">
-                <X size={16} strokeWidth={1.8} />
-              </button>
-            </div>
-            <p className="px-5 pt-1 text-xs leading-relaxed text-muted">조사 자료와 내가 쓴 글을 바탕으로 만들어요.</p>
-            <StudyRail studyRef={{ kind: "learning", id }} title={session.title} className="min-h-0 flex-1 overflow-y-auto p-5" />
-          </div>
-        </div>
-      )}
+      </div>
+      <StudyRail
+        studyRef={{ kind: "learning", id }}
+        title={session.title}
+        className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto"
+      />
+      </div>
     </div>
   );
 }

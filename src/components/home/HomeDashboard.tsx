@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Ellipsis, FileText, ImagePlus, Plus, Search, Settings, Sparkles, Trash2, Type, Wrench } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
 import { useAuth } from "@/lib/supabase/use-auth";
-import ChatDock from "@/components/chat/ChatDock";
+import HomeChat from "@/components/chat/HomeChat";
 
 interface HistoryRow {
   id: string;
@@ -40,6 +40,67 @@ const STARTERS = [
   { icon: Type, label: "영어 발표", topic: "관심 주제로 3분 동안 발표하는 영어 스피치 대본" },
   { icon: Wrench, label: "진로 발표 PPT", topic: "희망 직업을 탐색하고 발표하는 진로 발표 PPT" },
 ];
+
+export interface NewPrefill {
+  topic?: string;
+  image?: File | null;
+  /** 모달을 어느 입력 방식으로 열지(사진 업로드 / 텍스트로 붙여넣기). */
+  kind?: "image" | "text";
+}
+
+/** 점선 + 카드. 누르면 바로 아래에 "이미지 업로드 / 텍스트 업로드" 메뉴가 열린다. */
+function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="새 창작물 만들기"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="group/new flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border-strong text-muted transition-colors hover:border-foreground hover:text-foreground"
+      >
+        <span className="grid h-11 w-11 place-items-center rounded-full border border-current transition-transform group-hover/new:scale-105">
+          <Plus size={20} strokeWidth={1.6} />
+        </span>
+        <span className="text-[13px] font-semibold">새 창작물</span>
+      </button>
+      {open && (
+        <ul role="menu" className="absolute left-0 top-full z-10 mt-2 w-full min-w-[150px] rounded-xl border border-border-strong bg-surface p-1 shadow-xl">
+          {([["image", "이미지 업로드", ImagePlus], ["text", "텍스트 업로드", Type]] as const).map(([kind, label, Icon]) => (
+            <li key={kind}>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onNew({ kind });
+                }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:bg-raised"
+              >
+                <Icon size={15} strokeWidth={1.7} className="text-muted" />
+                {label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 const dateFmt = new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric" });
 
@@ -124,9 +185,9 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
 
 /**
  * 홈: "수행평가 및 과제". 새 창작물 카드 + 지금까지 만든 결과물(AI 모드)·학습 과제(학습 모드)를 한 격자에 모아서 보여주고,
- * 아래 고정된 입력창(ChatDock)으로 새 안내문이나 기존 과제를 바로 질문한다. 비로그인이면 새 창작물 카드만 보인다.
+ * 아래 고정된 입력창(HomeChat)으로 새 안내문이나 기존 과제를 바로 질문한다. 비로그인이면 새 창작물 카드만 보인다.
  */
-export default function HomeDashboard({ onNew }: { onNew: (prefill?: { topic?: string; image?: File | null }) => void }) {
+export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
   const { user } = useAuth();
   const [histories, setHistories] = useState<HistoryRow[] | null>(null);
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
@@ -199,7 +260,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: { topic?: s
 
   return (
     <div className="relative flex min-h-[calc(100vh-49px)] flex-col">
-      <div className="flex-1 px-6 pb-40 pt-8 md:px-10">
+      <div className="flex-1 px-6 pb-16 pt-8 md:px-10">
         <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight">수행평가 및 과제</h1>
           <div className="flex items-center gap-2">
@@ -257,6 +318,27 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: { topic?: s
           </div>
         </header>
 
+        {/* 스크린샷 구조: 제목 아래에 업로드 버튼 두 개, 그 아래에 질문 입력창, 그다음에 카드 격자 */}
+        <section aria-label="새 안내문 올리기와 질문" className="mb-12 flex flex-col gap-3">
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => onNew({ kind: "image" })}
+              className="inline-flex h-12 items-center gap-2.5 rounded-xl border border-border-strong px-6 text-[15px] font-semibold transition-colors hover:border-foreground hover:bg-raised"
+            >
+              <ImagePlus size={18} strokeWidth={1.7} />
+              사진 업로드
+            </button>
+            <button
+              onClick={() => onNew({ kind: "text" })}
+              className="inline-flex h-12 items-center gap-2.5 rounded-xl border border-border-strong px-6 text-[15px] font-semibold transition-colors hover:border-foreground hover:bg-raised"
+            >
+              <Type size={18} strokeWidth={1.7} />
+              텍스트로 붙여넣기
+            </button>
+          </div>
+          <HomeChat />
+        </section>
+
         {error && (
           <p role="alert" className="mb-5 rounded-xl border border-danger/50 px-4 py-3 text-sm text-danger">
             {error}
@@ -264,18 +346,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: { topic?: s
         )}
 
         <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-5 gap-y-9">
-          <div>
-            <button
-              onClick={() => onNew()}
-              aria-label="새 창작물 만들기"
-              className="group/new flex aspect-[3/4] w-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border-strong text-muted transition-colors hover:border-foreground hover:text-foreground"
-            >
-              <span className="grid h-11 w-11 place-items-center rounded-full border border-current transition-transform group-hover/new:scale-105">
-                <Plus size={20} strokeWidth={1.6} />
-              </span>
-              <span className="text-[13px] font-semibold">새 창작물</span>
-            </button>
-          </div>
+          <NewCard onNew={onNew} />
           {visible.map((c) => (
             <Card key={`${c.kind}-${c.id}`} c={c} onDelete={handleDelete} />
           ))}
@@ -318,7 +389,6 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: { topic?: s
         )}
       </div>
 
-      <ChatDock />
     </div>
   );
 }

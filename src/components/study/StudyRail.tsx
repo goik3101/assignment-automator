@@ -23,9 +23,21 @@ const TOOLS: { id: Tool; label: string; hint: string; icon: LucideIcon }[] = [
  * 과제 화면 오른쪽의 공부 도구: 요약 · 플래시카드 · 퀴즈 · 가상 시험(각각 큰 창으로 열림) + 이 과제에 대해 묻는 AI 채팅.
  * 자동 작성 모드의 결과물과 학습 모드의 과제 모두 같은 구성을 쓴다. 내용은 서버가 id로 직접 읽어 온다.
  */
-export default function StudyRail({ studyRef, title, className = "" }: { studyRef: StudyRef; title: string; className?: string }) {
+export default function StudyRail({
+  studyRef,
+  title,
+  className = "",
+  lockedReason,
+}: {
+  /** 아직 저장된 과제가 없으면(생성 중이거나 비로그인) null — 그때는 lockedReason을 보여주고 도구를 잠근다. */
+  studyRef: StudyRef | null;
+  title: string;
+  className?: string;
+  lockedReason?: string;
+}) {
   const [tool, setTool] = useState<Tool | null>(null);
   const chat = useChat(studyRef);
+  const locked = !studyRef;
   const close = () => setTool(null);
 
   return (
@@ -37,7 +49,8 @@ export default function StudyRail({ studyRef, title, className = "" }: { studyRe
             <button
               key={id}
               onClick={() => setTool(id)}
-              className="group flex flex-col items-start gap-2.5 rounded-xl border border-border-strong p-3.5 text-left transition-colors hover:border-foreground hover:bg-raised"
+              disabled={locked}
+              className="group flex flex-col items-start gap-2.5 rounded-xl border border-border-strong p-3.5 text-left transition-colors hover:border-foreground hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border-strong disabled:hover:bg-transparent"
             >
               <Icon size={20} strokeWidth={1.6} className="text-muted transition-colors group-hover:text-foreground" />
               <span>
@@ -47,6 +60,7 @@ export default function StudyRail({ studyRef, title, className = "" }: { studyRe
             </button>
           ))}
         </div>
+        {locked && lockedReason && <p className="mt-3 text-xs leading-relaxed text-muted">{lockedReason}</p>}
       </section>
 
       <section aria-label="AI 채팅" className="flex min-h-[360px] flex-1 flex-col">
@@ -68,6 +82,7 @@ export default function StudyRail({ studyRef, title, className = "" }: { studyRe
         <ChatView
           chat={chat}
           placeholder="이 과제에 대해 무엇이든 물어보세요"
+          disabledReason={locked ? "결과물이 저장되면 쓸 수 있어요" : null}
           messagesClassName="max-h-[46vh] lg:max-h-none"
           empty={
             <div className="rounded-xl border border-dashed border-border-strong p-4 text-[13px] leading-relaxed text-muted">
@@ -82,10 +97,10 @@ export default function StudyRail({ studyRef, title, className = "" }: { studyRe
         />
       </section>
 
-      {tool === "summary" && <SummaryModal studyRef={studyRef} onClose={close} />}
-      {tool === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} />}
-      {tool === "quiz" && <QuizModal studyRef={studyRef} onClose={close} />}
-      {tool === "exam" && <ExamModal studyRef={studyRef} onClose={close} />}
+      {studyRef && tool === "summary" && <SummaryModal studyRef={studyRef} onClose={close} />}
+      {studyRef && tool === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} />}
+      {studyRef && tool === "quiz" && <QuizModal studyRef={studyRef} onClose={close} />}
+      {studyRef && tool === "exam" && <ExamModal studyRef={studyRef} onClose={close} />}
     </aside>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Check, ChevronDown, ChevronUp, FilePlus2, Sparkles, SquarePen } from "lucide-react";
+import { BookOpen, Check, ChevronDown, FilePlus2, Sparkles, SquarePen } from "lucide-react";
 import { useAuth } from "@/lib/supabase/use-auth";
 import ChatView from "./ChatView";
 import { useChat, type ChatContextRef } from "./useChat";
@@ -14,15 +14,14 @@ interface PickItem {
 }
 
 /**
- * 홈 아래에 고정된 입력창. 새 안내문(사진·글)을 붙여서 바로 질문하거나, "질문할 과제"를 골라 이미 만든 과제에 대해 묻는다.
+ * 홈 위쪽(사진 업로드·텍스트로 붙여넣기 버튼 바로 아래)의 입력창. 새 안내문(사진·글)을 붙여서 바로 질문하거나, "질문할 과제"를 골라 이미 만든 과제에 대해 묻는다.
  * 대화가 시작되면 입력창 위로 대화창이 펼쳐진다. 로그인한 사용자만 쓸 수 있다.
  */
-export default function ChatDock() {
+export default function HomeChat() {
   const { user } = useAuth();
   const chat = useChat(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [items, setItems] = useState<PickItem[] | null>(null);
-  const [folded, setFolded] = useState(false);
   const [target, setTarget] = useState<PickItem | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +72,7 @@ export default function ChatDock() {
   const hasMessages = chat.messages.length > 0;
 
   const picker = (
-    <div ref={pickerRef} className="relative mb-2.5 flex items-center gap-2">
+    <div ref={pickerRef} className="relative flex items-center gap-2">
       <button
         onClick={() => setPickerOpen((v) => !v)}
         aria-expanded={pickerOpen}
@@ -146,33 +145,16 @@ export default function ChatDock() {
   );
 
   return (
-    <div className="pointer-events-none sticky bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent px-6 pb-5 pt-12 md:px-10">
-      <section
-        aria-label="AI에게 질문하기"
-        className="pointer-events-auto mx-auto max-w-3xl rounded-3xl border border-border bg-background/90 p-3 shadow-[0_12px_48px_rgba(0,0,0,0.28)] backdrop-blur"
-      >
-        {hasMessages && (
-          <div className="mb-1 flex items-center justify-between px-1 pb-1">
-            <p className="text-[13px] font-semibold">AI 채팅</p>
-            <button
-              onClick={() => setFolded((v) => !v)}
-              aria-label={folded ? "대화 펼치기" : "대화 접기"}
-              aria-expanded={!folded}
-              className="grid h-7 w-7 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground"
-            >
-              {folded ? <ChevronUp size={16} strokeWidth={1.8} /> : <ChevronDown size={16} strokeWidth={1.8} />}
-            </button>
-          </div>
-        )}
-        <ChatView
-          chat={folded ? { ...chat, messages: [] } : chat}
-          allowImage={!target}
-          placeholder={target ? `“${target.title}”에 대해 무엇이든 물어보세요` : "무엇이든 물어보세요"}
-          header={picker}
-          messagesClassName="max-h-[44vh]"
-          disabledReason={user ? null : "로그인하면 질문할 수 있어요"}
-        />
-      </section>
-    </div>
+    <section aria-label="AI에게 질문하기" className="w-full max-w-2xl">
+      <ChatView
+        chat={chat}
+        composerFirst
+        allowImage={!target}
+        placeholder={target ? `“${target.title}”에 대해 무엇이든 물어보세요` : "무엇이든 물어보기"}
+        header={picker}
+        messagesClassName="max-h-[52vh] rounded-2xl border border-border bg-surface p-4"
+        disabledReason={user ? null : "로그인하면 질문할 수 있어요"}
+      />
+    </section>
   );
 }

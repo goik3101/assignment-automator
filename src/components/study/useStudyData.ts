@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type StudyRef = { kind: "history" | "learning"; id: string };
+export type StudyRef = { kind: "history" | "learning" | "submission"; id: string };
 
 interface CacheEntry<T> {
   at: number;
