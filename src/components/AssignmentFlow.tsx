@@ -172,6 +172,8 @@ export default function AssignmentFlow() {
             authorWarning: section.authorWarning,
             noSourcesWarning: section.noSourcesWarning,
             structureWarning: section.structureWarning,
+            productionNotes: section.productionNotes,
+            claimCheck: section.claimCheck,
             latency_ms: result.latency_ms,
             submissionId: result.submissionId,
           });
@@ -257,6 +259,8 @@ export default function AssignmentFlow() {
             authorWarning: section.authorWarning,
             noSourcesWarning: section.noSourcesWarning,
             structureWarning: section.structureWarning,
+            productionNotes: section.productionNotes,
+            claimCheck: section.claimCheck,
             latency_ms: result.latency_ms,
             submissionId: result.submissionId,
           });

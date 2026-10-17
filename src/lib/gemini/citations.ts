@@ -21,6 +21,34 @@ export function stripInvalidCitationMarkers(text: string, invalidNs: Set<number>
 export type { GroundingChunkLike, GroundingSupportLike } from "../llm/types.ts";
 import type { GroundingChunkLike, GroundingSupportLike } from "../llm/types.ts";
 
+const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|mc_cid|mc_eid|platform)$/i;
+
+/** 추적용 쿼리(utm_*, platform=hootsuite 등)와 #조각을 뗀 주소 — 같은 페이지가 추적 값만 달라 출처로 두 번 올라오는 것을 막고, 학생이 여는 링크도 깔끔하게 한다. */
+export function canonicalizeUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    for (const k of [...u.searchParams.keys()]) if (TRACKING_PARAM.test(k)) u.searchParams.delete(k);
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
+/** 페이지 제목이 비었거나 본문 조각(여러 줄·마크다운 제목)이 들어온 경우 호스트+경로로 대신한다. */
+export function cleanSourceTitle(title: string | undefined, url: string): string {
+  const t = (title ?? "").replace(/\s+/g, " ").replace(/^#+\s*/, "").trim();
+  const multiline = /\n/.test((title ?? "").trim());
+  if (t && !multiline && t.length <= 120) return t;
+  try {
+    const u = new URL(url);
+    const seg = u.pathname.split("/").filter(Boolean).pop();
+    return (u.hostname.replace(/^www\./, "") + (seg ? " — " + decodeURIComponent(seg) : "")).slice(0, 120);
+  } catch {
+    return t.slice(0, 120) || url;
+  }
+}
+
 /**
  * groundingChunks(검색 결과 웹페이지 목록)에서 중복 URL을 제거하고
  * 1번부터 번호를 매긴 출처 목록을 만든다. url_valid는 아직 검증 전이라 null.
@@ -35,13 +63,14 @@ export function buildSourceList(chunks: GroundingChunkLike[] | undefined): {
   const chunkIndexToN = new Map<number, number>();
 
   (chunks ?? []).forEach((chunk, i) => {
-    const uri = chunk.web?.uri;
-    if (!uri) return;
+    const rawUri = chunk.web?.uri;
+    if (!rawUri) return;
+    const uri = canonicalizeUrl(rawUri);
     let n = urlToN.get(uri);
     if (n === undefined) {
       n = sources.length + 1;
       urlToN.set(uri, n);
-      sources.push({ n, title: chunk.web?.title || uri, url: uri, url_valid: null });
+      sources.push({ n, title: cleanSourceTitle(chunk.web?.title, uri), url: uri, url_valid: null });
     }
     chunkIndexToN.set(i, n);
   });

@@ -71,6 +71,15 @@ export interface SourceRef {
   tier?: "official" | "reliable" | "reference" | "general" | "weak";
 }
 
+/** 인용 문장이 인용한 출처 페이지와 맞는지 코드로 대조한 요약. 한국어 서술의 의미까지는 판단하지 못한다. */
+export interface ClaimCheckSummary {
+  checked: number;
+  supported: number;
+  repointed: number;
+  unverified: number;
+  unsupported: { text: string; tokens: string }[];
+}
+
 export interface EssayResult {
   type: "essay";
   /** 상단 핵심 요약 3줄 + 본문, 문장 뒤에 [n] 각주가 삽입된 마크다운 (모든 단계를
@@ -107,12 +116,19 @@ export interface EssayResult {
     /** 안내문의 필수 항목(TaskElement.required_items, sections 형식)이 재시도
      * 후에도 소제목으로 존재하지 않거나 비어 있을 때만 채워진다. */
     structureWarning?: string;
+    /** "### 제작 참고" 블록 — 학생이 직접 구해 넣을 사진·그림 안내처럼 제출 내용이 아닌 부분(본문에서 분리해 따로 보여 준다). */
+    productionNotes?: string;
+    /** 인용 문장↔출처 페이지 본문 대조 결과(연도·수치·영문 이름 기준). 못 읽은 페이지는 확인 불가로 센다. */
+    claimCheck?: ClaimCheckSummary;
   }[];
   /** 조사 자료(sections 형식 단계)를 항목별로 분리한 구조화 사실 — 코드가 "### "
    * 소제목 기준으로 순수 문자열 처리로 만든다(LLM 재생성 아님). plan 생성이 이
    * 사실(연도·수치·사건)을 그대로 재사용하고 독립적으로 다시 만들지 않게 하는
    * 단일 진실 소스. sections 형식 단계가 없으면 undefined. */
   researchFacts?: { label: string; items: { item: string; lines: string[] }[] }[];
+  /** 위 sections의 productionNotes/claimCheck와 같은 것 — 단계별 카드(요소 1개)로 나눠 보여 줄 때 이 필드로 옮겨 담는다. */
+  productionNotes?: string;
+  claimCheck?: ClaimCheckSummary;
   /** 위 sections와 별개로 단일 단계 케이스에 쓰는 필수 항목 누락 경고. */
   structureWarning?: string;
   /** 글 맨 위에 제시하는 불릿 3줄 요약(학생이 스스로 검증할 수 있도록). 여러

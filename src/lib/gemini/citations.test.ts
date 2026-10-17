@@ -145,3 +145,23 @@ test("길이 불변식 반복 검증 — 다양한 문장 x 다양한 삽입 지
     );
   }
 });
+
+import { buildSourceList, canonicalizeUrl, cleanSourceTitle } from "./citations.ts";
+
+test("추적용 쿼리만 떼고, 같은 페이지는 한 출처로 합친다", () => {
+  assert.equal(canonicalizeUrl("https://www.nobelprize.org/prizes/peace/2014/yousafzai/biographical/?platform=hootsuite"), "https://www.nobelprize.org/prizes/peace/2014/yousafzai/biographical/");
+  assert.equal(canonicalizeUrl("https://example.com/a?id=3&utm_source=x#frag"), "https://example.com/a?id=3");
+  const { sources, chunkIndexToN } = buildSourceList([
+    { web: { uri: "https://a.org/p?utm_source=x", title: "A" } },
+    { web: { uri: "https://a.org/p", title: "A" } },
+    { web: { uri: "https://b.org/q", title: "B" } },
+  ]);
+  assert.equal(sources.length, 2);
+  assert.equal(chunkIndexToN.get(1), 1);
+});
+
+test("본문 조각이 들어온 제목은 호스트+경로로 대신한다", () => {
+  assert.equal(cleanSourceTitle("ABOUT\n\n# OUR WORK\n\nFounded by Malala", "https://malala.org/news/annual-report"), "malala.org — annual-report");
+  assert.equal(cleanSourceTitle("Malala Yousafzai", "https://en.wikipedia.org/wiki/Malala"), "Malala Yousafzai");
+  assert.equal(cleanSourceTitle(undefined, "https://x.org/"), "x.org");
+});

@@ -7,6 +7,7 @@ import { CircleCheck, CircleHelp, CircleX, Link2, MessageSquareQuote, PencilLine
 import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
 import { SOURCE_TIER_LABEL } from "@/lib/links/source-quality";
 import Button from "@/components/ui/Button";
+import { ClaimCheckNote, MD_COMPONENTS, ProductionNotes } from "@/components/result/ResultExtras";
 
 // 결과 카드 위쪽의 경고 배너. 조용히 최종본인 척 내보내지 않고 정직하게 알리기 위한 것들이다.
 //  - caution: 검증이 안 됐거나 기준에 못 미침(출처 없음·분량·필수 항목)
@@ -308,8 +309,19 @@ export function EssayPanel({
       {result.lengthWarning && <LengthWarning message={result.lengthWarning} />}
       {result.structureWarning && <StructureWarning message={result.structureWarning} />}
       <article className={ARTICLE}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.markdown}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+          {result.markdown}
+        </ReactMarkdown>
       </article>
+      <ProductionNotes
+        notes={[
+          ...(result.productionNotes ? [{ text: result.productionNotes }] : []),
+          ...(result.sections ?? []).flatMap((x) => (x.productionNotes ? [{ label: x.label, text: x.productionNotes }] : [])),
+        ]}
+      />
+      <ClaimCheckNote
+        checks={[...(result.claimCheck ? [result.claimCheck] : []), ...(result.sections ?? []).flatMap((x) => (x.claimCheck ? [x.claimCheck] : []))]}
+      />
       <SourceList sources={result.sources} />
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
       {result.submissionId && <ShareButton submissionId={result.submissionId} />}

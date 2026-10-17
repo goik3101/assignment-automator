@@ -5,6 +5,37 @@ import { classifyFetchError, classifyHttpStatus, toUrlValid, type LinkStatus } f
 
 const TIMEOUT_MS = 5000;
 
+// 링크 확인 때 이미 받아 온 페이지 본문(태그를 걷어낸 글자만)을 잠시 들고 있다가, 문장이 인용 페이지에 실제로 있는지 대조하는 데 쓴다(claim-check.ts).
+// 같은 요청 안에서 쓰고 버리는 값이라 크기와 개수를 제한한다.
+const PAGE_TEXT_MAX_CHARS = 300_000;
+const PAGE_TEXT_MAX_ENTRIES = 80;
+const pageTextCache = new Map<string, string>();
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function rememberPageText(urls: string[], html: string): void {
+  const text = htmlToText(html).slice(0, PAGE_TEXT_MAX_CHARS);
+  if (text.length < 200) return;
+  for (const u of urls) {
+    if (pageTextCache.size >= PAGE_TEXT_MAX_ENTRIES) pageTextCache.delete(pageTextCache.keys().next().value as string);
+    pageTextCache.set(u, text);
+  }
+}
+
+/** 출처 검증 때 받아 둔 페이지 본문. 못 받았거나(차단·시간 초과·PDF 등) 오래돼 밀려났으면 null. */
+export function getCachedPageText(url: string): string | null {
+  return pageTextCache.get(url) ?? null;
+}
+
 interface CheckResult {
   status: LinkStatus;
   /** 리다이렉트를 다 따라간 뒤의 최종 URL. 실패하면 원래 URL 그대로. */
@@ -68,6 +99,7 @@ async function checkUrl(url: string): Promise<CheckResult> {
       finalUrl = bodyRes.url || finalUrl;
       const bodyText = await bodyRes.text();
       if (looksLikeJunkPage(finalUrl, bodyText)) return { status: "invalid", finalUrl };
+      if (/html|text\//i.test(bodyRes.headers.get("content-type") ?? "")) rememberPageText([url, finalUrl], bodyText);
       return { status: "valid", finalUrl };
     } catch {
       // 본문 확인만 실패(느린 서버 등) — 상태 코드는 정상이었으니 과도하게 엄격해지지 않게 valid로 둔다.

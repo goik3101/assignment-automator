@@ -34,7 +34,7 @@ const RELIABLE = new RegExp(
 const REFERENCE = /(^|\.)(wikipedia\.org|wikimedia\.org|namu\.wiki|namuwiki\.com|wikiwand\.com)$/i;
 
 const WEAK =
-  /(^|\.)(blogspot\.[a-z.]+|tistory\.com|blog\.naver\.com|m\.blog\.naver\.com|cafe\.naver\.com|kin\.naver\.com|brunch\.co\.kr|velog\.io|medium\.com|wordpress\.com|wixsite\.com|youtube\.com|youtu\.be|reddit\.com|tiktok\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|dcinside\.com|ruliweb\.com|fmkorea\.com|theqoo\.net|quora\.com|blog\.daum\.net|cafe\.daum\.net|postype\.com)$/i;
+  /(^|\.)(blogspot\.[a-z.]+|tistory\.com|blog\.naver\.com|m\.blog\.naver\.com|cafe\.naver\.com|kin\.naver\.com|brunch\.co\.kr|velog\.io|medium\.com|wordpress\.com|wixsite\.com|youtube\.com|youtu\.be|reddit\.com|tiktok\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|dcinside\.com|ruliweb\.com|fmkorea\.com|theqoo\.net|quora\.com|blog\.daum\.net|cafe\.daum\.net|postype\.com|pages\.dev|netlify\.app|github\.io|vercel\.app|workers\.dev|herokuapp\.com|glitch\.me)$/i;
 
 export function classifySourceTier(url: string): SourceTier {
   let host = "";
