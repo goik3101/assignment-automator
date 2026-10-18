@@ -60,3 +60,21 @@ test("번호가 없는 문장에 같은 연도·수치를 가진 사실의 번�
   assert.equal(r.attached, 1);
   assert.match(r.text, /## 제목 2020년$/m); // 제목 줄은 건드리지 않음
 });
+
+import { confirmBookFromPages, parseBookResearch } from "./research-notes.ts";
+test("책 조사 응답을 읽고, 서지는 페이지 본문에 실제로 있을 때만 확인한다", () => {
+  const txt = '```json\n{"book":{"title":"어린 왕자","author":"앙투안 드 생텍쥐페리","exists":true},"facts":[{"fact":"『어린 왕자』는 1943년에 출간됐다.","url":"https://a.org/b","title":"A","printed_title":"The Little Prince","printed_author":"Antoine de Saint-Exupéry"},{"fact":"주인공은 소행성에서 온 어린 왕자다.","url":"https://a.org/c","title":"C"}]}\n```';
+  const r = parseBookResearch(txt)!;
+  assert.equal(r.book.title, "어린 왕자");
+  assert.equal(r.book.exists, true);
+  assert.equal(r.facts.length, 2);
+  assert.equal(r.facts[0].printedAuthor, "Antoine de Saint-Exupéry");
+  assert.equal(parseBookResearch("배열만 [1,2]"), null);
+  const facts = buildFacts(r.facts, ["https://a.org/b", "https://a.org/c"])!;
+  const page = "x".repeat(10) + " The Little Prince by Antoine de Saint-Exupéry, Reynal & Hitchcock 1943";
+  assert.equal(confirmBookFromPages(facts, () => page), true);
+  assert.equal(confirmBookFromPages(facts, () => "The Little Prince only"), false);
+  const long = [{ ...facts[0], printedTitle: "The Little Prince / Written and Drawn by / Antoine de Saint-Exupéry" }];
+  assert.equal(confirmBookFromPages(long, () => "the little prince by antoine de saint-exupéry"), true);
+  assert.equal(confirmBookFromPages(facts, () => null), false);
+});

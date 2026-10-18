@@ -7,6 +7,17 @@ export interface Fact {
   fact: string;
   url: string;
   title: string;
+  /** 서지 사실일 때, 그 페이지에 적힌 책 제목·저자 표기 그대로(페이지 본문에 실제로 있는지 코드가 대조한다). */
+  printedTitle?: string;
+  printedAuthor?: string;
+}
+
+export interface RawFact {
+  fact: string;
+  url: string;
+  title: string;
+  printedTitle?: string;
+  printedAuthor?: string;
 }
 
 /** 주소를 비교용으로 정규화한다(추적 쿼리·#조각·www·끝 슬래시 제거, 소문자 호스트). */
@@ -24,20 +35,45 @@ export function normalizeUrl(raw: string): string {
   }
 }
 
+function cleanFacts(arr: unknown[]): RawFact[] {
+  return arr
+    .map((x) => x as { fact?: unknown; url?: unknown; title?: unknown; printed_title?: unknown; printed_author?: unknown })
+    .filter((x) => typeof x.fact === "string" && x.fact.trim().length >= 6 && typeof x.url === "string" && /^https?:\/\//i.test(x.url))
+    .map((x) => ({
+      fact: (x.fact as string).trim(),
+      url: (x.url as string).trim(),
+      title: typeof x.title === "string" ? x.title.trim() : "",
+      printedTitle: typeof x.printed_title === "string" && x.printed_title.trim() ? x.printed_title.trim() : undefined,
+      printedAuthor: typeof x.printed_author === "string" && x.printed_author.trim() ? x.printed_author.trim() : undefined,
+    }));
+}
+
 /** 모델 응답에서 JSON 배열을 꺼낸다(앞뒤 설명·코드펜스가 섞여도). 못 읽으면 빈 배열. */
-export function parseFactJson(text: string): { fact: string; url: string; title: string }[] {
+export function parseFactJson(text: string): RawFact[] {
   const a = text.indexOf("[");
   const b = text.lastIndexOf("]");
   if (a < 0 || b <= a) return [];
   try {
     const arr = JSON.parse(text.slice(a, b + 1)) as unknown;
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .map((x) => x as { fact?: unknown; url?: unknown; title?: unknown })
-      .filter((x) => typeof x.fact === "string" && x.fact.trim().length >= 6 && typeof x.url === "string" && /^https?:\/\//i.test(x.url))
-      .map((x) => ({ fact: (x.fact as string).trim(), url: (x.url as string).trim(), title: typeof x.title === "string" ? x.title.trim() : "" }));
+    return Array.isArray(arr) ? cleanFacts(arr) : [];
   } catch {
     return [];
+  }
+}
+
+/** 책 과제 조사 응답: {"book":{title,author,exists},"facts":[...]} (설명·코드펜스가 섞여도). 못 읽으면 null. */
+export function parseBookResearch(text: string): { book: { title: string; author: string; exists: boolean }; facts: RawFact[] } | null {
+  const a = text.indexOf("{");
+  const b = text.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  try {
+    const o = JSON.parse(text.slice(a, b + 1)) as { book?: { title?: unknown; author?: unknown; exists?: unknown }; facts?: unknown };
+    if (!o.book || !Array.isArray(o.facts)) return null;
+    const title = typeof o.book.title === "string" ? o.book.title.trim() : "";
+    if (!title) return null;
+    return { book: { title, author: typeof o.book.author === "string" ? o.book.author.trim() : "", exists: o.book.exists !== false }, facts: cleanFacts(o.facts) };
+  } catch {
+    return null;
   }
 }
 
@@ -45,7 +81,7 @@ export function parseFactJson(text: string): { fact: string; url: string; title:
  * 검색이 실제로 열어 본 페이지(consulted)에 없는 URL의 사실은 버린다 — 모델이 지어낸 주소로 출처를 달지 않기 위해서다.
  * consulted가 비어 있으면(제공자가 목록을 안 줌) 검증할 수 없으므로 null(= 이 경로를 쓰지 말 것).
  */
-export function buildFacts(raw: { fact: string; url: string; title: string }[], consulted: string[] | undefined, max = 14): Fact[] | null {
+export function buildFacts(raw: RawFact[], consulted: string[] | undefined, max = 14): Fact[] | null {
   if (!consulted || consulted.length === 0) return null;
   const ok = new Set(consulted.map(normalizeUrl));
   const seen = new Set<string>();
@@ -55,7 +91,7 @@ export function buildFacts(raw: { fact: string; url: string; title: string }[], 
     const key = r.fact.replace(/\s+/g, "");
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ id: `F${out.length + 1}`, fact: r.fact, url: r.url, title: r.title });
+    out.push({ id: `F${out.length + 1}`, fact: r.fact, url: r.url, title: r.title, printedTitle: r.printedTitle, printedAuthor: r.printedAuthor });
     if (out.length >= max) break;
   }
   return out;
@@ -148,4 +184,23 @@ export function attachFactMarkers(text: string, facts: Fact[]): { text: string; 
     });
   });
   return { text: lines.join("\n"), attached };
+}
+
+const squash = (t: string) => t.toLowerCase().replace(/[\s"'“”‘’『』《》「」.,·\-–—:;()]/g, "");
+
+/**
+ * 책 서지 확인: 서지 사실이 적은 "페이지에 인쇄된 제목·저자 표기"가 그 페이지 본문에 둘 다 실제로 있으면 확인된 것으로 본다(모델 호출 없음).
+ * pageText는 호출부가 받아 둔 본문(못 받았으면 null). 확인 못 하면 false — 호출부가 기존 검색 기반 저자 확인으로 돌아간다.
+ */
+export function confirmBookFromPages(facts: Fact[], pageText: (url: string) => string | null, altTitles: string[] = []): boolean {
+  for (const f of facts) {
+    if (!f.printedTitle || !f.printedAuthor) continue;
+    const page = pageText(f.url);
+    if (!page) continue;
+    const p = squash(page);
+    // 인쇄된 제목은 "원제 / 부제 / 저자"처럼 길게 오는 일이 있어 첫 토막이나 조사가 확인한 제목이 페이지에 있어도 인정한다.
+    const titles = [f.printedTitle, f.printedTitle.split(/[/;|]/)[0], ...altTitles].map(squash).filter((t) => t.length >= 2);
+    if (squash(f.printedAuthor).length >= 2 && p.includes(squash(f.printedAuthor)) && titles.some((t) => p.includes(t))) return true;
+  }
+  return false;
 }
