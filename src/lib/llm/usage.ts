@@ -11,6 +11,8 @@ export const PRICES_PER_MILLION: Record<string, { input: number; output: number 
   "gpt-4.1-mini": { input: 0.4, output: 1.6 },
   "text-embedding-3-small": { input: 0.02, output: 0 },
 };
+/** 우선 처리(priority) 등급의 토큰 단가 배율 — OpenAI 가격표 기준 추정값(약 1.8배). 실제 청구는 대시보드로 확인할 것. */
+export const PRIORITY_MULTIPLIER = Number(process.env.OPENAI_PRIORITY_MULTIPLIER ?? 1.8);
 export const SEARCH_CALL_USD = 0.01; // web_search 도구 호출 1회(검색 결과 토큰은 모델 입력 토큰으로 별도 청구되어 위 표에 포함)
 
 export interface UsageSummary {
@@ -56,7 +58,7 @@ export function summarizeTrace(trace: Trace, now = Date.now()): UsageSummary {
     if (c.provider === "openai") {
       const p = PRICES_PER_MILLION[c.model];
       if (!p) s.unpriced = true;
-      else s.estimatedCostUsd += (c.inputTokens * p.input + c.outputTokens * p.output) / 1e6 + c.searchCalls * SEARCH_CALL_USD;
+      else s.estimatedCostUsd += ((c.inputTokens * p.input + c.outputTokens * p.output) / 1e6) * (c.tier === "priority" ? PRIORITY_MULTIPLIER : 1) + c.searchCalls * SEARCH_CALL_USD;
     }
   }
   s.models = [...models];

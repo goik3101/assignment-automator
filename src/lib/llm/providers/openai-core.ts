@@ -38,6 +38,8 @@ export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutp
     body.tools = [{ type: "web_search", search_context_size: opts.searchContextSize ?? "low" }];
     body.tool_choice = req.search.force ? "required" : "auto";
     if (req.search.maxCalls) body.max_tool_calls = req.search.maxCalls;
+    // 모델이 인용하지 않아도 검색이 열어 본 출처 목록을 받는다(조사 노트 검증·출처 복구용).
+    body.include = ["web_search_call.action.sources"];
   }
   return body;
 }
@@ -58,7 +60,7 @@ interface OutputAnnotation {
 interface OutputItem {
   type: string;
   content?: { type: string; text?: string; refusal?: string; annotations?: OutputAnnotation[] }[];
-  action?: { type?: string; query?: string; queries?: string[] };
+  action?: { type?: string; query?: string; queries?: string[]; sources?: { url?: string }[] };
 }
 export interface OpenAiResponse {
   status?: string;
@@ -197,7 +199,8 @@ export function normalizeResponse(resp: OpenAiResponse, wantsSearch: boolean): N
   if (!wantsSearch) return { text: rawText, usage, refusal };
   // 검색 응답: 인라인 링크를 걷어내고 출처 위치로 바꾼다. 출처가 하나도 없어도(모델이 안 썼을 때) grounding은 채워서 돌려준다.
   const ex = extractCitations(rawText, annotations);
-  return { text: ex.text, grounding: { queries, chunks: ex.chunks, supports: ex.supports, searchCalls: searchItems.length }, usage, refusal };
+  const consulted = [...new Set(searchItems.flatMap((o) => (o.action?.sources ?? []).map((x) => (x.url ? cleanUrl(x.url) : "")).filter(Boolean)))];
+  return { text: ex.text, grounding: { queries, chunks: ex.chunks, supports: ex.supports, searchCalls: searchItems.length, consulted }, usage, refusal };
 }
 
 // ---- 오류 분류 -----------------------------------------------------------------------------

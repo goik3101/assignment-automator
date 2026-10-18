@@ -14,6 +14,8 @@ export interface CallRecord {
   outputTokens: number;
   reasoningTokens: number;
   searchCalls: number;
+  /** 우선 처리(priority) 등 비싼 등급으로 처리됐으면 그 이름 */
+  tier?: string;
 }
 
 export interface Trace {

@@ -12,6 +12,14 @@ function apiKey(): string {
   return key;
 }
 
+// 우선 처리(service_tier=priority)는 같은 모델이 약 3배 빠르다(실측: 1,500자 15.1초 → 5.7초). 단가가 더 비싸고 계정·한도에 따라 거절될 수 있어,
+// 거절되면 10분간 끄고 일반 등급으로 다시 요청한다. OPENAI_SERVICE_TIER=default로 끈다.
+let tierOffUntil = 0;
+function wantedTier(): string | null {
+  const t = process.env.OPENAI_SERVICE_TIER ?? "priority";
+  return t === "default" || t === "" || Date.now() < tierOffUntil ? null : t;
+}
+
 const timeoutMs = (search: boolean) => Number(process.env.OPENAI_TIMEOUT_MS ?? (search ? 90_000 : 75_000));
 
 async function post(path: string, body: unknown, ms: number): Promise<{ status: number; json: unknown; retryAfterMs?: number }> {
@@ -42,8 +50,18 @@ export const openaiProvider: LlmProvider = {
     const search = !!req.search;
     const contextSize = process.env.OPENAI_SEARCH_CONTEXT_SIZE ?? "low";
     let body = buildRequestBody(req, model, { searchContextSize: contextSize });
-    for (let pass = 0; pass < 2; pass++) {
+    const tier = wantedTier();
+    if (tier) body = { ...body, service_tier: tier };
+    for (let pass = 0; pass < 3; pass++) {
       const { status, json, retryAfterMs } = await post("/responses", body, timeoutMs(search));
+      if (status >= 400 && body.service_tier && /service[_ ]?tier|priority/i.test(JSON.stringify(json ?? ""))) {
+        console.warn(`[openai] 우선 처리 등급이 거절돼 10분간 끄고 일반 등급으로 다시 요청합니다 (HTTP ${status})`);
+        tierOffUntil = Date.now() + 10 * 60_000;
+        const { service_tier: _drop, ...rest } = body;
+        void _drop;
+        body = rest;
+        continue;
+      }
       if (status >= 400) throw classifyHttpError(status, json as never, retryAfterMs);
       const resp = json as OpenAiResponse;
       const n = normalizeResponse(resp, search);
@@ -75,6 +93,7 @@ export const openaiProvider: LlmProvider = {
         usage: { inputTokens: n.usage.inputTokens, outputTokens: n.usage.outputTokens, reasoningTokens: n.usage.reasoningTokens, searchCalls: n.usage.searchCalls },
         provider: "openai",
         model,
+        servedTier: (resp as { service_tier?: string }).service_tier,
       };
     }
     throw new LlmError("응답을 받지 못했습니다.", "empty_output", false);

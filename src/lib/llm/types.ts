@@ -39,6 +39,8 @@ export interface SearchGrounding {
   chunks: GroundingChunkLike[];
   supports: GroundingSupportLike[];
   searchCalls: number;
+  /** 검색 도구가 실제로 열어 본 페이지 주소(모델이 인용했는지와 무관). OpenAI만 채운다 — 조사 노트의 URL이 지어낸 것이 아닌지 대조하는 데 쓴다. */
+  consulted?: string[];
 }
 
 export interface LlmUsage {
@@ -54,6 +56,8 @@ export interface LlmResponse {
   usage: LlmUsage;
   provider: string;
   model: string;
+  /** 실제로 처리된 서비스 등급("priority" 등). OpenAI만. 비용 추정에 쓴다. */
+  servedTier?: string;
 }
 
 export type LlmErrorKind =

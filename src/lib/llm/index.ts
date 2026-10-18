@@ -38,7 +38,7 @@ export async function generate(req: LlmRequest): Promise<LlmResponse> {
       recordCall({
         label: req.label, provider: provider.name, model, ms: Date.now() - started, ok: true, retries,
         inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens,
-        reasoningTokens: res.usage.reasoningTokens ?? 0, searchCalls: res.usage.searchCalls,
+        reasoningTokens: res.usage.reasoningTokens ?? 0, searchCalls: res.usage.searchCalls, tier: res.servedTier,
       });
       return res;
     } catch (e) {

@@ -38,6 +38,16 @@ import { buildFormRulesBlock } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
 import {
+  attachFactMarkers,
+  buildFacts,
+  extractSummaryLines,
+  factSheetText,
+  mapFactMarkers,
+  normalizeUrl,
+  parseFactJson,
+  type Fact,
+} from "@/lib/essay/research-notes";
+import {
   verifyExcerpt,
   verifyAuthorAttribution,
   normalizeAttributionName,
@@ -120,6 +130,8 @@ export interface GenerateEssayInput {
    * 재생성마다 새로 지어내지 않고 그대로 이어가라고 프롬프트에서 강하게 지시한다.
    */
   previousOutputText?: string;
+  /** 내부용: 이미 만든 조사 노트(품질 재시도가 재사용). undefined=아직 안 함, null=시도했지만 실패(기존 경로 사용). */
+  researchNotes?: ResearchNotes | null;
 }
 
 interface RawSection {
@@ -437,7 +449,7 @@ const SEPARATE_SEARCH_RULE_BOOK_EXCERPT = `책 제목, 저자, 인상 깊은 구
 
 const SEPARATE_SEARCH_RULE_BOOK = `책 제목과 저자는 서로 다른 사실이니 검색도 한 번의 포괄적인 질의로 뭉뚱그리지 말고 각각 확인해서, 전체 글이 출처 하나에만 계속 의존하지 않게 할 것.`;
 
-function buildPrompt(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): string {
+function buildPrompt(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"], notes: ResearchNotes | null = null): string {
   const continuityBlock = input.previousOutputText
     ? `
 【중요 — 반드시 지킬 것】
@@ -478,7 +490,9 @@ ${input.previousOutputText}
     .map((e) => {
       const { min, max, unit, counts_spaces } = e.target_length!;
       const uw = unit === "words" ? "단어(words)" : counts_spaces ? "자(공백 포함)" : "자(공백 제외)";
-      const goal = min > 0 && max > 0 ? Math.round((min + max) / 2) : min > 0 ? Math.round(min * 1.15) : Math.round(max * 0.8);
+      // 조사→글쓰기의 글쓰기(최소 추론)는 목표보다 평균 약 13% 길게 나오는 것이 실측돼 목표를 그만큼 낮춰 준다.
+      const base = min > 0 && max > 0 ? Math.round((min + max) / 2) : min > 0 ? Math.round(min * 1.15) : Math.round(max * 0.8);
+      const goal = notes ? Math.round(base * 0.8) : base;
       const rangeText = min > 0 && max > 0 ? `${min}~${max}${uw}` : min > 0 ? `${min}${uw} 이상` : `${max}${uw} 이하`;
       return `- "${e.label}" 단계: ${rangeText} — 목표 약 ${goal}${uw}. 반드시 이 범위 안에 들어오게 쓰되, 분량을 채우려고 문장을 늘어놓지 말고 필요한 내용(필수 항목·사실·근거)으로 채울 것.`;
     });
@@ -594,19 +608,23 @@ ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물
    바꿔서라도 반드시 그 항목을 채울 것 — "항목을 아예 안 쓰는 것"은 어떤 경우에도
    올바른 대응이 아니다.
 
-${searchRulesBlock}
+${notes ? "" : searchRulesBlock}
 ${ANTI_AI_TONE_RULES}
 ${FACTUAL_RIGOR_RULES}
 ${ACHIEVEMENT_INTERPRETATION_RULES}
 ${COPYRIGHT_RULES}
 ${NO_META_COMMENTARY_RULE}
-${NO_REFERENCE_LIST_RULE}
-${sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...elements.map((e) => e.description)]), !!input.presetBook)}
+${notes ? "" : NO_REFERENCE_LIST_RULE}
+${notes ? "" : sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...elements.map((e) => e.description)]), !!input.presetBook)}
 ${elements.length > 1 || structuredEls.length > 0 ? NO_STEP_REPETITION_RULE : ""}
 ${CITATION_JUDGMENT_RULE}
 ${PERSPECTIVE_RULE}
 ${REAL_PERSON_NAME_RULE}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
+${notes ? `${FACT_SHEET_RULES}
+
+[사실 노트]
+${factSheetText(notes.facts)}` : ""}
 `.trim();
 }
 
@@ -798,15 +816,86 @@ interface Attempt {
    * 필요가 없었거나 stage B가 못 뽑았으면 빈 문자열 — FINAL_PERSON 일관성
    * 강제(신문 제작 등 external_production 단계에 그대로 넘겨 고정시키는 용도). */
   confirmedSubject: string;
+  /** 이 시도에서 쓴 조사 노트(품질 재시도에서 다시 조사하지 않고 재사용). null이면 조사 경로를 쓰지 않았거나 실패했다. */
+  notes?: ResearchNotes | null;
 }
+
+/** 단계별 각주 개수 로그용 — 각주가 어느 후처리에서 사라지는지 추적한다(내용은 남기지 않는다). */
+function countMarkers(sections: { content: string }[]): number {
+  return sections.reduce((n, s) => n + (s.content.match(/\[\d+\]/g)?.length ?? 0), 0);
+}
+
+// ── 조사 → 글쓰기 ────────────────────────────────────────────────────────────
+export interface ResearchNotes {
+  facts: Fact[];
+  queries: string[];
+}
+
+/** 글쓰기 호출의 추론 강도. 검색이 없어 minimal이 가능하고, low는 글이 목표보다 짧게 나오는 경향이 측정됐다(810자 vs 목표 1,200자 이상). */
+const WRITE_EFFORT = "minimal" as const;
+
+const RESEARCH_MIN_FACTS = 4;
+
+/**
+ * 조사 호출: 검색은 여기서만 한다. 출력은 사실 노트(JSON)뿐이라 짧다. 모델이 적은 URL은 검색이 실제로 열어 본 페이지 목록과 대조해 지어낸 주소를 버린다.
+ * 실패(사실이 너무 적음·페이지 목록 없음·오류)하면 null — 호출부가 기존 한 번 호출 경로로 돌아간다.
+ */
+async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): Promise<ResearchNotes | null> {
+  const items = elements
+    .map((e) => `- "${e.label}": ${e.description}${e.required_items?.length ? ` (다룰 항목: ${e.required_items.join(" / ")})` : ""}`)
+    .join("\n");
+  const prompt = `
+고등학생 수행평가 글쓰기에 쓸 "사실 노트"를 만들어줘. 글은 다른 호출이 쓰니 너는 사실만 모은다.
+[과목] ${input.subject}
+[과제 주제] ${input.coreTaskInfo.topic}
+[요구사항]
+${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
+[써야 할 단계]
+${items}
+${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 것] ${input.presetSubject.name}\n` : ""}${input.instructions ? `[학생이 입력한 내용]\n${input.instructions}\n` : ""}
+규칙:
+- 검색으로 확인한 사실만 쓴다. 사실 10~14개를, 위 각 단계·항목마다 최소 2개씩 고르게 담을 것. 논설·토론이면 찬성·반대 양쪽 근거를 함께 담을 것.
+- 각 사실은 한국어 한 문장으로, 연도·수치·이름 같은 확인 가능한 값을 포함한다. 출처에 없는 값은 쓰지 않는다.
+- 같은 사실을 중복하지 말고, 서로 다른 신뢰도 높은 페이지(공식 기관·원문·신뢰 매체 우선)에서 고른다. 위키형·블로그·동영상은 다른 근거가 없을 때만.
+- url은 검색 중 실제로 열어 본 페이지 주소여야 하고, title은 그 페이지 제목이다.
+- 검색은 1번만 한다(그 한 번에 쿼리 2~3개). 조사할 것은 과제 주제의 사실뿐이다 — 수행평가 방식·발표 시간·분량·모둠 같은 과제 지시 자체는 검색하지 않는다.
+- 아래 JSON 배열만 출력한다(설명·코드펜스 금지): [{"fact":"...","url":"https://...","title":"..."}]
+`.trim();
+  try {
+    const res = await generate({
+      label: "generateEssay:research",
+      role: "main",
+      prompt,
+      search: { force: true, maxCalls: 2 },
+      effort: "low",
+    });
+    const facts = buildFacts(parseFactJson(res.text), res.grounding?.consulted);
+    const queries = res.grounding?.queries ?? [];
+    console.log(
+      `[generateEssay] 조사: queries=${JSON.stringify(queries)} 검색이 연 페이지=${res.grounding?.consulted?.length ?? 0} 사실(검증 통과)=${facts?.length ?? "목록없음"} model=${res.provider}/${res.model}`
+    );
+    if (!facts || facts.length < RESEARCH_MIN_FACTS) return null;
+    return { facts, queries };
+  } catch (err) {
+    console.error("[generateEssay] 조사 호출 실패(기존 경로로 폴백)", err);
+    return null;
+  }
+}
+
+const FACT_SHEET_RULES = `
+[사실 노트 사용 규칙 — 반드시 지킬 것]
+- 이 글의 모든 사실(연도·수치·이름·사건·통계)은 아래 [사실 노트]에 있는 것만 쓴다. 노트에 없는 사실은 만들지 말고, 필요하면 일반적인 서술이나 학생 본인의 의견·계획으로 쓴다.
+- 노트의 사실을 쓴 문장 끝에 그 번호를 [F3]처럼 붙인다(두 사실을 합치면 [F1][F4]). 번호는 노트에 있는 것만 쓰고, 문장마다 새 번호를 지어내지 않는다. 같은 사실을 여러 번 써도 된다.
+- 노트의 사실을 전부 쓸 필요는 없다. 위에 적힌 분량에 맞게 이 글에 꼭 필요한 사실만 골라 쓰고, 분량을 넘기면 안 된다(분량을 넘기는 것이 가장 흔한 실패다).
+- 노트의 문장을 그대로 베끼지 말고 이 글의 형식과 문체에 맞게 다시 쓴다. 사실이 아닌 의견·감상·계획 문장에는 번호를 붙이지 않는다.
+- 노트의 사실을 쓴 문장에 번호가 없으면 안 된다(번호 없이 연도·수치를 쓰지 말 것). 출처 목록·참고문헌·"(출처: …)"는 쓰지 말 것(출처는 시스템이 번호로 붙인다).
+`.trim();
 
 async function generateOnce(
   input: GenerateEssayInput,
   elements: CoreTaskInfo["task_elements"]
 ): Promise<Attempt> {
-  const prompt = buildPrompt(input, elements);
-  if (process.env.LOG_PROMPTS === "1") console.log("[generateEssay] prompt:\n" + prompt); // 학생 입력이 섞여 있어 기본은 남기지 않는다
-
+  const labels = elements.map((e) => e.label);
   // 사실 조사가 필요 없는 창작·계산·기획형 과제에는 검색을 강제하지 않는다(검색 호출당 요금 — search-policy.ts).
   const wantSearch = needsFactSearch(
     input.coreTaskInfo.topic,
@@ -814,108 +903,154 @@ async function generateOnce(
     ...elements.flatMap((e) => [e.label, e.description]),
     input.instructions
   );
-  const runStageA = (p: string) =>
-    generate({
-      label: "generateEssay:stepA",
-      role: "main",
-      prompt: p,
-      search: { force: wantSearch, maxCalls: 4 },
-    });
+  const isBook = !!input.presetBook || needsBookCandidateSelection(input, elements);
 
-  let stageA = await runStageA(prompt);
-  let grounding = stageA.grounding;
+  // 검색이 필요한 비(非)책 과제는 "조사 → 글쓰기"로 나눈다: 조사 호출이 사실 노트(사실+근거 페이지)를 만들고, 글쓰기 호출은 검색 없이 그 노트로만 쓴다.
+  // 출처 번호는 코드가 사실 번호에서 바꿔 붙이므로 "검색은 했는데 인용이 0개"가 구조적으로 생기지 않고, 그 재생성 재시도(약 25초)가 필요 없다.
+  // 조사에 실패하면(사실 4개 미만·페이지 목록 없음) 기존 한 번 호출 경로로 돌아간다.
+  const useResearchWrite = wantSearch && !isBook && process.env.ESSAY_PIPELINE !== "legacy";
+  let notes: ResearchNotes | null = input.researchNotes ?? null;
+  if (useResearchWrite && input.researchNotes === undefined) notes = await researchOnce(input, elements);
 
-  // 실제로 관찰된 버그: 검색이 필요한 프롬프트인데도 모델이 검색 도구를
-  // 아예 한 번도 호출하지 않고 글을 써버리는 경우가 있다(webSearchQueries=[]
-  // — verifyExcerpt()에서 이미 같은 패턴을 겪고 강한 재지시로 고친 적이
-  // 있다). 이게 재시도(품질 교정) 단계에서 발생하면 원래 있던 출처까지
-  // 통째로 사라져서 4단계 전부 미검증으로 퇴보하는 심각한 회귀로 이어졌다
-  // — 그래서 stageA 자체에도 같은 안전장치를 적용한다.
-  // 검색을 호출하고도 출처 인용이 하나도 안 붙은 경우(chunks=0)도 같은 문제다 — 검색 결과를 쓴 문장에 출처가 없으면 "신뢰할 수 있는 사실" 요구를 확인할 수 없다(실측: 인물 탐구 글이 통째로 무출처).
-  const searchedButNoSources = (grounding?.queries?.length ?? 0) > 0 && (grounding?.chunks?.length ?? 0) === 0;
-  if (wantSearch && ((grounding?.queries?.length ?? 0) === 0 || searchedButNoSources)) {
-    console.warn(`[generateEssay] stageA가 ${searchedButNoSources ? "검색은 했지만 출처 인용이 하나도 없음" : "검색 도구를 한 번도 호출하지 않음"} — 강하게 재지시하여 1회 재시도`);
-    const forcedPrompt =
-      prompt +
-      `\n\n【다시 한번 강조 — 반드시 지킬 것】 ${searchedButNoSources ? "방금 쓴 글에는 검색 결과를 근거로 한 문장에도 출처가 연결되지 않았다. 이번에는 검색 결과의 웹페이지를 근거로 쓰는 사실 문장마다 그 출처가 연결되게 쓸 것." : "방금 검색 도구를 한 번도 호출하지 않고 글을 쓰려 했다."} ` +
-      `책 제목·저자·인용구·통계 등 검색으로 검증해야 할 구체적 사실이 하나라도 있다면, 이번에는 ` +
-      `반드시 실시간 웹 검색 도구를 최소 한 번 이상 실제로 호출한 뒤에 쓸 것.`;
-    const retryStageA = await runStageA(forcedPrompt);
-    const retryGrounding = retryStageA.grounding;
-    if ((retryGrounding?.chunks?.length ?? 0) > 0 || (!searchedButNoSources && (retryGrounding?.queries?.length ?? 0) > 0)) {
-      stageA = retryStageA;
-      grounding = retryGrounding;
-    } else {
-      console.warn("[generateEssay] 재지시에도 검색 도구를 호출하지 않음 — 원래 응답으로 그대로 진행");
+  const prompt = buildPrompt(input, elements, notes);
+  if (process.env.LOG_PROMPTS === "1") console.log("[generateEssay] prompt:\n" + prompt); // 학생 입력이 섞여 있어 기본은 남기지 않는다
+
+  let validatedSources: SourceRef[];
+  let annotated: string;
+  let preAnnotated: string;
+  let stageB: Awaited<ReturnType<typeof generate>> | null;
+
+  if (notes) {
+    // 근거 페이지 확인(HTTP·본문 받기)은 글쓰기와 겹치지 않으므로 글쓰기와 동시에 돌린다.
+    const urls = [...new Set(notes.facts.map((f) => f.url))];
+    const prefetch = validateSources(urls.map((url, i) => ({ n: i + 1, title: "", url, url_valid: null })));
+    const write = await generate({ label: "generateEssay:write", role: "main", prompt, effort: WRITE_EFFORT });
+    if (!write.text) throw new Error("AI가 빈 응답을 반환했습니다.");
+    // 글쓰기가 번호를 거의 안 붙였으면(최소 effort에서 가끔 있음) 연도·수치가 같은 사실의 번호를 코드가 붙여 복구한다 — 재생성하지 않는다.
+    let written = write.text;
+    if ((written.match(/\[F\d+\]/g) ?? []).length < 2) {
+      const rec = attachFactMarkers(written, notes.facts);
+      written = rec.text;
+      console.warn(`[generateEssay] 글쓰기가 사실 번호를 거의 안 붙임 — 코드가 ${rec.attached}문장에 붙여 복구`);
     }
-  }
-
-  const freeText = stageA.text;
-  if (!freeText) throw new Error("AI가 빈 응답을 반환했습니다.");
-
-  console.log(
-    `[generateEssay] 그라운딩 진단: queries=${JSON.stringify(grounding?.queries ?? [])} ` +
-      `groundingChunks=${grounding?.chunks?.length ?? 0} groundingSupports=${grounding?.supports?.length ?? 0} ` +
-      `model=${stageA.provider}/${stageA.model}`
-  );
-  // 왜 특정 출처가 채택됐는지(예: 서지정보 갖춘 페이지 대신 유튜브만 채택되는
-  // 문제) 사후에 진단할 수 있도록, 실제로 돌아온 검색 결과 후보 전체를 로그로
-  // 남긴다 — groundingChunks는 모델이 "실제로 인용에 쓴" 후보만 담겨 있어서
-  // (그 이전 단계의 원본 검색 결과 후보 목록은 API가 노출하지 않음) 이 목록이
-  // 우리가 관찰할 수 있는 전부다.
-  console.log(
-    `[generateEssay] 검색 후보 청크 목록: ${JSON.stringify(
-      (grounding?.chunks ?? []).map((c, i) => ({ i, title: c.web?.title, url: c.web?.uri }))
-    )}`
-  );
-  const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
-  let annotated = insertCitationMarkers(freeText, grounding?.supports, chunkIndexToN);
-  // 링크 확인(HTTP)과 단계 분리(stage B)는 서로 입력이 겹치지 않아 동시에 돌린다(각주 정리는 둘 다 끝난 뒤 적용).
-  const validatePromise = validateSources(sources);
-  const preAnnotated = annotated;
-
-  // 2차: 본문은 그대로 두고, "## 라벨" 제목을 기준으로 단계별 본문만 분리한다
-  // (그라운딩 없이, 순수 추출 작업 — generate-plan.ts와 같은 이유).
-  const labels = elements.map((e) => e.label);
-  // 본문은 코드가 원문에서 직접 자른다(아래 mechanicalSections). 모든 단계를 자를 수 있으면 모델에게는 메타데이터만 뽑게 하고,
-  // 못 자르는 단계가 있을 때만 예전처럼 본문 재현(content)까지 요청한다.
-  const needContentFallback = labels.some((l) => !splitAnnotatedIntoSections(preAnnotated, labels).has(l));
-  const stageBPromise = generate({
-      label: "generateEssay:stepB",
-      role: "lite",
-      prompt: (needContentFallback
-        ? `
-아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
-요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
-이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
-그 대상 이름을 뽑아줘(스키마 설명 참고).
-그다음 "## 단계이름" 제목을 기준으로 각 단계 본문을 분리해줘. 제목 줄 자체는
-빼고, 본문(각주 표기 [1][2] 등과 "[자료부족...]" 표기 포함)은 다듬지 말고
-그대로 옮겨줘. 분리해야 할 단계 이름: ${labels.join(", ")}.
-각 단계에 책을 언급/추천한 내용이 있으면 cited_book_title/cited_book_author/
-cited_book_quote 필드에도 그대로 뽑아줘(스키마 설명 참고) — 책 제목이 겹낫표
-(《》/『』)로 감싸여 있든 아무 부호 없이 "책 제목: ~"처럼 쓰여 있든 상관없이
-찾아낼 것.
-`
-        : `
-아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
-요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
-이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
-그 대상 이름을 뽑아줘(스키마 설명 참고).
-sections에는 각 단계 이름(label)만 적고 본문은 옮겨 적지 마라 — 본문은 프로그램이 따로 처리한다.
-각 단계 이름: ${labels.join(", ")}.
-각 단계에 책을 언급/추천한 내용이 있으면 cited_book_title/cited_book_author/
-cited_book_quote 필드에 뽑아줘(스키마 설명 참고) — 책 제목이 겹낫표
-(《》/『』)로 감싸여 있든 아무 부호 없이 "책 제목: ~"처럼 쓰여 있든 상관없이
-찾아낼 것.
-`) +
-        `
-[글]
-${preAnnotated}`.trim(),
-      schema: needContentFallback ? SECTIONS_SCHEMA : SECTIONS_META_SCHEMA,
+    const mapped = mapFactMarkers(written, notes.facts);
+    const checked = await prefetch;
+    const byUrl = new Map(urls.map((u, i) => [normalizeUrl(u), checked[i]]));
+    validatedSources = mapped.sources.map((src) => {
+      const v = byUrl.get(normalizeUrl(src.url));
+      return { n: src.n, title: src.title, url: v?.url ?? src.url, url_valid: v?.url_valid ?? null, tier: v?.tier };
     });
-  const [validatedSources, stageB] = await Promise.all([validatePromise, stageBPromise]);
-  if (sources.length > 0 && validatedSources.every((s) => s.url_valid === false)) {
+    annotated = mapped.text;
+    preAnnotated = annotated;
+    stageB = null;
+    console.log(
+      `[generateEssay] 조사→글쓰기: 사실=${notes.facts.length}개 사용한 출처=${mapped.sources.length}개 모르는번호=${mapped.unknown} 본문각주=${(mapped.text.match(/\[\d+\]/g) ?? []).length} model=${write.provider}/${write.model}`
+    );
+  } else {
+    const runStageA = (p: string) =>
+      generate({
+        label: "generateEssay:stepA",
+        role: "main",
+        prompt: p,
+        search: { force: wantSearch, maxCalls: 4 },
+      });
+
+    let stageA = await runStageA(prompt);
+    let grounding = stageA.grounding;
+
+    // 실제로 관찰된 버그: 검색이 필요한 프롬프트인데도 모델이 검색 도구를
+    // 아예 한 번도 호출하지 않고 글을 써버리는 경우가 있다(webSearchQueries=[]
+    // — verifyExcerpt()에서 이미 같은 패턴을 겪고 강한 재지시로 고친 적이
+    // 있다). 이게 재시도(품질 교정) 단계에서 발생하면 원래 있던 출처까지
+    // 통째로 사라져서 4단계 전부 미검증으로 퇴보하는 심각한 회귀로 이어졌다
+    // — 그래서 stageA 자체에도 같은 안전장치를 적용한다.
+    // 검색을 호출하고도 출처 인용이 하나도 안 붙은 경우(chunks=0)도 같은 문제다 — 검색 결과를 쓴 문장에 출처가 없으면 "신뢰할 수 있는 사실" 요구를 확인할 수 없다(실측: 인물 탐구 글이 통째로 무출처).
+    const searchedButNoSources = (grounding?.queries?.length ?? 0) > 0 && (grounding?.chunks?.length ?? 0) === 0;
+    if (wantSearch && ((grounding?.queries?.length ?? 0) === 0 || searchedButNoSources)) {
+      console.warn(`[generateEssay] stageA가 ${searchedButNoSources ? "검색은 했지만 출처 인용이 하나도 없음" : "검색 도구를 한 번도 호출하지 않음"} — 강하게 재지시하여 1회 재시도`);
+      const forcedPrompt =
+        prompt +
+        `\n\n【다시 한번 강조 — 반드시 지킬 것】 ${searchedButNoSources ? "방금 쓴 글에는 검색 결과를 근거로 한 문장에도 출처가 연결되지 않았다. 이번에는 검색 결과의 웹페이지를 근거로 쓰는 사실 문장마다 그 출처가 연결되게 쓸 것." : "방금 검색 도구를 한 번도 호출하지 않고 글을 쓰려 했다."} ` +
+        `책 제목·저자·인용구·통계 등 검색으로 검증해야 할 구체적 사실이 하나라도 있다면, 이번에는 ` +
+        `반드시 실시간 웹 검색 도구를 최소 한 번 이상 실제로 호출한 뒤에 쓸 것.`;
+      const retryStageA = await runStageA(forcedPrompt);
+      const retryGrounding = retryStageA.grounding;
+      if ((retryGrounding?.chunks?.length ?? 0) > 0 || (!searchedButNoSources && (retryGrounding?.queries?.length ?? 0) > 0)) {
+        stageA = retryStageA;
+        grounding = retryGrounding;
+      } else {
+        console.warn("[generateEssay] 재지시에도 검색 도구를 호출하지 않음 — 원래 응답으로 그대로 진행");
+      }
+    }
+
+    const freeText = stageA.text;
+    if (!freeText) throw new Error("AI가 빈 응답을 반환했습니다.");
+
+    console.log(
+      `[generateEssay] 그라운딩 진단: queries=${JSON.stringify(grounding?.queries ?? [])} ` +
+        `groundingChunks=${grounding?.chunks?.length ?? 0} groundingSupports=${grounding?.supports?.length ?? 0} ` +
+        `model=${stageA.provider}/${stageA.model}`
+    );
+    // 왜 특정 출처가 채택됐는지(예: 서지정보 갖춘 페이지 대신 유튜브만 채택되는
+    // 문제) 사후에 진단할 수 있도록, 실제로 돌아온 검색 결과 후보 전체를 로그로
+    // 남긴다 — groundingChunks는 모델이 "실제로 인용에 쓴" 후보만 담겨 있어서
+    // (그 이전 단계의 원본 검색 결과 후보 목록은 API가 노출하지 않음) 이 목록이
+    // 우리가 관찰할 수 있는 전부다.
+    console.log(
+      `[generateEssay] 검색 후보 청크 목록: ${JSON.stringify(
+        (grounding?.chunks ?? []).map((c, i) => ({ i, title: c.web?.title, url: c.web?.uri }))
+      )}`
+    );
+    const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
+    annotated = insertCitationMarkers(freeText, grounding?.supports, chunkIndexToN);
+    // 링크 확인(HTTP)과 단계 분리(stage B)는 서로 입력이 겹치지 않아 동시에 돌린다(각주 정리는 둘 다 끝난 뒤 적용).
+    const validatePromise = validateSources(sources);
+    preAnnotated = annotated;
+
+    // 2차: 본문은 그대로 두고, "## 라벨" 제목을 기준으로 단계별 본문만 분리한다
+    // (그라운딩 없이, 순수 추출 작업 — generate-plan.ts와 같은 이유).
+    // 본문은 코드가 원문에서 직접 자른다(아래 mechanicalSections). 모든 단계를 자를 수 있으면 모델에게는 메타데이터만 뽑게 하고,
+    // 못 자르는 단계가 있을 때만 예전처럼 본문 재현(content)까지 요청한다.
+    const needContentFallback = labels.some((l) => !splitAnnotatedIntoSections(preAnnotated, labels).has(l));
+    const skipStageB = !isBook && !needContentFallback;
+    // 단계 분리 모델 호출은 책 과제(책 정보 추출)이거나 코드가 단계를 못 자를 때만 한다 — 요약 3줄은 글 맨 앞에서 코드가 뽑는다(실측 4~8초 절감).
+    const stageBPromise = skipStageB ? Promise.resolve(null) : generate({
+        label: "generateEssay:stepB",
+        role: "lite",
+        prompt: (needContentFallback
+          ? `
+  아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
+  요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
+  이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
+  그 대상 이름을 뽑아줘(스키마 설명 참고).
+  그다음 "## 단계이름" 제목을 기준으로 각 단계 본문을 분리해줘. 제목 줄 자체는
+  빼고, 본문(각주 표기 [1][2] 등과 "[자료부족...]" 표기 포함)은 다듬지 말고
+  그대로 옮겨줘. 분리해야 할 단계 이름: ${labels.join(", ")}.
+  각 단계에 책을 언급/추천한 내용이 있으면 cited_book_title/cited_book_author/
+  cited_book_quote 필드에도 그대로 뽑아줘(스키마 설명 참고) — 책 제목이 겹낫표
+  (《》/『』)로 감싸여 있든 아무 부호 없이 "책 제목: ~"처럼 쓰여 있든 상관없이
+  찾아낼 것.
+  `
+          : `
+  아래 글은 여러 단계로 구성된 하나의 수행평가 원고다. 글 맨 앞에 전체 내용을
+  요약한 불릿 3줄이 있으면 그걸 summary_lines 배열로 뽑아줘(스키마 설명 참고).
+  이 글이 인물/사건 등을 자유롭게 선정해서 다룬 것이면 confirmed_subject에도
+  그 대상 이름을 뽑아줘(스키마 설명 참고).
+  sections에는 각 단계 이름(label)만 적고 본문은 옮겨 적지 마라 — 본문은 프로그램이 따로 처리한다.
+  각 단계 이름: ${labels.join(", ")}.
+  각 단계에 책을 언급/추천한 내용이 있으면 cited_book_title/cited_book_author/
+  cited_book_quote 필드에 뽑아줘(스키마 설명 참고) — 책 제목이 겹낫표
+  (《》/『』)로 감싸여 있든 아무 부호 없이 "책 제목: ~"처럼 쓰여 있든 상관없이
+  찾아낼 것.
+  `) +
+          `
+  [글]
+  ${preAnnotated}`.trim(),
+        schema: needContentFallback ? SECTIONS_SCHEMA : SECTIONS_META_SCHEMA,
+      });
+    [validatedSources, stageB] = await Promise.all([validatePromise, stageBPromise]);
+  }
+  if (validatedSources.length > 0 && validatedSources.every((s) => s.url_valid === false)) {
     console.warn("[generateEssay] 검색은 됐지만 모든 출처 링크 검증(HTTP 상태 확인)이 실패함");
   }
 
@@ -939,13 +1074,20 @@ ${preAnnotated}`.trim(),
 
   const mechanicalSections = splitAnnotatedIntoSections(annotated, labels);
 
-  const raw = stageB.text;
-  if (!raw) throw new Error("단계 분리 응답이 비어 있습니다.");
-  const parsed = JSON.parse(raw) as {
+  type StageBParsed = {
     summary_lines?: string[];
     confirmed_subject?: string;
     sections: { label: string; content?: string; cited_book_title?: string; cited_book_author?: string; cited_book_quote?: string }[];
   };
+  let parsed: StageBParsed;
+  if (stageB) {
+    const raw = stageB.text;
+    if (!raw) throw new Error("단계 분리 응답이 비어 있습니다.");
+    parsed = JSON.parse(raw) as StageBParsed;
+  } else {
+    // 모델 호출 없이: 요약은 맨 앞 불릿 줄, 확정 대상은 이미 정해진 값(없으면 빈 문자열), 단계 본문은 코드가 자른 것을 쓴다.
+    parsed = { summary_lines: extractSummaryLines(preAnnotated), confirmed_subject: input.presetSubject?.name ?? "", sections: [] };
+  }
   // stage B는 링크 확인과 동시에 돌아서 무효 출처 각주가 아직 남은 글을 봤다 — 요약·폴백 본문에서도 같은 각주를 지운다.
   if (invalidNs.size > 0) {
     parsed.summary_lines = (parsed.summary_lines ?? []).map((l) => stripInvalidCitationMarkers(l, invalidNs));
@@ -991,12 +1133,14 @@ ${preAnnotated}`.trim(),
     return { label, content, citedBook, requiredItems, flowingItems };
   });
 
+  console.log(`[generateEssay] 각주 추적: 생성직후=${countMarkers(sections)} 출처=${validatedSources.length}`);
   return {
     sections,
     sources: validatedSources,
     insufficientReasons,
     summaryLines: parsed.summary_lines ?? [],
     confirmedSubject: parsed.confirmed_subject ?? "",
+    notes: useResearchWrite ? notes : undefined,
   };
 }
 
@@ -1177,6 +1321,9 @@ export async function generateEssay(
   // (대괄호를 이상하게 쓰는 것 자체는 실패 사유가 아니다 — cleanStrayBrackets()가
   // 이미 정리했다. 매번 통째로 실패시키면 사용자가 "생성 실패"를 너무 자주 보게
   // 된다는 게 실제 테스트로 확인됐다.)
+  // 이 과제의 조사 노트(또는 조사 실패 표시)를 이후 재시도가 그대로 쓴다 — 다시 조사하면 약 15초가 더 든다.
+  if (attempt.notes !== undefined) input = { ...input, researchNotes: attempt.notes };
+
   if (attempt.insufficientReasons.length > 0) {
     console.warn(`[generateEssay] 자료부족 감지, 1회 재시도: ${JSON.stringify(attempt.insufficientReasons)}`);
     try {
@@ -1552,8 +1699,10 @@ export async function generateEssay(
   // 마찬가지로, 사실 검증이 필요 없는 서술 문장(고민 쓰기/고민 분석처럼
   // 학생 본인·친구의 감정·상황을 관찰하는 단계)에 불필요한 각주가 붙는
   // 오탐도 실제로 관찰됐다 — 모델에게 다시 묻지 않고 기계적으로 제거한다.
-  const { sections: narrativeCleanedSections, strippedCount: narrativeStrippedCount } =
-    stripUnjustifiedNarrativeCitations(attempt.sections);
+  // 조사→글쓰기 경로의 각주는 코드가 사실 번호에서 붙인 것(사실을 쓴 문장에만)이라 이 추정 규칙으로 지우지 않는다 — 실측에서 발표 대본의 각주 14개 중 11개가 여기서 사라졌다.
+  const { sections: narrativeCleanedSections, strippedCount: narrativeStrippedCount } = attempt.notes
+    ? { sections: attempt.sections, strippedCount: 0 }
+    : stripUnjustifiedNarrativeCitations(attempt.sections);
   if (narrativeStrippedCount > 0) {
     attempt = { ...attempt, sections: narrativeCleanedSections };
   }
@@ -1724,6 +1873,7 @@ export async function generateEssay(
   };
 
   // 문장↔출처 대조: 인용한 페이지 본문에 문장의 연도·수치·영문 이름이 실제로 있는지 본다(링크가 열리는지와는 별개의 문제 — 실측: 출생 연도를 단체 소개 페이지에 인용).
+  console.log(`[generateEssay] 각주 추적: 후처리(따옴표·서술각주·상투구 제거)후=${countMarkers(attempt.sections)} 출처=${attempt.sources.length}`);
   const tierRank = (n: number) => ({ official: 4, reliable: 3, general: 2, reference: 1, weak: 0 })[attempt.sources.find((x) => x.n === n)?.tier ?? "general"];
   const pageTexts: PageTexts = new Map(attempt.sources.map((src) => [src.n, getCachedPageText(src.url)]));
   attempt = {
@@ -1753,6 +1903,7 @@ export async function generateEssay(
   {
     const wanted = requiredSourceCount([...input.coreTaskInfo.requirements, ...elements.map((e) => e.description)]);
     const limit = Math.min(8, Math.max(2, wanted ?? 3));
+    console.log(`[generateEssay] 각주 추적: 출처정리직전=${countMarkers(attempt.sections)} 출처=${attempt.sources.length}`);
     const contentsNow = attempt.sections.map((s) => s.content);
     const base = retainedAtLimit(contentsNow, attempt.sources, limit, pageTexts);
     const forced = base.items.length > 0 ? await judgeSourceSupport(base.items.slice(0, 24), base.chosen, pageTexts) : new Map<string, number>();
@@ -1763,6 +1914,7 @@ export async function generateEssay(
       );
     }
     attempt = { ...attempt, sources: lim.sources, sections: attempt.sections.map((s, i) => ({ ...s, content: lim.contents[i] })) };
+    console.log(`[generateEssay] 각주 추적: 출처정리후=${countMarkers(attempt.sections)} 출처=${attempt.sources.length}`);
   }
 
   // "### 제작 참고"(학생이 직접 구해 넣을 사진·그림 안내)는 제출 내용이 아니므로 본문에서 떼어 따로 보여 준다.
