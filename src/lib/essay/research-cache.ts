@@ -8,7 +8,8 @@ const TTL_DAYS = Number(process.env.RESEARCH_CACHE_TTL_DAYS ?? 14);
 const MEMORY_MAX = 200;
 const memory = new Map<string, { notes: CachedNotes; at: number }>();
 
-const enabled = () => process.env.RESEARCH_CACHE !== "off" && TTL_DAYS > 0;
+// 기본은 꺼짐: 같은 과제 학생들이 같은 사실·출처를 받게 되어 결과물 다양성을 해친다(독립 실행 간 출처 URL 겹침 0%였음). 켜려면 RESEARCH_CACHE=on.
+const enabled = () => process.env.RESEARCH_CACHE === "on" && TTL_DAYS > 0;
 
 function isMissingTable(err: { code?: string; message?: string } | null): boolean {
   if (!err) return false;
