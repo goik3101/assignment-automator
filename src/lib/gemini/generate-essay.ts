@@ -930,8 +930,17 @@ ${bookTask ? '- 아래 JSON 객체만 출력한다(설명·코드펜스 금지):
       console.warn("[generateEssay] 책 조사: 책이 실존하지 않거나 응답을 읽지 못함 — 기존 경로로 폴백");
       return null;
     }
-    const facts = buildFacts(parsedBook ? parsedBook.facts : parseFactJson(res.text), res.grounding?.consulted);
+    const rawFacts = parsedBook ? parsedBook.facts : parseFactJson(res.text);
+    const facts = buildFacts(rawFacts, res.grounding?.consulted);
     const queries = res.grounding?.queries ?? [];
+    if (rawFacts.length === 0) {
+      console.warn(`[generateEssay] 조사 응답에서 사실 목록을 읽지 못함: 길이=${res.text.length} 앞부분=${JSON.stringify(res.text.slice(0, 160))} 끝부분=${JSON.stringify(res.text.slice(-80))}`);
+    } else if ((facts?.length ?? 0) < Math.min(RESEARCH_MIN_FACTS, rawFacts.length)) {
+      // 모델이 적은 주소가 검색이 연 페이지 목록과 안 맞아 사실이 버려진 경우의 진단(주소만 남긴다).
+      console.warn(
+        `[generateEssay] 조사 사실 대부분이 버려짐: 모델이 적은 주소=${JSON.stringify(rawFacts.slice(0, 4).map((f) => f.url))} 검색이 연 페이지 예=${JSON.stringify((res.grounding?.consulted ?? []).slice(0, 4))}`
+      );
+    }
     console.log(
       `[generateEssay] 조사: queries=${JSON.stringify(queries)} 검색이 연 페이지=${res.grounding?.consulted?.length ?? 0} 사실(검증 통과)=${facts?.length ?? "목록없음"} model=${res.provider}/${res.model}`
     );

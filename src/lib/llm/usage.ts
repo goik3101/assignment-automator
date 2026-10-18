@@ -89,7 +89,7 @@ export function withUsageLogging<A extends [Request, ...unknown[]]>(
       if (thrown) throw thrown;
       if (res && summary.calls > 0 && args[0].headers.get("x-studed-test") === "1" && canExpose(args[0])) {
         try {
-          res.headers.set("x-llm-usage", JSON.stringify({ ...summary, byLabel: undefined }));
+          res.headers.set("x-llm-usage", JSON.stringify(summary));
         } catch {
           /* 헤더가 불변인 응답이면 로그만 남긴다 */
         }
