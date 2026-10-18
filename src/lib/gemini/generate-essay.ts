@@ -494,7 +494,7 @@ ${input.previousOutputText}
     .map((e) => {
       const { min, max, unit, counts_spaces } = e.target_length!;
       const uw = unit === "words" ? "단어(words)" : counts_spaces ? "자(공백 포함)" : "자(공백 제외)";
-      // 조사→글쓰기의 글쓰기(최소 추론)는 목표보다 평균 약 13% 길게 나오는 것이 실측돼 목표를 그만큼 낮춰 준다.
+      // 조사→글쓰기의 글쓰기(최소 추론)는 목표보다 길게 나오는 경향이 있어 목표를 낮춰 준다. 다만 계수를 0.65로 더 낮춰도 첫 글 길이는 그대로였다(감상문 목표 720~880자에서 첫 글 921~1103자 9/9 초과) — 모델이 목표 숫자보다 내용 구성에 따라 길이를 정한다.
       const base = min > 0 && max > 0 ? Math.round((min + max) / 2) : min > 0 ? Math.round(min * 1.15) : Math.round(max * 0.8);
       const goal = notes ? Math.round(base * 0.8) : base;
       const rangeText = min > 0 && max > 0 ? `${min}~${max}${uw}` : min > 0 ? `${min}${uw} 이상` : `${max}${uw} 이하`;
@@ -1506,6 +1506,11 @@ export async function generateEssay(
     ? extractBookMentionsNeedingVerification(attempt.sections, attempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote)
     : [];
   const lengthIssues = checkLengthCompliance(attempt.sections, elements);
+  for (const el of elements) {
+    const t = el.target_length;
+    const sec = t && attempt.sections.find((x) => x.label === el.label);
+    if (t && sec) console.log(`[generateEssay] 분량 첫 글: label="${el.label}" 실제=${t.unit === "words" ? countWords(sec.content) : countChars(sec.content, t.counts_spaces)} 범위=${t.min}~${t.max}`);
+  }
   // 안내문의 필수 항목이 "### 항목명" 소제목으로 존재하고 내용이 있는지 기계적으로
   // 검사한다(analyze.ts가 안내문에서 동적으로 뽑은 required_items 기준).
   const missingItems = detectMissingRequiredItems(attempt.sections);
