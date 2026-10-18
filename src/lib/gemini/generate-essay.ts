@@ -49,6 +49,8 @@ import {
   parseFactJson,
   type Fact,
 } from "@/lib/essay/research-notes";
+import { researchCacheKey, worthCaching } from "@/lib/essay/research-cache-key";
+import { getCachedResearch, putCachedResearch } from "@/lib/essay/research-cache";
 import {
   verifyExcerpt,
   verifyAuthorAttribution,
@@ -941,6 +943,29 @@ ${bookTask ? '- 아래 JSON 객체만 출력한다(설명·코드펜스 금지):
   }
 }
 
+/**
+ * 같은 수행평가(cluster_id) + 같은 책/대상 + 같은 지침이면 앞선 학생의 조사 노트를 그대로 쓴다(검색 요금 + 12~15초 절감).
+ * 노트는 공개 사실과 근거 주소뿐이고, 글은 학생마다 따로 쓰므로 결과물의 다양성 로직(회피 지시·선정)은 그대로 적용된다.
+ * 근거 페이지 링크 확인은 캐시 적중이어도 매번 다시 한다(죽은 링크 각주는 기존처럼 제거).
+ */
+async function researchWithCache(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): Promise<ResearchNotes | null> {
+  const key = researchCacheKey({
+    scopeKey: input.selection?.scopeKey,
+    subject: input.subject,
+    book: input.presetBook,
+    subjectName: input.presetSubject?.name,
+    instructions: input.instructions,
+  });
+  const hit = await getCachedResearch(key, RESEARCH_MIN_FACTS);
+  if (hit) {
+    console.log(`[generateEssay] 조사 노트 재사용(캐시 적중): 사실=${hit.facts.length}개 — 조사 호출 생략`);
+    return hit;
+  }
+  const fresh = await researchOnce(input, elements);
+  if (fresh && worthCaching(fresh)) await putCachedResearch(key, { facts: fresh.facts, queries: fresh.queries, book: fresh.book });
+  return fresh;
+}
+
 const FACT_SHEET_RULES = `
 [사실 노트 사용 규칙 — 반드시 지킬 것]
 - 이 글의 모든 사실(연도·수치·이름·사건·통계)은 아래 [사실 노트]에 있는 것만 쓴다. 노트에 없는 사실은 만들지 말고, 필요하면 일반적인 서술이나 학생 본인의 의견·계획으로 쓴다.
@@ -971,7 +996,7 @@ async function generateOnce(
   const bookResearch = isBook && !!input.presetBook && !taskNeedsExcerpt(input, elements) && process.env.ESSAY_BOOK_PIPELINE !== "legacy";
   const useResearchWrite = wantSearch && (!isBook || bookResearch) && process.env.ESSAY_PIPELINE !== "legacy";
   let notes: ResearchNotes | null = input.researchNotes ?? null;
-  if (useResearchWrite && input.researchNotes === undefined) notes = await researchOnce(input, elements);
+  if (useResearchWrite && input.researchNotes === undefined) notes = await researchWithCache(input, elements);
 
   const prompt = buildPrompt(input, elements, notes);
   if (process.env.LOG_PROMPTS === "1") console.log("[generateEssay] prompt:\n" + prompt); // 학생 입력이 섞여 있어 기본은 남기지 않는다

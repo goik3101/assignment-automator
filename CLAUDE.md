@@ -94,7 +94,7 @@ src/
       save-result-embedding.ts  -- M2/M3: 결과물 임베딩 저장 + 재생성 시 버전 관리(is_current)
     essay/                        -- 완성 원고 품질 규칙(순수 함수, alias import 없음): deliverable(신문 등 산출물 형식·참고목록/작업설명 제거),
                                      length-plan(단계 역할별 분량 가이드), form-rules(글 종류별 작성 방식), source-select(출처 2~3개로 정리),
-                                     claim-check(문장↔출처 페이지 대조), coverage·repetition(누락·반복 검사), excerpt-need(원문 구절 요구 여부)
+                                     claim-check(문장↔출처 페이지 대조), coverage·repetition(누락·반복 검사), excerpt-need(원문 구절 요구 여부), research-notes(조사→글쓰기 사실 노트), research-cache(+key: 같은 수행평가 학생끼리 조사 노트 재사용, 마이그레이션 0017)
     links/
       validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
     admin/
