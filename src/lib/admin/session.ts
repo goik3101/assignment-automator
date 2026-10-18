@@ -50,6 +50,16 @@ export function isAdminRequest(req: NextRequest): boolean {
   return verifyAdminSessionToken(req.cookies.get(ADMIN_COOKIE_NAME)?.value);
 }
 
+/**
+ * 횟수 제한 면제 여부. 관리자 코드 쿠키는 30분 뒤 만료되지만 예약 계정의 Supabase 로그인은 계속 남는다 —
+ * 그 상태에서 서버가 일반 사용자로 보고 하루 2회 제한을 걸던 문제를 막기 위해, 서버가 검증한 로그인 사용자의 이메일이
+ * 예약 계정이면 제한만 면제한다. 관리자 대시보드·통계·공지는 계속 쿠키(isAdminRequest)로만 연다.
+ * 예약 계정은 관리자 코드 로그인으로만 세션을 얻는다(내부 도메인이라 메일을 받을 수 없음).
+ */
+export function isLimitExempt(req: NextRequest, email?: string | null): boolean {
+  return isAdminRequest(req) || (!!email && email === ADMIN_ACCOUNT_EMAIL);
+}
+
 export const ADMIN_SESSION_MAX_AGE_SECONDS = SESSION_MAX_AGE_MS / 1000;
 
 /** 관리자 전용 Server Component 페이지 맨 위에서 호출한다 — 세션이 없으면

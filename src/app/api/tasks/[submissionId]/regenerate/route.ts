@@ -7,7 +7,7 @@ import { saveResultEmbedding, essayResultToText, planResultToText } from "@/lib/
 import { getCurrentHistoryBySubmission, saveHistory } from "@/lib/histories/save-history";
 import { getServerSupabase } from "@/lib/supabase/server-client";
 import { enforceRegenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
-import { isAdminRequest } from "@/lib/admin/session";
+import { isLimitExempt } from "@/lib/admin/session";
 import type { EssayResult, PlanResult } from "@/types/task";
 
 // F6/9-5: 재생성. 로그인 사용자만, 하루 1회. 이전 결과(user_histories, submissionId로
@@ -28,7 +28,7 @@ export const POST = routeUsage("regenerate", async function POST(req: NextReques
       return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
     }
 
-    const admin = isAdminRequest(req); // 11-6: 관리자는 모든 제한에서 예외
+    const admin = isLimitExempt(req, user.email); // 11-6: 관리자는 모든 제한에서 예외
 
     try {
       await enforceRegenerationLimit(user.id, admin);

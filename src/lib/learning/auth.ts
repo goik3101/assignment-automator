@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server-client";
-import { isAdminRequest } from "@/lib/admin/session";
+import { isLimitExempt } from "@/lib/admin/session";
 
 /**
  * 학습 모드 라우트 공통: 로그인 사용자 확인 + RLS가 적용되는 세션 클라이언트 반환.
@@ -18,7 +18,7 @@ export async function requireLearningUser(req: NextRequest) {
       error: NextResponse.json({ error: "학습 모드는 로그인 후 이용할 수 있어요." }, { status: 401 }),
     } as const;
   }
-  return { supabase, user, isAdmin: isAdminRequest(req) } as const;
+  return { supabase, user, isAdmin: isLimitExempt(req, user.email) } as const;
 }
 
 export function jsonError(message: string, status: number) {

@@ -11,7 +11,7 @@ import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
-import { isAdminRequest } from "@/lib/admin/session";
+import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
 
 // N2: 1차 검색+2차 JSON변환의 2단계 구조라 8~12초 걸릴 가능성이 있다고 예상됨.
@@ -47,7 +47,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     if (invalidInfo) return NextResponse.json({ error: invalidInfo }, { status: 400 });
 
     const { identity, supabase } = await resolveIdentity(req);
-    const admin = isAdminRequest(req); // 11-6: 관리자는 모든 제한에서 예외
+    const admin = isLimitExempt(req, identity.email); // 11-6: 관리자는 모든 제한에서 예외
 
     if (!admin && !identity.userId && !(await verifyTurnstile(turnstileToken ?? null))) {
       return NextResponse.json({ error: "캡차 확인에 실패했습니다. 다시 시도해주세요." }, { status: 403 });

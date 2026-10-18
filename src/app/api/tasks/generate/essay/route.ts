@@ -13,7 +13,7 @@ import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
-import { isAdminRequest } from "@/lib/admin/session";
+import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
 
 // N1: 목표 3~4초대. 계획서(plan) 경로보다 짧을 것으로 예상하지만, 검색 그라운딩이
@@ -41,7 +41,7 @@ export const POST = routeUsage("essay", async function POST(req: NextRequest) {
     if (invalidInfo) return NextResponse.json({ error: invalidInfo }, { status: 400 });
 
     const { identity, supabase } = await resolveIdentity(req);
-    const admin = isAdminRequest(req); // 11-6: 관리자는 모든 제한에서 예외
+    const admin = isLimitExempt(req, identity.email); // 11-6: 관리자는 모든 제한에서 예외
 
     // N4: 비로그인 요청은 캡차를 통과해야 한다.
     if (!admin && !identity.userId && !(await verifyTurnstile(turnstileToken ?? null))) {

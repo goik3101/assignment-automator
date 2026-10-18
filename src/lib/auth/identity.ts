@@ -6,6 +6,8 @@ export const GUEST_COOKIE_NAME = "studed_guest_id";
 
 export interface RequestIdentity {
   userId: string | null;
+  /** 서버가 검증한 로그인 사용자의 이메일(비로그인이면 null). 관리자 예약 계정 판별에만 쓴다. */
+  email?: string | null;
   guestId: string | null;
   /** 이번 요청에서 새로 발급한 guest_id면 true — 응답에 쿠키를 심어줘야 한다. */
   isNewGuest: boolean;
@@ -23,7 +25,7 @@ export async function resolveIdentity(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (user) {
-    const identity: RequestIdentity = { userId: user.id, guestId: null, isNewGuest: false };
+    const identity: RequestIdentity = { userId: user.id, email: user.email ?? null, guestId: null, isNewGuest: false };
     return { identity, supabase };
   }
 

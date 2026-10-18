@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveIdentity, GUEST_COOKIE_NAME, type RequestIdentity } from "@/lib/auth/identity";
-import { isAdminRequest } from "@/lib/admin/session";
+import { isLimitExempt } from "@/lib/admin/session";
 import { LlmError } from "@/lib/llm";
 import {
   actorKey,
@@ -59,7 +59,7 @@ export async function runStudyRoute(
     }
 
     const { identity, supabase } = await resolveIdentity(req);
-    const isAdmin = isAdminRequest(req);
+    const isAdmin = isLimitExempt(req, identity.email);
     if (!identity.userId && !(opts.allowGuest && identity.guestId)) {
       return json("로그인 후 이용할 수 있어요.", 401);
     }
