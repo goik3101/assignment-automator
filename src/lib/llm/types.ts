@@ -47,6 +47,8 @@ export interface LlmUsage {
   inputTokens: number;
   outputTokens: number;
   reasoningTokens?: number;
+  /** 입력 중 캐시로 처리된 토큰(OpenAI usage.input_tokens_details.cached_tokens). 비용이 10%로 계산된다. */
+  cachedInputTokens?: number;
   searchCalls: number;
 }
 

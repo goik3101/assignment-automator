@@ -13,6 +13,8 @@ export interface CallRecord {
   inputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
+  /** 입력 중 캐시로 처리된 토큰 수(없으면 0). */
+  cachedInputTokens?: number;
   searchCalls: number;
   /** 우선 처리(priority) 등 비싼 등급으로 처리됐으면 그 이름 */
   tier?: string;

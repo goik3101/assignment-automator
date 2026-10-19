@@ -48,14 +48,34 @@ function cleanFacts(arr: unknown[]): RawFact[] {
     }));
 }
 
-/** 모델 응답에서 JSON 배열을 꺼낸다(앞뒤 설명·코드펜스가 섞여도). 못 읽으면 빈 배열. */
+/**
+ * 출처별로 묶은 형식 [{url,title,printed_title?,printed_author?,facts:["문장",...]}]을 사실 단위로 펼친다.
+ * 주소·제목을 사실마다 반복해 쓰면 출력 토큰이 늘어서(출력 단가가 입력의 8배) 출처당 한 번만 쓰게 했다.
+ */
+function flattenGrouped(arr: unknown[]): unknown[] {
+  const out: unknown[] = [];
+  for (const g of arr) {
+    const s = g as { url?: unknown; title?: unknown; printed_title?: unknown; printed_author?: unknown; facts?: unknown };
+    if (!Array.isArray(s?.facts)) {
+      out.push(g); // 사실 단위 항목(예전 형식)은 그대로
+      continue;
+    }
+    for (const f of s.facts) {
+      const text = typeof f === "string" ? f : (f as { fact?: unknown })?.fact;
+      out.push({ fact: text, url: s.url, title: s.title, printed_title: s.printed_title, printed_author: s.printed_author });
+    }
+  }
+  return out;
+}
+
+/** 모델 응답에서 JSON 배열을 꺼낸다(앞뒤 설명·코드펜스가 섞여도). 사실 단위·출처별 묶음 형식 모두 읽는다. 못 읽으면 빈 배열. */
 export function parseFactJson(text: string): RawFact[] {
   const a = text.indexOf("[");
   const b = text.lastIndexOf("]");
   if (a < 0 || b <= a) return [];
   try {
     const arr = JSON.parse(text.slice(a, b + 1)) as unknown;
-    return Array.isArray(arr) ? cleanFacts(arr) : [];
+    return Array.isArray(arr) ? cleanFacts(flattenGrouped(arr)) : [];
   } catch {
     return [];
   }
@@ -67,11 +87,12 @@ export function parseBookResearch(text: string): { book: { title: string; author
   const b = text.lastIndexOf("}");
   if (a < 0 || b <= a) return null;
   try {
-    const o = JSON.parse(text.slice(a, b + 1)) as { book?: { title?: unknown; author?: unknown; exists?: unknown }; facts?: unknown };
-    if (!o.book || !Array.isArray(o.facts)) return null;
+    const o = JSON.parse(text.slice(a, b + 1)) as { book?: { title?: unknown; author?: unknown; exists?: unknown }; facts?: unknown; sources?: unknown };
+    const list = Array.isArray(o.sources) ? o.sources : o.facts;
+    if (!o.book || !Array.isArray(list)) return null;
     const title = typeof o.book.title === "string" ? o.book.title.trim() : "";
     if (!title) return null;
-    return { book: { title, author: typeof o.book.author === "string" ? o.book.author.trim() : "", exists: o.book.exists !== false }, facts: cleanFacts(o.facts) };
+    return { book: { title, author: typeof o.book.author === "string" ? o.book.author.trim() : "", exists: o.book.exists !== false }, facts: cleanFacts(flattenGrouped(list)) };
   } catch {
     return null;
   }

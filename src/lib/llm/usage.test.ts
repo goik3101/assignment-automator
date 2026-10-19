@@ -33,3 +33,16 @@ test("요약에 프롬프트·키·본문 관련 필드가 없다", () => {
   const s = JSON.stringify(summarizeTrace({ name: "x", startedAt: 0, calls: [call({})] }, 1));
   assert.ok(!/prompt|apiKey|api_key|text|authorization/i.test(s));
 });
+
+test("캐시된 입력 토큰은 입력 단가의 10%로 계산한다", async () => {
+  const { summarizeTrace } = await import("./usage.ts");
+  const mk = (cached: number) => ({
+    name: "t", startedAt: 0,
+    calls: [{ label: "x", provider: "openai", model: "gpt-5-mini", ms: 1, ok: true, retries: 0, inputTokens: 10000, outputTokens: 1000, reasoningTokens: 0, cachedInputTokens: cached, searchCalls: 0 }],
+  });
+  const plain = summarizeTrace(mk(0), 1).estimatedCostUsd;
+  const cached = summarizeTrace(mk(8000), 1).estimatedCostUsd;
+  assert.equal(plain, 0.0045); // 10,000×$0.25/M + 1,000×$2/M
+  assert.equal(cached, 0.0027); // 2,000×$0.25/M + 8,000×$0.025/M + 1,000×$2/M
+  assert.equal(summarizeTrace(mk(8000), 1).cachedInputTokens, 8000);
+});

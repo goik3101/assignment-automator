@@ -90,7 +90,7 @@ export const openaiProvider: LlmProvider = {
       return {
         text,
         grounding: n.grounding,
-        usage: { inputTokens: n.usage.inputTokens, outputTokens: n.usage.outputTokens, reasoningTokens: n.usage.reasoningTokens, searchCalls: n.usage.searchCalls },
+        usage: { inputTokens: n.usage.inputTokens, outputTokens: n.usage.outputTokens, reasoningTokens: n.usage.reasoningTokens, cachedInputTokens: n.usage.cachedInputTokens, searchCalls: n.usage.searchCalls },
         provider: "openai",
         model,
         servedTier: (resp as { service_tier?: string }).service_tier,

@@ -67,7 +67,7 @@ export interface OpenAiResponse {
   incomplete_details?: { reason?: string } | null;
   error?: { code?: string; message?: string } | null;
   output?: OutputItem[];
-  usage?: { input_tokens?: number; output_tokens?: number; output_tokens_details?: { reasoning_tokens?: number } };
+  usage?: { input_tokens?: number; input_tokens_details?: { cached_tokens?: number }; output_tokens?: number; output_tokens_details?: { reasoning_tokens?: number } };
 }
 
 /** 추적 파라미터(utm_source=openai 등)를 지우고 URL을 정리한다. 파싱 못 하면 원문 그대로. */
@@ -177,7 +177,7 @@ export function extractCitations(text: string, annotations: OutputAnnotation[]):
 export interface Normalized {
   text: string;
   grounding?: SearchGrounding;
-  usage: { inputTokens: number; outputTokens: number; reasoningTokens: number; searchCalls: number };
+  usage: { inputTokens: number; outputTokens: number; reasoningTokens: number; cachedInputTokens: number; searchCalls: number };
   refusal?: string;
 }
 
@@ -194,6 +194,7 @@ export function normalizeResponse(resp: OpenAiResponse, wantsSearch: boolean): N
     inputTokens: resp.usage?.input_tokens ?? 0,
     outputTokens: resp.usage?.output_tokens ?? 0,
     reasoningTokens: resp.usage?.output_tokens_details?.reasoning_tokens ?? 0,
+    cachedInputTokens: resp.usage?.input_tokens_details?.cached_tokens ?? 0,
     searchCalls: searchItems.length,
   };
   if (!wantsSearch) return { text: rawText, usage, refusal };

@@ -13,6 +13,8 @@ export const PRICES_PER_MILLION: Record<string, { input: number; output: number 
 };
 /** 우선 처리(priority) 등급의 토큰 단가 배율 — OpenAI 가격표 기준 추정값(약 1.8배). 실제 청구는 대시보드로 확인할 것. */
 export const PRIORITY_MULTIPLIER = Number(process.env.OPENAI_PRIORITY_MULTIPLIER ?? 1.8);
+/** 캐시로 처리된 입력 토큰의 단가 비율. gpt-5 계열 공식 가격표 기준 0.1배(예: gpt-5-mini $0.25 → $0.025). */
+export const CACHED_INPUT_RATIO = 0.1;
 export const SEARCH_CALL_USD = 0.01; // web_search 도구 호출 1회(검색 결과 토큰은 모델 입력 토큰으로 별도 청구되어 위 표에 포함)
 
 export interface UsageSummary {
@@ -24,6 +26,8 @@ export interface UsageSummary {
   retries: number;
   searchCalls: number;
   inputTokens: number;
+  /** 입력 중 캐시로 처리된 토큰(비용은 입력 단가의 10%로 계산). */
+  cachedInputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
   estimatedCostUsd: number;
@@ -38,7 +42,7 @@ export interface UsageSummary {
 export function summarizeTrace(trace: Trace, now = Date.now()): UsageSummary {
   const s: UsageSummary = {
     name: trace.name, provider: trace.calls[0]?.provider ?? "-", models: [], calls: 0, failedCalls: 0, retries: 0, searchCalls: 0,
-    inputTokens: 0, outputTokens: 0, reasoningTokens: 0, estimatedCostUsd: 0, unpriced: false, wallMs: now - trace.startedAt, sumCallMs: 0, byLabel: {},
+    inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0, estimatedCostUsd: 0, unpriced: false, wallMs: now - trace.startedAt, sumCallMs: 0, byLabel: {},
   };
   const models = new Set<string>();
   for (const c of trace.calls) {
@@ -47,6 +51,7 @@ export function summarizeTrace(trace: Trace, now = Date.now()): UsageSummary {
     s.retries += c.retries;
     s.searchCalls += c.searchCalls;
     s.inputTokens += c.inputTokens;
+    s.cachedInputTokens += c.cachedInputTokens ?? 0;
     s.outputTokens += c.outputTokens;
     s.reasoningTokens += c.reasoningTokens;
     s.sumCallMs += c.ms;
@@ -58,7 +63,7 @@ export function summarizeTrace(trace: Trace, now = Date.now()): UsageSummary {
     if (c.provider === "openai") {
       const p = PRICES_PER_MILLION[c.model];
       if (!p) s.unpriced = true;
-      else s.estimatedCostUsd += ((c.inputTokens * p.input + c.outputTokens * p.output) / 1e6) * (c.tier === "priority" ? PRIORITY_MULTIPLIER : 1) + c.searchCalls * SEARCH_CALL_USD;
+      else s.estimatedCostUsd += (((c.inputTokens - (c.cachedInputTokens ?? 0)) * p.input + (c.cachedInputTokens ?? 0) * p.input * CACHED_INPUT_RATIO + c.outputTokens * p.output) / 1e6) * (c.tier === "priority" ? PRIORITY_MULTIPLIER : 1) + c.searchCalls * SEARCH_CALL_USD;
     }
   }
   s.models = [...models];

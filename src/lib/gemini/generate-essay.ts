@@ -892,10 +892,12 @@ async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["t
     .map((e) => `- "${e.label}": ${e.description}${e.required_items?.length ? ` (다룰 항목: ${e.required_items.join(" / ")})` : ""}`)
     .join("\n");
   const bookTask = !!input.presetBook;
+  // 출처별로 묶어 쓰면 주소·제목이 출처당 한 번만 나와 출력 토큰이 줄어든다(출력 단가가 입력의 8배). ESSAY_RESEARCH_FORMAT=flat이면 예전 사실 단위 형식.
+  const grouped = process.env.ESSAY_RESEARCH_FORMAT !== "flat";
   const bookBlock = bookTask
     ? `[조사할 책 — 이 책만 조사할 것] 『${input.presetBook!.title}』${input.presetBook!.author ? ` (저자: ${input.presetBook!.author})` : ""}
 - 이 책이 실존하는지, 저자·출판사·출간연도를 검색으로 확인한다. book.title과 book.author는 위에 적힌 한국어 표기를 그대로 유지한다(원제·영어 제목으로 바꾸지 말 것). 제목이나 저자가 실제로 다르게 확인될 때만 한국어 표기로 정정하고, 실존하지 않으면 book.exists를 false로 한다.
-- facts의 처음 1~2개는 서지 사실(제목·저자·출판사·출간연도)로 쓰고, 그 사실에는 근거 페이지에 인쇄된 제목과 저자 표기를 그대로 printed_title, printed_author에 적는다(페이지에 있는 글자 그대로, 번역·의역 금지).
+- 처음 1~2개 사실은 서지 사실(제목·저자·출판사·출간연도)로 쓰고, 그 사실의 근거 페이지 항목에는 페이지에 인쇄된 제목과 저자 표기를 그대로 printed_title, printed_author에 적는다(페이지에 있는 글자 그대로, 번역·의역 금지).
 - 나머지 사실은 줄거리·주제·인물·작가 소개로 6~8개. 책 속 문장(인용문)은 모으지 않는다.
 - 인물·지명은 한국어 번역본에서 쓰이는 표기로 쓰고, 확실하지 않으면 원어 표기를 괄호로 병기한다(예: 다아시(Darcy)). 음역을 지어내지 말 것.
 `
@@ -913,9 +915,17 @@ ${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 
 - 검색으로 확인한 사실만 쓴다. 사실 10~14개를, 위 각 단계·항목마다 최소 2개씩 고르게 담을 것. 논설·토론이면 찬성·반대 양쪽 근거를 함께 담을 것.
 - 각 사실은 한국어 한 문장으로, 연도·수치·이름 같은 확인 가능한 값을 포함한다. 출처에 없는 값은 쓰지 않는다.
 - 같은 사실을 중복하지 말고, 서로 다른 신뢰도 높은 페이지(공식 기관·원문·신뢰 매체 우선)에서 고른다. 위키형·블로그·동영상은 다른 근거가 없을 때만.
-- url은 검색 중 실제로 열어 본 페이지 주소여야 하고, title은 그 페이지 제목이다.
+- url은 검색 중 실제로 열어 본 페이지 주소여야 하고, title은 그 페이지 제목이다.${grouped ? " 같은 페이지에서 나온 사실은 한 항목의 facts에 모아 url과 title을 한 번만 쓴다." : ""}
 - 검색은 1번만 한다(그 한 번에 쿼리 2~3개). 조사할 것은 과제 주제의 사실뿐이다 — 수행평가 방식·발표 시간·분량·모둠 같은 과제 지시 자체는 검색하지 않는다.
-${bookTask ? '- 아래 JSON 객체만 출력한다(설명·코드펜스 금지): {"book":{"title":"확인된 제목","author":"확인된 저자","exists":true},"facts":[{"fact":"...","url":"https://...","title":"...","printed_title":"(서지 사실만)","printed_author":"(서지 사실만)"}]}' : '- 아래 JSON 배열만 출력한다(설명·코드펜스 금지): [{"fact":"...","url":"https://...","title":"..."}]'}
+${
+    bookTask
+      ? grouped
+        ? '- 아래 JSON 객체만 출력한다(설명·코드펜스 금지): {"book":{"title":"확인된 제목","author":"확인된 저자","exists":true},"sources":[{"url":"https://...","title":"...","printed_title":"(서지 사실이 있는 페이지만)","printed_author":"(서지 사실이 있는 페이지만)","facts":["사실 문장","사실 문장"]}]}'
+        : '- 아래 JSON 객체만 출력한다(설명·코드펜스 금지): {"book":{"title":"확인된 제목","author":"확인된 저자","exists":true},"facts":[{"fact":"...","url":"https://...","title":"...","printed_title":"(서지 사실만)","printed_author":"(서지 사실만)"}]}'
+      : grouped
+        ? '- 아래 JSON 배열만 출력한다(설명·코드펜스 금지): [{"url":"https://...","title":"...","facts":["사실 문장","사실 문장"]}]'
+        : '- 아래 JSON 배열만 출력한다(설명·코드펜스 금지): [{"fact":"...","url":"https://...","title":"..."}]'
+  }
 `.trim();
   try {
     const res = await generate({
