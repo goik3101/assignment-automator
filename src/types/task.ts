@@ -48,6 +48,11 @@ export interface CoreTaskInfo {
   topic: string;
   requirements: string[];
   task_elements: TaskElement[];
+  /**
+   * 안내문의 채점 기준표·양식·예시 답안에서 뽑은 "어떻게 써야 하는지"(내용·형식 기준, 칸 구성, 예시의 형식·분량).
+   * 배점·날짜·감점 같은 행정 정보는 담지 않는다(그건 administrative_info). 생성 프롬프트에만 쓰고 과제 임베딩에는 넣지 않는다.
+   */
+  writing_guide?: string;
 }
 
 export interface AnalyzeResult {

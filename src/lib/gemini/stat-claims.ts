@@ -12,6 +12,14 @@ const CALCULATION_MARKER = /[=×÷＝]|합계|누적|계산|곱하|곱한|더하
 // 화면 예시·가상의 값("진행률 바(예: 60% 완료)", "예를 들어 30명")은 외부 사실이 아니다. 단 외부 자료 표지가 함께 있으면 위에서 먼저 검증 대상이 된다.
 const EXAMPLE_MARKER = /\(\s*예\s*[:：]|예\s*[:：]|예시|예를\s*들(?:어|면)|가상의|가령|샘플|더미/;
 const HEADING_LINE = /^\s{0,3}#{1,6}\s/;
+// 그림·칸·제작 지시("(그림: 교복을 입은 학생 1명)", "칸A —", "삽화")는 사실 주장이 아니다.
+// 실측(2026-10-22, 카드뉴스): 그림 지시의 "1명" 때문에 통계 검증 검색 3회(약 40초·약 $0.07)가 돌았다.
+const DIRECTION_MARKER = /그림\s*[:：]|이미지\s*(?:제안)?\s*[:：]|장면\s*[:：]|삽화|일러스트|말풍선|칸\s*[A-Za-z①-⑳\d]|[①-⑳]\s*칸|그린다|그리기|그려\s*넣|배치(?:한다|하기)|컷\s*\d/;
+// 문장 속 수치가 전부 10 이하의 사람·물건 수("학생 1명", "인물 2명")면 통계가 아니라 묘사다.
+const SMALL_COUNT_ONLY = (sentence: string) => {
+  const ms = [...sentence.matchAll(STAT_CLAIM_PATTERN)].map((m) => m[0]);
+  return ms.length > 0 && ms.every((m) => /(?:명|개)$/.test(m.trim()) && Number(numberValue(m)) <= 10);
+};
 const TABLE_OR_FORMULA_LINE = /^\s*\||^\s*[-*]\s*\$|^\s*\$\$|^\s*[\\][[(]/;
 
 export type StatClaimKind = "external" | "assumption" | "calculation" | "structure";
@@ -36,6 +44,7 @@ export function collectUserNumbers(...texts: (string | undefined | null)[]): Set
 /** 한 문장(또는 줄)이 어떤 종류의 수치 서술인지. */
 export function classifyStatSentence(sentence: string, userNumbers: Set<string>): StatClaimKind {
   if (HEADING_LINE.test(sentence) || TABLE_OR_FORMULA_LINE.test(sentence)) return "structure";
+  if (process.env.ESSAY_QUALITY_FIXES !== "off" && !EXTERNAL_CLAIM_MARKER.test(sentence) && (DIRECTION_MARKER.test(sentence) || SMALL_COUNT_ONLY(sentence))) return "structure";
   if (EXTERNAL_CLAIM_MARKER.test(sentence)) return "external";
   if (EXAMPLE_MARKER.test(sentence)) return "assumption";
   const nums = [...sentence.matchAll(STAT_CLAIM_PATTERN)].map((m) => numberValue(m[0]));

@@ -65,6 +65,15 @@ const ERROR_PAGE_PHRASE_PATTERN =
   /페이지를\s*찾을\s*수\s*없습니다|요청하신\s*페이지가\s*존재하지\s*않습니다|존재하지\s*않는\s*페이지|page\s*not\s*found|404\s*error|this\s*domain\s*(may\s*be\s*for\s*sale|is\s*parked)/i;
 const MIN_BODY_TEXT_LENGTH = 80;
 
+// 봇 확인 페이지로 돌려보내진 경우(실측 2026-10-21: openlibrary.org/verify_human?next=… 가 "유효" 출처로 저장됨).
+// 원래 페이지가 죽은 게 아니라 우리 요청이 막힌 것이므로 "확인 불가"로 두고 주소는 원래 것을 유지한다.
+const BOT_CHECK_URL_PATTERN = /verify[_-]?human|captcha|\/cdn-cgi\/challenge|challenge-platform|\/sorry\/index|are[-_]you[-_]human/i;
+const BOT_CHECK_PHRASE_PATTERN = /verify\s+(?:that\s+)?you\s+are\s+(?:a\s+)?human|are\s+you\s+a\s+robot|checking\s+your\s+browser|just\s+a\s+moment\.\.\.|자동\s*입력\s*방지|로봇이\s*아닙니다/i;
+function looksLikeBotCheck(finalUrl: string, bodyText: string): boolean {
+  if (process.env.ESSAY_QUALITY_FIXES === "off") return false;
+  return BOT_CHECK_URL_PATTERN.test(finalUrl) || BOT_CHECK_PHRASE_PATTERN.test(bodyText.slice(0, 5000));
+}
+
 function looksLikeJunkPage(finalUrl: string, bodyText: string): boolean {
   if (JUNK_URL_PATTERN.test(finalUrl)) return true;
   const visibleText = bodyText
@@ -90,6 +99,7 @@ async function checkUrl(url: string): Promise<CheckResult> {
     }
     // 검색 그라운딩이 주는 URL이 리다이렉트 링크일 수 있어서(Gemini의 vertexaisearch 등) 리다이렉트를 다 따라간 최종 URL을 쓴다.
     let finalUrl = res.url || url;
+    if (looksLikeBotCheck(finalUrl, "")) return { status: "unverifiable", finalUrl: url };
     const byStatus = classifyHttpStatus(res.status);
     if (byStatus !== "valid") return { status: byStatus, finalUrl };
 
@@ -98,6 +108,7 @@ async function checkUrl(url: string): Promise<CheckResult> {
       const bodyRes = haveBody ? res : await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
       finalUrl = bodyRes.url || finalUrl;
       const bodyText = await bodyRes.text();
+      if (looksLikeBotCheck(finalUrl, bodyText)) return { status: "unverifiable", finalUrl: url };
       if (looksLikeJunkPage(finalUrl, bodyText)) return { status: "invalid", finalUrl };
       if (/html|text\//i.test(bodyRes.headers.get("content-type") ?? "")) rememberPageText([url, finalUrl], bodyText);
       return { status: "valid", finalUrl };
@@ -115,6 +126,8 @@ async function checkUrl(url: string): Promise<CheckResult> {
 /** 관리자 대시보드의 "출처 링크 유효성 검증 실패율" 지표용 로그. 실패해도 검증
  * 자체는 계속 진행해야 하므로 조용히 무시한다 (Supabase 미설정인 M1 단계 포함). */
 async function logValidations(results: { valid: boolean }[]): Promise<void> {
+  // 품질 점검용 대량 테스트가 실사용 실패율에 섞이지 않게 끈다(테스트 스크립트에서 SOURCE_STATS_LOG=off).
+  if (process.env.SOURCE_STATS_LOG === "off") return;
   try {
     const supabase = getServiceClient();
     const rows = results.map((r) => ({ valid: r.valid }));

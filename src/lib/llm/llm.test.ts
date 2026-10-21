@@ -81,3 +81,23 @@ test("generateJson: 정상 파싱 / 빈 출력 / JSON 아님을 구분해서 던
   await assert.rejects(() => generateJson({ label: "j", role: "lite", prompt: "x", schema }), (e: LlmError) => e.kind === "invalid_output");
   setProviderForTest(null);
 });
+
+test("OpenAI: analyze/study 역할은 따로 정한 모델을 쓰고, 없으면 lite 모델을 쓴다", async () => {
+  const { openaiProvider } = await import("./providers/openai.ts");
+  const keys = ["OPENAI_MODEL_MAIN", "OPENAI_MODEL_LITE", "OPENAI_MODEL_WRITE", "OPENAI_MODEL_ANALYZE", "OPENAI_MODEL_STUDY"] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  try {
+    for (const k of keys) delete process.env[k];
+    process.env.OPENAI_MODEL_MAIN = "m";
+    process.env.OPENAI_MODEL_LITE = "l";
+    assert.deepEqual(["main", "lite", "write", "analyze", "study"].map((r) => openaiProvider.model(r as never)), ["m", "l", "m", "l", "l"]);
+    process.env.OPENAI_MODEL_ANALYZE = "a";
+    process.env.OPENAI_MODEL_STUDY = "s";
+    assert.deepEqual([openaiProvider.model("analyze"), openaiProvider.model("study")], ["a", "s"]);
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});

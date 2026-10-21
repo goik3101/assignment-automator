@@ -31,7 +31,7 @@ function resultToPlainText(result: EssayResult | PlanResult): string {
 export async function generateMemoNote(result: EssayResult | PlanResult): Promise<MemoNote> {
   const response = await generate({
     label: "memoNote",
-    role: "lite",
+    role: "study",
     schema: MEMO_NOTE_SCHEMA,
     prompt: `아래는 학생이 이미 완성한 수행평가 결과물이다. 시험이나 발표 직전에 빠르게
 훑어볼 수 있는 "암기노트"로 압축해줘. 원문에 없는 사실을 새로 지어내지 말고,

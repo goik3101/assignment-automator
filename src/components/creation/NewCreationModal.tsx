@@ -24,6 +24,8 @@ import Button from "@/components/ui/Button";
 import Turnstile from "@/components/Turnstile";
 import { learningApi } from "@/components/learning/api";
 import { useT } from "@/lib/i18n";
+import { MAX_GUIDE_IMAGES, mergeImagePicks } from "@/lib/ui/image-picks";
+import { imageFileToUploadBase64 } from "@/lib/ui/downscale-image";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
@@ -50,18 +52,6 @@ const PLACEHOLDERS = [
   "예: 선생님이 출처 표기를 꼭 하라고 하셨어",
 ];
 
-function fileToBase64(file: File): Promise<{ data: string; mimeType: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const [, data] = (reader.result as string).split(",");
-      resolve({ data, mimeType: file.type });
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 type Stage = "input" | "analyzing" | "choose" | "questions";
 type InputKind = "image" | "text";
 
@@ -86,8 +76,9 @@ export default function NewCreationModal({
   const { user } = useAuth();
   const [stage, setStage] = useState<Stage>("input");
   const [kind, setKind] = useState<InputKind>(initialKind ?? (initialTopic && !initialImage ? "text" : "image"));
-  const [imageFile, setImageFile] = useState<File | null>(initialImage);
-  const [preview, setPreview] = useState<string | null>(() => (initialImage ? URL.createObjectURL(initialImage) : null));
+  // 안내문 사진은 최대 4장(안내·채점 기준표·예시 답안지가 따로 있는 과제가 많다). 첫 장이 대표 사진.
+  const [imageFiles, setImageFiles] = useState<File[]>(() => (initialImage ? [initialImage] : []));
+  const [previews, setPreviews] = useState<string[]>(() => (initialImage ? [URL.createObjectURL(initialImage)] : []));
   const [dragging, setDragging] = useState(false);
   const [topicText, setTopicText] = useState(initialTopic);
   const [instructions, setInstructions] = useState("");
@@ -124,20 +115,28 @@ export default function NewCreationModal({
       .catch(() => setLatest(null));
   }, [user]);
 
-  function pickFile(file: File | null) {
-    if (file && !file.type.startsWith("image/")) {
-      setError(t("이미지 파일(JPG, PNG 등)만 올릴 수 있어요."));
-      return;
-    }
-    setError(null);
-    setImageFile(file);
-    setPreview((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return file ? URL.createObjectURL(file) : null;
-    });
+  function addFiles(list: FileList | File[] | null | undefined) {
+    const incoming = Array.from(list ?? []);
+    if (incoming.length === 0) return;
+    const merged = mergeImagePicks(imageFiles, incoming);
+    const added = merged.files.slice(imageFiles.length);
+    setImageFiles(merged.files);
+    setPreviews((old) => [...old, ...added.map((f) => URL.createObjectURL(f))]);
+    if (merged.rejectedNonImage > 0) setError(t("이미지 파일(JPG, PNG 등)만 올릴 수 있어요."));
+    else if (merged.overflow > 0) setError(t("사진은 최대 {n}장까지 올릴 수 있어요.", { n: MAX_GUIDE_IMAGES }));
+    else setError(null);
   }
 
-  const hasInput = kind === "image" ? !!imageFile : topicText.trim().length > 0;
+  function removeImage(i: number) {
+    setImageFiles((old) => old.filter((_, j) => j !== i));
+    setPreviews((old) => {
+      if (old[i]) URL.revokeObjectURL(old[i]);
+      return old.filter((_, j) => j !== i);
+    });
+    setError(null);
+  }
+
+  const hasInput = kind === "image" ? imageFiles.length > 0 : topicText.trim().length > 0;
 
   async function analyze() {
     setError(null);
@@ -146,15 +145,18 @@ export default function NewCreationModal({
     try {
       let imageBase64: string | undefined;
       let imageMimeType: string | undefined;
-      if (kind === "image" && imageFile) {
-        const encoded = await fileToBase64(imageFile);
-        imageBase64 = encoded.data;
-        imageMimeType = encoded.mimeType;
+      let extraImages: { base64: string; mimeType: string }[] | undefined;
+      if (kind === "image" && imageFiles.length > 0) {
+        // 보내기 전에 줄인다(요청 본문 한도) — 첫 장은 imageBase64, 나머지는 extraImages.
+        const encoded = await Promise.all(imageFiles.map((f) => imageFileToUploadBase64(f)));
+        imageBase64 = encoded[0].data;
+        imageMimeType = encoded[0].mimeType;
+        if (encoded.length > 1) extraImages = encoded.slice(1).map((e) => ({ base64: e.data, mimeType: e.mimeType }));
       }
       const res = await fetch("/api/tasks/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, imageMimeType, topicText: kind === "text" ? topicText : "", instructions }),
+        body: JSON.stringify({ imageBase64, imageMimeType, extraImages, topicText: kind === "text" ? topicText : "", instructions }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error ?? t("분석에 실패했어요."));
@@ -504,25 +506,64 @@ export default function NewCreationModal({
               onDrop={(e) => {
                 e.preventDefault();
                 setDragging(false);
-                pickFile(e.dataTransfer.files?.[0] ?? null);
+                addFiles(e.dataTransfer.files);
               }}
               className={[
                 "relative grid min-h-[220px] place-items-center rounded-2xl border border-dashed p-4 transition-colors",
                 dragging ? "border-foreground bg-raised" : "border-border-strong hover:border-foreground",
               ].join(" ")}
             >
-              {preview ? (
+              {previews.length === 1 ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={preview} alt={t("업로드한 안내문 미리보기")} className="max-h-[260px] rounded-lg object-contain" />
+                  <img src={previews[0]} alt={t("업로드한 안내문 미리보기")} className="max-h-[260px] rounded-lg object-contain" />
                   <button
-                    onClick={() => pickFile(null)}
+                    onClick={() => removeImage(0)}
                     aria-label={t("사진 지우기")}
                     className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-border-strong bg-surface text-muted transition-colors hover:text-foreground"
                   >
                     <X size={15} strokeWidth={1.8} />
                   </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    aria-label={t("사진 더 올리기")}
+                    className="absolute bottom-3 right-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-border-strong bg-surface px-3 text-xs font-semibold text-muted transition-colors hover:text-foreground"
+                  >
+                    <ImagePlus size={14} strokeWidth={1.8} />
+                    {t("사진 추가")}
+                  </button>
                 </>
+              ) : previews.length > 1 ? (
+                <div className="w-full">
+                  <ul className="grid grid-cols-2 gap-2" aria-label={t("올린 안내문 사진")}>
+                    {previews.map((src, i) => (
+                      <li key={src} className="relative overflow-hidden rounded-lg border border-border bg-background">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt={t("안내문 사진 {n}", { n: i + 1 })} className="h-[110px] w-full object-contain" />
+                        <span className="absolute left-1.5 top-1.5 rounded-md bg-surface/90 px-1.5 text-[11px] font-semibold text-muted">{i + 1}</span>
+                        <button
+                          onClick={() => removeImage(i)}
+                          aria-label={t("{n}번 사진 지우기", { n: i + 1 })}
+                          className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full border border-border-strong bg-surface text-muted transition-colors hover:text-foreground"
+                        >
+                          <X size={13} strokeWidth={1.8} />
+                        </button>
+                      </li>
+                    ))}
+                    {previews.length < MAX_GUIDE_IMAGES && (
+                      <li>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex h-[110px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong text-muted transition-colors hover:border-foreground hover:text-foreground"
+                        >
+                          <ImagePlus size={20} strokeWidth={1.5} />
+                          <span className="text-xs font-semibold">{t("사진 추가")}</span>
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                  <p className="mt-2 text-center text-xs text-faint">{t("{n}/{max}장 · 안내문·채점 기준표·예시 답안을 모두 올리면 더 정확해요", { n: previews.length, max: MAX_GUIDE_IMAGES })}</p>
+                </div>
               ) : (
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -530,16 +571,20 @@ export default function NewCreationModal({
                 >
                   <ImagePlus size={30} strokeWidth={1.4} className="text-muted" />
                   <span className="text-sm font-semibold">{t("안내문 사진을 올려 주세요")}</span>
-                  <span className="text-xs text-muted">{t("눌러서 고르거나, 여기로 끌어다 놓으세요")}</span>
+                  <span className="text-xs text-muted">{t("눌러서 고르거나, 여기로 끌어다 놓으세요 (최대 {n}장)", { n: MAX_GUIDE_IMAGES })}</span>
                 </button>
               )}
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 className="sr-only"
                 aria-label={t("안내문 사진 선택")}
-                onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = ""; // 같은 사진을 지웠다가 다시 고를 수 있게
+                }}
               />
             </div>
           </div>

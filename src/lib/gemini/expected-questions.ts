@@ -18,7 +18,7 @@ export const SCHEMA = {
 export async function generateExpectedQuestions(topic: string, resultText: string): Promise<string[]> {
   const response = await generate({
     label: "expectedQuestions",
-    role: "lite",
+    role: "study",
     schema: SCHEMA,
     prompt: `아래는 "${topic}"라는 발표/구술 과제를 위해 학생이 준비한 내용이다.
 발표가 끝난 뒤 선생님이나 친구들이 물어볼 법한 예상 질문을 4~6개 뽑아줘.

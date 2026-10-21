@@ -25,7 +25,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText } =
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText, elementLabel } =
       body as {
         subject: string;
         coreTaskInfo: CoreTaskInfo;
@@ -38,6 +38,8 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
         /** 위와 같은 완성 원고의 전체 텍스트 — 날짜/숫자 등 세부 사실 일관성
          * 방지용(EssayResult.markdown). */
         referenceFactsText?: string;
+        /** 만들 외부 제작 요소 이름(요소마다 따로 부를 때). 없으면 첫 번째 외부 제작 요소. */
+        elementLabel?: string;
       };
 
     if (!subject || !coreTaskInfo) {
@@ -78,6 +80,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
       recentStatGuidance: statGuidance?.instructionText,
       fixedSubject,
       referenceFactsText,
+      elementLabel: typeof elementLabel === "string" ? elementLabel.slice(0, 200) : undefined,
     });
 
     const response =

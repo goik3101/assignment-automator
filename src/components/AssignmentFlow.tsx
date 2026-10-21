@@ -118,6 +118,7 @@ export default function AssignmentFlow() {
               turnstileToken: c.turnstileToken,
               fixedSubject,
               referenceFactsText,
+              elementLabel: element.label,
             }),
           });
           if (!res.ok) throw new Error((await res.json()).error ?? t("생성에 실패했어요."));

@@ -31,6 +31,13 @@ test("계산·창작·기획형(strict)에서는 외부 자료 표지가 명시�
 test("분류", () => {
   assert.equal(classifyStatSentence("## 3주차 5,000원", user), "structure");
 });
+test("그림·칸 지시와 작은 인원 묘사는 통계가 아니다(실측 2026-10-22: 카드뉴스 그림 지시로 검증 검색 3회)", () => {
+  assert.deepEqual(find("1) 칸A — 사건 배경 (그림: 투표함과 찢어진 투표용지 옆에 교복을 입은 학생 1명)"), []);
+  assert.deepEqual(find("- 그림: 교복 입은 학생 2명이 손팻말을 든 모습."), []);
+  assert.deepEqual(find("광장에 시민 3명이 서 있는 장면을 그린다."), []);
+  assert.equal(find("1960년 4월 19일 시위로 186명이 사망했다.").length, 1);
+  assert.equal(find("조사에 따르면 학생 3명 중 1명이 스트레스를 느낀다.").length, 1);
+});
 test("화면·데이터 예시 값은 외부 통계가 아니다(실측: '진행률 바(예: 60% 완료)'가 검증 검색을 유발)", () => {
   assert.deepEqual(find("- 진행률 바(예: 60% 완료)로 남은 과제를 보여 준다."), []);
   assert.deepEqual(find("예를 들어 사용자 30명이 동시에 접속하는 상황을 본다."), []);

@@ -1,10 +1,16 @@
 import { withLlmTrace, type Trace } from "./trace.ts";
 
 // 생성 1건의 모델 호출량·비용 집계. 프롬프트·응답 본문·API 키는 다루지 않는다(라벨과 숫자만).
-// 가격은 OpenAI 가격표(2026-09 확인, 100만 토큰당 USD)이며 바뀌면 여기만 고친다. 검색 호출은 호출당 요금이 따로 붙는다.
+// 가격은 OpenAI 가격표(2026-10-22 developers.openai.com/api/docs/pricing 확인, 100만 토큰당 USD, 272K 이하 입력 기준)이며 바뀌면 여기만 고친다. 검색 호출은 호출당 요금이 따로 붙는다.
 export const PRICES_PER_MILLION: Record<string, { input: number; output: number }> = {
+  "gpt-6-luna": { input: 0.1, output: 0.5 },
+  "gpt-6-sol": { input: 2.0, output: 10.0 },
+  "gpt-5.6-luna": { input: 0.2, output: 1.2 },
+  "gpt-5.6-terra": { input: 2.0, output: 12.0 },
+  "gpt-5.4": { input: 2.5, output: 15.0 },
   "gpt-5-nano": { input: 0.05, output: 0.4 },
   "gpt-5-mini": { input: 0.25, output: 2.0 },
+  "gpt-5": { input: 1.25, output: 10.0 },
   "gpt-5.4-nano": { input: 0.2, output: 1.25 },
   "gpt-5.4-mini": { input: 0.75, output: 4.5 },
   "gpt-4.1-nano": { input: 0.1, output: 0.4 },

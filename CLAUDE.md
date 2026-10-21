@@ -94,7 +94,8 @@ src/
       save-result-embedding.ts  -- M2/M3: 결과물 임베딩 저장 + 재생성 시 버전 관리(is_current)
     essay/                        -- 완성 원고 품질 규칙(순수 함수, alias import 없음): deliverable(신문 등 산출물 형식·참고목록/작업설명 제거),
                                      length-plan(단계 역할별 분량 가이드), form-rules(글 종류별 작성 방식), source-select(출처 2~3개로 정리),
-                                     claim-check(문장↔출처 페이지 대조), coverage·repetition(누락·반복 검사), excerpt-need(원문 구절 요구 여부), research-notes(조사→글쓰기 사실 노트), research-cache(+key: 같은 수행평가 학생끼리 조사 노트 재사용, 마이그레이션 0017)
+                                     claim-check(문장↔출처 페이지 대조), coverage·repetition(누락·반복 검사), excerpt-need(원문 구절 요구 여부), research-notes(조사→글쓰기 사실 노트), research-cache(+key: 같은 수행평가 학생끼리 조사 노트 재사용, 마이그레이션 0017),
+                                     quality-flags(품질 개선 스위치 ESSAY_QUALITY_FIXES=off로 되돌림), prompt-scope(과제에 해당할 때만 공통 규칙 블록 포함), opinion-citations(감상 문장 각주 제거)
     links/
       validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
     admin/
@@ -139,6 +140,8 @@ docs/
 - **승인 없이 하지 않는 것:** 캐시 데이터 삭제, 대규모 구조 변경, 추가 비용이 드는 대량 테스트, DB 마이그레이션 추가·적용. "승인 먼저 받겠다"고 말한 작업은 답을 받기 전에 구현하지 않는다.
 - **실험 규칙:** 효과가 실측으로 확인된 변경만 적용하고, 실패하면 기존 방식으로 돌아갈 수 있게(환경변수 스위치 등) 하며, 효과가 없으면 억지로 수정하지 않고 되돌린다. 이미 기각한 실험은 `docs/current-goals.md`의 진행 상태에서 확인하고 같은 방식으로 반복하지 않는다. 추측을 사실처럼 말하지 말고 측정값에는 표본 수를 함께 적는다.
 - **조사 노트 캐시**(`lib/essay/research-cache*.ts`)는 기본 꺼짐이다(다양성 저하 우려). 켜려면 `RESEARCH_CACHE=on`.
+- **품질 개선 스위치**: `ESSAY_QUALITY_FIXES=off`면 2026-10-21~22 점검에서 바꾼 프롬프트·후처리(양식 충실 규칙, writing_guide 사용, 작업 메모·주소 제거 등)를 전부 예전 방식으로 되돌린다. 글쓰기 호출만 다른 모델로 바꾸려면 `OPENAI_MODEL_WRITE`(없으면 `OPENAI_MODEL_MAIN`). 안내문 분석은 `OPENAI_MODEL_ANALYZE`, 공부 도구(요약·플래시카드·퀴즈·가상 시험·암기노트·예상 질문)는 `OPENAI_MODEL_STUDY`(둘 다 없으면 `OPENAI_MODEL_LITE`, 현재 gpt-6-luna). 테스트 스크립트는 `SOURCE_STATS_LOG=off`로 링크 통계(source_validations)에 기록을 남기지 않는다.
+- 분석 결과 `core_task_info.writing_guide`는 채점 기준표·양식·예시에서 뽑은 "어떻게 써야 하는지"다(배점·날짜는 여전히 administrative_info). 생성 프롬프트에만 쓰고 과제 임베딩(core-task-text.ts)에는 넣지 않는다.
 
 ## 자주 헷갈릴 수 있는 부분
 

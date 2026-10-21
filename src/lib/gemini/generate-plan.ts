@@ -11,7 +11,10 @@ import {
   MULTI_DELIVERABLE_SEPARATION_RULE,
   FACTUAL_RIGOR_RULES,
   ACHIEVEMENT_INTERPRETATION_RULES,
+  FORM_FIDELITY_RULES,
+  writingGuideBlock,
 } from "./prompts";
+import { qualityFixesOn } from "@/lib/essay/quality-flags";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
 import {
   extractYears,
@@ -21,9 +24,11 @@ import {
 } from "@/lib/research/research-items";
 import { validateSources } from "@/lib/links/validate-sources";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
-import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList } from "./generate-essay";
-import { stripMetaNoteLines, stripModelReferenceBlock } from "@/lib/essay/deliverable";
+import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList, researchForTask, factSheetRules, writeEffort, type ResearchNotes } from "./generate-essay";
+import { attachFactMarkers, factSheetText, mapFactMarkers } from "@/lib/essay/research-notes";
+import { fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
 import { limitSources, requiredSourceCount } from "@/lib/essay/source-select";
+import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
 
 // 사용자 요청(2026-09-13): 예전엔 이 경로가 "무엇을 조사/작성할지"만 안내하는
@@ -80,6 +85,17 @@ export interface GeneratePlanInput {
    * 맞추기"라서, 원문을 그대로 베끼거나 같은 구조로 쓰면 안 된다.
    */
   referenceFactsText?: string;
+  /**
+   * 만들 외부 제작 요소의 이름. 화면은 외부 제작 요소마다 이 경로를 한 번씩 부르는데, 예전에는 몇 번을 불러도
+   * 첫 번째 요소만 만들었다 — 요소가 N개면 같은 계획을 N번 만들어(비용 N배) 2번째부터는 엉뚱한 내용이 보였다.
+   * 없으면 예전처럼 첫 번째 외부 제작 요소.
+   */
+  elementLabel?: string;
+}
+
+function targetElement(input: GeneratePlanInput) {
+  const external = input.coreTaskInfo.task_elements.filter((e) => e.type === "external_production");
+  return (input.elementLabel ? external.find((e) => e.label === input.elementLabel) : undefined) ?? external[0];
 }
 
 const CONTENT_HEADING = "## 완성된 글";
@@ -88,7 +104,7 @@ const PHYSICAL_HEADING = "## 직접 만들어야 할 것";
 /** 이 산출물(external_production)이 안내문에서 요구받은 필수 항목 — 조사·탐구형
  * ("sections")일 때만 "### 항목" 구조와 누락 검사를 적용한다. */
 function planRequiredItems(input: GeneratePlanInput): string[] | undefined {
-  const element = input.coreTaskInfo.task_elements.find((e) => e.type === "external_production");
+  const element = targetElement(input);
   if (!element || (element.required_items?.length ?? 0) < 2) return undefined;
   return element.required_items;
 }
@@ -106,12 +122,42 @@ function formatResearchFacts(referenceFactsText: string): string | null {
   );
 }
 
-function buildStepAPrompt(input: GeneratePlanInput): string {
-  const element = input.coreTaskInfo.task_elements.find(
-    (e) => e.type === "external_production"
-  );
+// 독후 활동(학생이 읽은 책이 지침에 있음): 실측(2026-10-22, 카드뉴스·《사일구》)에서 책 내용 없이 백과사전식 4·19 개요만 나왔다.
+const BOOK_IN_INSTRUCTIONS = /[《『]([^》』]{1,60})[》』]/;
+function studentBookFromInstructions(instructions?: string): string | null {
+  const m = instructions ? BOOK_IN_INSTRUCTIONS.exec(instructions) : null;
+  return m ? m[1].trim() : null;
+}
+function bookBasedBlock(title: string): string {
+  return `
+[학생이 읽은 책 — 이 산출물의 바탕] 《${title}》
+- 이 산출물은 학생이 읽은 이 책의 독후 활동이다. 책의 줄거리·인물·장면(사건이 일어나는 순서)을 바탕으로 만들 것 — 역사적 배경 설명은 책 내용을 이해시키는 데 필요한 만큼만.
+- 책 내용(줄거리·등장인물·주요 장면)은 검색으로 확인하고, 책에 없는 장면·대사를 지어내지 말 것. 확인한 책 정보에는 각주를 붙일 것.
+`;
+}
+// 번호 칸·컷으로 된 양식(카드뉴스·네 컷 만화 등)
+const PANEL_ITEM = /^\s*(?:패널|칸|컷|장면|카드|슬라이드)?\s*[①-⑳]|^\s*(?:패널|칸|컷|장면|카드)\s*\d+|^\s*\d+\s*(?:칸|컷|번\s*칸)/;
+function panelBlock(items: string[]): string {
+  return `
+[칸 구성 — ${items.length}칸 모두 채울 것] 칸마다 아래 두 줄을 쓸 것.
+- 그림: 학생이 손으로 그리기 쉬운 단순한 장면 하나(인물 1~2명과 배경·소품 한두 가지). 사진 인쇄·복잡한 구도를 요구하지 말 것.
+- 들어갈 말: 그 칸 아래에 쓸 1~2문장(대략 30~60자). 칸끼리 이어 읽으면 한 편의 이야기·뉴스가 되게 쓸 것.
+`;
+}
+
+function buildStepAPrompt(input: GeneratePlanInput, notes: ResearchNotes | null = null): string {
+  const element = targetElement(input);
   const requiredItems = planRequiredItems(input);
   const structuredFacts = input.referenceFactsText ? formatResearchFacts(input.referenceFactsText) : null;
+  const fixes = qualityFixesOn();
+  const readBook = studentBookFromInstructions(input.instructions);
+  const panelItems = (requiredItems ?? element?.required_items ?? []).filter((i) => PANEL_ITEM.test(i));
+  // 완성 원고와 같은 기준으로 과제에 해당하는 공통 규칙만 넣는다(essay/prompt-scope.ts).
+  const scope = promptRuleScope({
+    subject: input.subject,
+    texts: [input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, element?.label ?? "", element?.description ?? "", input.instructions ?? ""],
+    hasPresetSubject: !!input.fixedSubject,
+  });
   const itemsBlock = requiredItems
     ? `
 【필수 항목 구조 — 반드시 지킬 것】 이 산출물은 안내문이 요구한 다음 항목을 모두 포함해야 한다:
@@ -152,7 +198,7 @@ ${continuityBlock}너는 한국 고등학생의 수행평가 준비를 돕는 �
 [과제 주제] ${input.coreTaskInfo.topic}
 [요구사항]
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
-[이 요소에 대한 설명] ${element?.description ?? ""}
+${input.elementLabel && element ? `[만들 요소] ${element.label} — 이번에는 이 요소 하나만 만들 것. 같은 과제의 다른 요소(${input.coreTaskInfo.task_elements.filter((e) => e.label !== element.label).map((e) => `"${e.label}"`).join(", ") || "없음"})는 따로 만들어지니 여기 쓰지 말 것.\n` : ""}[이 요소에 대한 설명] ${element?.description ?? ""}
 ${
   input.fixedSubject
     ? `
@@ -186,13 +232,14 @@ ${structuredFacts ?? input.referenceFactsText}
     : ""
 }
 ${itemsBlock}
+${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${fixes && readBook ? bookBasedBlock(readBook) : ""}${fixes && panelItems ? panelBlock(panelItems) : ""}
 ${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentStatGuidance ? `\n${input.recentStatGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
-필요한 사실(통계, 사례, 원문 정보 등)은 반드시 실시간 검색으로 확인하고,
+${notes ? "" : `필요한 사실(통계, 사례, 원문 정보 등)은 반드시 실시간 검색으로 확인하고,
 확인이 안 되면 지어내지 말 것.
 
 【통계·사례·원문 검색은 한 번의 포괄적 검색으로 뭉뚱그리지 말 것 — 매우 중요】
@@ -202,7 +249,7 @@ ${STATISTIC_OR_NEWS_QUERY_TEMPLATES.map((q, i) => `  ${i + 1}. ${q({ name: "<검
 위키형 페이지(나무위키, 위키백과 등)나 동영상 자막만으로 확인하고 끝내지 말고,
 가능하면 보도자료 원문·공공기관 발표자료·논문처럼 원자료 자체를 보여주는
 페이지를 우선 찾을 것.
-
+`}
 【출력 형식 — 반드시 아래 두 제목을 정확히 이 글자 그대로(토씨 하나 바꾸거나
 꾸미지 말고) 써서 나눌 것. 이 두 개 외에 다른 "## " 제목은 쓰지 말 것】
 
@@ -223,13 +270,18 @@ ${PHYSICAL_HEADING}
 글자도 바꾸지 않고 그대로 써야 한다("완성된 시대저널"처럼 꾸미지 말 것) —
 코드가 이 줄을 기준으로 텍스트를 기계적으로 나누기 때문이다.
 ${ANTI_AI_TONE_RULES}
-${FACTUAL_RIGOR_RULES}
-${ACHIEVEMENT_INTERPRETATION_RULES}
+${fixes ? FORM_FIDELITY_RULES : ""}
+${scope.factualRigor ? FACTUAL_RIGOR_RULES : ""}
+${scope.achievement ? ACHIEVEMENT_INTERPRETATION_RULES : ""}
 ${NO_META_COMMENTARY_RULE}
 ${NO_REFERENCE_LIST_RULE}
-${sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]))}
-${PERSPECTIVE_RULE}
+${notes ? "" : sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]))}
+${scope.personAndPerspective ? PERSPECTIVE_RULE : ""}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
+${notes ? `${factSheetRules()}
+
+[사실 노트]
+${factSheetText(notes.facts)}` : ""}
 `.trim();
 }
 
@@ -334,17 +386,38 @@ export async function generatePlan(
     ...input.coreTaskInfo.task_elements.flatMap((e) => [e.label, e.description]),
     input.instructions
   );
+  // 조사 → 글쓰기(완성 원고 경로와 같은 방식): 검색은 조사 호출에서만 하고, 글쓰기는 사실 노트의 [F번호]로만 근거를 단다 — 출처를 코드가 붙인다.
+  // 실측(2026-10-22): 한 번 호출 방식은 모델이 링크 대신 "(제주4·3평화재단)" 같은 글자만 써서 출처 0개, 또는 본문에 주소를 남겼다.
+  // 조사가 실패하면(사실 4개 미만 등) 예전 한 번 호출 방식으로 돌아간다. PLAN_PIPELINE=legacy면 항상 예전 방식.
+  let notes: ResearchNotes | null = null;
+  if (wantSearch && qualityFixesOn() && process.env.PLAN_PIPELINE !== "legacy") {
+    const element = targetElement(input);
+    const book = studentBookFromInstructions(input.instructions);
+    notes = await researchForTask(
+      {
+        subject: input.subject,
+        coreTaskInfo: { ...input.coreTaskInfo, task_elements: element ? [element] : input.coreTaskInfo.task_elements },
+        instructions: input.instructions,
+        presetBook: book ? { title: book } : undefined,
+        presetSubject: input.fixedSubject ? { name: input.fixedSubject, key: input.fixedSubject } : undefined,
+      },
+      element ? [element] : input.coreTaskInfo.task_elements
+    );
+    if (!notes) console.warn("[generatePlan] 조사 실패 — 예전 한 번 호출(검색 포함) 방식으로 진행");
+  }
   const runStepA = (p: string) =>
-    generate({
-      label: "generatePlan:stepA",
-      role: "main",
-      prompt: p,
-      search: { force: wantSearch, maxCalls: 2 },
-    });
+    notes
+      ? generate({ label: "generatePlan:write", role: "write", prompt: p, effort: writeEffort() })
+      : generate({
+          label: "generatePlan:stepA",
+          role: "main",
+          prompt: p,
+          search: { force: wantSearch, maxCalls: 2 },
+        });
 
   let stepA;
   try {
-    stepA = await runStepA(buildStepAPrompt(input));
+    stepA = await runStepA(buildStepAPrompt(input, notes));
   } catch (err) {
     console.error("[generatePlan] 1차 생성 재시도 후에도 실패", err);
     return {
@@ -368,7 +441,7 @@ export async function generatePlan(
     );
     try {
       const forcedPrompt =
-        buildStepAPrompt(input) +
+        buildStepAPrompt(input, notes) +
         `\n\n【다시 한번 강조 — 반드시 지킬 것】 방금 쓴 글에 "${input.fixedSubject}"가 전혀 언급되지 않았다. ` +
         `이 과제의 대상은 오직 "${input.fixedSubject}" 하나뿐이다. 처음부터 끝까지 이 대상만 다뤄서 다시 쓸 것.`;
       const retryStepA = await runStepA(forcedPrompt);
@@ -421,7 +494,7 @@ export async function generatePlan(
         );
       }
       const retryPrompt =
-        buildStepAPrompt(input) +
+        buildStepAPrompt(input, notes) +
         `\n\n${parts.join("\n\n")}\n\n아래는 방금 쓴 초안이다. 위에서 지적한 부분만 고치고, 지적하지 않은 ` +
         `사실·표현·구조는 그대로 유지해서 두 제목("${CONTENT_HEADING}", "${PHYSICAL_HEADING}")을 갖춘 ` +
         `전체 글을 다시 써줘.\n\n[방금 쓴 초안]\n${freeText}`;
@@ -453,9 +526,21 @@ export async function generatePlan(
       `groundingChunks=${grounding?.chunks?.length ?? 0}`
   );
 
-  const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
-  let annotated = insertCitationMarkers(freeText, grounding?.supports, chunkIndexToN);
-  let validatedSources = await validateSources(sources);
+  let annotated: string;
+  let validatedSources: SourceRef[];
+  if (notes) {
+    // 글쓰기가 사실 번호를 거의 안 붙였으면 연도·수치가 같은 사실의 번호를 코드가 붙인다(완성 원고 경로와 같은 복구).
+    let written = freeText;
+    if ((written.match(/\[F\d+\]/g) ?? []).length < 2) written = attachFactMarkers(written, notes.facts).text;
+    const mapped = mapFactMarkers(written, notes.facts);
+    annotated = mapped.text;
+    validatedSources = await validateSources(mapped.sources.map((s) => ({ ...s, url_valid: null })));
+    console.log(`[generatePlan] 조사→글쓰기: 사실=${notes.facts.length}개 사용한 출처=${mapped.sources.length}개 본문각주=${(mapped.text.match(/\[\d+\]/g) ?? []).length}`);
+  } else {
+    const { sources, chunkIndexToN } = buildSourceList(grounding?.chunks);
+    annotated = insertCitationMarkers(freeText, grounding?.supports, chunkIndexToN);
+    validatedSources = await validateSources(sources);
+  }
 
   // generate-essay.ts와 같은 이유(2026-09-16 라에네크 감사) — 검증 실패로
   // 확인된 출처를 가리키는 각주만 콕 집어 지운다. essay와 달리 plan은 이
@@ -488,7 +573,8 @@ export async function generatePlan(
     ...input.coreTaskInfo.requirements,
     ...input.coreTaskInfo.task_elements.flatMap((e) => [e.label, e.description, ...(e.required_items ?? [])])
   );
-  const claim = findUnverifiedStatClaim(content, sourceById, { userNumbers, strictExternalOnly: !wantSearch });
+  // 조사 노트 경로의 수치는 노트(검색이 연 페이지)에서 온 것이라 다시 검색해 검증하지 않는다(검증 검색 1회당 약 12초·$0.02).
+  const claim = notes ? null : findUnverifiedStatClaim(content, sourceById, { userNumbers, strictExternalOnly: !wantSearch });
   if (claim) {
     const result = await verifyExcerpt({ name: claim.sentence }, STATISTIC_OR_NEWS_QUERY_TEMPLATES);
     if (result.verified && result.source) {
@@ -532,6 +618,16 @@ export async function generatePlan(
 
   // 모델이 스스로 붙인 참고 목록·작업 설명 줄을 걷어내고, 출처를 필요한 만큼(보통 3개)으로 정리한다(essay 경로와 같은 이유 — essay/source-select.ts).
   content = stripMetaNoteLines(stripModelReferenceBlock(content).content).content;
+  // 본문 속 "(사이트 (https://…))" 주소와 "(…를 확인했다)" 같은 작업 메모는 학생이 옮겨 쓸 글이 아니다(실측: 사설 한 편에 주소 9개). 출처는 목록이 따로 보여 준다.
+  if (qualityFixesOn()) {
+    const notes = stripWorkNotes(content);
+    const urls = stripInlineUrls(notes.content);
+    const reported = reduceReportedSpeech(urls.content);
+    const josa = fixJosaAfterTitle(reported.content);
+    if (notes.removed + urls.removed + reported.changed + josa.changed > 0)
+      console.warn(`[generatePlan] 작업 메모 ${notes.removed}개·본문 주소 ${urls.removed}개 제거, 전달형 꼬리 ${reported.changed}개·제목 조사 ${josa.changed}개 정리`);
+    content = josa.content;
+  }
   if (validatedSources.length > 0) {
     const wanted = requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]);
     const lim = limitSources([content], validatedSources, Math.min(8, Math.max(2, wanted ?? 3)));

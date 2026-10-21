@@ -11,12 +11,19 @@ export function isUuid(v: unknown): v is string {
 }
 
 /** 분석 요청 본문 검증. 문제가 있으면 사용자에게 보여줄 메시지를 돌려준다. */
-export function validateAnalyzeInput(b: { imageBase64?: unknown; topicText?: unknown; instructions?: unknown }): string | null {
+export function validateAnalyzeInput(b: { imageBase64?: unknown; topicText?: unknown; instructions?: unknown; extraImages?: unknown }): string | null {
   if (b.topicText !== undefined && typeof b.topicText !== "string") return "주제 텍스트 형식이 올바르지 않습니다.";
   if (b.instructions !== undefined && b.instructions !== null && typeof b.instructions !== "string") return "추가 지침 형식이 올바르지 않습니다.";
   if (typeof b.topicText === "string" && b.topicText.length > LIMITS.topicText) return `주제 텍스트가 너무 깁니다(최대 ${LIMITS.topicText}자).`;
   if (typeof b.instructions === "string" && b.instructions.length > LIMITS.instructions) return `추가 지침이 너무 깁니다(최대 ${LIMITS.instructions}자).`;
   if (typeof b.imageBase64 === "string" && b.imageBase64.length > LIMITS.imageBase64) return "이미지 용량이 너무 큽니다(최대 약 10MB).";
+  if (b.extraImages !== undefined) {
+    if (!Array.isArray(b.extraImages) || b.extraImages.length > 3) return "추가 사진은 최대 3장까지 올릴 수 있습니다.";
+    for (const img of b.extraImages as { base64?: unknown; mimeType?: unknown }[]) {
+      if (!img || typeof img.base64 !== "string" || typeof img.mimeType !== "string" || !img.mimeType.startsWith("image/")) return "추가 사진 형식이 올바르지 않습니다.";
+      if (img.base64.length > LIMITS.imageBase64) return "이미지 용량이 너무 큽니다(최대 약 10MB).";
+    }
+  }
   return null;
 }
 

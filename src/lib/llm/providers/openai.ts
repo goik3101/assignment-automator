@@ -44,7 +44,12 @@ async function post(path: string, body: unknown, ms: number): Promise<{ status: 
 export const openaiProvider: LlmProvider = {
   name: "openai",
   model(role: ModelRole) {
-    return role === "main" ? process.env.OPENAI_MODEL_MAIN ?? "gpt-5-mini" : process.env.OPENAI_MODEL_LITE ?? "gpt-5-mini";
+    const main = process.env.OPENAI_MODEL_MAIN ?? "gpt-5-mini";
+    const lite = process.env.OPENAI_MODEL_LITE ?? "gpt-5-mini";
+    if (role === "write") return process.env.OPENAI_MODEL_WRITE || main;
+    if (role === "analyze") return process.env.OPENAI_MODEL_ANALYZE || lite;
+    if (role === "study") return process.env.OPENAI_MODEL_STUDY || lite;
+    return role === "main" ? main : lite;
   },
   async generate(req: LlmRequest, model: string): Promise<LlmResponse> {
     const search = !!req.search;
@@ -60,6 +65,13 @@ export const openaiProvider: LlmProvider = {
         const { service_tier: _drop, ...rest } = body;
         void _drop;
         body = rest;
+        continue;
+      }
+      // 일부 모델(실측 2026-10-22: gpt-5.4-mini)은 reasoning.effort "minimal"을 거부한다 — 그 모델은 "low"로 한 번 다시 요청한다.
+      const reasoning = body.reasoning as { effort?: string } | undefined;
+      if (status === 400 && reasoning?.effort === "minimal" && /minimal/i.test(JSON.stringify(json ?? ""))) {
+        console.warn(`[openai] ${model}이 reasoning.effort "minimal"을 지원하지 않아 "low"로 다시 요청합니다`);
+        body = { ...body, reasoning: { ...reasoning, effort: "low" } };
         continue;
       }
       if (status >= 400) throw classifyHttpError(status, json as never, retryAfterMs);
@@ -87,8 +99,12 @@ export const openaiProvider: LlmProvider = {
           throw new LlmError(`${req.label}: 구조화 출력이 JSON이 아닙니다.`, "invalid_output", true);
         }
       }
+      const rawText = search
+        ? (resp.output ?? []).filter((o) => o.type === "message").flatMap((o) => o.content ?? []).filter((c) => c.type === "output_text").map((c) => c.text ?? "").join("")
+        : undefined;
       return {
         text,
+        rawText,
         grounding: n.grounding,
         usage: { inputTokens: n.usage.inputTokens, outputTokens: n.usage.outputTokens, reasoningTokens: n.usage.reasoningTokens, cachedInputTokens: n.usage.cachedInputTokens, searchCalls: n.usage.searchCalls },
         provider: "openai",

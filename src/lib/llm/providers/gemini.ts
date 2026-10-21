@@ -21,7 +21,7 @@ function toError(err: unknown): LlmError {
 export const geminiProvider: LlmProvider = {
   name: "gemini",
   model(role: ModelRole) {
-    return role === "main" ? GEMINI_MODELS.flash : GEMINI_MODELS.flashLite;
+    return role === "main" || role === "write" ? GEMINI_MODELS.flash : GEMINI_MODELS.flashLite;
   },
   async generate(req: LlmRequest, model: string): Promise<LlmResponse> {
     const ai = getGeminiClient();

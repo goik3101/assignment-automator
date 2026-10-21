@@ -2,7 +2,10 @@
 // 스키마는 당분간 기존(Gemini 스타일) Schema 객체를 원본으로 두고, OpenAI 제공자가 변환한다(schema-convert.ts).
 import type { Schema } from "@google/genai";
 
-export type ModelRole = "main" | "lite";
+/** "write"는 검색 없이 완성 원고를 쓰는 호출 — 따로 정하지 않으면 main과 같은 모델(OPENAI_MODEL_WRITE).
+ * "analyze"는 안내문 사진 분석(OPENAI_MODEL_ANALYZE, 없으면 lite), "study"는 요약·플래시카드·퀴즈·가상 시험처럼
+ * 이미 만든 결과물을 바꿔 쓰는 단순 작업(OPENAI_MODEL_STUDY, 없으면 lite). */
+export type ModelRole = "main" | "lite" | "write" | "analyze" | "study";
 export type Effort = "minimal" | "low" | "medium";
 
 export type LlmPart = { text: string } | { image: { base64: string; mimeType: string } };
@@ -54,6 +57,8 @@ export interface LlmUsage {
 
 export interface LlmResponse {
   text: string;
+  /** 검색 응답에서 인라인 링크를 걷어내기 전의 원문(OpenAI만). 조사 노트처럼 JSON을 받는 호출은 링크 제거가 JSON을 깨뜨릴 수 있어 이것을 먼저 읽는다. */
+  rawText?: string;
   grounding?: SearchGrounding;
   usage: LlmUsage;
   provider: string;

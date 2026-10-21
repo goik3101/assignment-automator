@@ -14,6 +14,9 @@ import {
   FACTUAL_RIGOR_RULES,
   ACHIEVEMENT_INTERPRETATION_RULES,
   RESEARCH_MATERIAL_RULES,
+  REPORT_SECTION_RULES,
+  FORM_FIDELITY_RULES,
+  writingGuideBlock,
   NO_REFERENCE_LIST_RULE,
   NO_STEP_REPETITION_RULE,
   sourceEconomyRule,
@@ -23,13 +26,25 @@ import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, ti
 import { validateSources, getCachedPageText } from "@/lib/links/validate-sources";
 import {
   buildNewspaperBlock,
+  buildSourceListSection,
   inferDeliverableForm,
+  isFinalReportForm,
   isProseForm,
+  isResearchMaterialStep,
+  isSourceListItem,
   splitProductionNotes,
+  stripInlineUrls,
+  stripWorkNotes,
+  reduceReportedSpeech,
+  fixJosaAfterTitle,
   stripMetaNoteLines,
   stripModelReferenceBlock,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
+import { qualityFixesOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
+import { GRAMMAR_REPAIR_TEXT, missingGrammarForms, requiredGrammarForms } from "@/lib/essay/english-grammar";
+import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
@@ -54,7 +69,7 @@ import { getCachedResearch, putCachedResearch } from "@/lib/essay/research-cache
 import {
   verifyExcerpt,
   verifyAuthorAttribution,
-  normalizeAttributionName,
+  sameAttribution,
   isVideoPlatformUrl,
   isWeakQuoteSource,
   looksLikeMarketingCopy,
@@ -136,6 +151,8 @@ export interface GenerateEssayInput {
   previousOutputText?: string;
   /** 내부용: 이미 만든 조사 노트(품질 재시도가 재사용). undefined=아직 안 함, null=시도했지만 실패(기존 경로 사용). */
   researchNotes?: ResearchNotes | null;
+  /** 내부용: 시스템이 확인된 출처로 채울 출처 목록 항목(필수 항목에서 떼어 둔 것). generateEssay()가 채운다. */
+  sourceListItems?: { label: string; item: string }[];
 }
 
 interface RawSection {
@@ -167,11 +184,15 @@ function isStructuredElement(el: CoreTaskInfo["task_elements"][number]): boolean
 }
 
 /** 각 sections 단계 중 필수 항목이 소제목으로 없거나 비어 있는 곳을 모은다. */
+// "저자", "책 제목", "출판사" 같은 서지 칸은 소제목이 아니라 문장 속("이지성의 『꿈꾸는 다락방』")에 있어도 채운 것이다 —
+// 실측(2026-10-22, 책 처방전): "저자" 소제목이 없다는 이유로 전체 재생성(+16초) 후에도 경고가 남았다.
+const BIBLIO_ITEM = /^\s*(?:책\s*)?(?:제목|저자|지은이|작가|출판사|서지\s*(?:정보)?)\s*$/;
 function detectMissingRequiredItems(sections: RawSection[]): { label: string; missing: string[] }[] {
   const result: { label: string; missing: string[] }[] = [];
   for (const s of sections) {
     if (!s.requiredItems) continue;
-    const missing = findMissingItems(s.content, s.requiredItems);
+    const hasBook = qualityFixesOn() && /[『《][^』》]{1,60}[』》]/.test(s.content);
+    const missing = findMissingItems(s.content, s.requiredItems).filter((m) => !(hasBook && BIBLIO_ITEM.test(m)));
     if (missing.length > 0) result.push({ label: s.label, missing });
   }
   return result;
@@ -297,9 +318,22 @@ function splitAnnotatedIntoSections(annotated: string, labels: string[]): Map<st
   const result = new Map<string, string>();
   const headings: { label: string; headingStart: number; contentStart: number }[] = [];
   let searchFrom = 0;
+  // 띄어쓰기·기호만 다른 제목("## 사설/칼럼" vs 라벨 "사설 / 칼럼")도 같은 단계로 본다 — 실측(2026-10-22): 조사→글쓰기 경로는
+  // 단계 분리 모델(stage B)을 부르지 않아 정확히 일치하지 않으면 그 단계가 빈 글(0자)로 경고 없이 나갔다.
+  const squashLabel = (s: string) => s.replace(/[\s/·・,.\-–—()[\]{}<>「」『』"'*#:]/g, "").toLowerCase();
   for (const label of labels) {
     const re = new RegExp(`^##[ \\t]*${escapeRegExp(label)}[ \\t]*$`, "m");
-    const m = re.exec(annotated.slice(searchFrom));
+    let m: { index: number; 0: string } | null = re.exec(annotated.slice(searchFrom));
+    if (!m && qualityFixesOn()) {
+      const rest = annotated.slice(searchFrom);
+      for (const lm of rest.matchAll(/^##(?!#)[^\n]*$/gm)) {
+        const text = lm[0].replace(/^##/, "");
+        if (squashLabel(text) === squashLabel(label) || (squashLabel(label).length >= 2 && squashLabel(text).startsWith(squashLabel(label)))) {
+          m = { index: lm.index ?? 0, 0: lm[0] };
+          break;
+        }
+      }
+    }
     if (!m) {
       console.warn(`[generateEssay] annotated 텍스트에서 "## ${label}" 제목줄을 찾지 못함 — 이 단계는 stage B의 content로 폴백`);
       continue;
@@ -328,7 +362,10 @@ const LANGUAGE_KEYWORDS: { keyword: string; language: string }[] = [
   { keyword: "일본어", language: "Japanese(일본어)" },
 ];
 
+// 영어 과목이어도 "한글로 작성"이라고 적힌 단계는 한국어다(실측 2026-10-22: 영어 수행평가의 "과정쓰기 — 한글로 작성"을 영어로 쓰게 하고, 한국어로 쓴 첫 글을 언어 오류로 보고 재작성까지 했다).
+const KOREAN_ONLY = /한글로|한국어로|우리말로/;
 function detectElementLanguage(subject: string, el: CoreTaskInfo["task_elements"][number]): string | null {
+  if (qualityFixesOn() && KOREAN_ONLY.test(`${el.label} ${el.description}`)) return null;
   const haystack = `${subject} ${el.label} ${el.description}`;
   for (const { keyword, language } of LANGUAGE_KEYWORDS) {
     if (haystack.includes(keyword)) return language;
@@ -497,7 +534,15 @@ ${input.previousOutputText}
       // 조사→글쓰기의 글쓰기(최소 추론)는 목표보다 길게 나오는 경향이 있어 목표를 낮춰 준다. 다만 계수를 0.65로 더 낮춰도 첫 글 길이는 그대로였다(감상문 목표 720~880자에서 첫 글 921~1103자 9/9 초과) — 모델이 목표 숫자보다 내용 구성에 따라 길이를 정한다.
       const base = min > 0 && max > 0 ? Math.round((min + max) / 2) : min > 0 ? Math.round(min * 1.15) : Math.round(max * 0.8);
       const goal = notes ? Math.round(base * 0.8) : base;
-      const rangeText = min > 0 && max > 0 ? `${min}~${max}${uw}` : min > 0 ? `${min}${uw} 이상` : `${max}${uw} 이하`;
+      // 하한만 있는 조건("120단어 이상")은 위로 열려 있어 실측(2026-10-22) 예시 답안 136단어인 과제에 329단어가 나왔다 — 하한~1.4배를 권장 범위로 준다(검사는 여전히 하한만).
+      const rangeText =
+        min > 0 && max > 0
+          ? `${min}~${max}${uw}`
+          : min > 0
+            ? qualityFixesOn()
+              ? `${min}${uw} 이상(되도록 ${min}~${Math.round(min * 1.4)}${uw} — 예시 답안 분량이 있으면 그 분량에 맞출 것)`
+              : `${min}${uw} 이상`
+            : `${max}${uw} 이하`;
       return `- "${e.label}" 단계: ${rangeText} — 목표 약 ${goal}${uw}. 반드시 이 범위 안에 들어오게 쓰되, 분량을 채우려고 문장을 늘어놓지 말고 필요한 내용(필수 항목·사실·근거)으로 채울 것.`;
     });
   const lengthTargetBlock = lengthTargetLines.length ? `\n【분량 — 반드시 지킬 것】\n${lengthTargetLines.join("\n")}\n` : "";
@@ -523,17 +568,32 @@ ${input.previousOutputText}
       ]
         .filter(Boolean)
         .join("\n\n");
+  // 제출용 보고서(탐구 보고서 등)는 소제목 구조는 같지만 조사 자료(불릿 메모) 규칙 대신 보고서 문단 규칙을 준다(deliverable.ts isFinalReportForm).
+  const fixes = qualityFixesOn();
+  const reportEls = fixes ? structuredEls.filter((el) => !isResearchMaterialStep(el)) : [];
+  const materialEls = structuredEls.filter((el) => !reportEls.includes(el));
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
       `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +
       `글자 그대로, 순서도 그대로 — 번호·기호·꾸밈말을 앞뒤에 붙이지 말 것)으로 나눠 쓰고, 어떤 ` +
       `항목도 빼거나 합치지 말 것. 항목마다 실제 내용이 있어야 한다(소제목만 쓰고 비워두지 말 것). ` +
-      `이 단계는 하나의 긴 글이 아니라 항목별로 구조화된 조사 자료다.\n` +
+      (reportEls.length === 0 ? `이 단계는 하나의 긴 글이 아니라 항목별로 구조화된 조사 자료다.\n` : "\n") +
       structuredEls
-        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}`)
+        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}${!fixes ? "" : reportEls.includes(el) ? " (제출용 글 — 항목마다 문단으로)" : " (조사 자료 — 항목마다 사실 정리)"}`)
         .join("\n") +
-      `\n${RESEARCH_MATERIAL_RULES}\n`
+      (materialEls.length ? `\n${RESEARCH_MATERIAL_RULES}` : "") +
+      (reportEls.length ? `\n${REPORT_SECTION_RULES}` : "") +
+      "\n"
     : "";
+  // 출처 목록 항목(예: "신뢰할 수 있는 출처 3개 이상")은 시스템이 확인된 출처로 채운다 — generateEssay()가 required_items에서 떼어 둔다.
+  const sourceItemBlock = (input.sourceListItems?.length ?? 0) > 0
+    ? `\n[출처 목록 항목] ${input.sourceListItems!.map((s) => `"${s.label}" 단계의 "${s.item}"`).join(", ")} 항목은 시스템이 실제로 확인한 출처 목록으로 자동으로 채운다. 이 항목의 소제목·목록·주소는 쓰지 말고, 본문의 사실 문장에만 근거 번호를 붙일 것.\n`
+    : "";
+  const scope = promptRuleScope({
+    subject: input.subject,
+    texts: [input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""],
+    hasPresetSubject: !!input.presetSubject,
+  });
   const flowingBlock = flowingEls.length
     ? `\n【필수 항목 포함 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 세부 항목이 정해져 있다. ` +
       `소제목으로 쪼개지 말고 하나의 자연스러운 글로 쓰되, 아래 항목을 하나도 빠뜨리지 말고 모두 다룰 것.\n` +
@@ -570,7 +630,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${defaultLengthBlock}${structuredBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${defaultLengthBlock}${structuredBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -614,18 +674,19 @@ ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물
 
 ${notes ? "" : searchRulesBlock}
 ${ANTI_AI_TONE_RULES}
-${FACTUAL_RIGOR_RULES}
-${ACHIEVEMENT_INTERPRETATION_RULES}
+${fixes ? FORM_FIDELITY_RULES : ""}
+${scope.factualRigor ? FACTUAL_RIGOR_RULES : ""}
+${scope.achievement ? ACHIEVEMENT_INTERPRETATION_RULES : ""}
 ${COPYRIGHT_RULES}
 ${NO_META_COMMENTARY_RULE}
 ${notes ? "" : NO_REFERENCE_LIST_RULE}
 ${notes ? "" : sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...elements.map((e) => e.description)]), !!input.presetBook)}
 ${elements.length > 1 || structuredEls.length > 0 ? NO_STEP_REPETITION_RULE : ""}
 ${CITATION_JUDGMENT_RULE}
-${PERSPECTIVE_RULE}
-${REAL_PERSON_NAME_RULE}
+${scope.personAndPerspective ? PERSPECTIVE_RULE : ""}
+${scope.personAndPerspective ? REAL_PERSON_NAME_RULE : ""}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
-${notes ? `${FACT_SHEET_RULES}
+${notes ? `${factSheetRules()}
 
 [사실 노트]
 ${factSheetText(notes.facts)}` : ""}
@@ -776,8 +837,12 @@ async function selectBookCandidateFast(input: GenerateEssayInput): Promise<{ tit
   const prompt = `
 고등학생 수행평가의 "책 처방/추천" 단계를 위해 후보 책을 제안해줘. 최종 선택은 네가 하지 않는다.
 [과제 주제] ${input.coreTaskInfo.topic}
-${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}\n` : ""}${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
-규칙:
+${
+    qualityFixesOn()
+      ? `[단계 설명 — 책이 누구의 어떤 문제를 도와야 하는지 여기서 찾을 것]\n${input.coreTaskInfo.task_elements.map((e) => `- ${e.label}: ${e.description}`).join("\n")}\n`
+      : ""
+  }${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}\n` : ""}${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
+규칙:${qualityFixesOn() ? "\n- 단계 설명이 책으로 도울 대상을 정해 두었으면(예: \"친구의 문제 상황에 도움을 줄 책\") 지침 속 여러 고민 중 그 대상의 고민에 직접 도움이 되는 책만 고르고, 가장 잘 맞는 책을 맨 앞에 둘 것." : ""}
 - 네가 실존을 확실히 아는 책만 3~5권. 한국어로 번역·출간돼 서점에서 구하기 쉽고 고등학생이 읽을 수 있는 책을 우선한다. 확실하지 않은 책은 넣지 마라(지어낸 책 금지).
 - 같은 저자나 거의 같은 소재로 몰지 말고 서로 다른 각도의 책을 섞는다.
 - 각 후보에 제목, 저자(한국어 표기), 이 주제에 어울리는 이유 한 줄.
@@ -878,8 +943,11 @@ function taskNeedsExcerpt(input: GenerateEssayInput, elements: CoreTaskInfo["tas
   return needsExcerpt([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""]);
 }
 
-/** 글쓰기 호출의 추론 강도. 검색이 없어 minimal이 가능하고, low는 글이 목표보다 짧게 나오는 경향이 측정됐다(810자 vs 목표 1,200자 이상). */
-const WRITE_EFFORT = "minimal" as const;
+/** 글쓰기 호출의 추론 강도. 검색이 없어 minimal이 가능하고, low는 글이 목표보다 짧게 나오는 경향이 측정됐다(810자 vs 목표 1,200자 이상).
+ * ESSAY_WRITE_EFFORT=low로 바꿔 품질을 비교할 수 있다(minimal이 ChatGPT 대비 품질 차이의 한 원인일 수 있다는 추정 — 측정 전). */
+export function writeEffort(): "minimal" | "low" {
+  return process.env.ESSAY_WRITE_EFFORT === "low" ? "low" : "minimal";
+}
 
 const RESEARCH_MIN_FACTS = 4;
 
@@ -887,6 +955,23 @@ const RESEARCH_MIN_FACTS = 4;
  * 조사 호출: 검색은 여기서만 한다. 출력은 사실 노트(JSON)뿐이라 짧다. 모델이 적은 URL은 검색이 실제로 열어 본 페이지 목록과 대조해 지어낸 주소를 버린다.
  * 실패(사실이 너무 적음·페이지 목록 없음·오류)하면 null — 호출부가 기존 한 번 호출 경로로 돌아간다.
  */
+/**
+ * 저자 표기를 글에 쓸 한국어 이름 하나로 정리한다: "파울로 코엘료 (Paulo Coelho)" → "파울로 코엘료",
+ * "Kevin Leman (한국어 표기: 케빈 리먼)" → "케빈 리먼"(실측 2026-10-22: 이 표기가 글에 그대로 들어감). 한국어 이름이 없으면 원래 값.
+ */
+function koreanAuthorName(raw: string): string {
+  // 공저 구분 기호는 쉼표로 통일한다("기시미 이치로; 고가 후미타케"가 글에 그대로 들어감 — 실측 2026-10-22).
+  const outside = raw.replace(/\([^)]*\)/g, "").replace(/\s*[;·]\s*/g, ", ").trim();
+  if (/[가-힣]/.test(outside)) return outside;
+  const inner = [...raw.matchAll(/\(([^)]*)\)/g)].map((m) => m[1].replace(/^[^:：]{0,12}[:：]/, "").split(/,|\/|또는/)[0].trim()).find((s) => /[가-힣]/.test(s));
+  return inner || raw;
+}
+
+/** 외부 제작 경로(generate-plan.ts)도 같은 조사 단계를 쓴다 — 출처를 모델이 쓴 링크가 아니라 검색이 연 페이지에서 코드가 붙이기 위해서다. */
+export function researchForTask(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): Promise<ResearchNotes | null> {
+  return researchOnce(input, elements);
+}
+
 async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): Promise<ResearchNotes | null> {
   const items = elements
     .map((e) => `- "${e.label}": ${e.description}${e.required_items?.length ? ` (다룰 항목: ${e.required_items.join(" / ")})` : ""}`)
@@ -897,7 +982,9 @@ async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["t
   const bookBlock = bookTask
     ? `[조사할 책 — 이 책만 조사할 것] 『${input.presetBook!.title}』${input.presetBook!.author ? ` (저자: ${input.presetBook!.author})` : ""}
 - 이 책이 실존하는지, 저자·출판사·출간연도를 검색으로 확인한다. book.title과 book.author는 위에 적힌 한국어 표기를 그대로 유지한다(원제·영어 제목으로 바꾸지 말 것). 제목이나 저자가 실제로 다르게 확인될 때만 한국어 표기로 정정하고, 실존하지 않으면 book.exists를 false로 한다.
-- 처음 1~2개 사실은 서지 사실(제목·저자·출판사·출간연도)로 쓰고, 그 사실의 근거 페이지 항목에는 페이지에 인쇄된 제목과 저자 표기를 그대로 printed_title, printed_author에 적는다(페이지에 있는 글자 그대로, 번역·의역 금지).
+- 처음 1~2개 사실은 서지 사실(제목·저자·출판사·출간연도)로 쓰고, 그 사실의 근거 페이지 항목에는 페이지에 인쇄된 제목과 저자 표기를 그대로 printed_title, printed_author에 적는다(페이지에 있는 글자 그대로, 번역·의역 금지).${
+    qualityFixesOn() ? `\n- 서지 사실 문장은 "『제목』은 저자가 쓰고 출판사가 연도에 펴낸 책이다."처럼 한 문장으로 쓴다. "표지에 ~로 표기되어 있다", "~로 소개되어 있다" 같은 표현은 쓰지 않는다.` : ""
+  }
 - 나머지 사실은 줄거리·주제·인물·작가 소개로 6~8개. 책 속 문장(인용문)은 모으지 않는다.
 - 인물·지명은 한국어 번역본에서 쓰이는 표기로 쓰고, 확실하지 않으면 원어 표기를 괄호로 병기한다(예: 다아시(Darcy)). 음역을 지어내지 말 것.
 `
@@ -910,10 +997,25 @@ async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["t
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [써야 할 단계]
 ${items}
-${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 것] ${input.presetSubject.name}\n` : ""}${input.instructions ? `[학생이 입력한 내용]\n${input.instructions}\n` : ""}
-규칙:
+${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 것] ${input.presetSubject.name}\n` : ""}${input.instructions ? `[학생이 입력한 내용]\n${input.instructions}\n` : ""}${
+    qualityFixesOn() && input.coreTaskInfo.writing_guide ? `[안내문의 작성 기준 — 채점 기준이 요구하는 내용을 빠짐없이 조사할 것]\n${input.coreTaskInfo.writing_guide}\n` : ""
+  }
+규칙:${
+    qualityFixesOn()
+      ? `
+- 과제가 사회문제·인물·대상 하나를 골라 다루는 형식이면 하나만 골라 그것만 조사한다(여러 주제를 섞지 말 것). "기사에서 찾으라"는 과제면 최근 기사 하나를 골라 그 기사의 제목·매체·날짜를 첫 사실로 담는다.
+- 사실은 서로 다른 페이지 3곳 이상에서 고를 것(한 페이지에 몰지 말 것 — 그 페이지 하나가 열리지 않으면 근거가 모두 사라진다).
+- 고등학교 교과서·수업에서 다루는 수준의 사실을 고를 것. 대학 교재 수준의 이론·수치(예: 반응 엔탈피 값, 전문 학술 용어)는 안내문이 요구하지 않으면 담지 말 것.`
+      : ""
+  }
 - 검색으로 확인한 사실만 쓴다. 사실 10~14개를, 위 각 단계·항목마다 최소 2개씩 고르게 담을 것. 논설·토론이면 찬성·반대 양쪽 근거를 함께 담을 것.
-- 각 사실은 한국어 한 문장으로, 연도·수치·이름 같은 확인 가능한 값을 포함한다. 출처에 없는 값은 쓰지 않는다.
+- 각 사실은 한국어 한 문장으로, 연도·수치·이름 같은 확인 가능한 값을 포함한다. 출처에 없는 값은 쓰지 않는다.${
+    qualityFixesOn()
+      ? `
+- 항목마다 그 항목의 중심이 되는 핵심 사실(대표 사건·인물·발명·제도·원리)을 먼저 담고, 세부 통계·주변 사실은 그다음에 담을 것. 검색 결과에 우연히 나온 주변 사실(예: 다른 주제의 연표)로 항목을 채우지 말 것. 특정 사이트를 정해 두고 찾지 말고, 사실마다 url은 이번 검색에서 실제로 열린 페이지 주소만 쓸 것(기억하는 주소를 쓰면 그 사실은 버려진다).
+- 사실 문장은 사실 자체를 평서문으로 쓴다("1769년 제임스 와트가 증기기관을 개량했다."). "이 글은 ~라고 지적한다", "해당 기사에서 인용되었다", "~라고 보고하고 있다"처럼 출처를 주어로 쓰지 말고, 괄호 속 해석·평가를 덧붙이지 말 것.`
+      : ""
+  }
 - 같은 사실을 중복하지 말고, 서로 다른 신뢰도 높은 페이지(공식 기관·원문·신뢰 매체 우선)에서 고른다. 위키형·블로그·동영상은 다른 근거가 없을 때만.
 - url은 검색 중 실제로 열어 본 페이지 주소여야 하고, title은 그 페이지 제목이다.${grouped ? " 같은 페이지에서 나온 사실은 한 항목의 facts에 모아 url과 title을 한 번만 쓴다." : ""}
 - 검색은 1번만 한다(그 한 번에 쿼리 2~3개). 조사할 것은 과제 주제의 사실뿐이다 — 수행평가 방식·발표 시간·분량·모둠 같은 과제 지시 자체는 검색하지 않는다.
@@ -935,12 +1037,15 @@ ${
       search: { force: true, maxCalls: 2 },
       effort: "low",
     });
-    const parsedBook = bookTask ? parseBookResearch(res.text) : null;
+    // 검색 응답은 제공자가 인라인 링크를 걷어낸 text를 주는데, 그 정리가 JSON 안의 [..](..)·괄호를 건드릴 수 있어 원문(rawText)을 먼저 읽는다.
+    const readBook = (t: string) => parseBookResearch(t);
+    const parsedBook = bookTask ? (res.rawText ? readBook(res.rawText) : null) ?? readBook(res.text) : null;
     if (bookTask && (!parsedBook || !parsedBook.book.exists)) {
       console.warn("[generateEssay] 책 조사: 책이 실존하지 않거나 응답을 읽지 못함 — 기존 경로로 폴백");
       return null;
     }
-    const rawFacts = parsedBook ? parsedBook.facts : parseFactJson(res.text);
+    const fromRaw = !parsedBook && res.rawText ? parseFactJson(res.rawText) : [];
+    const rawFacts = parsedBook ? parsedBook.facts : fromRaw.length > 0 ? fromRaw : parseFactJson(res.text);
     const facts = buildFacts(rawFacts, res.grounding?.consulted);
     const queries = res.grounding?.queries ?? [];
     if (rawFacts.length === 0) {
@@ -955,7 +1060,10 @@ ${
       `[generateEssay] 조사: queries=${JSON.stringify(queries)} 검색이 연 페이지=${res.grounding?.consulted?.length ?? 0} 사실(검증 통과)=${facts?.length ?? "목록없음"} model=${res.provider}/${res.model}`
     );
     if (!facts || facts.length < RESEARCH_MIN_FACTS) return null;
-    return { facts, queries, book: parsedBook ? { title: parsedBook.book.title || input.presetBook!.title, author: parsedBook.book.author || input.presetBook?.author } : undefined };
+    // 저자 원어 병기("파울로 코엘료 (Paulo Coelho)")는 글에 그대로 옮겨져 어색하다 — 한글 이름이 남으면 괄호를 뗀다.
+    const rawAuthor = parsedBook?.book.author || input.presetBook?.author;
+    const author = rawAuthor && qualityFixesOn() ? koreanAuthorName(rawAuthor) : rawAuthor;
+    return { facts, queries, book: parsedBook ? { title: parsedBook.book.title || input.presetBook!.title, author } : undefined };
   } catch (err) {
     console.error("[generateEssay] 조사 호출 실패(기존 경로로 폴백)", err);
     return null;
@@ -995,6 +1103,29 @@ const FACT_SHEET_RULES = `
 - 노트의 사실을 쓴 문장에 번호가 없으면 안 된다(번호 없이 연도·수치를 쓰지 말 것). 출처 목록·참고문헌·"(출처: …)"는 쓰지 말 것(출처는 시스템이 번호로 붙인다).
 `.trim();
 
+// 품질 개선판(ESSAY_QUALITY_FIXES, 기본 켜짐). 실측(2026-10-20, 8건)에서 고친 점:
+// - 번호가 붙은 사실을 "~라는 기록이 있다/보도가 있다/평가가 있다"처럼 전달형으로 돌려 써서 글 전체가 자료 요약처럼 읽혔다 → 확인된 사실은 단정형으로.
+// - "책 제목·저자를 밝히고 서지 번호를 붙여라"가 "『데미안』(민음사, 전영애 번역)을 읽었다는 사실을 먼저 밝힌다[1]" 같은 서지 문장을 만들었다 → 글 흐름 속 한 번 언급.
+// - 감상·의견 문장에도 번호를 붙여 엉뚱한 출처가 "생각"의 근거로 달렸다 → 의견 문장에는 번호 금지를 앞에 둔다.
+// - 노트 밖 사실을 전부 막아 교과서 핵심(예: 산업혁명의 증기기관)이 노트에 없으면 글에서 빠졌다 → ESSAY_WRITER_KNOWLEDGE=general일 때만 일반 지식 허용(기본은 예전처럼 금지).
+export function factSheetRules(): string {
+  if (!qualityFixesOn()) return FACT_SHEET_RULES;
+  const scopeLine = writerGeneralKnowledgeOn()
+    ? "- 연도·수치·통계·인용·고유한 세부 사실은 아래 [사실 노트]에 있는 것만 쓴다. 노트에 없는 내용은 교과서·개론서 수준으로 널리 알려진 일반 설명(대표 사건·인물·개념의 뜻)만 쓰고, 그 문장에는 번호를 붙이지 않는다. 노트에 없는 통계·퍼센트·인용문·세부 날짜는 쓰지 않는다."
+    : "- 이 글의 모든 사실(연도·수치·이름·사건·통계)은 아래 [사실 노트]에 있는 것만 쓴다. 노트에 없는 사실은 만들지 말고, 필요하면 일반적인 서술이나 학생 본인의 의견·계획으로 쓴다.";
+  return `
+[사실 노트 사용 규칙 — 반드시 지킬 것]
+${scopeLine}
+- 노트의 사실을 쓴 문장 끝에 그 번호를 [F3]처럼 붙인다(두 사실을 합치면 [F1][F4]). 번호는 노트에 있는 것만 쓰고, 문장마다 새 번호를 지어내지 않는다. 같은 사실을 여러 번 써도 된다.
+- 학생의 의견·감상·느낀 점·다짐·계획 문장에는 번호를 붙이지 않는다(그 생각의 근거가 출처에 있는 것이 아니다).
+- 노트의 사실은 확인된 사실이니 "~했다", "~이다"처럼 분명하게 쓴다. "~라는 기록이 있다", "~라는 보도가 있다", "~라는 평가가 있다", "~로 알려져 있다"처럼 전달하는 말투로 돌려 말하지 말 것(근거는 번호가 보여 준다). 노트 문장에 "이 글은", "해당 기사는" 같은 말이 있어도 옮기지 말고 사실만 쓴다.
+- 노트의 사실을 전부 쓸 필요는 없다. 이 글에 꼭 필요한 사실만 골라 위 분량 안에서 쓰고(분량을 넘기는 것이 가장 흔한 실패다), 고른 사실은 나열하지 말고 서로 원인·결과·비교로 이어서 설명한다.
+- 노트의 문장을 그대로 베끼지 말고 이 글의 형식과 문체에 맞게 다시 쓴다.
+- 책을 다루는 글이면 책 제목(『』)과 저자를 글의 흐름 속에서 자연스럽게 한 번 언급하고(예: "헤르만 헤세의 『데미안』은 …") 그 문장에 서지 사실의 번호를 붙인다. 출판사·번역자·출간 연도·판본은 안내문이 요구하지 않으면 쓰지 않는다. 책 속 문장을 따옴표로 직접 인용하지 말 것(원문을 확인하지 못했다) — 줄거리·주제를 자기 말로 쓴다.
+- 노트의 연도·수치를 쓴 문장에는 반드시 번호를 붙인다. 출처 목록·참고문헌·"(출처: …)"·주소는 쓰지 말 것(출처는 시스템이 번호로 붙인다).
+`.trim();
+}
+
 async function generateOnce(
   input: GenerateEssayInput,
   elements: CoreTaskInfo["task_elements"]
@@ -1029,7 +1160,7 @@ async function generateOnce(
     // 근거 페이지 확인(HTTP·본문 받기)은 글쓰기와 겹치지 않으므로 글쓰기와 동시에 돌린다.
     const urls = [...new Set(notes.facts.map((f) => f.url))];
     const prefetch = validateSources(urls.map((url, i) => ({ n: i + 1, title: "", url, url_valid: null })));
-    const write = await generate({ label: "generateEssay:write", role: "main", prompt, effort: WRITE_EFFORT });
+    const write = await generate({ label: "generateEssay:write", role: "write", prompt, effort: writeEffort() });
     if (!write.text) throw new Error("AI가 빈 응답을 반환했습니다.");
     // 글쓰기가 번호를 거의 안 붙였으면(최소 effort에서 가끔 있음) 연도·수치가 같은 사실의 번호를 코드가 붙여 복구한다 — 재생성하지 않는다.
     let written = write.text;
@@ -1383,9 +1514,18 @@ export async function generateEssay(
   const start = Date.now();
   // 신문처럼 "실제로 제출할 산출물" 단계는 조사 자료 형식("### 항목명" 불릿 나열)이 아니라 그 산출물의 형식으로 쓴다 —
   // 분석 단계가 안내문 문장을 required_items로 베껴 sections로 분류해도 여기서 바로잡는다(deliverable.ts).
+  const fixes = qualityFixesOn();
+  const sourceListItems: { label: string; item: string }[] = [];
   const elements = input.coreTaskInfo.task_elements
     .filter((e) => e.type === "text_submission")
-    .map((e) => (e.items_format === "sections" && (inferDeliverableForm(e) || isProseForm(e)) ? { ...e, items_format: "flowing" as const } : e));
+    .map((e) => (e.items_format === "sections" && (inferDeliverableForm(e) || isProseForm(e)) ? { ...e, items_format: "flowing" as const } : e))
+    .map((e) => {
+      // "신뢰할 수 있는 출처 3개 이상" 같은 출처 목록 항목은 모델이 쓰지 않고, 마지막에 확인된 출처로 코드가 채운다(아래 sourceListItems).
+      if (!fixes || !e.required_items?.some(isSourceListItem)) return e;
+      for (const item of e.required_items.filter(isSourceListItem)) sourceListItems.push({ label: e.label, item });
+      return { ...e, required_items: e.required_items.filter((i) => !isSourceListItem(i)) };
+    });
+  if (sourceListItems.length > 0) input = { ...input, sourceListItems };
 
   // 3단계: 후보 생성 ↔ 검증 분리. F6 재생성(previousOutputText 있음)은
   // 이전 버전에서 이미 책이 확정돼 있으므로 다시 고르지 않는다(안 그러면
@@ -1530,6 +1670,19 @@ export async function generateEssay(
   // 소제목 없이 쓰는 단계(신문·편지 등)의 필수 항목 누락과, 단계·항목 사이에 거의 같은 문장이 되풀이되는지도 본다.
   const flowingGaps = await confirmCoverageGaps(attempt.sections);
   if (flowingGaps.length > 0) console.warn(`[generateEssay] 필수 항목 누락 감지(소제목 없는 단계): ${JSON.stringify(flowingGaps)}`);
+  // 영어 글쓰기의 필수 어법(수동태·It~that 강조·관계대명사)이 빠졌으면 그 단계만 부분 보완한다(english-grammar.ts — 코드로 판정).
+  const grammarGaps: CoverageGap[] = [];
+  if (fixes) {
+    const reqText = [...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? ""].join(" ");
+    for (const el of elements) {
+      if (!detectElementLanguage(input.subject, el)?.startsWith("English")) continue;
+      const sec = attempt.sections.find((s) => s.label === el.label);
+      const forms = requiredGrammarForms(`${reqText} ${el.description} ${(el.required_items ?? []).join(" ")}`);
+      const miss = sec ? missingGrammarForms(sec.content, forms) : [];
+      if (miss.length > 0) grammarGaps.push({ label: el.label, missing: miss.map((f) => GRAMMAR_REPAIR_TEXT[f]) });
+    }
+    if (grammarGaps.length > 0) console.warn(`[generateEssay] 필수 어법 누락 감지: ${JSON.stringify(grammarGaps.map((g) => g.label))}`);
+  }
   const repeatedPairs = findRepeatedStatements(attempt.sections.map((s) => ({ label: s.label, content: s.content })));
   // 한두 건은 자연스러운 겹침(핵심 연도 문장 등)일 수 있어 3건 이상일 때만 되풀이로 본다.
   const repetitionIssue = repeatedPairs.length >= 3;
@@ -1583,10 +1736,18 @@ export async function generateEssay(
     corruptedSections.length > 0 ||
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
-    missingItems.length > 0 ||
+    (!fixes && missingItems.length > 0) ||
     authorMismatches.length > 0;
-  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue)) {
-    attempt = await repairLocally(attempt, elements, flowingGaps, repetitionIssue ? repeatedPairs : []);
+  // 품질 개선판: 소제목 항목 누락도 전체 재생성이 아니라 그 단계만 보완한다(전체 재생성은 멀쩡한 다른 단계까지 다시 쓰고 약 15초가 더 든다).
+  const itemGaps: CoverageGap[] = fixes && !needsFullRetry ? missingItems.map((m) => ({ label: m.label, missing: m.missing.map((x) => `"### ${x}" 소제목과 그 내용`) })) : [];
+  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue || grammarGaps.length > 0 || itemGaps.length > 0)) {
+    const merged: CoverageGap[] = [];
+    for (const g of [...flowingGaps, ...itemGaps, ...grammarGaps]) {
+      const same = merged.find((m) => m.label === g.label);
+      if (same) same.missing = [...same.missing, ...g.missing];
+      else merged.push({ ...g, missing: [...g.missing] });
+    }
+    attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : []);
   }
   if (needsFullRetry) {
     console.warn(
@@ -1648,6 +1809,9 @@ export async function generateEssay(
             `이번에는 누락된 항목을 각각 항목명 그대로의 "### " 소제목으로 추가해 실제 내용으로 채울 것 — ` +
             `이미 있던 다른 항목의 내용·사실(연도, 이름, 수치, 출처)은 바꾸지 말고 그대로 유지할 것.`
         );
+      }
+      for (const g of grammarGaps) {
+        correctionParts.push(`[필수 어법 정정 지시 — 반드시 지킬 것] "${g.label}" 단계: ${g.missing.join(" / ")}.`);
       }
       for (const g of flowingGaps) {
         correctionParts.push(
@@ -1783,7 +1947,7 @@ export async function generateEssay(
         const retryBooksWithAuthor = extractDistinctBookMentions(retryAttempt.sections).filter((b) => b.author);
         const stillHasAuthorMismatches = authorMismatches.filter((mismatch) => {
           const retried = retryBooksWithAuthor.find((b) => normalizeBookTitleKey(b.title) === normalizeBookTitleKey(mismatch.title));
-          return !retried || normalizeAttributionName(retried.author!) !== normalizeAttributionName(mismatch.confirmedAuthor);
+          return !retried || !sameAttribution(retried.author!, mismatch.confirmedAuthor);
         });
         if (
           stillHasCliches.length > 0 ||
@@ -1838,6 +2002,19 @@ export async function generateEssay(
     : stripUnjustifiedNarrativeCitations(attempt.sections);
   if (narrativeStrippedCount > 0) {
     attempt = { ...attempt, sections: narrativeCleanedSections };
+  }
+  // 조사→글쓰기 경로는 위 추정 규칙을 쓰지 않으므로, 1인칭·생각 종결 + 숫자·책 제목·인용 없음인 감상 문장의 각주만 좁게 걷어낸다(opinion-citations.ts).
+  if (fixes && attempt.notes) {
+    let opinionStripped = 0;
+    const sections = attempt.sections.map((s) => {
+      const r = stripOpinionCitations(s.content);
+      opinionStripped += r.stripped;
+      return r.stripped ? { ...s, content: r.content } : s;
+    });
+    if (opinionStripped > 0) {
+      console.warn(`[generateEssay] 감상·의견 문장의 각주 ${opinionStripped}개 제거`);
+      attempt = { ...attempt, sections };
+    }
   }
 
   // 재시도까지 거치고도 상투구("힘내자!" 등)가 남을 수 있다는 게 실측으로
@@ -1966,7 +2143,7 @@ export async function generateEssay(
     const stillWrong = finalBooksWithAuthor.find(
       (b) =>
         normalizeBookTitleKey(b.title) === normalizeBookTitleKey(mismatch.title) &&
-        normalizeAttributionName(b.author!) !== normalizeAttributionName(mismatch.confirmedAuthor)
+        !sameAttribution(b.author!, mismatch.confirmedAuthor)
     );
     if (stillWrong) {
       console.warn(`[generateEssay] 재시도 후에도 저자 불일치(경고 표시): ${JSON.stringify(mismatch)}`);
@@ -1993,7 +2170,12 @@ export async function generateEssay(
   }
 
   // 모델이 스스로 붙인 "참고 각주" 목록(번호가 실제 출처와 어긋남)과 신문 기사 안의 작업 표기("(해석)")를 걷어낸다 — 출처는 화면이 따로 보여 준다.
-  const newspaperLabels = new Set(elements.filter((e) => inferDeliverableForm(e) === "newspaper").map((e) => e.label));
+  // 제출용 보고서도 신문처럼 "(해석)" 같은 작업 표기를 남기지 않는다. 본문 속 주소 표기는 검색이 연 페이지로 확인된 것이 아니므로 지운다(출처는 화면이 따로 보여 준다).
+  const newspaperLabels = new Set(
+    elements
+      .filter((e) => inferDeliverableForm(e) === "newspaper" || (fixes && (isFinalReportForm(e) || (e.items_format === "sections" && !isResearchMaterialStep(e)))))
+      .map((e) => e.label)
+  );
   attempt = {
     ...attempt,
     sections: attempt.sections.map((s) => {
@@ -2001,7 +2183,17 @@ export async function generateEssay(
       if (refStripped.stripped) console.warn(`[generateEssay] 모델이 쓴 참고 각주 목록 제거 label="${s.label}"`);
       const metaStripped = stripMetaNoteLines(refStripped.content);
       if (metaStripped.removed > 0) console.warn(`[generateEssay] 작업 설명 괄호 줄 ${metaStripped.removed}개 제거 label="${s.label}"`);
-      return { ...s, content: newspaperLabels.has(s.label) ? stripWorkMarkers(metaStripped.content) : metaStripped.content };
+      let content = newspaperLabels.has(s.label) ? stripWorkMarkers(metaStripped.content) : metaStripped.content;
+      if (fixes) {
+        const notes = stripWorkNotes(content);
+        const urls = stripInlineUrls(notes.content);
+        const reported = reduceReportedSpeech(urls.content);
+        const josa = fixJosaAfterTitle(reported.content);
+        if (notes.removed + urls.removed + reported.changed + josa.changed > 0)
+          console.warn(`[generateEssay] 작업 메모 ${notes.removed}개·본문 주소 ${urls.removed}개 제거, 전달형 꼬리 ${reported.changed}개·제목 조사 ${josa.changed}개 정리 label="${s.label}"`);
+        content = josa.content;
+      }
+      return { ...s, content };
     }),
   };
 
@@ -2085,6 +2277,25 @@ export async function generateEssay(
     const finalNs = new Set(attempt.sources.map((x) => x.n));
     attempt = { ...attempt, sections: attempt.sections.map((sec) => ({ ...sec, content: cleanMarkers(sec.content, finalNs) })) };
   }
+  // 출처 목록 항목: 그 단계 본문이 실제로 인용한 확인된 출처로 채운다(단계가 하나면 이 글의 전체 출처). 출처가 없으면 비워 두고 경고한다.
+  for (const { label, item } of input.sourceListItems ?? []) {
+    const idx = attempt.sections.findIndex((s) => s.label === label);
+    if (idx < 0) continue;
+    const sec = attempt.sections[idx];
+    const usable = (list: SourceRef[]) => list.filter((x) => x.url_valid !== false && x.tier !== "weak");
+    const cited = usable(sourcesCitedIn(sec.content, attempt.sources));
+    const list = cited.length > 0 ? cited : attempt.sections.length === 1 ? usable(attempt.sources) : [];
+    if (list.length === 0) {
+      structureWarningByLabel.set(label, [structureWarningByLabel.get(label), `"${item}" 항목에 넣을 확인된 출처를 찾지 못했어요. 제출 전에 직접 출처를 찾아 넣어주세요.`].filter(Boolean).join(" "));
+      continue;
+    }
+    console.log(`[generateEssay] 출처 목록 항목을 확인된 출처 ${list.length}개로 채움 label="${label}"`);
+    const sections = [...attempt.sections];
+    sections[idx] = { ...sec, content: `${sec.content}\n\n${buildSourceListSection(item, list)}` };
+    attempt = { ...attempt, sections };
+  }
+  // 요약 줄에서 각주를 지운 자리에 남는 "…되었다 ." 공백도 정리한다(본문은 tidyOutputText가 이미 정리).
+  if (fixes) attempt = { ...attempt, summaryLines: attempt.summaryLines.map((l) => l.replace(/[ \t]+([.,!?])/g, "$1").trim()) };
   const markdown = attempt.sections.map((s) => `## ${s.label}\n\n${s.content}`).join("\n\n");
   console.log(`[generateEssay] latency_ms=${Date.now() - start}`);
 
@@ -2115,13 +2326,15 @@ export async function generateEssay(
         lengthWarning: lengthWarningByLabel.get(s.label),
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
         noSourcesWarning: renumberedSources.length === 0 && sectionHasVerifiableClaim(s),
-        structureWarning: structureWarningByLabel.get(s.label),
+        structureWarning:
+          structureWarningByLabel.get(s.label) ??
+          (fixes && !s.content.trim() ? "이 단계의 글을 만들지 못했어요. 이 단계만 다시 생성해 주세요." : undefined),
         productionNotes: s.productionNotes,
         claimCheck: s.claimCheck,
       };
     }),
     researchFacts: researchFacts.length > 0 ? researchFacts : undefined,
-    structureWarning: finalMissingItems.length > 0 ? [...structureWarningByLabel.values()].join(" ") : undefined,
+    structureWarning: structureWarningByLabel.size > 0 ? [...structureWarningByLabel.values()].join(" ") : undefined,
     sources: attempt.sources,
     summaryLines: attempt.summaryLines,
     // 라에네크 감사(2026-09-16): 출처가 몇 개 있어도 전부 검증 실패(url_valid
@@ -2503,6 +2716,12 @@ export function stripWeaklySourcedQuotes(
       (quoteText, afterEnd) => {
         const trailingWindow = original.slice(afterEnd, afterEnd + 60);
         const citedNs = Array.from(trailingWindow.matchAll(/\[(\d+)\]/g), (mm) => Number(mm[1]));
+        // 출처 인용을 내세우지 않는 따옴표(학생 속마음·대화·부모님 말씀)는 원문 인용이 아니다 — 실측(2026-10-22): 고민 쓰기의 "나만 없는 것 같다"까지 따옴표가 벗겨졌다.
+        if (qualityFixesOn() && citedNs.length === 0) {
+          const start = original.lastIndexOf(quoteText, afterEnd);
+          const before = original.slice(Math.max(0, start - 40), Math.max(0, start));
+          if (!/구절|문장|책에서|책은|책에는|작가|저자|원문|라고\s*썼|인용/.test(before)) return false;
+        }
         const hasTrustworthyCitation = citedNs.some((n) => {
           const src = sourceById.get(n);
           return src && !isWeakQuoteSource(src.url);
@@ -2998,16 +3217,29 @@ const ALLOWED_TEXT_PATTERN = /[가-힣ᄀ-ᇿ㄰-㆏a-zA-Z0-9\p{Script=Latin}\p{
 
 /** 코드포인트 단위로 순회한다(서로게이트 쌍이 섞여도 안전) — 문자열 인덱스
  * 기반 순회는 이모지 등에서 반쪽 문자를 만들 수 있어서 피한다. */
+// 한글 바로 뒤 괄호 속 한자 병기("부(富)")는 정상 표기다 — 실측(2026-10-21): 이상 문자로 판정돼 전체 재생성(+13초)을 부르고 "부()"로 깨졌다.
+// 같은 길이의 한글로 가려서 판정하고, 지울 때도 가린 쪽 기준으로 고른다(BMP 한자 1글자 = 한글 1글자라 위치가 그대로다).
+const HANJA_GLOSS = /([가-힣])\((\p{Script=Han}{1,12})\)/gu;
+// 그리스 문자(ΔT, ΔH, α, π)는 수학·과학 글의 정상 표기다 — 실측(2026-10-22): 과학 탐구 보고서의 Δ가 이상 문자로 판정돼 재생성(+13.7초) 후 "온도 상승 T"로 깨졌다.
+const GREEK = /\p{Script=Greek}/gu;
+// 아래·위 첨자 숫자(H₂O, CO₂, m²)도 정상 표기다 — 실측(2026-10-22): "₂"(U+2082) 때문에 과학 보고서가 재생성(+18.7초)됐다.
+const OTHER_NUMBER = /\p{No}/gu;
+function maskHanjaGloss(text: string): string {
+  return qualityFixesOn()
+    ? text.replace(HANJA_GLOSS, (_m, h: string, han: string) => `${h}(${"가".repeat([...han].length)})`).replace(GREEK, "a").replace(OTHER_NUMBER, "1")
+    : text;
+}
+
 function findForeignScriptChars(text: string): string[] {
   const found: string[] = [];
-  for (const ch of text) {
+  for (const ch of maskHanjaGloss(text)) {
     if (!ALLOWED_TEXT_PATTERN.test(ch)) found.push(ch);
   }
   return found;
 }
 
 function hasForeignScriptCorruption(text: string): boolean {
-  for (const ch of text) {
+  for (const ch of maskHanjaGloss(text)) {
     if (!ALLOWED_TEXT_PATTERN.test(ch)) return true;
   }
   return false;
@@ -3024,9 +3256,11 @@ function stripForeignScriptCharsFromText(text: string): { text: string; stripped
   const strippedChars = findForeignScriptChars(text);
   if (strippedChars.length === 0) return { text, strippedChars };
   let result = "";
-  for (const ch of text) {
-    if (ALLOWED_TEXT_PATTERN.test(ch)) result += ch;
-  }
+  const chars = [...text];
+  const masked = [...maskHanjaGloss(text)];
+  chars.forEach((ch, i) => {
+    if (ALLOWED_TEXT_PATTERN.test(masked[i] ?? ch)) result += ch;
+  });
   result = result.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n");
   return { text: result, strippedChars };
 }

@@ -9,11 +9,13 @@ export const POST = routeUsage("analyze", async function POST(req: NextRequest) 
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
-    const { imageBase64, imageMimeType, topicText, instructions } = body as {
+    const { imageBase64, imageMimeType, topicText, instructions, extraImages } = body as {
       imageBase64?: string;
       imageMimeType?: string;
       topicText?: string;
       instructions?: string;
+      /** 안내문이 여러 장일 때 나머지 사진(최대 3장). */
+      extraImages?: { base64: string; mimeType: string }[];
     };
 
     if (!imageBase64 && !topicText) {
@@ -23,12 +25,13 @@ export const POST = routeUsage("analyze", async function POST(req: NextRequest) 
       );
     }
 
-    const invalid = validateAnalyzeInput({ imageBase64, topicText, instructions });
+    const invalid = validateAnalyzeInput({ imageBase64, topicText, instructions, extraImages });
     if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
 
     const result = await analyzeAssignment({
       imageBase64,
       imageMimeType,
+      extraImages,
       topicText,
       instructions,
     });

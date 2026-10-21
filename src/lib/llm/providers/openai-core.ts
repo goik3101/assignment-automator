@@ -14,7 +14,14 @@ export const DEFAULT_MAX_OUTPUT = { plain: 6000, search: 10000 };
 export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutputTokens?: number; searchContextSize?: string } = {}): Record<string, unknown> {
   const parts = typeof req.prompt === "string" ? [{ text: req.prompt }] : req.prompt;
   const content = parts.map((p) =>
-    "text" in p ? { type: "input_text", text: p.text } : { type: "input_image", image_url: `data:${p.image.mimeType};base64,${p.image.base64}` }
+    "text" in p
+      ? { type: "input_text", text: p.text }
+      : {
+          type: "input_image",
+          image_url: `data:${p.image.mimeType};base64,${p.image.base64}`,
+          // 안내문 사진의 채점 기준표는 글씨가 작다 — 실측(2026-10-22): 기본값으로는 과학 채점표의 항목(리트머스·BTB·전기 전도성…)을 하나도 못 읽었다. 사진 1장 약 800토큰.
+          ...(process.env.OPENAI_IMAGE_DETAIL !== "auto" ? { detail: process.env.OPENAI_IMAGE_DETAIL || "high" } : {}),
+        }
   );
   const body: Record<string, unknown> = {
     model,

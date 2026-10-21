@@ -40,12 +40,14 @@ function cleanFacts(arr: unknown[]): RawFact[] {
     .map((x) => x as { fact?: unknown; url?: unknown; title?: unknown; printed_title?: unknown; printed_author?: unknown })
     .filter((x) => typeof x.fact === "string" && x.fact.trim().length >= 6 && typeof x.url === "string" && /^https?:\/\//i.test(x.url))
     .map((x) => ({
-      fact: (x.fact as string).trim(),
+      // 검색 응답 원문을 읽으면 사실 문장 안에 모델이 붙인 "([사이트](주소))"가 남아 있을 수 있다 — 주소는 url 필드가 따로 갖는다.
+      fact: (x.fact as string).replace(/\s*\(?\[[^\]\n]{1,120}\]\(https?:\/\/[^)\s]+\)\)?/g, "").trim(),
       url: (x.url as string).trim(),
       title: typeof x.title === "string" ? x.title.trim() : "",
       printedTitle: typeof x.printed_title === "string" && x.printed_title.trim() ? x.printed_title.trim() : undefined,
       printedAuthor: typeof x.printed_author === "string" && x.printed_author.trim() ? x.printed_author.trim() : undefined,
-    }));
+    }))
+    .filter((x) => x.fact.length >= 6);
 }
 
 /**
@@ -72,13 +74,55 @@ function flattenGrouped(arr: unknown[]): unknown[] {
 export function parseFactJson(text: string): RawFact[] {
   const a = text.indexOf("[");
   const b = text.lastIndexOf("]");
-  if (a < 0 || b <= a) return [];
+  if (a < 0 || b <= a) return parseFactJsonLoose(text);
   try {
     const arr = JSON.parse(text.slice(a, b + 1)) as unknown;
     return Array.isArray(arr) ? cleanFacts(flattenGrouped(arr)) : [];
   } catch {
-    return [];
+    return parseFactJsonLoose(text);
   }
+}
+
+const STR = /"((?:[^"\\\n]|\\.)*)"/;
+function readStr(block: string, key: string): string | undefined {
+  const m = new RegExp(`"${key}"\\s*:\\s*${STR.source}`).exec(block);
+  if (!m) return undefined;
+  try {
+    return JSON.parse(`"${m[1]}"`) as string;
+  } catch {
+    return m[1];
+  }
+}
+
+/**
+ * JSON.parse가 실패한 조사 응답(실측: 괄호 하나가 빠진 `"facts":["…"}]`로 사실 0개 → 기존 경로로 폴백, +30초·출처 0개)에서
+ * 객체 단위로 url·title·사실 문장을 직접 읽는다. 출처별 묶음 객체는 문자열 배열만 품어 중첩 중괄호가 없으므로 `{…}` 단위로 자를 수 있다.
+ * URL은 여기서 믿지 않는다 — 호출부의 buildFacts가 검색이 실제로 연 페이지 목록과 다시 대조한다.
+ */
+export function parseFactJsonLoose(text: string): RawFact[] {
+  const out: unknown[] = [];
+  for (const m of text.matchAll(/\{[^{}]*\}/g)) {
+    const block = m[0];
+    const url = readStr(block, "url");
+    if (!url) continue;
+    const base = { url, title: readStr(block, "title"), printed_title: readStr(block, "printed_title"), printed_author: readStr(block, "printed_author") };
+    const single = readStr(block, "fact");
+    if (single) {
+      out.push({ ...base, fact: single });
+      continue;
+    }
+    const at = /"facts"\s*:\s*\[/.exec(block);
+    if (!at) continue;
+    const rest = block.slice(at.index + at[0].length);
+    for (const s of rest.matchAll(new RegExp(`${STR.source}(?!\\s*:)`, "g"))) {
+      try {
+        out.push({ ...base, fact: JSON.parse(`"${s[1]}"`) as string });
+      } catch {
+        out.push({ ...base, fact: s[1] });
+      }
+    }
+  }
+  return cleanFacts(out);
 }
 
 /** 책 과제 조사 응답: {"book":{title,author,exists},"facts":[...]} (설명·코드펜스가 섞여도). 못 읽으면 null. */
@@ -94,7 +138,13 @@ export function parseBookResearch(text: string): { book: { title: string; author
     if (!title) return null;
     return { book: { title, author: typeof o.book.author === "string" ? o.book.author.trim() : "", exists: o.book.exists !== false }, facts: cleanFacts(flattenGrouped(list)) };
   } catch {
-    return null;
+    // 괄호 하나가 어긋난 응답도 책 정보·사실을 객체 단위로 읽는다(parseFactJsonLoose와 같은 이유).
+    const bookBlock = /"book"\s*:\s*(\{[^{}]*\})/.exec(text)?.[1];
+    const title = bookBlock ? readStr(bookBlock, "title")?.trim() : undefined;
+    if (!bookBlock || !title) return null;
+    const facts = parseFactJsonLoose(text.replace(bookBlock, "{}"));
+    if (facts.length === 0) return null;
+    return { book: { title, author: readStr(bookBlock, "author")?.trim() ?? "", exists: !/"exists"\s*:\s*false/.test(bookBlock) }, facts };
   }
 }
 
@@ -102,20 +152,41 @@ export function parseBookResearch(text: string): { book: { title: string; author
  * 검색이 실제로 열어 본 페이지(consulted)에 없는 URL의 사실은 버린다 — 모델이 지어낸 주소로 출처를 달지 않기 위해서다.
  * consulted가 비어 있으면(제공자가 목록을 안 줌) 검증할 수 없으므로 null(= 이 경로를 쓰지 말 것).
  */
-export function buildFacts(raw: RawFact[], consulted: string[] | undefined, max = 14): Fact[] | null {
+export function buildFacts(raw: RawFact[], consulted: string[] | undefined, max = 14, balanced = true): Fact[] | null {
   if (!consulted || consulted.length === 0) return null;
   const ok = new Set(consulted.map(normalizeUrl));
   const seen = new Set<string>();
-  const out: Fact[] = [];
+  const eligible: RawFact[] = [];
   for (const r of raw) {
     if (!ok.has(normalizeUrl(r.url))) continue;
     const key = r.fact.replace(/\s+/g, "");
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ id: `F${out.length + 1}`, fact: r.fact, url: r.url, title: r.title, printedTitle: r.printedTitle, printedAuthor: r.printedAuthor });
-    if (out.length >= max) break;
+    eligible.push(r);
   }
-  return out;
+  // 출처별로 묶어 쓴 응답은 앞쪽 출처의 사실이 몰려 있어, 앞에서부터 자르면 뒤 항목(예: 전개 과정)의 사실이 통째로 빠진다 — 넘칠 때는 출처를 돌아가며 고른다(순서는 원래대로).
+  let picked = eligible.slice(0, max);
+  if (balanced && eligible.length > max) {
+    const byUrl = new Map<string, number[]>();
+    eligible.forEach((r, i) => {
+      const k = normalizeUrl(r.url);
+      byUrl.set(k, [...(byUrl.get(k) ?? []), i]);
+    });
+    const queues = [...byUrl.values()];
+    const chosen: number[] = [];
+    for (let round = 0; chosen.length < max; round++) {
+      let added = false;
+      for (const q of queues) {
+        if (round < q.length && chosen.length < max) {
+          chosen.push(q[round]);
+          added = true;
+        }
+      }
+      if (!added) break;
+    }
+    picked = chosen.sort((a, b) => a - b).map((i) => eligible[i]);
+  }
+  return picked.map((r, i) => ({ id: `F${i + 1}`, fact: r.fact, url: r.url, title: r.title, printedTitle: r.printedTitle, printedAuthor: r.printedAuthor }));
 }
 
 export function factSheetText(facts: Fact[]): string {

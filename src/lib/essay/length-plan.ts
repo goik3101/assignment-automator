@@ -2,10 +2,12 @@
 // 모든 단계에 같은 글자 수를 주지 않는다: 단계의 역할(조사 자료·신문·소감·발표문 …)과 다뤄야 할 항목 수로 정하고,
 // 이 값은 생성 지시용 가이드일 뿐 강제 기준이 아니다(강제는 안내문이 명시한 분량만 — 부족 여부는 필수 항목 충족으로 본다).
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
-import { inferDeliverableForm } from "./deliverable.ts";
+import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
+import { qualityFixesOn } from "./quality-flags.ts";
 
 export type LengthRole =
   | "material" // 항목별 조사 자료(소제목 구조)
+  | "report_sections" // 항목 소제목이 있는 제출용 보고서(항목마다 문단)
   | "newspaper"
   | "reflection" // 소감·느낀 점·후기·성찰
   | "reason" // 선정 이유·동기
@@ -34,7 +36,7 @@ export function lengthRoleOf(el: PlanElement): LengthRole {
   const label = el.label;
   const text = `${el.label} ${el.description}`;
   if (inferDeliverableForm(el) === "newspaper") return "newspaper";
-  if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return "material";
+  if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return qualityFixesOn() && !isResearchMaterialStep(el) ? "report_sections" : "material";
   if (/소감|느낀\s*점|후기|성찰|반성|다짐/.test(label)) return "reflection";
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
   if (/문구|슬로건|캐치|표어|제목\s*짓/.test(label)) return "slogan";
@@ -55,6 +57,10 @@ export function planLength(el: PlanElement): LengthPlan {
     case "material": {
       const n = Math.max(items, 2);
       return { role, min: n * 160, max: n * 380, basis: `조사 항목 ${n}개 × 항목당 사실 2~4문장` };
+    }
+    case "report_sections": {
+      const n = Math.max(items, 2);
+      return { role, min: n * 250, max: n * 450, basis: `보고서 항목 ${n}개 × 항목당 한두 문단` };
     }
     case "newspaper":
       return { role, min: 900 + itemBoost / 2, max: 1500 + itemBoost, basis: "신문 한 면에 들어갈 기사·표·후기" };

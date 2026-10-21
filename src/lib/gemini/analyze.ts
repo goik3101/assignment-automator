@@ -3,6 +3,8 @@ import { generate, type LlmPart } from "@/lib/llm";
 import { normalizeSubject } from "./normalize-subject";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
 import { fallbackSubject, forceTextSubmissionIfNoExternalHint } from "./analysis-normalize";
+import { splitAnalysisItems } from "./analysis-items";
+import { qualityFixesOn } from "@/lib/essay/quality-flags";
 import type { AnalyzeResult } from "@/types/task";
 
 // 기획서 6-0 1단계: 안내문에서 administrative_info(제출기한 등)와
@@ -100,8 +102,17 @@ export const ANALYZE_SCHEMA: Schema = {
             required: ["type", "label", "description"],
           },
         },
+        writing_guide: {
+          type: Type.STRING,
+          description:
+            "안내문(채점 기준표·양식·예시 답안)에서 '글을 어떻게 써야 점수를 받는지'만 700자 이내로, 아래 순서대로 정리: " +
+            "(1) 학생이 채울 양식의 칸 구성 — 단계(요소)마다 칸 이름·순서·개수(예: '최종 글: Product / Purposes / Features(Benefits) / Limits / Suggestions 칸', '6칸, 칸마다 그림 + 아래 「들어갈 말」 한 줄', '인터뷰: 질문1·답변1·질문2·답변2'). " +
+            "(2) 예시 답안(파란 글씨 등 이미 채워진 견본)이 있으면 단계마다 그 형식과 대략 분량(칸마다 몇 문장, 전체 몇 자·몇 단어) — 예시의 소재·이름은 쓰지 말고 '예시 내용은 베끼지 말 것'이라고 적을 것. " +
+            "(3) 채점 기준의 내용·형식 기준(예: '기사는 누가·언제·어디서·무엇을·어떻게·왜가 드러나게', '인터뷰는 1945~1948년 주요 사건을 소재로', '만평 또는 광고 중 하나', '수동태·It~that 강조·관계대명사를 쓰고 밑줄'). " +
+            "사진 준비 방법·AI 사용 주의·배점·날짜·감점·준비물 같은 행정 정보는 쓰지 말 것. 해당 내용이 없으면 빈 문자열.",
+        },
       },
-      required: ["topic", "requirements", "task_elements"],
+      required: ["topic", "requirements", "task_elements", "writing_guide"],
     },
   },
   required: [
@@ -171,6 +182,23 @@ const SYSTEM_INSTRUCTION = `
   (신조어 만들기, 자유 글쓰기 등)이면 빈 배열. items_format은 조사·탐구·보고서·
   계획서처럼 항목별로 나눠 쓰는 산출물이면 "sections", 편지·감상문·비평문·발표
   대본처럼 한 편의 글로 이어 쓰는 산출물이면 "flowing" — 애매하면 "flowing".
+- subject는 안내문 머리글·제목에 적힌 과목명(예: "〈한국사2 현대사 독후 활동〉" → 역사, "공통영어2" → 영어, "통합과학" → 과학)을
+  가장 먼저 따를 것. 산출물 형식(카드뉴스·포스터 등)으로 과목을 추측하지 말 것.
+- 사진이 여러 장이면 모두 한 과제의 안내문이다(안내·채점 기준표·양식·예시 답안이 나뉘어 있을 수 있다). 장마다 따로 분석하지 말고 합쳐서 하나로 분석할 것.
+- 학생이 채워 넣는 빈 양식(번호가 붙은 칸들)이면, 칸 하나하나를 required_items의 항목으로 빠짐없이 나열하고(예: ①~⑥이면 6개),
+  칸 안의 구성(그림 칸 + 그 아래 "들어갈 말" 칸 등)은 그 요소의 description과 writing_guide에 적을 것. 같은 칸을 그림 칸과 글 칸으로 나눠 다른 항목으로 세지 말 것.
+  양식 안에 적힌 영역 이름표("<내용>", "<들어갈 말>")는 칸의 구성 요소 이름이지 별도 항목이 아니다 — 항목은 번호 칸(①, ② …)과 양식 위쪽의 기입란(책 제목·제목·메시지 등)이다.
+- 채점 기준표의 최고 점수 칸에 "(A, B, C …)를 모두 정확하게 서술함"처럼 내용 항목이 나열되어 있으면, 그 평가 요소에 해당하는 단계의
+  required_items로 그 항목들을 빠짐없이 넣을 것(안내문 본문에 "작성하라"는 문장이 따로 없어도). 실험·관찰 단계의 채점 항목(예: 리트머스 색 변화, 전기 전도성)도 같다.
+  보고서 단계가 실험 내용을 쓰는 것이면 실험 단계의 관찰 항목도 보고서의 writing_guide에 "보고서에 담을 관찰 결과: …"로 적을 것.
+- 학생이 시험처럼 자료 없이 그 자리에서 써야 하는 단계("교과서 등 자료를 볼 수 없음", "개별 작성")면 writing_guide에 "시험장에서 외워 쓰는 글: 외워서 다시 쓸 수 있게 핵심 위주로 간결하게"라고 적을 것.
+- required_items에는 "써야 할 내용 항목"만 넣을 것. 분량(120단어 이상 등)·어법 조건(수동태 사용 등)·밑줄 표시·사진 부착 여부 같은 채점 조건은
+  항목이 아니다 — writing_guide에 적을 것.
+- 채점 기준과 예시 답안을 구분할 것. 예시 답안(파란 글씨, 이미 채워진 예시 칸)은 "이런 형식으로 쓰라"는 견본이지 써야 할 내용이 아니다 —
+  예시의 소재(발명품 이름 등)를 topic·requirements·description에 옮기지 말 것.
+  예시 답안이 있으면 writing_guide에 단계마다 "예시 형식: 칸 이름들 / 예시 분량: 칸마다 약 N문장, 전체 약 N자(또는 N단어)"를 반드시 적을 것
+  (예시에 "총 ( ) 단어"처럼 분량이 적혀 있으면 그 숫자를 쓰고, 없으면 대략 세어서).
+- 활동 시간·수업 시간("약 25분 가량", "30분간 진행")은 분량이 아니다. target_length_text에는 글자수·단어수, 또는 발표·말하기의 시간("발표 시간 5분")만 넣을 것.
 `.trim();
 
 const FLOWING_LABEL_PATTERN = /대본|발표문|연설|비평문|감상문|독후감|서평|편지|일기|소설|에세이|칼럼|소감/;
@@ -190,10 +218,14 @@ function normalizeRequiredItems(items: string[] | undefined): string[] | undefin
     if (seen.has(key)) continue;
     seen.add(key);
     cleaned.push(item);
-    if (cleaned.length >= 10) break;
+    // 칸 양식(①~⑥ + 제목·메시지 등)은 10개를 넘는다 — 실측: 카드뉴스 6칸 중 ⑥이 잘려 나갔다.
+    if (cleaned.length >= 14) break;
   }
   return cleaned.length >= 2 ? cleaned : undefined;
 }
+
+// 말하기 산출물만 "N분"을 분량으로 본다(발표·대본·연설·낭독). 그 밖의 "25분 가량"은 활동 시간이다(실측: 고민 쓰기 목표가 6,750~8,250자가 됨).
+const SPEECH_LABEL = /발표|대본|스피치|연설|말하기|낭독|구술|speech|presentation/i;
 
 // 처음엔 모델에게 min/max 정수 두 개를 직접 계산해서 채우게 했는데, 실제
 // 테스트 중 flashLite가 드물게 토큰 반복 루프에 빠져 정수 필드에 자릿수
@@ -207,6 +239,8 @@ export interface AnalyzeInput {
   /** base64 인코딩된 이미지 데이터 (data URL 접두사 제외) */
   imageBase64?: string;
   imageMimeType?: string;
+  /** 안내문이 여러 장일 때 나머지 사진(채점 기준표·예시 답안지 등). 첫 장은 imageBase64. */
+  extraImages?: { base64: string; mimeType: string }[];
   /** 이미지 대신 주제를 텍스트로 직접 입력한 경우 (F1) */
   topicText?: string;
   /** 이번 과제 한정 지침 (F2) */
@@ -225,6 +259,7 @@ export async function analyzeAssignment(
   if (input.imageBase64 && input.imageMimeType) {
     parts.push({ image: { base64: input.imageBase64, mimeType: input.imageMimeType } });
   }
+  for (const img of (input.extraImages ?? []).slice(0, 3)) parts.push({ image: { base64: img.base64, mimeType: img.mimeType } });
 
   const userTextLines = [
     input.topicText ? `[학생이 입력한 주제]\n${input.topicText}` : null,
@@ -236,10 +271,11 @@ export async function analyzeAssignment(
   const runAnalyze = () =>
     generate({
       label: "analyze",
-      role: "lite",
+      role: "analyze",
       prompt: parts,
       system: SYSTEM_INSTRUCTION,
       schema: ANALYZE_SCHEMA,
+      ...(process.env.ANALYZE_EFFORT ? { effort: process.env.ANALYZE_EFFORT as "minimal" | "low" | "medium" } : {}),
     });
   let response = await runAnalyze();
   // 실측(같은 안내문 4회 분석 중 1회): 항목 나열이 통째로 8~9개의 별개 "단계"로 쪼개지는 오분석. 이런 모양(5개 이상, 항목 나열 없음)이면 한 번만 다시 분석하고 단계가 더 적은 쪽을 쓴다.
@@ -282,10 +318,20 @@ export async function analyzeAssignment(
   // 출력은 중첩 optional보다 이런 형태가 더 안정적으로 채워짐) — 둘 다 0이면
   // "분량 제약 없음"이므로 target_length 자체를 생략해서, generate-essay.ts가
   // 이 필드의 존재 여부만으로 검사 대상인지 바로 판단할 수 있게 한다.
+  const fixes = qualityFixesOn();
+  const guideExtras: string[] = [];
   const task_elements_raw = parsed.core_task_info.task_elements.map((e) => {
     const { target_length_text, target_length_counts_spaces, required_items, items_format, ...rest } = e;
-    const range = target_length_text ? parseLengthConstraint(target_length_text, { english: /영어|English/i.test(`${parsed.subject} ${e.label}`) }) : null;
-    const items = normalizeRequiredItems(required_items);
+    const speech = !fixes || SPEECH_LABEL.test(`${e.label} ${e.description} ${target_length_text ?? ""}`);
+    const range = target_length_text ? parseLengthConstraint(target_length_text, { english: /영어|English/i.test(`${parsed.subject} ${e.label}`), minutesAllowed: speech }) : null;
+    // 채점 조건(분량·어법·밑줄·사진 부착)은 써야 할 내용 항목이 아니다 — writing_guide로 옮긴다(analysis-items.ts).
+    const split = fixes ? splitAnalysisItems(required_items) : null;
+    if (split && (split.conditions.length || split.visuals.length)) {
+      guideExtras.push(
+        `"${e.label}" 채점 조건: ${[...split.conditions, ...split.visuals.map((v) => `${v}(사진·그림은 학생이 직접 준비 — 글로 "제시함" 등을 쓰지 말 것)`)].join(" / ")}`
+      );
+    }
+    const items = normalizeRequiredItems(split ? split.content : required_items);
     // 모델이 분류한 items_format을 그대로 믿지 않는다 — 실제 테스트에서 "영어 발표
     // 대본"·"독서 비평문"이 sections로 분류돼 말하는 대본/한 편의 비평문이 "### 항목"
     // 소제목으로 쪼개졌다. 한 편의 글로 이어 읽히는 산출물(라벨 기준)은 코드가
@@ -326,10 +372,14 @@ export async function analyzeAssignment(
     if (process.env.LOG_PROMPTS === "1") console.warn(`  topic="${parsed.core_task_info.topic}"`);
   }
 
+  const writingGuide = fixes ? [parsed.core_task_info.writing_guide?.trim(), ...guideExtras].filter(Boolean).join("\n").slice(0, 1500) : "";
+  const { writing_guide: _rawGuide, ...coreRest } = parsed.core_task_info;
+  void _rawGuide;
+
   return {
     ...parsed,
     subject,
-    core_task_info: { ...parsed.core_task_info, task_elements },
+    core_task_info: { ...coreRest, task_elements, ...(writingGuide ? { writing_guide: writingGuide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }

@@ -165,10 +165,14 @@ const META_NOTE_LINE = new RegExp(
     "|(?:참고|비고|각주|책 관련 각주|책 속 인상 깊은 구절)\\s*[:：—-][^()\\n]{0,160}" +
     ")\\)[\\[\\]\\d.\\s]*$"
 );
+// 괄호 없이 쓴 같은 종류의 작업 설명(실측 2026-10-21: "참고 근거: 위 문장들에 사용된 사실 근거는 본문에 괄호로 붙인 번호를 통해 확인할 수 있다.").
+const BARE_META_LINE = /^\s*(?:참고\s*근거|근거\s*안내|출처\s*안내|작성\s*참고)\s*[:：].{0,200}$|^\s*(?:위|이)\s*(?:문장|내용|글)[^\n]{0,80}(?:번호|각주|출처)[^\n]{0,80}확인할\s*수\s*있다\.?\s*$/;
 export function stripMetaNoteLines(content: string): { content: string; removed: number } {
   let removed = 0;
+  const bare = process.env.ESSAY_QUALITY_FIXES !== "off";
   const kept = content.split("\n").filter((l) => {
-    const strip = META_NOTE_LINE.test(l.replace(/\[\d+\]/g, ""));
+    const line = l.replace(/\[\d+\]/g, "");
+    const strip = META_NOTE_LINE.test(line) || (bare && BARE_META_LINE.test(line));
     if (strip) removed++;
     return !strip;
   });
@@ -180,4 +184,160 @@ export function stripMetaNoteLines(content: string): { content: string; removed:
 const PROSE_LABEL = /논설|논술|에세이|수필|감상문|독후감|칼럼|비평|편지|일기|연설문|발표문|스피치|소설|짧은\s*글|서평/;
 export function isProseForm(el: { label: string }): boolean {
   return PROSE_LABEL.test(el.label);
+}
+
+// "탐구 보고서"·"조사 보고서"처럼 학생이 제출할 보고서 자체인 단계. 소제목(필수 항목) 구조는 유지하되 내용은 불릿 사실 메모가 아니라 문단으로 쓴다.
+// 실측(2026-10-20, 8건 중 2건): 이런 단계가 "조사 자료" 규칙을 받아 불릿 나열 + "(해석)" 표기로 나왔다. "보고서 계획"·"자료 수집"처럼 재료 단계는 제외한다.
+const REPORT_LABEL = /보고서|리포트|소논문/;
+const REPORT_MATERIAL_LABEL = /자료\s*(?:수집|조사|정리)|계획|구상|개요|준비|양식/;
+export function isFinalReportForm(el: { label: string }): boolean {
+  return REPORT_LABEL.test(el.label) && !REPORT_MATERIAL_LABEL.test(el.label);
+}
+
+// "조사 자료" 규칙(불릿 사실 메모 + "(해석)")을 받아야 하는 재료 단계 — 뒤 단계가 가져다 쓸 자료를 모으는 단계만.
+// 실측(2026-10-22): "친구의 고민 분석하기", "문제 해결 방안 쓰기", "책 처방전 쓰기"처럼 제출용 글인 단계까지 이 규칙을 받아 "- - (해석)" 메모로 나왔다.
+const MATERIAL_STEP_LABEL = /자료\s*(?:수집|조사|정리)|사실\s*정리|정보\s*(?:수집|정리)|조사\s*(?:노트|활동지?|하기)?\s*$|탐구\s*(?:노트|자료)/;
+export function isResearchMaterialStep(el: { label: string }): boolean {
+  return MATERIAL_STEP_LABEL.test(el.label) && !REPORT_LABEL.test(el.label);
+}
+
+// 필수 항목 중 "신뢰할 수 있는 출처 3개 이상", "참고 문헌" 같은 출처 목록 항목 — 글쓰기 모델에게 맡기면 확인 안 된 주소를 지어내거나(실측) 출처 목록 금지 규칙과 부딪혀 누락으로 잡힌다.
+const SOURCE_LIST_ITEM = /출처|참고\s*(?:문헌|자료|사이트)|인용\s*자료|레퍼런스|references?/i;
+export function isSourceListItem(item: string): boolean {
+  return SOURCE_LIST_ITEM.test(item) && !/분석|비교|평가|신뢰도\s*(?:판단|비교)/.test(item);
+}
+
+/** 시스템이 실제로 확인한 출처로 출처 목록 항목을 채운다(모델이 쓰지 않는다). */
+export function buildSourceListSection(item: string, sources: { title: string; url: string }[]): string {
+  const lines = sources.map((s) => `- ${s.title?.trim() || hostOf(s.url)}: ${s.url}`);
+  return `### ${item}\n${lines.join("\n")}`;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+// 출처 확인 과정·면책을 적은 작업 메모(실측 2026-10-22, 외부 제작 경로): "(한국의 광복 날짜는 1945년 8월 15일임을 확인했다)",
+// "(위 인터뷰는 … 재구성한 가상 대화입니다 …)", "### 인터뷰 출처·확인된 사실" 목록, "※ 위 세 출처는 …".
+const WORK_NOTE_PAREN = /[ \t]*\((?:[^()\n]|\([^()\n]*\)){0,240}?(?:확인했|확인한\s*사실|확인된\s*사실|출처\s*[:：]|출처를\s*참|참고했|참조\s*[:：)]|재구성한|가상\s*(?:인터뷰|대화)|임을\s*밝힙니다)(?:[^()\n]|\([^()\n]*\)){0,240}?\)/g;
+const WORK_NOTE_LINE = /^\s*(?:※|\*\s*참고|\(?\s*(?:위|이)\s*(?:인터뷰|대화|글|기사|만평|광고|문장들?|내용|칸)(?:은|는|중|에)?)[^\n]{0,300}(?:출처|자료|링크|재구성|가상|확인|다듬)[^\n]*$/;
+// 챗봇식 제안·작성 안내 줄: "(필요하면 … 다듬어 드립니다)", "(추가 안내 — 각 칸의 구성 요약)" 와 그 아래 목록, "(약 30자)" 같은 글자 수 표시.
+const ASSISTANT_OFFER_LINE = /^\s*\(?[^\n]{0,120}(?:(?:다듬어|고쳐|수정해|바꿔|추가해|만들어|작성해|정리해|맞춰)\s*(?:드립니다|드릴게요|드릴\s*수\s*있습니다)|원하시면|필요하시면|요청하시면)[^\n]{0,80}\)?\s*$/;
+const GUIDE_BLOCK_HEAD = /^\s*\((?:추가\s*안내|작성\s*안내|편집\s*메모|디자인[^)]{0,10}메모)[^)]*\)\s*$|^\s*(?:설명|주석|편집자\s*메모|메모)\s*\([^)]*메모[^)]*\)\s*[:：]\s*$/;
+// 사실 노트·각주 표기 방식을 설명하는 줄(실측: "(문장 끝에 사실 노트 표기는 넣지 않음; 본문 문장에만 위의 각주 표기를 사용함)").
+const NOTATION_NOTE_LINE = /^\s*\(?[^\n]{0,60}(?:사실\s*노트|각주\s*표기|F\d+\s*표기)[^\n]*\)?\s*$/;
+const CHAR_COUNT_NOTE = /\s*\(\s*(?:(?:약\s*|총\s*)?\d{1,4}\s*(?:자|단어|words?)\s*(?:내외|안팎)?|(?:word\s*count|글자\s*수|단어\s*수|총\s*단어)\s*[:：]?\s*\d{1,5}\s*(?:자|단어|words?)?)\s*\)/gi;
+const SOURCE_HEADING = /^#{2,4}\s*[^\n]{0,30}(?:출처|확인된\s*사실|참고\s*자료)[^\n]{0,30}$|^\(?\s*본문에서\s*(?:인용|사용)한[^\n]{0,40}출처[^\n]*\)?\s*$/;
+export function stripWorkNotes(content: string): { content: string; removed: number } {
+  let removed = 0;
+  const lines = content.split("\n");
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (SOURCE_HEADING.test(line.trim())) {
+      // 출처 소제목과 그 아래 목록(다음 소제목·빈 줄 뒤 본문 전까지)
+      removed++;
+      while (i + 1 < lines.length && (/^\s*(?:[-*•]|\d+[.)])\s/.test(lines[i + 1]) || lines[i + 1].trim() === "")) i++;
+      continue;
+    }
+    if ((WORK_NOTE_LINE.test(line) || ASSISTANT_OFFER_LINE.test(line) || NOTATION_NOTE_LINE.test(line)) && !/학생 감상 초안/.test(line)) {
+      removed++;
+      continue;
+    }
+    if (GUIDE_BLOCK_HEAD.test(line)) {
+      removed++;
+      while (i + 1 < lines.length && (/^\s*(?:[-*•]|\d+[.)])\s/.test(lines[i + 1]) || lines[i + 1].trim() === "")) i++;
+      continue;
+    }
+    // "(학생 감상 초안 …)" 표시가 바로 다음 소제목 앞에 혼자 떠 있으면(그 소제목 아래에 같은 표시가 또 있다) 지운다 — 실측: 카드뉴스에 두 번 연달아 나옴.
+    if (/^\s*\(학생 감상 초안[^)]*\)\s*$/.test(line)) {
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() === "") j++;
+      if (j < lines.length && /^#{2,4}\s/.test(lines[j].trim())) {
+        removed++;
+        continue;
+      }
+    }
+    // "출처(사실 표기 문장 끝):[1]"처럼 번호만 든 출처 줄 — 번호는 바로 앞 줄 끝으로 옮긴다(실측: 카드뉴스 칸마다).
+    const markerOnly = /^\s*(?:[-*•]\s*)?출처[^:：\n]{0,30}[:：]\s*((?:\[\d+\])+)\s*\.?\s*$/.exec(line);
+    if (markerOnly && kept.length > 0) {
+      removed++;
+      kept[kept.length - 1] = kept[kept.length - 1].replace(/\s*$/, "") + markerOnly[1];
+      continue;
+    }
+    kept.push(line);
+  }
+  let out = kept.join("\n");
+  out = out.replace(WORK_NOTE_PAREN, () => {
+    removed++;
+    return "";
+  });
+  out = out.replace(CHAR_COUNT_NOTE, () => {
+    removed++;
+    return "";
+  });
+  // 화면(react-markdown)은 HTML 태그를 그리지 않는다 — 밑줄 표시 <u>…</u>는 굵게로 바꾼다(실측: 영어 글에 "<u>It is</u>"가 글자 그대로 남음).
+  out = out.replace(/<u>([\s\S]*?)<\/u>/gi, (_m, inner: string) => {
+    removed++;
+    return `**${inner}**`;
+  });
+  if (removed === 0) return { content, removed };
+  return { content: out.replace(/[ \t]+([.,])/g, "$1").replace(/\.\s*\./g, ".").replace(/\n{3,}/g, "\n\n").trim(), removed };
+}
+
+/**
+ * 『책 제목』·《제목》 바로 뒤 조사를 제목 끝 글자의 받침에 맞춘다 — 실측(2026-10-22): "『사일구』은". 제목 끝이 한글이 아니면 건드리지 않는다.
+ */
+export function fixJosaAfterTitle(content: string): { content: string; changed: number } {
+  const PAIRS: Record<string, [string, string]> = { 은: ["은", "는"], 는: ["은", "는"], 이: ["이", "가"], 가: ["이", "가"], 을: ["을", "를"], 를: ["을", "를"], 과: ["과", "와"], 와: ["과", "와"] };
+  let changed = 0;
+  const out = content.replace(/([『《])([^』》\n]{1,60})([』》])(은|는|이|가|을|를|과|와)(?![가-힣])/g, (m, open: string, title: string, close: string, josa: string) => {
+    const last = title.trim().slice(-1);
+    const code = last.charCodeAt(0) - 0xac00;
+    if (code < 0 || code > 11171) return m;
+    const hasBatchim = code % 28 !== 0;
+    const right = PAIRS[josa][hasBatchim ? 0 : 1];
+    if (right === josa) return m;
+    changed++;
+    return `${open}${title}${close}${right}`;
+  });
+  return { content: changed ? out : content, changed };
+}
+
+/**
+ * 출처 번호가 붙은 사실 문장의 전달형 꼬리("…태어났다는 기록이 있다[3]")를 단정형("…태어났다[3]")으로 바꾼다.
+ * 실측(2026-10-22, 30회 테스트): 프롬프트 규칙만으로는 8건 중 4건에서 이런 꼬리가 남았다. 각주가 근거를 이미 보여 주므로 뜻은 그대로다.
+ * 각주가 없는 문장은 건드리지 않는다(근거가 안 붙은 내용을 단정으로 바꾸면 안 된다).
+ */
+export function reduceReportedSpeech(content: string): { content: string; changed: number } {
+  let changed = 0;
+  const out = content.replace(/([가-힣])다는\s*(?:기록|보도|분석|평가|설명|지적|연구\s*결과)(?:이|가)\s*(?:있다|남아\s*있다)((?:\[\d+\])+)/g, (_m, last: string, markers: string) => {
+    changed++;
+    return `${last}다${markers}`;
+  });
+  return { content: changed ? out : content, changed };
+}
+
+/**
+ * 본문에 남은 주소 표기를 지운다 — "(UNEP: https://…)", "[제목](https://…)", 맨 주소. 출처는 화면이 검증 결과와 함께 따로 보여 주고,
+ * 본문 속 주소는 검색이 실제로 연 페이지인지 확인되지 않은 것이다(실측: 출처 0개인 글에 주소 13개가 본문에 그대로 남음).
+ */
+export function stripInlineUrls(content: string): { content: string; removed: number } {
+  let removed = 0;
+  const count = () => {
+    removed++;
+    return "";
+  };
+  let out = content.replace(/\[([^\]\n]{1,160})\]\(https?:\/\/[^)\s]+\)/g, (_m, text: string) => {
+    removed++;
+    return text;
+  });
+  out = out.replace(/[ \t]*\((?:[^()\n]*?)https?:\/\/[^\s()]+(?:[^()\n]*)\)/g, count);
+  out = out.replace(/[ \t]*https?:\/\/[^\s)\]]+/g, count);
+  if (removed === 0) return { content, removed };
+  return { content: out.replace(/[ \t]+([.,;:])/g, "$1").replace(/\(\s*\)/g, "").replace(/[ \t]+$/gm, ""), removed };
 }

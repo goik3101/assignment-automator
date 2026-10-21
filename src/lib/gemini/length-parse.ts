@@ -9,7 +9,7 @@ export interface ParsedLength {
 const CHARS_PER_MINUTE = { min: 270, max: 330 };
 const WORDS_PER_MINUTE = { min: 100, max: 130 };
 
-export function parseLengthConstraint(text: string, opts?: { english?: boolean }): ParsedLength | null {
+export function parseLengthConstraint(text: string, opts?: { english?: boolean; minutesAllowed?: boolean }): ParsedLength | null {
   const t = text.trim();
   if (!t) return null;
 
@@ -34,7 +34,7 @@ export function parseLengthConstraint(text: string, opts?: { english?: boolean }
 
   // 발표 시간만 적힌 경우("약 3분 분량"): 분당 분량으로 환산한다
   const mm = t.match(/(\d{1,3}(?:\.\d+)?)\s*분/);
-  if (mm) {
+  if (mm && opts?.minutesAllowed !== false) {
     const minutes = Number(mm[1]);
     if (minutes > 0 && minutes <= 30) {
       const r = opts?.english ? WORDS_PER_MINUTE : CHARS_PER_MINUTE;

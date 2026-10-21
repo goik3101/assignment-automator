@@ -1,5 +1,6 @@
 import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
+import { normalizeAttributionName, sameAttribution } from "./attribution-name";
 
 // 외부 자료(책/논문/뉴스/통계 등)를 인용할 때 "실제로 원문이 노출된 페이지가
 // 있는지"를 검증하는 범용 모듈. 책 전용 로직이 아니다 — 인용 대상의 종류
@@ -423,15 +424,7 @@ export interface AttributionVerificationResult {
   queriesTried: string[];
 }
 
-// "전승환 지음", "전승환(지은이)", "전승환 저" 처럼 흔한 접미사가 붙어도
-// 같은 인물로 인식하도록 정리한다 — 이름 자체의 표기 차이(예: 띄어쓰기)에만
-// 관대할 뿐, 실제로 다른 이름까지 같다고 우기지는 않는다.
-export function normalizeAttributionName(name: string): string {
-  return name
-    .replace(/\s+/g, "")
-    .replace(/(지음|지은이|엮음|엮은이|옮김|옮긴이|글|그림|저자|저)$/g, "")
-    .toLowerCase();
-}
+export { normalizeAttributionName, sameAttribution };
 
 function buildAttributionInvestigationPrompt(workTitle: string, extraNote?: string): string {
   const queries = [
@@ -542,7 +535,7 @@ export async function verifyAuthorAttribution(
       title: firstTrustworthyChunk.web.title || outcome.sourceTitle || firstTrustworthyChunk.web.uri,
       url: firstTrustworthyChunk.web.uri,
     };
-    const isMatch = normalizeAttributionName(outcome.author) === normalizeAttributionName(claimedAttribution);
+    const isMatch = sameAttribution(outcome.author, claimedAttribution);
     if (isMatch) {
       return { status: "confirmed_match", queriesTried: investigation.queriesTried, source };
     }
