@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { buildRequestBody, cleanUrl, extractCitations, normalizeResponse, classifyHttpError, checkBody, isReasoningModel, type OpenAiResponse } from "./openai-core.ts";
+import { rejectsTemperature, buildRequestBody, cleanUrl, extractCitations, normalizeResponse, classifyHttpError, checkBody, isReasoningModel, type OpenAiResponse } from "./openai-core.ts";
 import { buildSourceList, insertCitationMarkers } from "../../gemini/citations.ts";
 
 const fx = (n: string) => JSON.parse(fs.readFileSync(new URL(`./fixtures/${n}`, import.meta.url), "utf8")) as OpenAiResponse;
@@ -146,4 +146,12 @@ test("본문 오류: 추론이 출력 한도를 다 쓴 빈 응답 / 거절 / �
 test("모델 판별", () => {
   assert.equal(isReasoningModel("gpt-5-nano"), true);
   assert.equal(isReasoningModel("gpt-4.1-mini"), false);
+});
+
+test("gpt-6 계열은 temperature를 보내지 않고 reasoning도 새로 붙이지 않는다(기존 동작 유지), gpt-4.1은 그대로 보낸다", () => {
+  const luna = buildRequestBody({ label: "t", role: "analyze", prompt: "x", temperature: 0 }, "gpt-6-luna");
+  assert.equal("temperature" in luna, false);
+  assert.equal("reasoning" in luna, false);
+  assert.equal(buildRequestBody({ label: "t", role: "main", prompt: "x", temperature: 0 }, "gpt-4.1-mini").temperature, 0);
+  assert.deepEqual(["gpt-5-mini", "gpt-6-luna", "gpt-6-sol", "o4-mini", "gpt-4.1-mini"].map(rejectsTemperature), [true, true, true, true, false]);
 });

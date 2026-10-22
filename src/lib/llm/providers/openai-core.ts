@@ -9,6 +9,11 @@ export function isReasoningModel(model: string): boolean {
   return /^(gpt-5|o\d)/.test(model);
 }
 
+/** gpt-6 계열(예: gpt-6-luna)도 temperature를 거부한다(실측 2026-10-23: 400 "Unsupported parameter"). reasoning 필드 처리는 모델마다 달라 건드리지 않고, temperature만 보내지 않는다. */
+export function rejectsTemperature(model: string): boolean {
+  return isReasoningModel(model) || /^gpt-6/.test(model);
+}
+
 export const DEFAULT_MAX_OUTPUT = { plain: 6000, search: 10000 };
 
 export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutputTokens?: number; searchContextSize?: string } = {}): Record<string, unknown> {
@@ -35,7 +40,7 @@ export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutp
     let effort = req.effort ?? "low";
     if (req.search && effort === "minimal") effort = "low";
     body.reasoning = { effort };
-  } else if (req.temperature !== undefined) {
+  } else if (req.temperature !== undefined && !rejectsTemperature(model)) {
     body.temperature = req.temperature;
   }
   if (req.schema) {
