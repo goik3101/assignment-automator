@@ -52,6 +52,7 @@ import { lengthGuideLines } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
+import { mergeParallelParts, parallelWriteInstruction, parallelWriteOn } from "@/lib/essay/parallel-write";
 import {
   attachFactMarkers,
   buildFacts,
@@ -532,14 +533,19 @@ ${input.previousOutputText}
       const { min, max, unit, counts_spaces } = e.target_length!;
       const uw = unit === "words" ? "단어(words)" : counts_spaces ? "자(공백 포함)" : "자(공백 제외)";
       // 조사→글쓰기의 글쓰기(최소 추론)는 목표보다 길게 나오는 경향이 있어 목표를 낮춰 준다. 다만 계수를 0.65로 더 낮춰도 첫 글 길이는 그대로였다(감상문 목표 720~880자에서 첫 글 921~1103자 9/9 초과) — 모델이 목표 숫자보다 내용 구성에 따라 길이를 정한다.
-      const base = min > 0 && max > 0 ? Math.round((min + max) / 2) : min > 0 ? Math.round(min * 1.15) : Math.round(max * 0.8);
+      // 하한만 있고 예시 답안 분량이 적혀 있으면(writing_guide "총 136단어") 그 분량을 목표로 한다 — 실측(2026-10-22): 하한 120단어·예시 136단어 과제에 194~345단어.
+      const example = min > 0 && !max && qualityFixesOn() ? exampleLength(input.coreTaskInfo.writing_guide, unit) : null;
+      const exMax = example && example >= min ? Math.round(example * 1.2) : null;
+      const base = min > 0 && max > 0 ? Math.round((min + max) / 2) : example && example >= min ? example : min > 0 ? Math.round(min * 1.15) : Math.round(max * 0.8);
       const goal = notes ? Math.round(base * 0.8) : base;
       // 하한만 있는 조건("120단어 이상")은 위로 열려 있어 실측(2026-10-22) 예시 답안 136단어인 과제에 329단어가 나왔다 — 하한~1.4배를 권장 범위로 준다(검사는 여전히 하한만).
       const rangeText =
         min > 0 && max > 0
           ? `${min}~${max}${uw}`
           : min > 0
-            ? qualityFixesOn()
+            ? exMax
+              ? `${min}~${exMax}${uw}(채점 기준 ${min}${uw} 이상, 예시 답안 약 ${example}${uw} — 예시보다 길게 쓰지 말 것)`
+              : qualityFixesOn()
               ? `${min}${uw} 이상(되도록 ${min}~${Math.round(min * 1.4)}${uw} — 예시 답안 분량이 있으면 그 분량에 맞출 것)`
               : `${min}${uw} 이상`
             : `${max}${uw} 이하`;
@@ -686,7 +692,7 @@ ${CITATION_JUDGMENT_RULE}
 ${scope.personAndPerspective ? PERSPECTIVE_RULE : ""}
 ${scope.personAndPerspective ? REAL_PERSON_NAME_RULE : ""}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
-${notes ? `${factSheetRules()}
+${notes ? `${factSheetRules()}${notes.excerpt?.verified ? "\n- 예외: [사실 노트]의 「책 속 구절(원문 확인됨)」 문장은 원문이 확인됐다. '인상 깊은 구절' 같은 항목에서는 이 문장을 큰따옴표로 한 글자도 바꾸지 말고 그대로 인용하고 그 번호를 붙인다. 다른 책 속 문장은 따옴표로 인용하지 말 것." : ""}
 
 [사실 노트]
 ${factSheetText(notes.facts)}` : ""}
@@ -833,7 +839,7 @@ async function pickBookFromCandidates(input: GenerateEssayInput, candidates: Boo
 }
 
 /** 후보를 검색 없이(모델이 아는 책 중에서) 제안받아 고른다. 실존 여부는 이어지는 조사 호출이 확인하고, 틀리면 기존 경로로 폴백한다. */
-async function selectBookCandidateFast(input: GenerateEssayInput): Promise<{ title: string; author?: string } | null> {
+export async function selectBookCandidateFast(input: GenerateEssayInput): Promise<{ title: string; author?: string } | null> {
   const prompt = `
 고등학생 수행평가의 "책 처방/추천" 단계를 위해 후보 책을 제안해줘. 최종 선택은 네가 하지 않는다.
 [과제 주제] ${input.coreTaskInfo.topic}
@@ -844,13 +850,17 @@ ${
   }${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}\n` : ""}${input.recentBookGuidance ? `\n${input.recentBookGuidance}\n` : ""}
 규칙:${qualityFixesOn() ? "\n- 단계 설명이 책으로 도울 대상을 정해 두었으면(예: \"친구의 문제 상황에 도움을 줄 책\") 지침 속 여러 고민 중 그 대상의 고민에 직접 도움이 되는 책만 고르고, 가장 잘 맞는 책을 맨 앞에 둘 것." : ""}
 - 네가 실존을 확실히 아는 책만 3~5권. 한국어로 번역·출간돼 서점에서 구하기 쉽고 고등학생이 읽을 수 있는 책을 우선한다. 확실하지 않은 책은 넣지 마라(지어낸 책 금지).
+- 후보를 비워 두면 안 된다 — 딱 맞는 책이 떠오르지 않으면 이 고민과 가까운 주제의 널리 알려진 스테디셀러에서라도 3권을 고른다.
 - 같은 저자나 거의 같은 소재로 몰지 말고 서로 다른 각도의 책을 섞는다.
 - 각 후보에 제목, 저자(한국어 표기), 이 주제에 어울리는 이유 한 줄.
 `.trim();
   try {
     const res = await generate({ label: "generateEssay:selectBookCandidate:fast", role: "main", prompt, schema: BOOK_CANDIDATES_SCHEMA, effort: "low" });
     const parsed = JSON.parse(res.text || "{}") as { candidates?: BookCandidate[] };
-    if (!parsed.candidates || parsed.candidates.length === 0) return null;
+    if (!parsed.candidates || parsed.candidates.length === 0) {
+      console.warn(`[generateEssay] 빠른 책 후보가 비어 있음 — 검색 기반 선정으로 폴백 (응답 앞부분: ${(res.text || "").slice(0, 160)})`);
+      return null;
+    }
     console.log(`[generateEssay] 책 후보(검색 없이 제안): ${JSON.stringify(parsed.candidates.map((c) => c.title))}`);
     return pickBookFromCandidates(input, parsed.candidates);
   } catch (err) {
@@ -936,9 +946,31 @@ export interface ResearchNotes {
   book?: { title: string; author?: string };
   /** 서지(제목·저자)가 인용 페이지 본문에서 코드로 확인됐는가. true면 별도의 검색 기반 저자 확인을 건너뛴다. */
   bookVerified?: boolean;
+  /** 구절을 요구하는 책 과제: 조사와 동시에 미리 해 둔 책 속 구절 확인 결과(글을 쓴 뒤 확인·재작성하지 않는다). */
+  excerpt?: VerificationResult;
+}
+
+/** 구절을 요구하는 책 과제도 빠른 책 선정 + 조사→글쓰기로 쓰고, 구절 확인은 조사와 동시에 한다.
+ * 예전 방식(검색 기반 책 선정 → 한 번에 쓰기 → 구절 확인 → 전체 재작성)은 실측 72~143초였다. ESSAY_BOOK_EXCERPT=legacy로 되돌린다. */
+function preExcerptOn(): boolean {
+  return process.env.ESSAY_BOOK_EXCERPT !== "legacy";
+}
+
+function withExcerptFact(notes: ResearchNotes, ex: VerificationResult, bookTitle: string): ResearchNotes {
+  if (!(ex.verified && ex.confirmedExcerpt && ex.source)) return { ...notes, excerpt: ex };
+  const fact: Fact = { id: `F${notes.facts.length + 1}`, fact: `『${bookTitle}』 속 구절(원문 확인됨): "${ex.confirmedExcerpt}"`, url: ex.source.url, title: ex.source.title };
+  return { ...notes, facts: [...notes.facts, fact], excerpt: ex };
 }
 
 /** 안내문이 원문 구절을 요구하는 과제인가(요구하면 책 과제도 기존 경로 — 인용구 검증이 필요하다). */
+/** writing_guide에 적힌 예시 답안 분량("예시 분량: 총 136단어", "총 (136) 단어")을 읽는다. */
+function exampleLength(guide: string | undefined, unit: "chars" | "words" | undefined): number | null {
+  if (!guide) return null;
+  const re = unit === "words" ? /(?:예시|견본|sample)[^\n.]{0,40}?\(?\s*(\d{2,4})\s*\)?\s*(?:단어|words?)/i : /(?:예시|견본)[^\n.]{0,40}?\(?\s*(\d{2,5})\s*\)?\s*자/;
+  const n = Number(re.exec(guide)?.[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function taskNeedsExcerpt(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): boolean {
   return needsExcerpt([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""]);
 }
@@ -1143,10 +1175,24 @@ async function generateOnce(
   // 검색이 필요한 비(非)책 과제는 "조사 → 글쓰기"로 나눈다: 조사 호출이 사실 노트(사실+근거 페이지)를 만들고, 글쓰기 호출은 검색 없이 그 노트로만 쓴다.
   // 출처 번호는 코드가 사실 번호에서 바꿔 붙이므로 "검색은 했는데 인용이 0개"가 구조적으로 생기지 않고, 그 재생성 재시도(약 25초)가 필요 없다.
   // 조사에 실패하면(사실 4개 미만·페이지 목록 없음) 기존 한 번 호출 경로로 돌아간다.
-  const bookResearch = isBook && !!input.presetBook && !taskNeedsExcerpt(input, elements) && process.env.ESSAY_BOOK_PIPELINE !== "legacy";
+  const excerptTask = isBook && taskNeedsExcerpt(input, elements);
+  const bookResearch = isBook && !!input.presetBook && (!excerptTask || preExcerptOn()) && process.env.ESSAY_BOOK_PIPELINE !== "legacy";
   const useResearchWrite = wantSearch && (!isBook || bookResearch) && process.env.ESSAY_PIPELINE !== "legacy";
   let notes: ResearchNotes | null = input.researchNotes ?? null;
-  if (useResearchWrite && input.researchNotes === undefined) notes = await researchWithCache(input, elements);
+  if (useResearchWrite && input.researchNotes === undefined) {
+    const book = input.presetBook;
+    const [researched, ex] = await Promise.all([
+      researchWithCache(input, elements),
+      excerptTask && book
+        ? verifyExcerpt({ name: book.title, attribution: book.author }, undefined, 0).catch((err) => {
+            console.error("[generateEssay] 구절 미리 확인 실패(구절 없이 진행)", err);
+            return null;
+          })
+        : Promise.resolve(null),
+    ]);
+    notes = researched && ex && book ? withExcerptFact(researched, ex, book.title) : researched;
+    if (ex) console.log(`[generateEssay] 구절 미리 확인(조사와 동시): ${ex.verified ? "확인됨" : "확인 못 함 → 따옴표 없이 소개"}`);
+  }
 
   const prompt = buildPrompt(input, elements, notes);
   if (process.env.LOG_PROMPTS === "1") console.log("[generateEssay] prompt:\n" + prompt); // 학생 입력이 섞여 있어 기본은 남기지 않는다
@@ -1160,10 +1206,20 @@ async function generateOnce(
     // 근거 페이지 확인(HTTP·본문 받기)은 글쓰기와 겹치지 않으므로 글쓰기와 동시에 돌린다.
     const urls = [...new Set(notes.facts.map((f) => f.url))];
     const prefetch = validateSources(urls.map((url, i) => ({ n: i + 1, title: "", url, url_valid: null })));
-    const write = await generate({ label: "generateEssay:write", role: "write", prompt, effort: writeEffort() });
-    if (!write.text) throw new Error("AI가 빈 응답을 반환했습니다.");
+    // 단계가 여러 개면 단계별로 동시에 쓴다(parallel-write.ts — ESSAY_PARALLEL_WRITE=off로 한 번에 쓰기).
+    const writes = parallelWriteOn(labels.length)
+      ? await Promise.all(
+          labels.map((l, i) =>
+            generate({ label: "generateEssay:write", role: "write", prompt: `${prompt}
+
+${parallelWriteInstruction(l, labels, i === 0)}`, effort: writeEffort() })
+          )
+        )
+      : [await generate({ label: "generateEssay:write", role: "write", prompt, effort: writeEffort() })];
+    const write = writes[0];
+    if (writes.some((w) => !w.text)) throw new Error("AI가 빈 응답을 반환했습니다.");
     // 글쓰기가 번호를 거의 안 붙였으면(최소 effort에서 가끔 있음) 연도·수치가 같은 사실의 번호를 코드가 붙여 복구한다 — 재생성하지 않는다.
-    let written = write.text;
+    let written = writes.length > 1 ? mergeParallelParts(writes.map((w) => w.text), labels) : write.text;
     if ((written.match(/\[F\d+\]/g) ?? []).length < 2) {
       const rec = attachFactMarkers(written, notes.facts);
       written = rec.text;
@@ -1539,7 +1595,9 @@ export async function generateEssay(
       input = { ...input, presetBook: studentSpecifiedBook };
     } else if (needsBookCandidateSelection(input, elements)) {
       // 구절을 요구하지 않는 책 과제는 후보를 검색 없이 제안받고(수 초), 실존·서지는 이어지는 조사 단계가 확인한다. 못 고르면 기존 검색 기반 선정(15~30초)으로.
-      const fast = !taskNeedsExcerpt(input, elements) && process.env.ESSAY_BOOK_PIPELINE !== "legacy" ? await selectBookCandidateFast(input) : null;
+      // 빠른 제안이 가끔 빈 후보를 돌려준다(실측 2026-10-23, 같은 입력 재호출은 정상) — 검색 기반 선정(약 25초)보다 한 번 더 묻는 쪽(약 6초)이 싸다.
+      const tryFast = (!taskNeedsExcerpt(input, elements) || preExcerptOn()) && process.env.ESSAY_BOOK_PIPELINE !== "legacy";
+      const fast = tryFast ? ((await selectBookCandidateFast(input)) ?? (await selectBookCandidateFast(input))) : null;
       const presetBook = fast ?? (await selectBookCandidate(input));
       if (presetBook) input = { ...input, presetBook };
     }
@@ -1570,6 +1628,15 @@ export async function generateEssay(
       };
     }
   }
+
+  // 책 과제의 저자 확인(검색, 약 10초)은 글을 다 쓴 뒤 하던 것을 조사·글쓰기와 동시에 미리 시작한다. 서지가 페이지 본문으로 확인되면 결과를 쓰지 않는다.
+  const presetForAuthor = input.presetBook?.author && !input.previousOutputText && process.env.ESSAY_AUTHOR_PRECHECK !== "off" ? input.presetBook : null;
+  const authorPrecheck = presetForAuthor
+    ? verifyAuthorAttribution(presetForAuthor.title, presetForAuthor.author!).catch((err) => {
+        console.error("[generateEssay] 저자 미리 확인 실패(글 뒤 확인으로)", err);
+        return null;
+      })
+    : null;
 
   let attempt: Attempt;
   try {
@@ -1652,7 +1719,9 @@ export async function generateEssay(
   // 책 과제가 아닌데(인물 탐구 등) 지나가며 책 제목만 언급한 경우는 원문 검증·인용구 승급 검색(약 60초·검색 6회, 실측)을 돌리지 않는다. 직접 인용구가 있으면 그때는 검증한다.
   // 안내문이 원문 구절을 요구하지 않으면(예: 한 줄 서평) 인용구 검색·검증(실측 60~100초)을 돌리지 않는다.
   const excerptRequired = needsExcerpt([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""]);
-  const bookMentionsNeedingVerification = excerptRequired
+  // 구절을 조사와 동시에 미리 확인했으면(성공·실패 모두) 글을 쓴 뒤 다시 확인·재작성하지 않는다 — 아래 applyCanonicalQuotes가 결과를 적용한다.
+  const preExcerpt = input.researchNotes?.excerpt;
+  const bookMentionsNeedingVerification = excerptRequired && !preExcerpt
     ? extractBookMentionsNeedingVerification(attempt.sections, attempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote)
     : [];
   const lengthIssues = checkLengthCompliance(attempt.sections, elements);
@@ -1708,10 +1777,15 @@ export async function generateEssay(
   // 책 과제가 아니면(인물 탐구·신문 등에서 지나가며 언급한 책) 저자 표기 차이로 재생성까지 가는 비용(실측 약 100초)이 이득보다 크다.
   const MAX_AUTHOR_CHECKS = isBookTask && !input.researchNotes?.bookVerified ? 1 : 0;
   const quoteVerificationByTitle = new Map<string, VerificationResult>();
+  if (preExcerpt && input.presetBook) quoteVerificationByTitle.set(normalizeBookTitleKey(input.presetBook.title), preExcerpt);
   const distinctBooksWithAuthor = extractDistinctBookMentions(attempt.sections).filter((b) => b.author);
   const authorMismatches: { title: string; claimedAuthor: string; confirmedAuthor: string; source?: { title: string; url: string } }[] = [];
   for (const book of distinctBooksWithAuthor.slice(0, MAX_AUTHOR_CHECKS)) {
-    const result = await verifyAuthorAttribution(book.title, book.author!);
+    const pre =
+      authorPrecheck && presetForAuthor && normalizeBookTitleKey(book.title) === normalizeBookTitleKey(presetForAuthor.title) && sameAttribution(book.author!, presetForAuthor.author!)
+        ? await authorPrecheck
+        : null;
+    const result = pre ?? (await verifyAuthorAttribution(book.title, book.author!));
     if (result.status === "confirmed_mismatch" && result.confirmedAttribution) {
       authorMismatches.push({
         title: book.title,

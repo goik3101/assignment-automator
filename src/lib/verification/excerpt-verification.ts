@@ -342,7 +342,9 @@ const MAX_ANGLE_RETRIES = Number(process.env.VERIFY_EXCERPT_MAX_ANGLE_RETRIES ??
  */
 export async function verifyExcerpt(
   target: VerificationTarget,
-  queryTemplates: QueryTemplate[] = BOOK_EXCERPT_QUERY_TEMPLATES
+  queryTemplates: QueryTemplate[] = BOOK_EXCERPT_QUERY_TEMPLATES,
+  /** 각도를 바꾼 재조사 횟수 상한. 글을 쓰기 전에 미리 확인할 때는 0 — 실측(2026-10-23): 3회 재조사로 69초·검색 11회가 걸렸다. */
+  maxAngleRetries = MAX_ANGLE_RETRIES
 ): Promise<VerificationResult> {
   console.log(`[verifyExcerpt] target=${JSON.stringify(target)}`);
 
@@ -370,7 +372,7 @@ export async function verifyExcerpt(
       return { verified: false, queriesTried };
     }
 
-    for (let attempt = 1; attempt <= MAX_ANGLE_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= maxAngleRetries; attempt++) {
       console.warn(
         `[verifyExcerpt] 조사 실패(검색은 했음, 각도를 바꿔 ${attempt}/${MAX_ANGLE_RETRIES}차 재시도) — ` +
           `지금까지 시도한 검색어: ${JSON.stringify(queriesTried)}`
@@ -390,7 +392,7 @@ export async function verifyExcerpt(
       if (retryResult.verified) return { ...retryResult, queriesTried };
     }
 
-    console.warn(`[verifyExcerpt] ${MAX_ANGLE_RETRIES}회 각도 재시도 후에도 검증 실패 — 시도한 검색어 전체: ${JSON.stringify(queriesTried)}`);
+    console.warn(`[verifyExcerpt] ${maxAngleRetries}회 각도 재시도 후에도 검증 실패 — 시도한 검색어 전체: ${JSON.stringify(queriesTried)}`);
     return { verified: false, queriesTried };
   } catch (err) {
     console.error("[verifyExcerpt] 검증 호출 실패", err);

@@ -296,3 +296,24 @@ export function confirmBookFromPages(facts: Fact[], pageText: (url: string) => s
   }
   return false;
 }
+
+/** 같은 과제에서 먼저 쓴 완성 원고의 "[n] 각주가 붙은 문장"을 사실 노트로 바꾼다 — 실행 계획(신문 머리기사·만평 등)이
+ * 그 사실을 다시 검색하지 않고 쓰게(실측: 원고 뒤 계획의 조사 호출 11~13초). 확인 실패한 출처의 문장은 쓰지 않는다. */
+export function factsFromCitedText(text: string, sources: { n: number; title: string; url: string; url_valid?: boolean | null }[], max = 14): Fact[] {
+  const byN = new Map(sources.filter((s) => s.url_valid !== false && /^https?:\/\//i.test(s.url)).map((s) => [s.n, s]));
+  const seen = new Set<string>();
+  const out: Fact[] = [];
+  for (const line of text.split("\n")) {
+    if (/^\s*#/.test(line)) continue;
+    for (const sentence of line.match(/[^.!?。]+[.!?。]?(?:\s*\[\d+\])+/g) ?? []) {
+      const n = Number(/\[(\d+)\]/.exec(sentence)?.[1]);
+      const src = byN.get(n);
+      const fact = sentence.replace(/\s*\[\d+\]/g, "").replace(/^[\s\-*•]+/, "").replace(/\*\*/g, "").trim();
+      if (!src || fact.length < 12 || seen.has(fact)) continue;
+      seen.add(fact);
+      out.push({ id: `F${out.length + 1}`, fact, url: src.url, title: src.title });
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
+}

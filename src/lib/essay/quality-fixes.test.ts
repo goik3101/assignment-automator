@@ -187,3 +187,17 @@ test("과제와 무관한 공통 규칙 블록은 넣지 않는다", () => {
     assert.deepEqual(promptRuleScope({ subject: "과학", texts: ["실험"], hasPresetSubject: false }), { personAndPerspective: true, achievement: true, factualRigor: true });
   });
 });
+
+test("원고의 각주 문장을 계획용 사실 노트로 바꾸고, 확인 실패한 출처 문장은 뺀다", async () => {
+  const { factsFromCitedText } = await import("./research-notes.ts");
+  const text = "## 인터뷰\n해방 직후 서울에서는 건국준비위원회가 조직되었다.[1] 느낌 문장이다.\n- 미군은 1945년 9월 인천에 상륙했다.[2]\n잘못된 출처 문장은 이렇게 길게 쓴다.[3]";
+  const facts = factsFromCitedText(text, [
+    { n: 1, title: "A", url: "https://a.kr/1", url_valid: true },
+    { n: 2, title: "B", url: "https://b.kr/2", url_valid: null },
+    { n: 3, title: "C", url: "https://c.kr/3", url_valid: false },
+  ]);
+  assert.deepEqual(facts.map((f) => [f.id, f.fact, f.url]), [
+    ["F1", "해방 직후 서울에서는 건국준비위원회가 조직되었다.", "https://a.kr/1"],
+    ["F2", "미군은 1945년 9월 인천에 상륙했다.", "https://b.kr/2"],
+  ]);
+});

@@ -29,3 +29,12 @@ test("낱말 속 '법'(방법 등)에 과목 추정이 걸리지 않는다", () 
   assert.equal(fallbackSubject("매주", "실험 방법", "탐구 보고서"), "과학");
   assert.equal(fallbackSubject("이", "법 개정 필요성", ""), "사회");
 });
+
+test("모델이 '역사'라고 답하면 그대로 둔다(민주화 운동 카드뉴스가 '운동'·'그림' 때문에 체육·미술로 바뀌던 버그)", () => {
+  assert.equal(fallbackSubject("역사", "민주화 운동 카드 뉴스", "그림과 들어갈 말"), "역사");
+});
+
+test("과목이 의심스러울 때 '민주화 운동'은 체육이 아니라 역사로 본다", () => {
+  assert.equal(fallbackSubject("정보", "민주화 운동 카드 뉴스 만들기"), "정보");
+  assert.equal(fallbackSubject("수행평가 안내", "민주화 운동 카드 뉴스 만들기"), "역사");
+});

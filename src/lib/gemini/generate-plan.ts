@@ -25,7 +25,7 @@ import {
 import { validateSources } from "@/lib/links/validate-sources";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
 import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList, researchForTask, factSheetRules, writeEffort, type ResearchNotes } from "./generate-essay";
-import { attachFactMarkers, factSheetText, mapFactMarkers } from "@/lib/essay/research-notes";
+import { attachFactMarkers, factSheetText, factsFromCitedText, mapFactMarkers } from "@/lib/essay/research-notes";
 import { fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
 import { limitSources, requiredSourceCount } from "@/lib/essay/source-select";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
@@ -85,6 +85,8 @@ export interface GeneratePlanInput {
    * 맞추기"라서, 원문을 그대로 베끼거나 같은 구조로 쓰면 안 된다.
    */
   referenceFactsText?: string;
+  /** referenceFactsText(완성 원고)의 출처 목록 — 있으면 원고의 각주 문장을 사실 노트로 써서 조사(검색)를 다시 하지 않는다. */
+  referenceSources?: SourceRef[];
   /**
    * 만들 외부 제작 요소의 이름. 화면은 외부 제작 요소마다 이 경로를 한 번씩 부르는데, 예전에는 몇 번을 불러도
    * 첫 번째 요소만 만들었다 — 요소가 N개면 같은 계획을 N번 만들어(비용 N배) 2번째부터는 엉뚱한 내용이 보였다.
@@ -393,7 +395,15 @@ export async function generatePlan(
   if (wantSearch && qualityFixesOn() && process.env.PLAN_PIPELINE !== "legacy") {
     const element = targetElement(input);
     const book = studentBookFromInstructions(input.instructions);
-    notes = await researchForTask(
+    // 같은 과제의 완성 원고가 이미 확인한 사실(각주 문장)이 충분하면 그것으로 쓴다 — 사실이 원고와 어긋나지도 않는다. PLAN_REUSE_ESSAY_FACTS=off로 끈다.
+    const reused =
+      input.referenceFactsText && input.referenceSources?.length && process.env.PLAN_REUSE_ESSAY_FACTS !== "off"
+        ? factsFromCitedText(input.referenceFactsText, input.referenceSources)
+        : [];
+    if (reused.length >= 4) {
+      notes = { facts: reused, queries: [] };
+      console.log(`[generatePlan] 완성 원고의 사실 ${reused.length}개 재사용 — 조사 생략`);
+    } else notes = await researchForTask(
       {
         subject: input.subject,
         coreTaskInfo: { ...input.coreTaskInfo, task_elements: element ? [element] : input.coreTaskInfo.task_elements },

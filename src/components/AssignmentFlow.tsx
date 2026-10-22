@@ -9,6 +9,7 @@ import type {
   EssayResult,
   InsufficientDataResult,
   PlanResult,
+  SourceRef,
   TaskElement,
 } from "@/types/task";
 import { EssayPanel, PlanPanel } from "./ResultPanel";
@@ -102,7 +103,8 @@ export default function AssignmentFlow() {
     c: GenerationContext,
     planElements: TextStageRef[],
     fixedSubject?: string,
-    referenceFactsText?: string
+    referenceFactsText?: string,
+    referenceSources?: SourceRef[]
   ) {
     await Promise.all(
       planElements.map(async ({ element, idx }) => {
@@ -118,6 +120,7 @@ export default function AssignmentFlow() {
               turnstileToken: c.turnstileToken,
               fixedSubject,
               referenceFactsText,
+              referenceSources,
               elementLabel: element.label,
             }),
           });
@@ -141,7 +144,7 @@ export default function AssignmentFlow() {
   async function generateTextElements(
     c: GenerationContext,
     textStages: TextStageRef[]
-  ): Promise<{ confirmedSubject?: string; markdown?: string } | undefined> {
+  ): Promise<{ confirmedSubject?: string; markdown?: string; sources?: SourceRef[] } | undefined> {
     try {
       const res = await fetch("/api/tasks/generate/essay", {
         method: "POST",
@@ -190,7 +193,7 @@ export default function AssignmentFlow() {
           setItemError(idx, element, new Error(t("이 단계는 따로 표시되지 않았어요. 위 결과를 확인해 주세요.")));
         }
       }
-      return { confirmedSubject: result.confirmedSubject, markdown: result.markdown };
+      return { confirmedSubject: result.confirmedSubject, markdown: result.markdown, sources: result.sources };
     } catch (err) {
       for (const { element, idx } of textStages) setItemError(idx, element, err);
       return undefined;
@@ -219,7 +222,7 @@ export default function AssignmentFlow() {
       // 두 호출이 병렬로 각자 다른 대상을 골라버리는 인물 혼입을 막기 위해, 원고를 먼저 생성해 확정된 대상을
       // 실행 계획 생성에 그대로 넘긴다(순서상 조금 느려지지만 일관성이 우선).
       const essayOutcome = await generateTextElements(c, textStages);
-      void generatePlanElements(c, planElements, essayOutcome?.confirmedSubject, essayOutcome?.markdown);
+      void generatePlanElements(c, planElements, essayOutcome?.confirmedSubject, essayOutcome?.markdown, essayOutcome?.sources);
     } else {
       void generatePlanElements(c, planElements);
       if (textStages.length > 0) void generateTextElements(c, textStages);

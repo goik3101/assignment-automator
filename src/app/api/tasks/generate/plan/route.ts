@@ -12,7 +12,7 @@ import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { isLimitExempt } from "@/lib/admin/session";
-import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
+import type { AdministrativeInfo, CoreTaskInfo, SourceRef } from "@/types/task";
 
 // N2: 1차 검색+2차 JSON변환의 2단계 구조라 8~12초 걸릴 가능성이 있다고 예상됨.
 // M1에서 이 경로의 latency_ms를 실측해서, Vercel Hobby(10초 컷)로 충분한지
@@ -25,7 +25,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText, elementLabel } =
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText, referenceSources, elementLabel } =
       body as {
         subject: string;
         coreTaskInfo: CoreTaskInfo;
@@ -38,6 +38,8 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
         /** 위와 같은 완성 원고의 전체 텍스트 — 날짜/숫자 등 세부 사실 일관성
          * 방지용(EssayResult.markdown). */
         referenceFactsText?: string;
+        /** 위 완성 원고의 출처 목록(EssayResult.sources) — 원고의 각주 문장을 사실 노트로 재사용한다. */
+        referenceSources?: unknown;
         /** 만들 외부 제작 요소 이름(요소마다 따로 부를 때). 없으면 첫 번째 외부 제작 요소. */
         elementLabel?: string;
       };
@@ -80,6 +82,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
       recentStatGuidance: statGuidance?.instructionText,
       fixedSubject,
       referenceFactsText,
+      referenceSources: sanitizeReferenceSources(referenceSources),
       elementLabel: typeof elementLabel === "string" ? elementLabel.slice(0, 200) : undefined,
     });
 
@@ -147,3 +150,16 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     );
   }
 });
+
+/** 클라이언트가 보낸 출처 목록은 번호·제목·http(s) 주소만 받는다(최대 20개). */
+function sanitizeReferenceSources(raw: unknown): SourceRef[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: SourceRef[] = [];
+  for (const r of raw.slice(0, 20)) {
+    if (!r || typeof r !== "object") continue;
+    const { n, title, url, url_valid } = r as Record<string, unknown>;
+    if (typeof n !== "number" || !Number.isInteger(n) || typeof url !== "string" || !/^https?:\/\//i.test(url) || url.length > 2000) continue;
+    out.push({ n, title: typeof title === "string" ? title.slice(0, 300) : "", url, url_valid: typeof url_valid === "boolean" ? url_valid : null });
+  }
+  return out.length ? out : undefined;
+}
