@@ -336,7 +336,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         </section>
 
         {user && cards.length > 0 && (
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-bold tracking-tight">{t("내 창작물")}</h2>
             <div role="tablist" aria-label={t("보기 분류")} className="flex gap-0.5 rounded-full bg-surface p-1">
               {FILTERS.map((f) => (
@@ -363,7 +363,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
           </p>
         )}
 
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-x-5 gap-y-9">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-x-5 gap-y-9 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-x-7 sm:gap-y-11">
           <NewCard onNew={onNew} />
           {visible.map((c) => (
             <Card key={`${c.kind}-${c.id}`} c={c} onDelete={handleDelete} />
