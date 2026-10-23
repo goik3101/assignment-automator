@@ -336,7 +336,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         </section>
 
         {user && cards.length > 0 && (
-          <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
+          <div className="mx-auto mb-7 flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-bold tracking-tight">{t("내 창작물")}</h2>
             <div role="tablist" aria-label={t("보기 분류")} className="flex gap-0.5 rounded-full bg-surface p-1">
               {FILTERS.map((f) => (
@@ -363,7 +363,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
           </p>
         )}
 
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-x-5 gap-y-9 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-x-7 sm:gap-y-11">
+        <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-x-5 gap-y-9 sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] sm:gap-x-6 sm:gap-y-10">
           <NewCard onNew={onNew} />
           {visible.map((c) => (
             <Card key={`${c.kind}-${c.id}`} c={c} onDelete={handleDelete} />
@@ -371,11 +371,11 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         </div>
 
         {user && cards.length > 0 && visible.length === 0 && (
-          <p className="mt-10 text-sm text-muted">{t("조건에 맞는 결과물이 없어요.")}</p>
+          <p className="mx-auto mt-10 w-full max-w-[1200px] text-sm text-muted">{t("조건에 맞는 결과물이 없어요.")}</p>
         )}
 
         {(empty || !user) && (
-          <section aria-label={t("시작하기")} className="mt-12 max-w-2xl">
+          <section aria-label={t("시작하기")} className="mx-auto mt-12 w-full max-w-[1200px] [&>*]:max-w-2xl">
             <h2 className="text-base font-bold">
               {user ? t("아직 만든 결과물이 없어요") : t("수행평가 안내문을 올려 보세요")}
             </h2>
