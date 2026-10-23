@@ -269,7 +269,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
 
   return (
     <div className="relative flex min-h-[calc(100vh-49px)] flex-col">
-      <div className="flex-1 px-5 pb-16 pt-6 md:px-10">
+      <div className="flex-1 px-5 pb-16 pt-6 md:px-14">
         {/* 오른쪽 위: 검색·설정만 조용히 둔다(제목 대신 아래 인사말이 첫 화면의 중심) */}
         <div className="mb-2 flex items-center justify-end gap-1.5 md:mb-0">
           {searchOpen && (

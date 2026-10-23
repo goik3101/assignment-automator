@@ -317,7 +317,7 @@ export default function AssignmentFlow() {
         )}
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,32%)] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
       <div className="min-w-0 space-y-6">
         {essaySummaryLines.length > 0 && (
           <div className="rounded-2xl border border-border bg-surface p-5">
@@ -396,7 +396,6 @@ export default function AssignmentFlow() {
                 ? t("저장된 결과물이 있어야 쓸 수 있어요.")
                 : t("로그인하면 결과물이 저장되고, 요약·퀴즈·시험·채팅을 쓸 수 있어요.")
           }
-          className="lg:sticky lg:top-6 lg:h-[calc(100vh-10rem)]"
         />
       </div>
 

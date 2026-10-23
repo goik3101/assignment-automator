@@ -33,10 +33,10 @@ function writeCache<T>(key: string, data: T) {
 }
 
 /**
- * 학습 도구(요약·카드·퀴즈·시험)가 서버에서 만들어 온 결과를 불러오는 훅. 같은 과제의 같은 도구는 브라우저에 잠시 저장해 두고
+ * 학습 도구(요약·카드·퀴즈·시험)가 서버에서 만들어 온 결과를 불러오는 훅. 같은 과제의 같은 도구는 브라우저에 저장해 두고
  * (결과물은 바뀌지 않으므로) 다시 열 때 AI를 또 부르지 않는다. "다시 만들기"는 refresh()로.
  */
-export function useStudyData<T>(ref: StudyRef, tool: string, body: Record<string, unknown> = {}, ttlMs = 1000 * 60 * 60 * 24 * 3) {
+export function useStudyData<T>(ref: StudyRef, tool: string, body: Record<string, unknown> = {}, ttlMs = Infinity) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,4 +103,23 @@ export function saveLocal<T>(key: string, value: T) {
   } catch {
     // ignore
   }
+}
+
+/** 이 과제에서 이미 만들어 브라우저에 저장된 학습 자료(도구별 마지막 생성 시각) — 공부 도구의 "내 학습" 목록용. */
+export function listSavedStudy(ref: StudyRef, lang: string): { tool: string; at: number }[] {
+  const head = `${PREFIX}${ref.kind}:${ref.id}:`;
+  const tail = `:${lang}`;
+  const out: { tool: string; at: number }[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(head) || !key.endsWith(tail)) continue;
+      const tool = key.slice(head.length, key.length - tail.length);
+      const entry = JSON.parse(localStorage.getItem(key) ?? "null") as CacheEntry<unknown> | null;
+      if (tool && typeof entry?.at === "number") out.push({ tool, at: entry.at });
+    }
+  } catch {
+    // 저장소가 막힌 환경 — 목록 없이 동작한다.
+  }
+  return out;
 }

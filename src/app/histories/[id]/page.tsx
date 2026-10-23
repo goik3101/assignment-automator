@@ -52,7 +52,7 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
         </p>
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,32%)] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
         <div className="min-w-0">
           {result ? (
             result.type === "essay" ? (
@@ -69,7 +69,6 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
         <StudyRail
           studyRef={{ kind: "history", id: history.id }}
           title={title}
-          className="lg:sticky lg:top-6 lg:h-[calc(100vh-10rem)]"
         />
       </div>
     </div>

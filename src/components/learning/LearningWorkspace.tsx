@@ -584,7 +584,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
         </div>
       </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,32%)] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
       <div className="min-w-0">
       {notice && (
         <p role="alert" className="mb-4 rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
@@ -838,7 +838,6 @@ export default function LearningWorkspace({ id }: { id: string }) {
       <StudyRail
         studyRef={{ kind: "learning", id }}
         title={session.title}
-        className="lg:sticky lg:top-6 lg:h-[calc(100vh-10rem)]"
       />
       </div>
     </div>

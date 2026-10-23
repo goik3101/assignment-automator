@@ -188,10 +188,10 @@ function Paper({ exam, studyRef, onAgain }: { exam: Exam; studyRef: StudyRef; on
   );
 }
 
-export default function ExamModal({ studyRef, onClose }: { studyRef: StudyRef; onClose: () => void }) {
+export default function ExamModal({ studyRef, onClose, reuse = false }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean }) {
   const t = useT();
-  // 시험은 볼 때마다 새 문제가 나오도록 캐시하지 않는다(ttl 0).
-  const { data, error, loading, refresh } = useStudyData<Exam>(studyRef, "exam", {}, 0);
+  // 시험은 볼 때마다 새 문제가 나오도록 캐시하지 않는다(ttl 0). "내 학습"에서 열 때(reuse)만 지난 시험을 다시 푼다.
+  const { data, error, loading, refresh } = useStudyData<Exam>(studyRef, "exam", {}, reuse ? Infinity : 0);
   const [run, setRun] = useState(0);
   return (
     <Modal title={data?.title ?? t("가상 시험")} onClose={onClose} width={680} busy={loading}>
