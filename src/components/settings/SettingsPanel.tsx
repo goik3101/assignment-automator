@@ -10,7 +10,7 @@ import { useAdminStatus } from "@/lib/admin/use-admin-status";
 import type { SettingsTab } from "@/lib/settings/open";
 import { useLang, useT } from "@/lib/i18n";
 import { LANGS } from "@/lib/i18n/core";
-import { AI_MODE_INFO, getAiMode, setAiMode } from "@/lib/ui/ai-pref";
+import { AI_MODE_INFO, getAiMode, getSourceScope, setAiMode, setSourceScope, type SourceScope } from "@/lib/ui/ai-pref";
 import type { AiMode } from "@/lib/questions/questions-pure";
 import {
   DEFAULT_STUDY_PREFS,
@@ -177,6 +177,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
 
   const [theme, setTheme] = useState<"light" | "dark" | null>(null);
   const [mode, setMode] = useState<AiMode>("fast");
+  const [scope, setScope] = useState<SourceScope>("all");
   const [prefs, setPrefs] = useState<StudyPrefs>(DEFAULT_STUDY_PREFS);
 
   useEffect(() => {
@@ -184,6 +185,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
     /* eslint-disable react-hooks/set-state-in-effect */
     setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
     setMode(getAiMode());
+    setScope(getSourceScope());
     setPrefs(loadStudyPrefs());
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
@@ -219,6 +221,8 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
     resetStudyPrefs();
     setAiMode("fast");
     setMode("fast");
+    setSourceScope("all");
+    setScope("all");
     setPrefs(DEFAULT_STUDY_PREFS);
   }
 
@@ -401,7 +405,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
     {
       tab: "ai",
       title: t("만드는 방식"),
-      keywords: [t("빠르게 만들기"), t("나에게 맞추기"), t("제작 전 질문")],
+      keywords: [t("빠르게 만들기"), t("나에게 맞추기"), t("제작 전 질문"), t("출처 범위"), t("국내 출처"), t("국내/해외 출처 포함")],
       node: (
         <Group title={t("만드는 방식")}>
           <Row label={t("제작 전 질문")} desc={t(AI_MODE_INFO[mode].summary)}>
@@ -413,6 +417,23 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
                 setAiMode(m);
               }}
               options={(Object.keys(AI_MODE_INFO) as AiMode[]).map((m) => ({ id: m, label: t(AI_MODE_INFO[m].label) }))}
+            />
+          </Row>
+          <Row
+            label={t("출처 범위")}
+            desc={scope === "domestic" ? t("한국 기관·언론·자료 등 국내 출처만 찾아 써요.") : t("국내 출처와 해외 출처를 함께 찾아 써요.")}
+          >
+            <Pills
+              label={t("출처 범위")}
+              value={scope}
+              onChange={(s) => {
+                setScope(s);
+                setSourceScope(s);
+              }}
+              options={[
+                { id: "domestic", label: t("국내 출처") },
+                { id: "all", label: t("국내/해외 출처 포함") },
+              ]}
             />
           </Row>
         </Group>

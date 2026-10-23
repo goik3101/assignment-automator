@@ -121,6 +121,11 @@ export const shell: Record<string, string> = {
   "불편한 점이나 바라는 기능을 알려 주세요. 보내 주신 내용은 서비스 개선에만 써요.": "Tell us what's inconvenient or what you'd like. We only use it to improve the service.",
   "이 기기의 AI 설정을 기본값으로 되돌립니다.": "Reset the AI settings on this device to their defaults.",
   "기본 설정 사용": "Use defaults",
+  "출처 범위": "Source range",
+  "국내 출처": "Korean sources",
+  "국내/해외 출처 포함": "Korean + international",
+  "한국 기관·언론·자료 등 국내 출처만 찾아 써요.": "Uses only Korean sources such as Korean institutions, media and archives.",
+  "국내 출처와 해외 출처를 함께 찾아 써요.": "Uses both Korean and international sources.",
 
   // 설정: 일반
   "문의·피드백": "Feedback",

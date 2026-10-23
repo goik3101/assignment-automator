@@ -26,3 +26,23 @@ export const AI_MODE_INFO: Record<AiMode, { label: string; summary: string }> = 
   fast: { label: "빠르게 만들기", summary: "꼭 필요한 질문만(최대 2개) 하고 바로 만들어요." },
   personal: { label: "나에게 맞추기", summary: "내 선택과 경험을 더 물어보고(최대 4개) 나에게 맞춰 만들어요." },
 };
+
+// AI 설정의 "출처 범위": 국내 출처만 / 국내·해외 출처 포함(기본). 원고·계획 생성 요청에 sourceScope로 실어 보낸다.
+export type SourceScope = "domestic" | "all";
+const SCOPE_KEY = "studed-source-scope";
+
+export function getSourceScope(): SourceScope {
+  try {
+    return localStorage.getItem(SCOPE_KEY) === "domestic" ? "domestic" : "all";
+  } catch {
+    return "all";
+  }
+}
+
+export function setSourceScope(scope: SourceScope) {
+  try {
+    localStorage.setItem(SCOPE_KEY, scope);
+  } catch {
+    // 저장소를 못 쓰면 이번 방문에만 적용된다.
+  }
+}

@@ -19,6 +19,7 @@ import { useT } from "@/lib/i18n";
 import HomeDashboard, { type NewPrefill } from "./home/HomeDashboard";
 import NewCreationModal, { type AiStartPayload } from "./creation/NewCreationModal";
 import { consumeOpenNewFlag, onOpenNewCreation } from "@/lib/ui/new-creation";
+import { getSourceScope } from "@/lib/ui/ai-pref";
 import { isPresentationTask } from "@/lib/util/presentation";
 
 type Step = "home" | "result";
@@ -122,6 +123,7 @@ export default function AssignmentFlow() {
               referenceFactsText,
               referenceSources,
               elementLabel: element.label,
+              sourceScope: getSourceScope(),
             }),
           });
           if (!res.ok) throw new Error((await res.json()).error ?? t("생성에 실패했어요."));
@@ -155,6 +157,7 @@ export default function AssignmentFlow() {
           adminInfo: c.adminInfo,
           instructions: c.instructions,
           turnstileToken: c.turnstileToken,
+          sourceScope: getSourceScope(),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? t("생성에 실패했어요."));
@@ -238,7 +241,7 @@ export default function AssignmentFlow() {
     const res = await fetch(`/api/tasks/${submissionId}/regenerate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ revisionInstructions }),
+      body: JSON.stringify({ revisionInstructions, sourceScope: getSourceScope() }),
     });
     if (!res.ok) throw new Error((await res.json()).error ?? t("다시 만들지 못했어요."));
 
