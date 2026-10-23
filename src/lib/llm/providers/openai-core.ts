@@ -1,5 +1,6 @@
 // OpenAI Responses API용 순수 함수들 — 요청 만들기, 응답 정규화(본문 링크 → 출처 위치), 오류 분류. 네트워크 호출 없음(테스트 가능).
 import { toOpenAiSchema } from "../schema-convert.ts";
+import { DOMESTIC_SEARCH_RULE } from "../../essay/source-scope.ts";
 import { LlmError, type GroundingChunkLike, type GroundingSupportLike, type LlmRequest, type SearchGrounding } from "../types.ts";
 
 // ---- 요청 ---------------------------------------------------------------------------------
@@ -16,7 +17,7 @@ export function rejectsTemperature(model: string): boolean {
 
 export const DEFAULT_MAX_OUTPUT = { plain: 6000, search: 10000 };
 
-export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutputTokens?: number; searchContextSize?: string } = {}): Record<string, unknown> {
+export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutputTokens?: number; searchContextSize?: string; sourceScope?: "domestic" | "all" } = {}): Record<string, unknown> {
   const parts = typeof req.prompt === "string" ? [{ text: req.prompt }] : req.prompt;
   const content = parts.map((p) =>
     "text" in p
@@ -47,7 +48,14 @@ export function buildRequestBody(req: LlmRequest, model: string, opts: { maxOutp
     body.text = { format: { type: "json_schema", name: sanitizeName(req.label), strict: true, schema: toOpenAiSchema(req.schema) } };
   }
   if (req.search) {
-    body.tools = [{ type: "web_search", search_context_size: opts.searchContextSize ?? "low" }];
+    // 국내 출처 범위: 검색 위치를 한국으로 두고, 한국 사이트만 근거로 쓰라고 지시한다(해외 출처는 생성 단계에서도 걸러낸다).
+    const domestic = opts.sourceScope === "domestic";
+    body.tools = [
+      { type: "web_search", search_context_size: opts.searchContextSize ?? "low", ...(domestic ? { user_location: { type: "approximate", country: "KR" } } : {}) },
+    ];
+    if (domestic) body.instructions = body.instructions ? `${body.instructions}
+
+${DOMESTIC_SEARCH_RULE}` : DOMESTIC_SEARCH_RULE;
     body.tool_choice = req.search.force ? "required" : "auto";
     if (req.search.maxCalls) body.max_tool_calls = req.search.maxCalls;
     // 모델이 인용하지 않아도 검색이 열어 본 출처 목록을 받는다(조사 노트 검증·출처 복구용).

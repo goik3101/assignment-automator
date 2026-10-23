@@ -1,5 +1,7 @@
 import { dedupeAdjacentMarkers, cleanMarkers } from "./citation-cleanup";
 import { generate } from "@/lib/llm";
+import { currentSourceScope } from "@/lib/llm/scope";
+import { isDomesticUrl, keepInScope } from "@/lib/essay/source-scope";
 import { needsFactSearch } from "@/lib/llm/search-policy";
 import { BOOK_TASK_HINT_PATTERN } from "./book-hint";
 import { Type, type Schema } from "@google/genai";
@@ -1078,7 +1080,10 @@ ${
     }
     const fromRaw = !parsedBook && res.rawText ? parseFactJson(res.rawText) : [];
     const rawFacts = parsedBook ? parsedBook.facts : fromRaw.length > 0 ? fromRaw : parseFactJson(res.text);
-    const facts = buildFacts(rawFacts, res.grounding?.consulted);
+    // 국내 출처 범위면 해외 페이지에서 나온 사실은 글쓰기 전에 뺀다(출처 범위 설정 — source-scope.ts).
+    const scopedRaw = keepInScope(rawFacts, currentSourceScope());
+    if (scopedRaw.length < rawFacts.length) console.warn(`[generateEssay] 국내 출처 범위: 해외 페이지 사실 ${rawFacts.length - scopedRaw.length}개 제외`);
+    const facts = buildFacts(scopedRaw, res.grounding?.consulted);
     const queries = res.grounding?.queries ?? [];
     if (rawFacts.length === 0) {
       console.warn(`[generateEssay] 조사 응답에서 사실 목록을 읽지 못함: 길이=${res.text.length} 앞부분=${JSON.stringify(res.text.slice(0, 160))} 끝부분=${JSON.stringify(res.text.slice(-80))}`);
@@ -2347,6 +2352,14 @@ export async function generateEssay(
   }
 
   // 출처 목록에서 빠진 출처(검증 실패·약한 출처)를 가리키는 각주가 본문에 남으면 눌러 볼 근거가 없다 — 최종 목록에 있는 번호만 남기고 붙어 있는 중복 각주도 정리한다(실측: [5][2][5], 존재하지 않는 [8]).
+  // 국내 출처 범위: 어느 경로(조사·검색 한 번에 쓰기·구절 확인)로 들어왔든 해외 출처는 최종 목록과 본문 번호에서 뺀다 — 아래 cleanMarkers가 남은 번호를 정리한다.
+  if (currentSourceScope() === "domestic") {
+    const foreign = attempt.sources.filter((x) => !isDomesticUrl(x.url));
+    if (foreign.length > 0) {
+      console.warn(`[generateEssay] 국내 출처 범위: 해외 출처 ${foreign.length}개 제거 ${JSON.stringify(foreign.map((x) => x.url).slice(0, 5))}`);
+      attempt = { ...attempt, sources: attempt.sources.filter((x) => isDomesticUrl(x.url)) };
+    }
+  }
   {
     const finalNs = new Set(attempt.sources.map((x) => x.n));
     attempt = { ...attempt, sections: attempt.sections.map((sec) => ({ ...sec, content: cleanMarkers(sec.content, finalNs) })) };

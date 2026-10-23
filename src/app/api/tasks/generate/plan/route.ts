@@ -1,5 +1,7 @@
 import { validateCoreTaskInfo } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
+import { withSourceScope } from "@/lib/llm/scope";
+import { parseSourceScope } from "@/lib/essay/source-scope";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { generatePlan } from "@/lib/gemini/generate-plan";
@@ -25,7 +27,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText, referenceSources, elementLabel } =
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText, referenceSources, elementLabel, sourceScope } =
       body as {
         subject: string;
         coreTaskInfo: CoreTaskInfo;
@@ -40,6 +42,8 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
         referenceFactsText?: string;
         /** 위 완성 원고의 출처 목록(EssayResult.sources) — 원고의 각주 문장을 사실 노트로 재사용한다. */
         referenceSources?: unknown;
+        /** AI 설정의 출처 범위("domestic" = 국내 출처만). */
+        sourceScope?: unknown;
         /** 만들 외부 제작 요소 이름(요소마다 따로 부를 때). 없으면 첫 번째 외부 제작 요소. */
         elementLabel?: string;
       };
@@ -74,7 +78,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     // 새 회피 로직을 따로 안 만들고 recommendation-diversity.ts를 재사용.
     const statGuidance = await buildRecommendationGuidance("statistic", { scopeKey: cluster.clusterId });
 
-    const result = await generatePlan({
+    const result = await withSourceScope(parseSourceScope(sourceScope), () => generatePlan({
       subject,
       coreTaskInfo,
       instructions,
@@ -84,7 +88,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
       referenceFactsText,
       referenceSources: sanitizeReferenceSources(referenceSources),
       elementLabel: typeof elementLabel === "string" ? elementLabel.slice(0, 200) : undefined,
-    });
+    }));
 
     const response =
       result.type === "plan"

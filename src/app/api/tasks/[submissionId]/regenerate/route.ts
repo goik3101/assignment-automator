@@ -1,4 +1,6 @@
 import { routeUsage } from "@/lib/llm/route-usage";
+import { withSourceScope } from "@/lib/llm/scope";
+import { parseSourceScope } from "@/lib/essay/source-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { generateEssay } from "@/lib/gemini/generate-essay";
 import { generatePlan } from "@/lib/gemini/generate-plan";
@@ -8,7 +10,7 @@ import { getCurrentHistoryBySubmission, saveHistory } from "@/lib/histories/save
 import { getServerSupabase } from "@/lib/supabase/server-client";
 import { enforceRegenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
 import { isLimitExempt } from "@/lib/admin/session";
-import type { EssayResult, PlanResult } from "@/types/task";
+import type { EssayResult, InsufficientDataResult, PlanResult } from "@/types/task";
 
 // F6/9-5: 재생성. 로그인 사용자만, 하루 1회. 이전 결과(user_histories, submissionId로
 // 조회)에서 subject/coreTaskInfo/instructions/clusterId를 그대로 가져오므로,
@@ -18,7 +20,7 @@ export const maxDuration = 180;
 export const POST = routeUsage("regenerate", async function POST(req: NextRequest, ctx: RouteContext<"/api/tasks/[submissionId]/regenerate">) {
   try {
     const { submissionId } = await ctx.params;
-    const { revisionInstructions } = (await req.json()) as { revisionInstructions?: string };
+    const { revisionInstructions, sourceScope } = (await req.json()) as { revisionInstructions?: string; sourceScope?: unknown };
 
     const supabase = await getServerSupabase();
     const {
@@ -70,10 +72,9 @@ export const POST = routeUsage("regenerate", async function POST(req: NextReques
       previousOutputText,
     };
 
-    const result =
-      history.output_type === "essay"
-        ? await generateEssay(generateArgs)
-        : await generatePlan(generateArgs);
+    const result = await withSourceScope<EssayResult | PlanResult | InsufficientDataResult>(parseSourceScope(sourceScope), () =>
+      history.output_type === "essay" ? generateEssay(generateArgs) : generatePlan(generateArgs)
+    );
 
     if (result.type === "insufficient_data") {
       return NextResponse.json(result);

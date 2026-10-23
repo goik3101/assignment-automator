@@ -1,5 +1,7 @@
 import { cleanMarkers } from "./citation-cleanup";
 import { generate } from "@/lib/llm";
+import { currentSourceScope } from "@/lib/llm/scope";
+import { isDomesticUrl, keepInScope } from "@/lib/essay/source-scope";
 import { needsFactSearch } from "@/lib/llm/search-policy";
 import { collectUserNumbers, findStatClaimCandidates } from "./stat-claims";
 import {
@@ -398,7 +400,7 @@ export async function generatePlan(
     // 같은 과제의 완성 원고가 이미 확인한 사실(각주 문장)이 충분하면 그것으로 쓴다 — 사실이 원고와 어긋나지도 않는다. PLAN_REUSE_ESSAY_FACTS=off로 끈다.
     const reused =
       input.referenceFactsText && input.referenceSources?.length && process.env.PLAN_REUSE_ESSAY_FACTS !== "off"
-        ? factsFromCitedText(input.referenceFactsText, input.referenceSources)
+        ? factsFromCitedText(input.referenceFactsText, keepInScope(input.referenceSources, currentSourceScope()))
         : [];
     if (reused.length >= 4) {
       notes = { facts: reused, queries: [] };
@@ -637,6 +639,15 @@ export async function generatePlan(
     if (notes.removed + urls.removed + reported.changed + josa.changed > 0)
       console.warn(`[generatePlan] 작업 메모 ${notes.removed}개·본문 주소 ${urls.removed}개 제거, 전달형 꼬리 ${reported.changed}개·제목 조사 ${josa.changed}개 정리`);
     content = josa.content;
+  }
+  // 국내 출처 범위: 해외 출처와 그 각주 번호를 뺀다(조사 단계에서 이미 걸렀어도 검색 한 번에 쓰기·통계 재확인 경로로 들어올 수 있다).
+  if (currentSourceScope() === "domestic") {
+    const foreignNs = new Set(validatedSources.filter((s) => !isDomesticUrl(s.url)).map((s) => s.n));
+    if (foreignNs.size > 0) {
+      console.warn(`[generatePlan] 국내 출처 범위: 해외 출처 ${foreignNs.size}개 제거`);
+      content = stripInvalidCitationMarkers(content, foreignNs);
+      validatedSources = validatedSources.filter((s) => !foreignNs.has(s.n));
+    }
   }
   if (validatedSources.length > 0) {
     const wanted = requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]);

@@ -1,5 +1,6 @@
 import { restoreOptional } from "../schema-convert.ts";
 import { LlmError, type LlmProvider, type LlmRequest, type LlmResponse, type ModelRole } from "../types.ts";
+import { currentSourceScope } from "../scope.ts";
 import { buildRequestBody, checkBody, classifyHttpError, normalizeResponse, type OpenAiResponse } from "./openai-core.ts";
 
 // OpenAI Responses API 제공자(SDK 없이 fetch로 직접 호출 — 의존성을 늘리지 않는다).
@@ -54,7 +55,7 @@ export const openaiProvider: LlmProvider = {
   async generate(req: LlmRequest, model: string): Promise<LlmResponse> {
     const search = !!req.search;
     const contextSize = process.env.OPENAI_SEARCH_CONTEXT_SIZE ?? "low";
-    let body = buildRequestBody(req, model, { searchContextSize: contextSize });
+    let body = buildRequestBody(req, model, { searchContextSize: contextSize, sourceScope: currentSourceScope() });
     const tier = wantedTier();
     if (tier) body = { ...body, service_tier: tier };
     for (let pass = 0; pass < 3; pass++) {

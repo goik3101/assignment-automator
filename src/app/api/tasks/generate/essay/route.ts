@@ -1,5 +1,7 @@
 import { validateCoreTaskInfo } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
+import { withSourceScope } from "@/lib/llm/scope";
+import { parseSourceScope } from "@/lib/essay/source-scope";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { generateEssay } from "@/lib/gemini/generate-essay";
@@ -26,7 +28,9 @@ export const POST = routeUsage("essay", async function POST(req: NextRequest) {
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken } = body as {
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, sourceScope } = body as {
+      /** AI 설정의 출처 범위("domestic" = 국내 출처만). 없거나 다른 값이면 국내·해외 모두. */
+      sourceScope?: unknown;
       subject: string;
       coreTaskInfo: CoreTaskInfo;
       adminInfo?: AdministrativeInfo;
@@ -71,7 +75,7 @@ export const POST = routeUsage("essay", async function POST(req: NextRequest) {
     // 관리자 테스트 실행은 실제 추천 통계에서 빠지도록 표시한다(x-studed-test 헤더는 관리자 요청에서만 인정).
     const isTest = admin && req.headers.get("x-studed-test") === "1";
 
-    const result = await generateEssay({
+    const result = await withSourceScope(parseSourceScope(sourceScope), () => generateEssay({
       subject,
       coreTaskInfo,
       instructions,
@@ -80,7 +84,7 @@ export const POST = routeUsage("essay", async function POST(req: NextRequest) {
       recentSubjectGuidance: subjectGuidance?.instructionText,
       // 자동 선정: 같은 수행평가(cluster)·같은 사용자 기록으로 코드가 후보를 골라 본문 생성에 고정한다.
       selection: { userId: identity.userId, scopeKey: cluster.clusterId },
-    });
+    }));
 
     const response =
       result.type === "essay"
