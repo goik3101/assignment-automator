@@ -45,7 +45,7 @@ export default function SidebarQuickActions({
       <button
         onClick={() => {
           onNavigate?.();
-          openSettings("general");
+          openSettings("feedback");
         }}
         className={item}
         title={t("피드백/문의")}

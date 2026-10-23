@@ -12,7 +12,7 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8 md:px-10">
       <h1 className="mb-6 text-2xl font-bold tracking-tight">{t("설정")}</h1>
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="h-[min(720px,calc(100vh-10rem))] overflow-hidden rounded-3xl border border-border bg-background">
         <SettingsPanel tab={tab} onTab={setTab} />
       </div>
     </div>

@@ -260,9 +260,9 @@ export default function StudyRail({
         </section>
       </div>
 
-      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} />}
-      {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} />}
-      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} />}
+      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
+      {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
+      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
       {studyRef && tool?.id === "exam" && <ExamModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
     </aside>
   );

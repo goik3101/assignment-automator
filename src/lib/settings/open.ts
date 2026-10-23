@@ -1,4 +1,4 @@
-export type SettingsTab = "general" | "account" | "personal" | "ai";
+export type SettingsTab = "general" | "account" | "personal" | "ai" | "feedback";
 
 const EVENT = "studed:open-settings";
 

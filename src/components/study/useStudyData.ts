@@ -8,25 +8,28 @@ export type StudyRef = { kind: "history" | "learning" | "submission"; id: string
 interface CacheEntry<T> {
   at: number;
   data: T;
+  /** 만들 때 쓴 설정(prefsSignature). 설정이 바뀌면 "만들기"는 새로 만든다. */
+  sig?: string;
 }
 
 const PREFIX = "studed-study:";
 
-function readCache<T>(key: string, ttlMs: number): CacheEntry<T> | null {
+function readCache<T>(key: string, ttlMs: number, sig?: string, anySig = false): CacheEntry<T> | null {
   try {
     const raw = localStorage.getItem(PREFIX + key);
     if (!raw) return null;
     const entry = JSON.parse(raw) as CacheEntry<T>;
     if (typeof entry.at !== "number" || Date.now() - entry.at > ttlMs) return null;
+    if (!anySig && sig !== undefined && entry.sig !== sig) return null;
     return entry;
   } catch {
     return null;
   }
 }
 
-function writeCache<T>(key: string, data: T) {
+function writeCache<T>(key: string, data: T, sig?: string) {
   try {
-    localStorage.setItem(PREFIX + key, JSON.stringify({ at: Date.now(), data } satisfies CacheEntry<T>));
+    localStorage.setItem(PREFIX + key, JSON.stringify({ at: Date.now(), data, sig } satisfies CacheEntry<T>));
   } catch {
     // 저장소가 가득 찼거나 막힌 환경 — 캐시 없이 동작한다.
   }
@@ -35,8 +38,16 @@ function writeCache<T>(key: string, data: T) {
 /**
  * 학습 도구(요약·카드·퀴즈·시험)가 서버에서 만들어 온 결과를 불러오는 훅. 같은 과제의 같은 도구는 브라우저에 저장해 두고
  * (결과물은 바뀌지 않으므로) 다시 열 때 AI를 또 부르지 않는다. "다시 만들기"는 refresh()로.
+ * sig는 만들 때 쓴 AI 설정 — 설정이 바뀌었으면 저장된 자료 대신 새로 만든다. reuse(= "내 학습"에서 열기)면 설정과 상관없이 저장된 자료를 연다.
  */
-export function useStudyData<T>(ref: StudyRef, tool: string, body: Record<string, unknown> = {}, ttlMs = Infinity) {
+export function useStudyData<T>(
+  ref: StudyRef,
+  tool: string,
+  body: Record<string, unknown> = {},
+  ttlMs = Infinity,
+  opts: { sig?: string; reuse?: boolean } = {}
+) {
+  const { sig, reuse = false } = opts;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +61,7 @@ export function useStudyData<T>(ref: StudyRef, tool: string, body: Record<string
     async (force: boolean) => {
       setError(null);
       if (!force) {
-        const hit = readCache<T>(cacheKey, ttlMs);
+        const hit = readCache<T>(cacheKey, ttlMs, sig, reuse);
         if (hit) {
           setData(hit.data);
           setFromCache(hit.at);
@@ -69,14 +80,14 @@ export function useStudyData<T>(ref: StudyRef, tool: string, body: Record<string
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((json as { error?: string }).error ?? "불러오지 못했어요.");
         setData(json as T);
-        writeCache(cacheKey, json as T);
+        writeCache(cacheKey, json as T, sig);
       } catch (err) {
         setError(err instanceof Error ? err.message : "불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
       } finally {
         setLoading(false);
       }
     },
-    [cacheKey, ref, tool, ttlMs]
+    [cacheKey, ref, tool, ttlMs, sig, reuse]
   );
 
   useEffect(() => {

@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button";
 import StudyState, { CachedNote } from "./StudyState";
 import { useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
+import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
 
 interface Card {
   front: string;
@@ -153,9 +154,14 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
   );
 }
 
-export default function FlashcardsModal({ studyRef, onClose }: { studyRef: StudyRef; onClose: () => void }) {
+export default function FlashcardsModal({ studyRef, onClose, reuse = false }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean }) {
   const t = useT();
-  const { data, error, loading, fromCache, refresh } = useStudyData<{ cards: Card[] }>(studyRef, "flashcards", { count: 10 });
+  // 설정 > AI 설정의 카드 수. 창이 열릴 때 한 번 읽는다.
+  const [prefs] = useState(() => loadStudyPrefs().flashcards);
+  const { data, error, loading, fromCache, refresh } = useStudyData<{ cards: Card[] }>(studyRef, "flashcards", { prefs }, Infinity, {
+    sig: prefsSignature(prefs),
+    reuse,
+  });
   const [seed, setSeed] = useState(0);
   const cards = useMemo(() => (data ? (seed === 0 ? data.cards : shuffled(data.cards)) : []), [data, seed]);
   return (
