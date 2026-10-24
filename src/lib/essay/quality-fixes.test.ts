@@ -213,3 +213,9 @@ test("문장 앞 서수 나열은 이음말로 바꾸고, 목록 줄의 표지�
   // 문단마다 나뉜 나열도 하나로 본다
   assert.equal(stripOrdinalEnumerators("첫째, A다.\n\n둘째, B다.\n\n셋째, C다.").content, "먼저 A다.\n\n다음으로 B다.\n\n마지막으로 C다.");
 });
+
+test("강연·대화를 듣고 정리하는 단계는 기록지 규칙(지어내지 말고 빈칸)으로 본다", async () => {
+  const { inferFormKinds } = await import("./form-rules.ts");
+  assert.deepEqual(inferFormKinds({ label: "화법의 원리 파악하기", description: "강연 또는 대화를 듣고 맥락을 고려하여 말하기의 내용을 파악한다." }), ["observation_record"]);
+  assert.notDeepEqual(inferFormKinds({ label: "문제 해결 방안 쓰기", description: "현안을 담은 기사에서 사회 문제를 찾아 해결 방안을 쓴다." }), ["observation_record"]);
+});

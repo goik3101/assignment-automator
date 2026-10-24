@@ -10,7 +10,7 @@ export type FormKind = "speech" | "report" | "experiment" | "debate" | "creative
 // 예전 "report" 규칙은 감상문·독후감·탐구 보고서에도 논설문 틀(문제 제기→근거→해석→결론, 사실·해석 구분)을 씌웠다.
 // 실측(2026-10-20): 독서 감상문이 "…라는 주장에 설득됐다 / 근거로는 / 해석하자면 / 결론적으로"로, 논설문이 "사실(통계)은 …" 같은 이름표로 나왔다.
 // 품질 개선(ESSAY_QUALITY_FIXES, 기본 켜짐)에서는 글 종류마다 따로 준다. 끄면 예전 RULES 그대로.
-const QUALITY_RULES: Partial<Record<FormKind, { test: RegExp; labelTest?: RegExp; text: string }>> = {
+const QUALITY_RULES: Partial<Record<FormKind, { test: RegExp; labelTest?: RegExp; descTest?: RegExp; text: string }>> = {
   report: {
     test: /보고서|소논문|리포트/,
     text: "학생이 제출할 보고서다. 안내문이 정한 항목 순서를 따르되, 항목마다 핵심 사실(누가·언제·무엇을·왜)을 설명하고 그 의미나 영향을 이어지는 문단으로 쓸 것. 사실을 한 줄씩 나열하지 말고, 앞뒤 사실을 원인·결과·비교로 연결해 읽히는 글로 쓸 것. \"(해석)\", \"사실:\" 같은 이름표는 쓰지 말 것.",
@@ -25,7 +25,7 @@ const QUALITY_RULES: Partial<Record<FormKind, { test: RegExp; labelTest?: RegExp
   },
 };
 
-const RULES: Record<FormKind, { test: RegExp; labelTest?: RegExp; text: string }> = {
+const RULES: Record<FormKind, { test: RegExp; labelTest?: RegExp; descTest?: RegExp; text: string }> = {
   speech: {
     test: /발표|대본|스피치|연설|speech|presentation/i,
     text: "말로 전하는 글이다. 짧은 문장, 도입(주제·목적) → 본론(핵심 2~3가지) → 마무리 구조, 청중에게 말하는 표현을 쓰되 읽는 글처럼 길고 무거운 문장은 피할 것. 슬라이드가 요구되면 장면별로 나눠 제시하고 슬라이드에 넣을 문구와 말할 내용을 구분할 것.",
@@ -57,9 +57,11 @@ const RULES: Record<FormKind, { test: RegExp; labelTest?: RegExp; text: string }
     text: "학생 본인의 경험과 생각을 쓰는 글이다. 학생이 밝히지 않은 경험·감정을 사실처럼 지어내지 말고, 조사·제작 과정에서 실제로 확인된 사실에서 출발한 초안으로 쓰되 \"(학생 감상 초안 — 본인 생각에 맞게 고쳐 쓰세요)\"로 표시할 것.",
   },
   // 실측(2026-10-24): 국어 "청중기록지"를 아직 하지 않은 발표를 본 것처럼("발표자는 눈빛과 손동작을 적절히 사용해…") 지어내고 감상 문장에 각주까지 달았다.
+  // 실측(2026-10-24, 화작): "강연 또는 대화를 듣고 내용 파악하기" 단계에서 학생이 듣지도 않은 강연("서울시 청년 주거…43조원")을 지어냈다 — 들은 활동을 정리하는 단계도 같은 규칙.
   observation_record: {
     test: /(?!)/,
     labelTest: /청중\s*기록|관찰\s*기록|기록\s*지|동료\s*평가|상호\s*평가|평가\s*지|모니터링|듣기\s*활동지/,
+    descTest: /(강연|대화|연설|발표|토론|영상|강의)(을|를)?\s*(\S+\s+)?(듣고|보고|시청하고|들은\s*(뒤|후))/,
     text: "다른 사람의 발표·활동을 보면서 학생이 직접 채우는 기록지다. 아직 일어나지 않은 발표나 다른 학생의 말·태도·점수·평가를 지어내지 말 것. 안내문이 정한 칸(항목)마다 무엇을 어떻게 적으면 되는지 한두 문장의 작성 요령과 예시 질문을 쓰고, 실제 관찰 내용이 들어갈 자리는 \"[직접 작성: 무엇]\" 빈칸으로 남길 것. 출처 번호는 붙이지 말 것.",
   },
   // 아래 둘은 품질 개선이 켜졌을 때만 쓰인다(activeRules).
@@ -67,7 +69,7 @@ const RULES: Record<FormKind, { test: RegExp; labelTest?: RegExp; text: string }
   book_response: { test: /(?!)/, text: "" },
 };
 
-function activeRules(): Record<FormKind, { test: RegExp; labelTest?: RegExp; text: string }> {
+function activeRules(): Record<FormKind, { test: RegExp; labelTest?: RegExp; descTest?: RegExp; text: string }> {
   return qualityFixesOn() ? { ...RULES, ...QUALITY_RULES } : RULES;
 }
 
@@ -78,7 +80,7 @@ export function inferFormKinds(el: { label: string; description: string }): Form
   for (const kind of Object.keys(rules) as FormKind[]) {
     const r = rules[kind];
     // 소감·선정 이유는 단계 이름에서 직접 드러날 때만(설명 안의 "느낀 점" 언급은 다른 항목일 수 있다)
-    const hit = r.labelTest ? r.labelTest.test(el.label) : r.test.test(`${el.label} ${el.description}`);
+    const hit = r.labelTest ? r.labelTest.test(el.label) || (qualityFixesOn() && !!r.descTest?.test(el.description)) : r.test.test(`${el.label} ${el.description}`);
     if (hit) found.push(kind);
   }
   // 기록지는 그 규칙 하나만(설명에 "발표를 듣고"가 있어도 발표 대본 규칙을 섞지 않는다).

@@ -105,10 +105,11 @@ export default function AssignmentFlow() {
     planElements: TextStageRef[],
     fixedSubject?: string,
     referenceFactsText?: string,
-    referenceSources?: SourceRef[]
+    referenceSources?: SourceRef[],
+    generationTicket?: string
   ) {
-    await Promise.all(
-      planElements.map(async ({ element, idx }) => {
+    // 같은 과제의 계획 요청은 표(generationTicket)를 실어 하루 생성 횟수를 한 번만 쓴다. 표가 없고 계획이 여러 개면 첫 계획이 받은 표로 나머지를 보낸다.
+    const runOne = async ({ element, idx }: TextStageRef, ticket?: string): Promise<string | undefined> => {
         try {
           const res = await fetch("/api/tasks/generate/plan", {
             method: "POST",
@@ -124,17 +125,26 @@ export default function AssignmentFlow() {
               referenceSources,
               elementLabel: element.label,
               sourceScope: getSourceScope(),
+              generationTicket: ticket,
             }),
           });
           if (!res.ok) throw new Error((await res.json()).error ?? t("생성에 실패했어요."));
-          const result: EssayResult | PlanResult | InsufficientDataResult = await res.json();
+          const result: (EssayResult | PlanResult | InsufficientDataResult) & { generationTicket?: string } = await res.json();
           if (result.type === "insufficient_data") setItemInsufficient(idx, element, result.reason);
           else setItemDone(idx, element, result);
+          return result.generationTicket;
         } catch (err) {
           setItemError(idx, element, err);
+          return undefined;
         }
-      })
-    );
+    };
+    if (generationTicket || planElements.length <= 1) {
+      await Promise.all(planElements.map((ref) => runOne(ref, generationTicket)));
+      return;
+    }
+    const [first, ...rest] = planElements;
+    const ticket = await runOne(first);
+    await Promise.all(rest.map((ref) => runOne(ref, ticket)));
   }
 
   // 완성 원고로 제출 가능한 요소(고민쓰기→친구의 고민 분석→책처방전→편지처럼 이어지는 서술형)를 전부 한 번의
@@ -146,7 +156,7 @@ export default function AssignmentFlow() {
   async function generateTextElements(
     c: GenerationContext,
     textStages: TextStageRef[]
-  ): Promise<{ confirmedSubject?: string; markdown?: string; sources?: SourceRef[] } | undefined> {
+  ): Promise<{ confirmedSubject?: string; markdown?: string; sources?: SourceRef[]; generationTicket?: string } | undefined> {
     try {
       const res = await fetch("/api/tasks/generate/essay", {
         method: "POST",
@@ -196,7 +206,7 @@ export default function AssignmentFlow() {
           setItemError(idx, element, new Error(t("이 단계는 따로 표시되지 않았어요. 위 결과를 확인해 주세요.")));
         }
       }
-      return { confirmedSubject: result.confirmedSubject, markdown: result.markdown, sources: result.sources };
+      return { confirmedSubject: result.confirmedSubject, markdown: result.markdown, sources: result.sources, generationTicket: (result as { generationTicket?: string }).generationTicket };
     } catch (err) {
       for (const { element, idx } of textStages) setItemError(idx, element, err);
       return undefined;
@@ -225,7 +235,7 @@ export default function AssignmentFlow() {
       // 두 호출이 병렬로 각자 다른 대상을 골라버리는 인물 혼입을 막기 위해, 원고를 먼저 생성해 확정된 대상을
       // 실행 계획 생성에 그대로 넘긴다(순서상 조금 느려지지만 일관성이 우선).
       const essayOutcome = await generateTextElements(c, textStages);
-      void generatePlanElements(c, planElements, essayOutcome?.confirmedSubject, essayOutcome?.markdown, essayOutcome?.sources);
+      void generatePlanElements(c, planElements, essayOutcome?.confirmedSubject, essayOutcome?.markdown, essayOutcome?.sources, essayOutcome?.generationTicket);
     } else {
       void generatePlanElements(c, planElements);
       if (textStages.length > 0) void generateTextElements(c, textStages);

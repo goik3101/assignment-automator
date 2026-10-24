@@ -990,9 +990,15 @@ function withExcerptFact(notes: ResearchNotes, ex: VerificationResult, bookTitle
 /** writing_guide에 적힌 예시 답안 분량("예시 분량: 총 136단어", "총 (136) 단어")을 읽는다. */
 function exampleLength(guide: string | undefined, unit: "chars" | "words" | undefined): number | null {
   if (!guide) return null;
-  const re = unit === "words" ? /(?:예시|견본|sample)[^\n.]{0,40}?\(?\s*(\d{2,4})\s*\)?\s*(?:단어|words?)/i : /(?:예시|견본)[^\n.]{0,40}?\(?\s*(\d{2,5})\s*\)?\s*자/;
-  const n = Number(re.exec(guide)?.[1]);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  // "예시"가 들어간 문장 안의 마지막 "N단어/N자"를 쓴다 — 실측(2026-10-24): "예시 분량은 용도 약 2문장, …, 전체 약 136단어이다"처럼 숫자가 멀리 있었다.
+  const num = unit === "words" ? /\(?\s*(\d{2,4})\s*\)?\s*(?:단어|words?)/gi : /\(?\s*(\d{2,5})\s*\)?\s*자(?![가-힣])/g;
+  for (const sentence of guide.split(/(?<=[.!?。])\s+|\n+/)) {
+    if (!/예시|견본|sample/i.test(sentence)) continue;
+    const all = [...sentence.matchAll(num)];
+    const n = Number(all.at(-1)?.[1]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
 }
 
 function taskNeedsExcerpt(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): boolean {
@@ -1617,6 +1623,14 @@ export async function generateEssay(
       if (!fixes || !e.required_items?.some(isSourceListItem)) return e;
       for (const item of e.required_items.filter(isSourceListItem)) sourceListItems.push({ label: e.label, item });
       return { ...e, required_items: e.required_items.filter((i) => !isSourceListItem(i)) };
+    })
+    .map((e) => {
+      // 하한만 있고 예시 답안 분량이 적혀 있으면(예: "120단어 이상", 예시 136단어) 예시의 1.4배를 상한으로 둔다 — 넘으면 기존 분량 보정이 줄인다.
+      // 실측(2026-10-24, n=3): 지시만으로는 243~365단어가 나왔다. EXAMPLE_LENGTH_CAP=off로 끈다.
+      const t = e.target_length;
+      if (!fixes || process.env.EXAMPLE_LENGTH_CAP === "off" || !t || !(t.min > 0) || t.max > 0) return e;
+      const ex = exampleLength(input.coreTaskInfo.writing_guide, t.unit);
+      return ex && ex >= t.min ? { ...e, target_length: { ...t, max: Math.round(ex * 1.4) } } : e;
     });
   if (sourceListItems.length > 0) input = { ...input, sourceListItems };
 
@@ -1848,16 +1862,20 @@ export async function generateEssay(
     languageMismatches.length > 0 ||
     presetBookMismatch ||
     presetSubjectMismatch ||
-    corruptedSections.length > 0 ||
+    // 이상 문자(간체자 등)는 그 단계만 고친다 — 실측(2026-10-24): 두 글자(意识) 때문에 신문 4단계를 전부 다시 썼다. CORRUPTION_FULL_RETRY=on이면 예전처럼.
+    (corruptedSections.length > 0 && (!fixes || process.env.CORRUPTION_FULL_RETRY === "on")) ||
     uncitedBookMentions.length > 0 ||
     bookMentionsNeedingVerification.length > 0 ||
     (!fixes && missingItems.length > 0) ||
     authorMismatches.length > 0;
   // 품질 개선판: 소제목 항목 누락도 전체 재생성이 아니라 그 단계만 보완한다(전체 재생성은 멀쩡한 다른 단계까지 다시 쓰고 약 15초가 더 든다).
   const itemGaps: CoverageGap[] = fixes && !needsFullRetry ? missingItems.map((m) => ({ label: m.label, missing: m.missing.map((x) => `"### ${x}" 소제목과 그 내용`) })) : [];
-  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue || grammarGaps.length > 0 || itemGaps.length > 0)) {
+  const corruptionGaps: CoverageGap[] = fixes && !needsFullRetry
+    ? corruptedSections.filter((l) => attempt.sections.some((s) => s.label === l)).map((label) => ({ label, missing: ["글 속에 섞인 한국어가 아닌 글자(한자·다른 나라 문자)를 뜻에 맞는 한국어 낱말로 바꿀 것 — 다른 문장은 그대로"] }))
+    : [];
+  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue || grammarGaps.length > 0 || itemGaps.length > 0 || corruptionGaps.length > 0)) {
     const merged: CoverageGap[] = [];
-    for (const g of [...flowingGaps, ...itemGaps, ...grammarGaps]) {
+    for (const g of [...flowingGaps, ...itemGaps, ...grammarGaps, ...corruptionGaps]) {
       const same = merged.find((m) => m.label === g.label);
       if (same) same.missing = [...same.missing, ...g.missing];
       else merged.push({ ...g, missing: [...g.missing] });
@@ -3558,6 +3576,7 @@ async function adjustSectionLengthOnce(
 아래 글의 분량을 ${lengthRangeText(issue)}(${issue.unit === "words" ? "영어 단어 수" : issue.countsSpaces ? "공백 포함" : "공백 제외"}) 범위로 고쳐서 글 전체를 다시 써줘. 지금은 ${issue.actual}${uw}이고 목표는 약 ${goal}${uw}다.
 ${shorten ? "- 핵심 내용과 필수 항목은 남기고 중복·군더더기 표현만 덜어낼 것." : "- 이미 있는 내용을 설명·이유·연결·구체화로 자연스럽게 늘릴 것. 새로운 사실·수치·연도·인물·인용문·출처를 추가하지 말 것(기존에 없는 사실은 쓰지 말 것)."}
 - 기존 문장의 각주 표기([1] 등)와 따옴표로 직접 인용한 문장은 그대로 유지할 것. 각주를 새로 만들거나 번호를 바꾸지 말 것.
+- 굵게(**…**) 표시된 문장·표현(채점 대상 어법 등)은 한 글자도 바꾸지 말고 그대로 남길 것.
 - 글의 언어·문체·형식(소제목 등)은 그대로 유지하고, 분량을 채우려고 같은 말을 반복하지 말 것.
 ${description ? `- 이 글이 다뤄야 할 내용: ${description}\n` : ""}결과는 고친 글 본문만 출력할 것(설명·머리말 없이).
 
@@ -3570,6 +3589,12 @@ ${content}`.trim(),
   const nextMarkers = new Set(next.match(/\[\d+\]/g) ?? []);
   if ([...orig].some((m) => !nextMarkers.has(m)) || [...nextMarkers].some((m) => !orig.has(m))) {
     console.warn(`[generateEssay] 분량 보정 거부(각주 변경) label="${issue.label}"`);
+    return {};
+  }
+  // 굵게 표시한 채점 대상 문장(영어 필수 어법 등)이 줄이면서 빠지면 거부한다.
+  const bolds = [...content.matchAll(/\*\*([^*\n]{4,})\*\*/g)].map((m) => m[1].trim());
+  if (bolds.some((b) => !next.includes(b))) {
+    console.warn(`[generateEssay] 분량 보정 거부(굵게 표시한 문장 변경) label="${issue.label}"`);
     return {};
   }
   const quotes = [...content.matchAll(/[「『“"]([^」』”"\n]{4,})[」』”"]/g)].map((m) => m[1]);

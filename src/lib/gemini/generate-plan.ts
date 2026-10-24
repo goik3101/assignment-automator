@@ -399,6 +399,7 @@ export async function generatePlan(
   // 실측(2026-10-22): 한 번 호출 방식은 모델이 링크 대신 "(제주4·3평화재단)" 같은 글자만 써서 출처 0개, 또는 본문에 주소를 남겼다.
   // 조사가 실패하면(사실 4개 미만 등) 예전 한 번 호출 방식으로 돌아간다. PLAN_PIPELINE=legacy면 항상 예전 방식.
   let notes: ResearchNotes | null = null;
+  let reusedEssayFacts = false;
   if (wantSearch && qualityFixesOn() && process.env.PLAN_PIPELINE !== "legacy") {
     const element = targetElement(input);
     const book = studentBookFromInstructions(input.instructions);
@@ -409,6 +410,7 @@ export async function generatePlan(
         : [];
     if (reused.length >= 4) {
       notes = { facts: reused, queries: [] };
+      reusedEssayFacts = true;
       console.log(`[generatePlan] 완성 원고의 사실 ${reused.length}개 재사용 — 조사 생략`);
     } else notes = await researchForTask(
       {
@@ -462,7 +464,9 @@ export async function generatePlan(
     // "김규식(…) 인터뷰…"처럼 뒤에 설명이 붙은 대상은 맨 앞 이름만 나와도 같은 대상으로 본다.
     return body.includes(compactName(subjectCore)) || (compactName(subjectHead).length >= 2 && body.includes(compactName(subjectHead)));
   };
-  if (input.fixedSubject && !mentionsSubject(freeText)) {
+  // 원고의 사실 노트를 그대로 받아 쓴 계획은 대상이 원고와 같을 수밖에 없다 — 이름 표기가 달라도(약칭 등) 다시 쓰지 않는다.
+  // 실측(2026-10-24): "조선노동조합총동맹(…)"이 계획 글에 그대로 안 나와 계획 2개를 모두 다시 썼다.
+  if (input.fixedSubject && !reusedEssayFacts && !mentionsSubject(freeText)) {
     console.warn(
       `[generatePlan] fixedSubject="${input.fixedSubject}"가 1차 결과에 등장하지 않음 — 강하게 재지시하여 1회 재시도`
     );

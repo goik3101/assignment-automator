@@ -18,7 +18,7 @@
 | 프론트엔드 | Next.js (App Router, TypeScript, Tailwind CSS v4) |
 | 백엔드 | Next.js Route Handlers (`src/app/api/**/route.ts`) |
 | DB + 인증 | Supabase (PostgreSQL + pgvector + 매직링크 인증) |
-| AI | Gemini API (`@google/genai` SDK) — 모델 이름은 전부 `.env`로 분리 |
+| AI | OpenAI Responses API(`LLM_PROVIDER=openai`, `src/lib/llm/`이 유일한 입구) — Gemini 제공자도 남아 있음. 모델 이름은 전부 `.env`로 분리 |
 | 봇 방지 | Cloudflare Turnstile (M4에서 연동) |
 | 호스팅 | Vercel Pro |
 

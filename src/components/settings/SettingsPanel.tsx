@@ -559,10 +559,11 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
       node: (
         <Group title={t("AI 사용 안내")}>
           <ul className="space-y-1.5 py-4 text-[13px] leading-relaxed text-muted">
-            <li>{t("· 완성 원고·실행 계획 만들기: 로그인 시 하루 2회")}</li>
+            <li>{t("· 과제 만들기: 로그인 시 하루 2회, 비로그인 하루 1회 (원고와 제작 계획이 함께 나오는 과제도 1회로 세요)")}</li>
             <li>{t("· 결과 수정 요청(다시 만들기): 하루 1회")}</li>
             <li>{t("· 학습 모드(자료 조사 + 피드백): 하루 5회")}</li>
-            <li>{t("· 요약·플래시카드·퀴즈·가상 시험·AI 채팅: 종류별로 하루 횟수 제한이 있어요")}</li>
+            <li>{t("· 요약·플래시카드·퀴즈·가상 시험: 로그인 시 종류별로 하루 1회")}</li>
+            <li>{t("· AI 채팅: 로그인 시 하루 횟수 제한이 있어요")}</li>
           </ul>
         </Group>
       ),

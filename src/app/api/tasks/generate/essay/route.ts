@@ -15,6 +15,7 @@ import { canonicalize } from "@/lib/selection/canonical";
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError, releaseGeneration } from "@/lib/usage/throttle";
+import { issueTicket, ticketSecret } from "@/lib/usage/ticket";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
@@ -162,7 +163,10 @@ export const POST = routeUsage("essay", withUiLangRoute(async function POST(req:
               });
             }
 
-            return NextResponse.json({ ...result, clusterId: cluster.clusterId, submissionId });
+            // 같은 과제의 외부 제작 계획 요청이 하루 생성 횟수를 또 쓰지 않게 표를 함께 돌려준다(lib/usage/ticket.ts).
+            const owner = identity.userId ? `u:${identity.userId}` : identity.guestId ? `g:${identity.guestId}` : null;
+            const generationTicket = owner && ticketSecret() ? issueTicket(owner, ticketSecret()) : undefined;
+            return NextResponse.json({ ...result, clusterId: cluster.clusterId, submissionId, generationTicket });
           })()
         : NextResponse.json(result);
 

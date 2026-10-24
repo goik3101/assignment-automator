@@ -13,6 +13,7 @@ import { buildRecommendationGuidance, recordRecommendation } from "@/lib/recomme
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError, releaseGeneration } from "@/lib/usage/throttle";
+import { issueTicket, ticketSecret, verifyTicket, consumeTicketUse } from "@/lib/usage/ticket";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo, SourceRef } from "@/types/task";
@@ -30,7 +31,7 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText, referenceSources, elementLabel, sourceScope } =
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, fixedSubject, referenceFactsText, referenceSources, elementLabel, sourceScope, generationTicket } =
       body as {
         subject: string;
         coreTaskInfo: CoreTaskInfo;
@@ -47,6 +48,8 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
         referenceSources?: unknown;
         /** AI 설정의 출처 범위("domestic" = 국내 출처만). */
         sourceScope?: unknown;
+        /** 같은 과제에서 먼저 센 요청이 돌려준 표 — 있으면 하루 생성 횟수를 다시 세지 않는다(lib/usage/ticket.ts). */
+        generationTicket?: unknown;
         /** 만들 외부 제작 요소 이름(요소마다 따로 부를 때). 없으면 첫 번째 외부 제작 요소. */
         elementLabel?: string;
       };
@@ -62,12 +65,18 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
     const { identity, supabase } = await resolveIdentity(req);
     const admin = isLimitExempt(req, identity.email); // 11-6: 관리자는 모든 제한에서 예외
 
-    if (!admin && !identity.userId && !(await verifyTurnstile(turnstileToken ?? null))) {
+    // 같은 과제의 이어지는 요청(원고 뒤 계획, 계획 여러 개): 표가 맞으면 캡차(1회용)와 횟수 제한을 다시 거치지 않는다.
+    const owner = identity.userId ? `u:${identity.userId}` : identity.guestId ? `g:${identity.guestId}` : null;
+    const secret = ticketSecret();
+    const followUp = !!owner && !!secret && process.env.GENERATION_TICKET !== "off" && verifyTicket(generationTicket, owner, secret) && consumeTicketUse(generationTicket as string);
+    const ticketOut = followUp ? (generationTicket as string) : owner && secret ? issueTicket(owner, secret) : undefined;
+
+    if (!followUp && !admin && !identity.userId && !(await verifyTurnstile(turnstileToken ?? null))) {
       return NextResponse.json({ error: "캡차 확인에 실패했습니다. 다시 시도해주세요." }, { status: 403 });
     }
 
     try {
-      reservation = await enforceGenerationLimit(identity, admin);
+      reservation = followUp ? null : await enforceGenerationLimit(identity, admin);
     } catch (err) {
       if (err instanceof LimitExceededError) {
         return NextResponse.json({ error: err.message }, { status: 429 });
@@ -104,7 +113,7 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
               submissionId,
               resultText: planResultToText(result),
             });
-            await recordGeneration(identity, "generate", !!avoidanceInstruction, reservation);
+            if (!followUp) await recordGeneration(identity, "generate", !!avoidanceInstruction, reservation);
 
             for (const itemName of result.verifiedItemNames ?? []) {
               await recordRecommendation({
@@ -136,7 +145,7 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
               });
             }
 
-            return NextResponse.json({ ...result, clusterId: cluster.clusterId, submissionId });
+            return NextResponse.json({ ...result, clusterId: cluster.clusterId, submissionId, generationTicket: ticketOut });
           })()
         : NextResponse.json(result);
 

@@ -175,9 +175,10 @@ export const shell: Record<string, string> = {
   "내 선택과 경험을 더 물어보고(최대 4개) 나에게 맞춰 만들어요.": "Asks more about your choices and experiences (up to 4 questions) and tailors it to you.",
   "기본값이에요.": "This is the default.",
   "AI 사용 안내": "AI usage limits",
-  "· 완성 원고·실행 계획 만들기: 로그인 시 하루 2회": "· Creating drafts and action plans: 2 per day when signed in",
+  "· 과제 만들기: 로그인 시 하루 2회, 비로그인 하루 1회 (원고와 제작 계획이 함께 나오는 과제도 1회로 세요)":
+    "· Creating an assignment: 2 per day when signed in, 1 per day without signing in (a draft plus its production plans counts as 1)",
   "· 결과 수정 요청(다시 만들기): 하루 1회": "· Revision requests (regenerate): 1 per day",
   "· 학습 모드(자료 조사 + 피드백): 하루 5회": "· Study mode (research + feedback): 5 per day",
-  "· 요약·플래시카드·퀴즈·가상 시험·AI 채팅: 종류별로 하루 횟수 제한이 있어요":
-    "· Summary, flashcards, quiz, mock exam, AI chat: each has its own daily limit",
+  "· 요약·플래시카드·퀴즈·가상 시험: 로그인 시 종류별로 하루 1회": "· Summary, flashcards, quiz, mock exam: 1 each per day when signed in",
+  "· AI 채팅: 로그인 시 하루 횟수 제한이 있어요": "· AI chat: daily limit when signed in",
 };

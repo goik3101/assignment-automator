@@ -11,10 +11,11 @@ const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) &&
 
 export const STUDY_DAILY_LIMITS: Record<StudyKind, number> = {
   chat: num(process.env.STUDY_LIMIT_CHAT, 40),
-  summary: num(process.env.STUDY_LIMIT_SUMMARY, 15),
-  flashcards: num(process.env.STUDY_LIMIT_FLASHCARDS, 15),
-  quiz: num(process.env.STUDY_LIMIT_QUIZ, 15),
-  exam: num(process.env.STUDY_LIMIT_EXAM, 10),
+  // 출시 기준(2026-10-24 사용자 결정): 공부 자료 생성은 종류별 하루 1회. 채점·채팅은 별도.
+  summary: num(process.env.STUDY_LIMIT_SUMMARY, 1),
+  flashcards: num(process.env.STUDY_LIMIT_FLASHCARDS, 1),
+  quiz: num(process.env.STUDY_LIMIT_QUIZ, 1),
+  exam: num(process.env.STUDY_LIMIT_EXAM, 1),
   exam_grade: num(process.env.STUDY_LIMIT_EXAM_GRADE, 20),
   questions: num(process.env.STUDY_LIMIT_QUESTIONS, 30),
   // 정상 사용(과제 하나에 분석 1~3회, 예상 질문 1회)보다 훨씬 넉넉한 값 — 남용 방어용이지 일반 학생을 막으려는 값이 아니다.

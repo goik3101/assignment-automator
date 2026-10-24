@@ -100,8 +100,9 @@ export async function enforceGenerationLimit(
       `오늘 생성 가능한 횟수(${LOGGED_IN_DAILY_LIMIT}회)를 모두 사용했어요. 내일 다시 시도해주세요.`);
   }
   if (reserveOn() && identity.guestId) {
-    return reserveSlot({ column: "guest_id", value: identity.guestId }, "generate", 1, null,
-      "비로그인 상태에서는 1회만 무료로 이용할 수 있어요. 계속 이용하려면 로그인해주세요.");
+    // 비로그인은 하루 1회(2026-10-24 출시 기준, 예전에는 평생 1회).
+    return reserveSlot({ column: "guest_id", value: identity.guestId }, "generate", 1, todayStart,
+      "비로그인 상태에서는 하루 1회만 무료로 이용할 수 있어요. 더 이용하려면 로그인해주세요.");
   }
 
   if (identity.userId) {
@@ -121,16 +122,17 @@ export async function enforceGenerationLimit(
   }
 
   if (identity.guestId) {
-    // 비로그인은 "하루"가 아니라 평생 1회 — created_at 필터를 두지 않는다.
+    // 비로그인은 하루 1회.
     const { count: guestCount, error: guestError } = await supabase
       .from("usage_events")
       .select("id", { count: "exact", head: true })
       .eq("guest_id", identity.guestId)
-      .eq("event_type", "generate");
+      .eq("event_type", "generate")
+      .gte("created_at", todayStart);
     if (guestError) throw new Error(`사용량 조회 실패: ${guestError.message}`);
     if ((guestCount ?? 0) >= 1) {
       throw new LimitExceededError(
-        "비로그인 상태에서는 1회만 무료로 이용할 수 있어요. 계속 이용하려면 로그인해주세요."
+        "비로그인 상태에서는 하루 1회만 무료로 이용할 수 있어요. 더 이용하려면 로그인해주세요."
       );
     }
     return null;
