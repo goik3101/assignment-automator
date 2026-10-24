@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { LogOut, Mail, Settings, UserRound } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { useAuth } from "@/lib/supabase/use-auth";
@@ -107,6 +108,9 @@ export default function AuthBar() {
       >
         {sending ? t("보내는 중...") : t("로그인 링크 받기")}
       </button>
+      <p className="text-[11px] leading-snug text-faint">
+        <Link href="/terms" className="underline">이용약관</Link> · <Link href="/privacy" className="underline">개인정보처리방침</Link>
+      </p>
     </div>
   );
 }

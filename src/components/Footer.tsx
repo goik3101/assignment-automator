@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { FlaskConical } from "lucide-react";
 import OpenSettingsButton from "@/components/settings/OpenSettingsButton";
 import { getT } from "@/lib/i18n/server";
@@ -11,7 +12,11 @@ export default async function Footer() {
           <FlaskConical size={13} strokeWidth={1.7} className="shrink-0" />
           <span>{t("베타 버전이에요. 이상한 결과를 발견하면 알려 주세요.")}</span>
         </OpenSettingsButton>
-        <span>studed</span>
+        <span className="flex items-center gap-3">
+          <Link href="/terms" className="hover:text-foreground">이용약관</Link>
+          <Link href="/privacy" className="hover:text-foreground">개인정보처리방침</Link>
+          <span>studed</span>
+        </span>
       </div>
     </footer>
   );
