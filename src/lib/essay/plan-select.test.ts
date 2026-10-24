@@ -77,6 +77,9 @@ test("유형 규칙은 필요한 곳에만 붙고 신문은 제외된다", () =>
   assert.ok(inferFormKinds({ label: "영어 발표 대본", description: "발표" }).includes("speech"));
   assert.ok(inferFormKinds({ label: "탐구 보고서", description: "가설과 변인을 설정한 실험 설계" }).includes("experiment"));
   assert.deepEqual(inferFormKinds({ label: "제작 소감", description: "" }), ["reflection"]);
+  // 청중기록지는 기록지 규칙 하나만(발표를 지어내지 않게) — 설명에 "발표"가 있어도 발표 대본 규칙을 섞지 않는다.
+  assert.deepEqual(inferFormKinds({ label: "청중기록지", description: "친구들의 발표를 듣고 평가한다" }), ["observation_record"]);
+  assert.deepEqual(inferFormKinds({ label: "매체 활용 발표", description: "발표 대본" }).includes("observation_record"), false);
   const creative = inferFormKinds({ label: "짧은 소설", description: "창작 보고서 형식이 아님" });
   assert.deepEqual(creative, ["creative"]);
   assert.equal(buildFormRulesBlock([{ label: "자료 수집", description: "조사" }]), "");

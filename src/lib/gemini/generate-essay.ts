@@ -283,6 +283,8 @@ function cleanStrayBrackets(content: string): string {
     .replace(PLACEHOLDER_PATTERN, (match) => {
       if (match.startsWith("[자료부족")) return match; // 별도 로직이 처리하므로 건드리지 않음
       if (match === "[이름]") return match; // 실존 인물 이름 빈칸(REAL_PERSON_NAME_RULE) — 의도된 표기이니 그대로 둠
+      // 학생이 직접 채울 빈칸(제작 전 질문의 "나중에 쓸게요", 청중기록지 같은 기록지 규칙) — 지우면 빈칸이 사라진다.
+      if (/^\[직접\s*작성/.test(match)) return match;
       const inner = match.slice(1, -1).trim();
       const looksLikeSentence = inner.length > 20 || /[.!?…]$/.test(inner);
       return looksLikeSentence ? inner : "";

@@ -202,9 +202,14 @@ test("원고의 각주 문장을 계획용 사실 노트로 바꾸고, 확인 �
   ]);
 });
 
-test("문장 앞 서수 나열(첫째,/둘째로)은 지우고 '첫째 아이' 같은 낱말은 둔다", async () => {
+test("문장 앞 서수 나열은 이음말로 바꾸고, 목록 줄의 표지는 지우고, '첫째 아이' 같은 낱말은 둔다", async () => {
   const { stripOrdinalEnumerators } = await import("./deliverable.ts");
   const r = stripOrdinalEnumerators("이유는 두 가지다. 첫째, 설명이 쉽다[1]. 둘째로 연습이 있다.\n- 셋째: 짧다.\n첫째 아이가 웃었다. 두 번째로, 끝.");
-  assert.equal(r.content, "이유는 두 가지다. 설명이 쉽다[1]. 연습이 있다.\n- 짧다.\n첫째 아이가 웃었다. 끝.");
+  assert.equal(r.content, "이유는 두 가지다. 먼저 설명이 쉽다[1]. 다음으로 연습이 있다.\n- 짧다.\n첫째 아이가 웃었다. 또한 끝.");
   assert.equal(r.changed, 4);
+  // 두 개짜리 나열은 "먼저 / 또한", 세 개 이상은 "먼저 / 다음으로 / 마지막으로"
+  assert.equal(stripOrdinalEnumerators("첫째, A다. 둘째, B다.").content, "먼저 A다. 또한 B다.");
+  assert.equal(stripOrdinalEnumerators("첫째, A다. 둘째, B다. 셋째, C다.").content, "먼저 A다. 다음으로 B다. 마지막으로 C다.");
+  // 문단마다 나뉜 나열도 하나로 본다
+  assert.equal(stripOrdinalEnumerators("첫째, A다.\n\n둘째, B다.\n\n셋째, C다.").content, "먼저 A다.\n\n다음으로 B다.\n\n마지막으로 C다.");
 });

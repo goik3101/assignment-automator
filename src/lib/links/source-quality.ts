@@ -7,7 +7,7 @@
 // reliable  : 신뢰할 수 있는 언론·전문 백과사전 (2순위)
 // reference : 위키류 일반 참고자료 (3순위 — 누구나 편집 가능)
 // general   : 위에 해당하지 않는 일반 사이트(등급 판단 불가, 통과시키되 표시)
-// weak      : 개인 블로그·커뮤니티·SNS·동영상 — 핵심 사실의 근거로 쓰지 않는다
+// weak      : 개인 블로그·커뮤니티·SNS·동영상·레포트 판매 사이트 — 핵심 사실의 근거로 쓰지 않는다
 
 export type SourceTier = "official" | "reliable" | "reference" | "general" | "weak";
 
@@ -31,10 +31,11 @@ const RELIABLE = new RegExp(
   "i"
 );
 
-const REFERENCE = /(^|\.)(wikipedia\.org|wikimedia\.org|namu\.wiki|namuwiki\.com|wikiwand\.com)$/i;
+// 나무위키 미러(namu.moe 등)도 같은 위키 — 실측 2026-10-24 화법 과제 출처로 쓰였는데 일반 등급이었다.
+const REFERENCE = /(^|\.)(wikipedia\.org|wikimedia\.org|namu\.wiki|namuwiki\.com|namu\.moe|namu\.la|wikiwand\.com)$/i;
 
 const WEAK =
-  /(^|\.)(blogspot\.[a-z.]+|tistory\.com|blog\.naver\.com|m\.blog\.naver\.com|cafe\.naver\.com|kin\.naver\.com|brunch\.co\.kr|velog\.io|medium\.com|wordpress\.com|wixsite\.com|youtube\.com|youtu\.be|reddit\.com|tiktok\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|dcinside\.com|ruliweb\.com|fmkorea\.com|theqoo\.net|quora\.com|blog\.daum\.net|cafe\.daum\.net|postype\.com|pages\.dev|netlify\.app|github\.io|vercel\.app|workers\.dev|herokuapp\.com|glitch\.me)$/i;
+  /(^|\.)(blogspot\.[a-z.]+|tistory\.com|blog\.naver\.com|m\.blog\.naver\.com|cafe\.naver\.com|kin\.naver\.com|brunch\.co\.kr|velog\.io|medium\.com|wordpress\.com|wixsite\.com|youtube\.com|youtu\.be|reddit\.com|tiktok\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|dcinside\.com|ruliweb\.com|fmkorea\.com|theqoo\.net|quora\.com|blog\.daum\.net|cafe\.daum\.net|postype\.com|pages\.dev|netlify\.app|github\.io|vercel\.app|workers\.dev|herokuapp\.com|glitch\.me|allreport\.co\.kr|happycampus\.com|reportworld\.co\.kr|report\.co\.kr|orbi\.kr|instiz\.net|clien\.net|ppomppu\.co\.kr|inven\.co\.kr|mlbpark\.donga\.com)$/i;
 
 export function classifySourceTier(url: string): SourceTier {
   let host = "";

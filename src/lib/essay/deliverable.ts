@@ -343,17 +343,39 @@ export function stripInlineUrls(content: string): { content: string; removed: nu
 }
 
 /**
- * 문장 앞의 "첫째,/둘째,/셋째로" 같은 서수 나열 표지를 지운다(문장 내용은 그대로). 문체 규칙에서 금지하는데도
- * 실측(2026-10-24, 30회)에서 87번 나왔다 — 프롬프트로는 안 지켜져 코드로 정리한다. "첫째 아이"처럼 쉼표 없는 낱말은 건드리지 않는다.
+ * 문장 앞의 "첫째,/둘째,/셋째로" 같은 서수 나열 표지를 정리한다. 문체 규칙에서 금지하는데도 실측(2026-10-24, 30회)에서 87번 나왔다 —
+ * 프롬프트로는 안 지켜져 코드로 정리한다. 그냥 지우면 "중심 내용은 세 가지다. A이다. B를 지적한다."처럼 이음새 없는 문장 나열이 되어서
+ * (실측 2026-10-24) 문장 앞 표지는 "먼저 / 다음으로·또한 / 마지막으로"로 바꾸고, 목록 줄("- 셋째:")의 표지만 지운다(목록 기호가 이미 나열한다).
+ * "첫째 아이"처럼 쉼표 없는 낱말은 건드리지 않는다. ORDINAL_STYLE=strip이면 예전처럼 전부 지운다.
  */
+const ORDINAL_RE =
+  /(^|\s|\*\*)(?:(첫째|둘째|셋째|넷째|다섯째)로?\s*[,:]|(첫째|둘째|셋째|넷째|다섯째)로\s|(첫|두|세|네|다섯) 번째로\s*,?)\s*/g;
+const ORDINAL_N: Record<string, number> = { 첫째: 1, 둘째: 2, 셋째: 3, 넷째: 4, 다섯째: 5, 첫: 1, 두: 2, 세: 3, 네: 4, 다섯: 5 };
+
 export function stripOrdinalEnumerators(content: string): { content: string; changed: number } {
-  let changed = 0;
-  const out = content.replace(
-    /(^|\s|\*\*)(?:(?:첫째|둘째|셋째|넷째|다섯째)로?\s*[,:]|(?:첫째|둘째|셋째|넷째|다섯째)로\s|(?:첫|두|세|네|다섯) 번째로\s*,?)\s*/g,
-    (_m, lead: string) => {
-      changed++;
-      return lead;
-    }
-  );
-  return { content: out, changed };
+  const matches = [...content.matchAll(ORDINAL_RE)];
+  if (matches.length === 0) return { content, changed: 0 };
+  const nums = matches.map((m) => ORDINAL_N[m[2] ?? m[3] ?? m[4]] ?? 1);
+  // 1부터 다시 시작하면 새 나열이다 — 나열마다 마지막 번호를 구한다.
+  const seriesMax: number[] = [];
+  for (let i = 0; i < nums.length; ) {
+    let j = i + 1;
+    while (j < nums.length && nums[j] > nums[j - 1]) j++;
+    const max = nums[j - 1];
+    for (let k = i; k < j; k++) seriesMax.push(max);
+    i = j;
+  }
+  const strip = process.env.ORDINAL_STYLE === "strip";
+  let idx = 0;
+  const out = content.replace(ORDINAL_RE, (_m, lead: string, _a, _b, _c, offset: number, whole: string) => {
+    const i = idx++;
+    const lineStart = whole.lastIndexOf("\n", offset - 1) + 1;
+    const onListLine = /^\s*(?:[-*•]|\d+[.)])\s*$/.test(whole.slice(lineStart, offset + lead.length));
+    if (strip || onListLine) return lead;
+    const n = nums[i];
+    const max = seriesMax[i];
+    const word = n === 1 ? "먼저" : n === max ? (max === 2 ? "또한" : "마지막으로") : "다음으로";
+    return `${lead}${word} `;
+  });
+  return { content: out, changed: matches.length };
 }

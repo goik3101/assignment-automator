@@ -5,7 +5,7 @@
 import { inferDeliverableForm } from "./deliverable.ts";
 import { qualityFixesOn } from "./quality-flags.ts";
 
-export type FormKind = "speech" | "report" | "experiment" | "debate" | "creative" | "selection_reason" | "reflection" | "argument" | "book_response";
+export type FormKind = "speech" | "report" | "experiment" | "debate" | "creative" | "selection_reason" | "reflection" | "argument" | "book_response" | "observation_record";
 
 // 예전 "report" 규칙은 감상문·독후감·탐구 보고서에도 논설문 틀(문제 제기→근거→해석→결론, 사실·해석 구분)을 씌웠다.
 // 실측(2026-10-20): 독서 감상문이 "…라는 주장에 설득됐다 / 근거로는 / 해석하자면 / 결론적으로"로, 논설문이 "사실(통계)은 …" 같은 이름표로 나왔다.
@@ -56,6 +56,12 @@ const RULES: Record<FormKind, { test: RegExp; labelTest?: RegExp; text: string }
     labelTest: /소감|느낀\s*점|후기|성찰|반성|다짐/,
     text: "학생 본인의 경험과 생각을 쓰는 글이다. 학생이 밝히지 않은 경험·감정을 사실처럼 지어내지 말고, 조사·제작 과정에서 실제로 확인된 사실에서 출발한 초안으로 쓰되 \"(학생 감상 초안 — 본인 생각에 맞게 고쳐 쓰세요)\"로 표시할 것.",
   },
+  // 실측(2026-10-24): 국어 "청중기록지"를 아직 하지 않은 발표를 본 것처럼("발표자는 눈빛과 손동작을 적절히 사용해…") 지어내고 감상 문장에 각주까지 달았다.
+  observation_record: {
+    test: /(?!)/,
+    labelTest: /청중\s*기록|관찰\s*기록|기록\s*지|동료\s*평가|상호\s*평가|평가\s*지|모니터링|듣기\s*활동지/,
+    text: "다른 사람의 발표·활동을 보면서 학생이 직접 채우는 기록지다. 아직 일어나지 않은 발표나 다른 학생의 말·태도·점수·평가를 지어내지 말 것. 안내문이 정한 칸(항목)마다 무엇을 어떻게 적으면 되는지 한두 문장의 작성 요령과 예시 질문을 쓰고, 실제 관찰 내용이 들어갈 자리는 \"[직접 작성: 무엇]\" 빈칸으로 남길 것. 출처 번호는 붙이지 말 것.",
+  },
   // 아래 둘은 품질 개선이 켜졌을 때만 쓰인다(activeRules).
   argument: { test: /(?!)/, text: "" },
   book_response: { test: /(?!)/, text: "" },
@@ -75,6 +81,8 @@ export function inferFormKinds(el: { label: string; description: string }): Form
     const hit = r.labelTest ? r.labelTest.test(el.label) : r.test.test(`${el.label} ${el.description}`);
     if (hit) found.push(kind);
   }
+  // 기록지는 그 규칙 하나만(설명에 "발표를 듣고"가 있어도 발표 대본 규칙을 섞지 않는다).
+  if (found.includes("observation_record")) return ["observation_record"];
   // 창작이면 보고서·토론 같은 근거 중심 규칙과 섞지 않는다.
   let filtered = found.includes("creative") ? found.filter((k) => k === "creative" || k === "reflection" || k === "selection_reason") : found;
   // 감상문은 논설·보고서 틀과 섞지 않는다("비평문"처럼 둘 다 걸리는 단계는 감상 규칙 하나만).
