@@ -13,7 +13,7 @@ import { buildRecommendationGuidance, recordRecommendation } from "@/lib/recomme
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError, releaseGeneration } from "@/lib/usage/throttle";
-import { issueTicket, ticketSecret, verifyTicket, consumeTicketUse } from "@/lib/usage/ticket";
+import { assignmentKey, issueTicket, planUseCap, ticketSecret, verifyTicket, consumeTicketUse } from "@/lib/usage/ticket";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo, SourceRef } from "@/types/task";
@@ -68,8 +68,13 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
     // 같은 과제의 이어지는 요청(원고 뒤 계획, 계획 여러 개): 표가 맞으면 캡차(1회용)와 횟수 제한을 다시 거치지 않는다.
     const owner = identity.userId ? `u:${identity.userId}` : identity.guestId ? `g:${identity.guestId}` : null;
     const secret = ticketSecret();
-    const followUp = !!owner && !!secret && process.env.GENERATION_TICKET !== "off" && verifyTicket(generationTicket, owner, secret) && consumeTicketUse(generationTicket as string);
-    const ticketOut = followUp ? (generationTicket as string) : owner && secret ? issueTicket(owner, secret) : undefined;
+    // 표는 같은 과제(주제·산출물 목록)에만, 그 과제의 계획 수만큼만 통한다.
+    const scope = assignmentKey(coreTaskInfo);
+    const followUp =
+      !!owner && !!secret && process.env.GENERATION_TICKET !== "off" &&
+      verifyTicket(generationTicket, owner, secret, Date.now(), scope) &&
+      consumeTicketUse(generationTicket as string, Date.now(), planUseCap(coreTaskInfo));
+    const ticketOut = followUp ? (generationTicket as string) : owner && secret ? issueTicket(owner, secret, Date.now(), scope) : undefined;
 
     if (!followUp && !admin && !identity.userId && !(await verifyTurnstile(turnstileToken ?? null))) {
       return NextResponse.json({ error: "캡차 확인에 실패했습니다. 다시 시도해주세요." }, { status: 403 });
