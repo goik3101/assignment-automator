@@ -23,7 +23,7 @@ export const POST = routeUsage("analyze", async function POST(req: NextRequest) 
       if (!imageBase64 && !topicText) {
         throw new StudyInputError("사진 또는 주제 텍스트 중 하나는 반드시 입력해야 합니다.");
       }
-      const invalid = validateAnalyzeInput({ imageBase64, topicText, instructions, extraImages });
+      const invalid = validateAnalyzeInput({ imageBase64, imageMimeType, topicText, instructions, extraImages });
       if (invalid) throw new StudyInputError(invalid);
 
       return analyzeAssignment({ imageBase64, imageMimeType, extraImages, topicText, instructions });

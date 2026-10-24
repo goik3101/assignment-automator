@@ -13,7 +13,10 @@ export async function DELETE() {
   if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
 
   const { error } = await getServiceClient().auth.admin.deleteUser(user.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[/api/user/account] 탈퇴 처리 실패", error);
+    return NextResponse.json({ error: "계정을 삭제하지 못했어요. 잠시 후 다시 시도해주세요." }, { status: 500 });
+  }
 
   // 세션 쿠키 자체는 클라이언트가 이어서 supabase.auth.signOut()을 호출해 정리한다.
   return NextResponse.json({ ok: true });

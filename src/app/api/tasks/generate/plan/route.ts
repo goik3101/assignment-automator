@@ -1,4 +1,4 @@
-import { validateCoreTaskInfo } from "@/lib/api/validate";
+import { validateCoreTaskInfo, validateGenerationFields } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { withSourceScope } from "@/lib/llm/scope";
 import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
@@ -56,6 +56,8 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
     }
     const invalidInfo = validateCoreTaskInfo(coreTaskInfo, instructions);
     if (invalidInfo) return NextResponse.json({ error: invalidInfo }, { status: 400 });
+    const invalidFields = validateGenerationFields({ subject, fixedSubject, referenceFactsText });
+    if (invalidFields) return NextResponse.json({ error: invalidFields }, { status: 400 });
 
     const { identity, supabase } = await resolveIdentity(req);
     const admin = isLimitExempt(req, identity.email); // 11-6: 관리자는 모든 제한에서 예외

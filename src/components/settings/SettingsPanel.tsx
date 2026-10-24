@@ -367,6 +367,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             <textarea
               value={interests}
               onChange={(e) => setInterests(e.target.value)}
+              maxLength={1000}
               rows={3}
               placeholder={t("예: 축구를 좋아함, 반려동물을 키움")}
               className={`${fieldCls} py-2.5`}
@@ -376,6 +377,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             <input
               value={textbookPublisher}
               onChange={(e) => setTextbookPublisher(e.target.value)}
+              maxLength={100}
               placeholder={t("예: 미래엔, 천재교육")}
               className={`${fieldCls} h-10 sm:w-56`}
             />
@@ -576,6 +578,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             <textarea
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
+              maxLength={2000}
               rows={5}
               placeholder={t("불편한 점이나 제안해주실 내용을 적어주세요")}
               className={`${fieldCls} py-2.5`}

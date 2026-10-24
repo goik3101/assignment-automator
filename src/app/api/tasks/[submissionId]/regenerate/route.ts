@@ -3,6 +3,7 @@ import { withSourceScope } from "@/lib/llm/scope";
 import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
 import { parseSourceScope } from "@/lib/essay/source-scope";
 import { NextRequest, NextResponse } from "next/server";
+import { validateGenerationFields } from "@/lib/api/validate";
 import { generateEssay } from "@/lib/gemini/generate-essay";
 import { generatePlan } from "@/lib/gemini/generate-plan";
 import { buildAvoidanceInstruction } from "@/lib/clusters/avoidance";
@@ -24,6 +25,8 @@ export const POST = routeUsage("regenerate", withUiLangRoute(async function POST
   try {
     const { submissionId } = await ctx.params;
     const { revisionInstructions, sourceScope } = (await req.json()) as { revisionInstructions?: string; sourceScope?: unknown };
+    const invalidFields = validateGenerationFields({ revisionInstructions });
+    if (invalidFields) return NextResponse.json({ error: invalidFields }, { status: 400 });
 
     const supabase = await getServerSupabase();
     const {

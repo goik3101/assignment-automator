@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
@@ -15,10 +15,20 @@ const SESSION_MAX_AGE_MS = 30 * 60 * 1000; // 30분
  * 도메인을 쓴다. */
 export const ADMIN_ACCOUNT_EMAIL = "studed-admin@internal.studed.local";
 
+// 세션 서명 키. ADMIN_SESSION_SECRET을 따로 두면 로그인 코드가 서명 키를 겸하지 않는다(코드가 새도 세션을 위조할 수 없고,
+// 반대로 키를 바꿔 모든 관리자 세션을 한꺼번에 끊을 수도 있다). 없으면 예전처럼 ADMIN_LOGIN_CODE를 쓴다 — 설정 전 발급된 세션도 그대로 유효.
 function getSecret(): string {
-  const code = process.env.ADMIN_LOGIN_CODE;
-  if (!code) throw new Error("ADMIN_LOGIN_CODE가 설정되어 있지 않습니다.");
-  return code;
+  const secret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_LOGIN_CODE;
+  if (!secret) throw new Error("ADMIN_LOGIN_CODE가 설정되어 있지 않습니다.");
+  return secret;
+}
+
+/** 입력한 관리자 코드가 맞는지. 길이와 내용이 시간 차이로 새지 않게 해시한 값끼리 상수 시간으로 비교한다. */
+export function adminCodeMatches(input: unknown): boolean {
+  const expected = process.env.ADMIN_LOGIN_CODE;
+  if (!expected || typeof input !== "string") return false;
+  const digest = (v: string) => createHash("sha256").update(v).digest();
+  return timingSafeEqual(digest(input), digest(expected));
 }
 
 function sign(payload: string): string {

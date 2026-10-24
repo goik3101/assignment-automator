@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  adminCodeMatches,
   createAdminSessionToken,
   ADMIN_COOKIE_NAME,
   ADMIN_SESSION_MAX_AGE_SECONDS,
@@ -29,8 +30,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { code } = (await req.json()) as { code?: string };
-  const success = code === adminCode;
+  const body = (await req.json().catch(() => null)) as { code?: unknown } | null;
+  const code = body?.code;
+  // 너무 긴 입력은 비교하지 않고 실패로 센다(시도 횟수에는 포함).
+  const success = typeof code === "string" && code.length <= 200 && adminCodeMatches(code);
   await recordAttempt(ip, success);
 
   if (!success) {
