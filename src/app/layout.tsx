@@ -5,9 +5,23 @@ import Footer from "@/components/Footer";
 import { LangProvider } from "@/lib/i18n";
 import { getLang } from "@/lib/i18n/server";
 
+const SITE_TITLE = "STUDED AI";
+const SITE_DESCRIPTION =
+  "수행평가 안내문 사진만 올리면 AI가 원고나 실행 계획을 만들어 줘요. 실제 검색 출처를 달고, 다른 학생과 겹치지 않게 써 주고, 요약·퀴즈·플래시카드로 공부까지 이어가요.";
+
 export const metadata: Metadata = {
-  title: "studed",
-  description: "겹치지 않는, 출처 있는 과제 도우미",
+  // 링크 미리보기 이미지 주소가 이 도메인 기준으로 만들어진다. 비우면 Vercel 배포 주소로 떨어진다.
+  metadataBase: process.env.NEXT_PUBLIC_SITE_URL ? new URL(process.env.NEXT_PUBLIC_SITE_URL) : undefined,
+  title: { default: SITE_TITLE, template: "%s | STUDED AI" },
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: SITE_TITLE,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    locale: "ko_KR",
+  },
+  twitter: { card: "summary_large_image", title: SITE_TITLE, description: SITE_DESCRIPTION },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
