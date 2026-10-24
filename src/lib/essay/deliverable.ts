@@ -341,3 +341,19 @@ export function stripInlineUrls(content: string): { content: string; removed: nu
   if (removed === 0) return { content, removed };
   return { content: out.replace(/[ \t]+([.,;:])/g, "$1").replace(/\(\s*\)/g, "").replace(/[ \t]+$/gm, ""), removed };
 }
+
+/**
+ * 문장 앞의 "첫째,/둘째,/셋째로" 같은 서수 나열 표지를 지운다(문장 내용은 그대로). 문체 규칙에서 금지하는데도
+ * 실측(2026-10-24, 30회)에서 87번 나왔다 — 프롬프트로는 안 지켜져 코드로 정리한다. "첫째 아이"처럼 쉼표 없는 낱말은 건드리지 않는다.
+ */
+export function stripOrdinalEnumerators(content: string): { content: string; changed: number } {
+  let changed = 0;
+  const out = content.replace(
+    /(^|\s|\*\*)(?:(?:첫째|둘째|셋째|넷째|다섯째)로?\s*[,:]|(?:첫째|둘째|셋째|넷째|다섯째)로\s|(?:첫|두|세|네|다섯) 번째로\s*,?)\s*/g,
+    (_m, lead: string) => {
+      changed++;
+      return lead;
+    }
+  );
+  return { content: out, changed };
+}

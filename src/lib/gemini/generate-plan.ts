@@ -28,10 +28,12 @@ import { validateSources } from "@/lib/links/validate-sources";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
 import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList, researchForTask, factSheetRules, writeEffort, type ResearchNotes } from "./generate-essay";
 import { attachFactMarkers, factSheetText, factsFromCitedText, mapFactMarkers } from "@/lib/essay/research-notes";
-import { fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
+import { fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripOrdinalEnumerators, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
 import { limitSources, requiredSourceCount } from "@/lib/essay/source-select";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
+import { currentOutputLang } from "@/lib/llm/output-lang";
+import { compactName } from "@/lib/selection/canonical";
 
 // 사용자 요청(2026-09-13): 예전엔 이 경로가 "무엇을 조사/작성할지"만 안내하는
 // 실행 계획(할 일 목록)을 만들었다 — PPT/포스터/신문처럼 외부 툴이나 물리적
@@ -282,6 +284,9 @@ ${NO_REFERENCE_LIST_RULE}
 ${notes ? "" : sourceEconomyRule(requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]))}
 ${scope.personAndPerspective ? PERSPECTIVE_RULE : ""}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
+${currentOutputLang() === "en" ? `
+【출력 언어 — 반드시 지킬 것】 "${CONTENT_HEADING}"·"${PHYSICAL_HEADING}" 두 제목 줄은 한 글자도 바꾸지 말고 그대로 두고, 그 아래의 모든 내용(문구·설명·제작 단계)은 자연스러운 영어로만 쓸 것. 한국어 문장을 섞지 말 것.
+` : ""}
 ${notes ? `${factSheetRules()}
 
 [사실 노트]
@@ -447,7 +452,17 @@ export async function generatePlan(
   // 등장하지 않으면, essay 쪽에서 확정한 대상을 무시하고 다른 대상으로 글을
   // 썼을 가능성이 높다(실제 사고 사례: 마틴 루터 킹 주니어를 선정했는데
   // 신문 제작 결과는 전태일 내용으로 만들어짐). 1회 강하게 재지시해서 재시도한다.
-  if (input.fixedSubject && !freeText.includes(input.fixedSubject)) {
+  // 원고가 확정한 대상은 "대한민국 임시정부의 환국(귀국)(1945년)"처럼 설명이 붙은 경우가 많아 글자 그대로는 거의 안 맞는다 —
+  // 괄호를 빼고 띄어쓰기·문장부호를 무시해 비교한다(실측: 신문 과제 4회 모두 불필요한 계획 재작성). PLAN_SUBJECT_MATCH=exact면 예전처럼.
+  const subjectCore = input.fixedSubject ? input.fixedSubject.replace(/\([^)]*\)/g, "").trim() || input.fixedSubject : "";
+  const subjectHead = subjectCore.split(/\s+/)[0] ?? "";
+  const mentionsSubject = (text: string) => {
+    if (process.env.PLAN_SUBJECT_MATCH === "exact") return text.includes(input.fixedSubject ?? "");
+    const body = compactName(text);
+    // "김규식(…) 인터뷰…"처럼 뒤에 설명이 붙은 대상은 맨 앞 이름만 나와도 같은 대상으로 본다.
+    return body.includes(compactName(subjectCore)) || (compactName(subjectHead).length >= 2 && body.includes(compactName(subjectHead)));
+  };
+  if (input.fixedSubject && !mentionsSubject(freeText)) {
     console.warn(
       `[generatePlan] fixedSubject="${input.fixedSubject}"가 1차 결과에 등장하지 않음 — 강하게 재지시하여 1회 재시도`
     );
@@ -457,7 +472,7 @@ export async function generatePlan(
         `\n\n【다시 한번 강조 — 반드시 지킬 것】 방금 쓴 글에 "${input.fixedSubject}"가 전혀 언급되지 않았다. ` +
         `이 과제의 대상은 오직 "${input.fixedSubject}" 하나뿐이다. 처음부터 끝까지 이 대상만 다뤄서 다시 쓸 것.`;
       const retryStepA = await runStepA(forcedPrompt);
-      if (retryStepA.text?.includes(input.fixedSubject)) {
+      if (retryStepA.text && mentionsSubject(retryStepA.text)) {
         stepA = retryStepA;
         freeText = retryStepA.text;
       } else {
@@ -483,7 +498,44 @@ export async function generatePlan(
     };
   };
   let planIssues = inspectPlan(freeText);
-  if (planIssues.missing.length > 0 || planIssues.badYears.length > 0) {
+  // 항목만 빠졌으면(연도 문제 없음) 글 전체를 다시 쓰지 않고 빠진 항목만 써서 끼워 넣는다 — 실측(2026-10-24) 39회 중 13회 계획 글쓰기가
+  // 산출물 수보다 많았다. 사실 번호([F1])로 출처를 붙이는 조사→글쓰기 경로에서만(검색 직접 인용 경로는 각주 위치가 글자 위치라 끼워 넣으면 어긋난다).
+  // PLAN_ITEM_FILL=rewrite면 예전처럼 전체를 다시 쓴다.
+  if (notes && planIssues.missing.length > 0 && planIssues.badYears.length === 0 && process.env.PLAN_ITEM_FILL !== "rewrite") {
+    const missing = planIssues.missing;
+    console.warn(`[generatePlan] 필수 항목 누락 → 빠진 항목만 채움: ${JSON.stringify(missing)}`);
+    try {
+      const fill = await generate({
+        label: "generatePlan:fillItems",
+        role: "write",
+        effort: writeEffort(),
+        prompt: `아래는 학생이 제출할 "${input.elementLabel ?? input.coreTaskInfo.topic}" 산출물의 초안이다. 안내문이 요구한 다음 항목이 빠졌다: ${missing.join(", ")}.
+빠진 항목마다 "### 항목명" 소제목 한 줄과 그 아래 본문 2~4문장만 써라. 다른 설명·머리말·이미 있는 내용은 쓰지 말 것.
+- 초안에 이미 있는 사실과 [F번호]만 쓰고, 새 사실·연도·수치·인물을 만들지 말 것. 초안과 같은 대상·같은 말투로.
+- "A 또는 B" 항목은 초안의 산출물에 맞는 쪽 하나만 쓴다(예: 만평이면 주제, 광고면 상품).${currentOutputLang() === "en" ? "\n- 소제목 줄은 항목명 그대로 두고 본문은 영어로 쓴다." : ""}
+${ANTI_AI_TONE_RULES}
+
+[초안]
+${freeText}`,
+      });
+      const added = fill.text.trim();
+      if (added) {
+        const at = freeText.indexOf(PHYSICAL_HEADING);
+        const lineStart = at >= 0 ? freeText.lastIndexOf("\n", at) + 1 : freeText.length;
+        const merged = `${freeText.slice(0, lineStart).trimEnd()}\n\n${added}\n\n${freeText.slice(lineStart)}`.trimEnd();
+        const after = inspectPlan(merged);
+        if (after.missing.length < missing.length) {
+          freeText = merged;
+          stepA = { ...stepA, text: merged };
+          planIssues = after;
+        } else {
+          console.warn("[generatePlan] 빠진 항목 채우기가 도움이 되지 않아 원래 초안 유지");
+        }
+      }
+    } catch (err) {
+      console.error("[generatePlan] 빠진 항목 채우기 실패(원래 초안 유지)", err);
+    }
+  } else if (planIssues.missing.length > 0 || planIssues.badYears.length > 0) {
     console.warn(
       `[generatePlan] 항목/사실 일관성 문제 감지, 1회 재시도: 누락항목=${JSON.stringify(planIssues.missing)} ` +
         `조사자료에없는연도=${JSON.stringify(planIssues.badYears)}`
@@ -636,9 +688,11 @@ export async function generatePlan(
     const urls = stripInlineUrls(notes.content);
     const reported = reduceReportedSpeech(urls.content);
     const josa = fixJosaAfterTitle(reported.content);
+    const ordinals = stripOrdinalEnumerators(josa.content);
     if (notes.removed + urls.removed + reported.changed + josa.changed > 0)
       console.warn(`[generatePlan] 작업 메모 ${notes.removed}개·본문 주소 ${urls.removed}개 제거, 전달형 꼬리 ${reported.changed}개·제목 조사 ${josa.changed}개 정리`);
-    content = josa.content;
+    content = ordinals.content;
+    if (ordinals.changed > 0) console.warn(`[generatePlan] 서수 나열 표지(첫째·둘째) ${ordinals.changed}개 정리`);
   }
   // 국내 출처 범위: 해외 출처와 그 각주 번호를 뺀다(조사 단계에서 이미 걸렀어도 검색 한 번에 쓰기·통계 재확인 경로로 들어올 수 있다).
   if (currentSourceScope() === "domestic") {

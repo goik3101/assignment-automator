@@ -326,7 +326,8 @@ async function judge(investigation: Investigation): Promise<VerificationResult> 
 // 안전장치(그라운딩 출처 필수, 위키/동영상/블로그·마케팅 카피 배제)는
 // 그대로 유지된다. "검색 자체를 한 번도 안 함"(모델이 지시를 무시)은 각도
 // 문제가 아니라 순응 문제라 기존처럼 1회 강한 재지시만 한다.
-const MAX_ANGLE_RETRIES = Number(process.env.VERIFY_EXCERPT_MAX_ANGLE_RETRIES ?? 2);
+// 기본 1회(예전 2회): 실측(2026-10-23) 각도 재조사 3라운드가 검색 11회·69초·$0.13였다 — 한 라운드가 약 검색 3~4회라 한 번만 더 본다.
+const MAX_ANGLE_RETRIES = Number(process.env.VERIFY_EXCERPT_MAX_ANGLE_RETRIES ?? 1);
 
 /**
  * 인용 대상의 원문이 실제로 노출된 페이지를 찾아 검증한다. generate-essay.ts의

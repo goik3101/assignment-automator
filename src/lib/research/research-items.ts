@@ -29,6 +29,9 @@ function coreTokens(item: string): string[] {
 }
 
 export function itemMatchesHeading(item: string, heading: string): boolean {
+  // "주제 또는 상품"처럼 둘 중 하나를 고르는 항목은 어느 쪽 소제목이든 있으면 된다(만평이면 "주제", 광고면 "상품" — 실측 2026-10-24 불필요한 계획 재작성).
+  const alts = item.split(/\s+(?:또는|혹은)\s+/).filter(Boolean);
+  if (alts.length > 1) return alts.some((alt) => itemMatchesHeading(alt, heading));
   const a = normalizeKey(item);
   const b = normalizeKey(heading);
   if (!a || !b) return false;

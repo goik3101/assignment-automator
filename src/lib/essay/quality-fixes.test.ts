@@ -201,3 +201,10 @@ test("원고의 각주 문장을 계획용 사실 노트로 바꾸고, 확인 �
     ["F2", "미군은 1945년 9월 인천에 상륙했다.", "https://b.kr/2"],
   ]);
 });
+
+test("문장 앞 서수 나열(첫째,/둘째로)은 지우고 '첫째 아이' 같은 낱말은 둔다", async () => {
+  const { stripOrdinalEnumerators } = await import("./deliverable.ts");
+  const r = stripOrdinalEnumerators("이유는 두 가지다. 첫째, 설명이 쉽다[1]. 둘째로 연습이 있다.\n- 셋째: 짧다.\n첫째 아이가 웃었다. 두 번째로, 끝.");
+  assert.equal(r.content, "이유는 두 가지다. 설명이 쉽다[1]. 연습이 있다.\n- 짧다.\n첫째 아이가 웃었다. 끝.");
+  assert.equal(r.changed, 4);
+});

@@ -5,6 +5,8 @@ import { needsSubjectSelection } from "@/lib/learning/items";
 import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
 import { canonicalize } from "./canonical";
 import { selectFromCandidates, type HistoryEntry, type ScoredCandidate, type SelectionCandidate, type SelectionTier } from "./score";
+import { findStudentTopic, isMediumOnly } from "./student-topic";
+import { DOMESTIC_CONSTRAINT, isDomesticScope } from "./domestic-scope";
 import type { CoreTaskInfo } from "@/types/task";
 
 // 자동 선정 공통 흐름(인물·사건·탐구 대상·발표 주제 등 "학생이 고르는 대상"):
@@ -64,7 +66,7 @@ export function isSelectionTask(info: CoreTaskInfo): boolean {
   return needsSubjectSelection(info);
 }
 
-async function generateCandidates(spec: SubjectSpec, subject: string, instructions?: string): Promise<SelectionCandidate[]> {
+async function generateCandidates(spec: SubjectSpec, subject: string, instructions?: string, domestic = false): Promise<SelectionCandidate[]> {
   const typeLabel = SUBJECT_TYPE_LABEL[spec.subject_type];
   const prompt = `
 고등학생 수행평가에서 학생이 고를 대상의 후보를 ${CANDIDATE_COUNT}개 제안해줘. 최종 선택은 코드가 하니 너는 고르지 말고 후보와 점수만 낸다.
@@ -78,7 +80,7 @@ async function generateCandidates(spec: SubjectSpec, subject: string, instructio
 ${instructions ? `[학생 지침]\n${instructions}\n` : ""}
 규칙:
 - 후보는 전부 위 종류·조건을 정확히 충족하는 실존 대상이어야 한다. "관련 있어 보인다"는 이유로 넣지 마라.
-- 가장 유명한 대표 대상 몇 개에 치우치지 마라. 서로 다른 분야·시대·지역·성별에서 고르고, 덜 알려졌어도 조건을 충족하고 자료(검색·도서관·공공기관)가 충분한 대상을 절반 이상 포함할 것.
+- 가장 유명한 대표 대상 몇 개에 치우치지 마라. ${domestic ? "한국 안에서 서로 다른 분야·시기·인물·지역에서" : "서로 다른 분야·시대·지역·성별에서"} 고르고, 덜 알려졌어도 조건을 충족하고 자료(검색·도서관·공공기관)가 충분한 대상을 절반 이상 포함할 것.
 - fit은 (조건 충족도 + 자료 확보 가능성 + 고등학생이 다루기 적절한지)의 종합이다. 유명하다는 이유로 높이지 마라.
 - 같은 대상을 다른 표기로 두 번 넣지 마라.
 `.trim();
@@ -113,17 +115,33 @@ export async function selectSubjectForTask(
 ): Promise<SelectedSubject | null> {
   if (!isSelectionTask(params.info)) return null;
 
+  // 제작 전 질문 답이나 "주제: …" 줄로 학생이 이미 정했으면 AI 판정 없이 그대로 쓴다(AI 판정이 놓치거나 매체를 대상으로 잡은 실측 — student-topic.ts).
+  const typed = process.env.SELECTION_STUDENT_TOPIC !== "off" ? findStudentTopic(params.instructions) : null;
+  if (typed) {
+    const c = canonicalize(typed);
+    console.log(`[selection] 학생 직접 지정(지침에서 확인) → 자동 선정 생략: "${c.display}"`);
+    return { kind: "user_specified", name: c.display, key: c.key, type: "other" };
+  }
+
   const spec0 = await extractSubjectSpec({ subject: params.subject, info: params.info, instructions: params.instructions });
-  if (spec0.student_specified_subject) {
+  if (spec0.student_specified_subject && isMediumOnly(spec0.student_specified_subject)) {
+    console.warn(`[selection] 학생 지정으로 잡힌 값이 매체 이름이라 무시: "${spec0.student_specified_subject}"`);
+  } else if (spec0.student_specified_subject) {
     const c = canonicalize(spec0.student_specified_subject);
     console.log(`[selection] 학생 직접 지정 → 자동 선정 생략: "${c.display}"`);
     return { kind: "user_specified", name: c.display, key: c.key, type: spec0.subject_type };
   }
   // 대상 종류를 안내문에서 특정하지 못한 "주제 고르기" 과제(사회문제·탐구 주제·발표 주제 등)는 일반 주제 선정으로 다룬다.
-  const spec: SubjectSpec =
+  const specBase: SubjectSpec =
     spec0.subject_type === "unspecified" ? { ...spec0, subject_type: "other", needs_clarification: false, clarification_note: null } : spec0;
+  // 한국사·우리 사회 과제면 후보와 검증 조건을 한국 대상으로 좁힌다(domestic-scope.ts). SELECTION_DOMESTIC_SCOPE=off면 예전처럼.
+  const domestic =
+    process.env.SELECTION_DOMESTIC_SCOPE !== "off" &&
+    isDomesticScope(params.subject, [params.info.topic, ...params.info.requirements, ...params.info.task_elements.map((e) => e.description)]);
+  const spec: SubjectSpec = domestic ? { ...specBase, constraints: [...specBase.constraints, DOMESTIC_CONSTRAINT] } : specBase;
+  if (domestic) console.log("[selection] 한국 범위 과제 → 후보를 한국 대상으로 제한");
 
-  const candidates = await generateCandidates(spec, params.subject, params.instructions);
+  const candidates = await generateCandidates(spec, params.subject, params.instructions, domestic);
   if (candidates.length === 0) {
     console.warn("[selection] 후보 생성 결과 없음 → 기존 방식(본문 생성이 직접 선정)으로 폴백");
     return null;

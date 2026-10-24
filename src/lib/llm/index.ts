@@ -23,6 +23,9 @@ export function llmModel(role: ModelRole): string {
 }
 
 const MAX_RETRIES = 2;
+// 검색 요청이 시간 초과로 끊겨도 OpenAI 쪽에서는 끝까지 처리·청구될 수 있다(검색 요금 + 토큰). 그래서 검색 요청의 시간 초과는 한 번만 다시 시도한다.
+// 속도 제한·서버 오류(청구 안 됨)는 지금처럼 MAX_RETRIES까지. LLM_SEARCH_TIMEOUT_RETRIES로 조정.
+const SEARCH_TIMEOUT_RETRIES = Number(process.env.LLM_SEARCH_TIMEOUT_RETRIES ?? 1);
 const BASE_DELAY_MS = 1000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -43,7 +46,8 @@ export async function generate(req: LlmRequest): Promise<LlmResponse> {
       return res;
     } catch (e) {
       const err = e instanceof LlmError ? e : new LlmError(e instanceof Error ? e.message : String(e), "unknown", false);
-      if (!err.retryable || attempt >= MAX_RETRIES) {
+      const cap = req.search && err.kind === "timeout" ? SEARCH_TIMEOUT_RETRIES : MAX_RETRIES;
+      if (!err.retryable || attempt >= cap) {
         recordCall({
           label: req.label, provider: provider.name, model, ms: Date.now() - started, ok: false, retries,
           errorKind: err.kind, inputTokens: 0, outputTokens: 0, reasoningTokens: 0, searchCalls: 0,
@@ -52,7 +56,7 @@ export async function generate(req: LlmRequest): Promise<LlmResponse> {
       }
       retries++;
       const delay = Math.min(err.retryAfterMs ?? BASE_DELAY_MS * 2 ** attempt, 15000);
-      console.warn(`[llm retry] ${req.label} ${err.kind} (${attempt + 1}/${MAX_RETRIES + 1}), ${delay}ms 후 재시도`);
+      console.warn(`[llm retry] ${req.label} ${err.kind} (${attempt + 1}/${cap + 1}), ${delay}ms 후 재시도`);
       await sleep(delay);
     }
   }

@@ -101,3 +101,19 @@ test("OpenAI: analyze/study 역할은 따로 정한 모델을 쓰고, 없으면 
     }
   }
 });
+
+test("검색 요청의 시간 초과는 한 번만 다시 시도한다(끊겨도 청구될 수 있어서) — 검색 없는 요청·속도 제한은 그대로 3회", async () => {
+  const timeout = () => new LlmError("timeout", "timeout", true);
+  const s = fake([timeout]);
+  setProviderForTest(s);
+  await assert.rejects(() => generate({ label: "search", role: "main", prompt: "x", search: { force: true } }), (e: LlmError) => e.kind === "timeout");
+  assert.equal(s.calls.length, 2);
+  const plain = fake([timeout]);
+  setProviderForTest(plain);
+  await assert.rejects(() => generate({ label: "plain", role: "main", prompt: "x" }));
+  assert.equal(plain.calls.length, 3);
+  const rl = fake([() => new LlmError("429", "rate_limit", true, 429), () => new LlmError("429", "rate_limit", true, 429), () => ok("성공")]);
+  setProviderForTest(rl);
+  assert.equal((await generate({ label: "s429", role: "main", prompt: "x", search: { force: true } })).text, "성공");
+  setProviderForTest(null);
+});

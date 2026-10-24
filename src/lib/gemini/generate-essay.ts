@@ -39,6 +39,7 @@ import {
   stripWorkNotes,
   reduceReportedSpeech,
   fixJosaAfterTitle,
+  stripOrdinalEnumerators,
   stripMetaNoteLines,
   stripModelReferenceBlock,
   stripWorkMarkers,
@@ -55,6 +56,8 @@ import { buildFormRulesBlock } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
 import { mergeParallelParts, parallelWriteInstruction, parallelWriteOn } from "@/lib/essay/parallel-write";
+import { acceptKoreanRewrite, flippedToEnglish, koreanGuardOn, koreanLanguageIssue, koreanRewritePrompt } from "@/lib/essay/korean-guard";
+import { currentOutputLang, scaleLengthsForEnglish } from "@/lib/llm/output-lang";
 import {
   attachFactMarkers,
   buildFacts,
@@ -368,6 +371,8 @@ const LANGUAGE_KEYWORDS: { keyword: string; language: string }[] = [
 // 영어 과목이어도 "한글로 작성"이라고 적힌 단계는 한국어다(실측 2026-10-22: 영어 수행평가의 "과정쓰기 — 한글로 작성"을 영어로 쓰게 하고, 한국어로 쓴 첫 글을 언어 오류로 보고 재작성까지 했다).
 const KOREAN_ONLY = /한글로|한국어로|우리말로/;
 function detectElementLanguage(subject: string, el: CoreTaskInfo["task_elements"][number]): string | null {
+  // 화면 언어가 English면 모든 단계를 영어로 쓴다(학생이 고른 언어가 안내문 언어보다 우선 — output-lang.ts).
+  if (currentOutputLang() === "en") return "English(영어)";
   if (qualityFixesOn() && KOREAN_ONLY.test(`${el.label} ${el.description}`)) return null;
   const haystack = `${subject} ${el.label} ${el.description}`;
   for (const { keyword, language } of LANGUAGE_KEYWORDS) {
@@ -614,13 +619,28 @@ ${input.previousOutputText}
   const languageNotes = elements
     .map((el) => {
       const lang = detectElementLanguage(input.subject, el);
-      return lang ? `- "${el.label}" 단계는 반드시 ${lang}로 작성할 것(한국어로 쓰지 말 것) — 제목이 있다면 제목도 포함해서 전부.` : null;
+      return lang ? `- "${el.label}" 단계는 반드시 ${lang}로 작성할 것(한국어로 쓰지 말 것) — 제목이 있다면 제목도 포함해서 전부. 본문 문장에는 한글을 한 글자도 섞지 말고, 대상·제품·인물 이름도 영어로 옮겨 쓸 것(예: 휴대용 태양열 조리기 → portable solar cooker).` : null;
     })
     .filter((line): line is string => line !== null)
     .join("\n");
-  const languageBlock = languageNotes
-    ? `\n【언어 규칙 — 반드시 지킬 것】\n${languageNotes}\n(이 지시문이나 [학생이 추가로 입력한 지침] 자체는 한국어여도 되지만, 위에서 지정한 단계의 실제 제출용 본문은 반드시 그 언어로만 쓸 것.)\n`
+  // 외국어로 쓰는 단계가 없으면 "전부 한국어"를 분명히 말한다 — 말하지 않으면 슬라이드 제목·발표 대본을 영어로 쓴 적이 있다(korean-guard.ts).
+  const koreanRule = currentOutputLang() === "en"
+    ? '- 맨 위 요약 불릿도 영어로 쓸 것. 단, "## 단계 이름" 줄과 "### 항목 이름" 소제목 줄은 위에 주어진 이름을 한국어 그대로 쓰고(프로그램이 이 줄로 단계·항목을 찾는다), 그 아래 본문만 영어로 쓸 것.'
+    : koreanGuardOn()
+    ? languageNotes
+      ? "- 위에 언어가 지정되지 않은 나머지 단계는 모두 한국어로 쓸 것."
+      : "- 모든 단계는 한국어로 쓸 것 — 발표 대본·슬라이드 제목·화면 문구·스토리보드 장면 설명도 포함. 영어 제목이나 영어 문장을 쓰지 말 것(외국 인물·기관 이름은 한국어로 쓰고 필요하면 괄호에 원어 병기)."
     : "";
+  const languageBlock = languageNotes
+    ? `\n【언어 규칙 — 반드시 지킬 것】\n${languageNotes}\n${koreanRule ? `${koreanRule}\n` : ""}(이 지시문이나 [학생이 추가로 입력한 지침] 자체는 한국어여도 되지만, 위에서 지정한 단계의 실제 제출용 본문은 반드시 그 언어로만 쓸 것.)\n`
+    : koreanRule
+      ? `\n【언어 규칙 — 반드시 지킬 것】\n${koreanRule}\n`
+      : "";
+  // 영어 이름 옮겨 쓰기 지시는 실제로 영어로 쓰는 단계가 있을 때만 넣는다(국어 과제에 넣었더니 발표 대본을 통째로 영어로 썼다 — 2026-10-24).
+  const englishNameNote =
+    !koreanGuardOn() || elements.some((el) => detectElementLanguage(input.subject, el)?.startsWith("English"))
+      ? " — 단, 영어로 쓰는 단계에서는 자연스러운 영어 이름으로 옮겨 쓰고 한글을 한 글자도 섞지 말 것"
+      : "";
 
   return `
 ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을 대신 써주는 도우미다.
@@ -642,7 +662,7 @@ ${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${defaultLeng
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
-${input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 「${input.presetSubject.name}」${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
+${input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 「${input.presetSubject.name}」${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지${englishNameNote}), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -1019,7 +1039,11 @@ async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["t
 - 처음 1~2개 사실은 서지 사실(제목·저자·출판사·출간연도)로 쓰고, 그 사실의 근거 페이지 항목에는 페이지에 인쇄된 제목과 저자 표기를 그대로 printed_title, printed_author에 적는다(페이지에 있는 글자 그대로, 번역·의역 금지).${
     qualityFixesOn() ? `\n- 서지 사실 문장은 "『제목』은 저자가 쓰고 출판사가 연도에 펴낸 책이다."처럼 한 문장으로 쓴다. "표지에 ~로 표기되어 있다", "~로 소개되어 있다" 같은 표현은 쓰지 않는다.` : ""
   }
-- 나머지 사실은 줄거리·주제·인물·작가 소개로 6~8개. 책 속 문장(인용문)은 모으지 않는다.
+- 나머지 사실은 줄거리·주제·인물·작가 소개로 6~8개. 책 속 문장(인용문)은 모으지 않는다.${
+    qualityFixesOn()
+      ? `\n- 책이 실제 역사적 사건(예: 4·19혁명, 제주 4·3, 부마민주항쟁)을 다루면, 그 사건의 핵심 사실(날짜·장소·사람·무슨 일이 있었고 어떻게 끝났는지) 4~6개를 역사 기관·백과사전·교과 자료 페이지에서 따로 찾아 넣는다 — 서점 책 소개만으로는 사건 내용을 쓸 수 없다(실측: 카드뉴스가 "긴장이 고조되었다"처럼 사건 없이 흐릿해졌다).`
+      : ""
+  }
 - 인물·지명은 한국어 번역본에서 쓰이는 표기로 쓰고, 확실하지 않으면 원어 표기를 괄호로 병기한다(예: 다아시(Darcy)). 음역을 지어내지 말 것.
 `
     : "";
@@ -1256,12 +1280,16 @@ ${parallelWriteInstruction(l, labels, i === 0)}`, effort: writeEffort() })
       `[generateEssay] 조사→글쓰기: 사실=${notes.facts.length}개 사용한 출처=${mapped.sources.length}개 모르는번호=${mapped.unknown} 본문각주=${(mapped.text.match(/\[\d+\]/g) ?? []).length} model=${write.provider}/${write.model}`
     );
   } else {
+    // 조사가 이미 검색을 쓰고 실패한 뒤의 대체 경로면 검색 상한을 낮추고, "출처 인용 0개" 재시도는 하지 않는다
+    // (실측 2026-10-24: 107회 중 2회, 조사 실패 → 대체 경로 → 재시도로 검색 8~10번, 1회 $0.15~0.22). RESEARCH_FALLBACK_SEARCH=full이면 예전처럼.
+    const researchFailed = useResearchWrite && input.researchNotes === undefined && process.env.RESEARCH_FALLBACK_SEARCH !== "full";
+    if (researchFailed) console.warn("[generateEssay] 조사 실패 → 대체 경로(검색 상한 2회, 출처 없음 재시도 생략)");
     const runStageA = (p: string) =>
       generate({
         label: "generateEssay:stepA",
         role: "main",
         prompt: p,
-        search: { force: wantSearch, maxCalls: 4 },
+        search: { force: wantSearch, maxCalls: researchFailed ? 2 : 4 },
       });
 
     let stageA = await runStageA(prompt);
@@ -1275,7 +1303,7 @@ ${parallelWriteInstruction(l, labels, i === 0)}`, effort: writeEffort() })
     // — 그래서 stageA 자체에도 같은 안전장치를 적용한다.
     // 검색을 호출하고도 출처 인용이 하나도 안 붙은 경우(chunks=0)도 같은 문제다 — 검색 결과를 쓴 문장에 출처가 없으면 "신뢰할 수 있는 사실" 요구를 확인할 수 없다(실측: 인물 탐구 글이 통째로 무출처).
     const searchedButNoSources = (grounding?.queries?.length ?? 0) > 0 && (grounding?.chunks?.length ?? 0) === 0;
-    if (wantSearch && ((grounding?.queries?.length ?? 0) === 0 || searchedButNoSources)) {
+    if (wantSearch && ((grounding?.queries?.length ?? 0) === 0 || (searchedButNoSources && !researchFailed))) {
       console.warn(`[generateEssay] stageA가 ${searchedButNoSources ? "검색은 했지만 출처 인용이 하나도 없음" : "검색 도구를 한 번도 호출하지 않음"} — 강하게 재지시하여 1회 재시도`);
       const forcedPrompt =
         prompt +
@@ -1573,6 +1601,8 @@ export async function generateEssay(
   input: GenerateEssayInput
 ): Promise<EssayResult | InsufficientDataResult> {
   const start = Date.now();
+  // 영어로 쓸 때는 안내문의 글자 수 기준(한국어)을 영어 글자 수로 늘린다 — 그대로 두면 분량 보정이 영어 글을 절반 이하로 잘라 낸다.
+  if (currentOutputLang() === "en") input = { ...input, coreTaskInfo: scaleLengthsForEnglish(input.coreTaskInfo) };
   // 신문처럼 "실제로 제출할 산출물" 단계는 조사 자료 형식("### 항목명" 불릿 나열)이 아니라 그 산출물의 형식으로 쓴다 —
   // 분석 단계가 안내문 문장을 required_items로 베껴 sections로 분류해도 여기서 바로잡는다(deliverable.ts).
   const fixes = qualityFixesOn();
@@ -1753,7 +1783,10 @@ export async function generateEssay(
       const sec = attempt.sections.find((s) => s.label === el.label);
       const forms = requiredGrammarForms(`${reqText} ${el.description} ${(el.required_items ?? []).join(" ")}`);
       const miss = sec ? missingGrammarForms(sec.content, forms) : [];
-      if (miss.length > 0) grammarGaps.push({ label: el.label, missing: miss.map((f) => GRAMMAR_REPAIR_TEXT[f]) });
+      // 실측(2026-10-24, 4회 중 3회): 영어 본문에 선정 대상의 한글 이름이 섞였다("The product is the 휴대용 태양열 조리기") — 소제목 줄은 빼고 본다.
+      const hangulInBody = !!sec && /[가-힣]/.test(sec.content.replace(/^#.*$/gm, ""));
+      const missing = [...miss.map((f) => GRAMMAR_REPAIR_TEXT[f]), ...(hangulInBody ? ["본문 문장에 섞인 한글(이름 포함)을 모두 자연스러운 영어로 바꿀 것 — 소제목 줄은 그대로 둘 것"] : [])];
+      if (missing.length > 0) grammarGaps.push({ label: el.label, missing });
     }
     if (grammarGaps.length > 0) console.warn(`[generateEssay] 필수 어법 누락 감지: ${JSON.stringify(grammarGaps.map((g) => g.label))}`);
   }
@@ -1806,9 +1839,10 @@ export async function generateEssay(
 
   // 검색·재작성이 필요한 문제만 전체 재시도(검색 포함, 30~100초)로 보낸다. 분량 미달·반복·소제목 없는 단계의 항목 누락은 그 단계만 검색 없이 고친다(아래 repairLocally, 약 5~10초) —
   // 분량은 마지막의 adjustSectionLength가 맡는다(전체 재생성은 오히려 분량이 흔들린다는 실측).
+  // 상투구·근거 없는 최상급만으로는 전체를 다시 쓰지 않는다 — 마지막 정리(stripCliches·stripUnsupportedSuperlatives)가 이미 지운다.
+  // 실측(2026-10-24, 107회 중 10회 전체 재작성, 8회가 상투구 때문): 모든 단계를 다시 써서 글쓰기 비용이 약 2배. CLICHE_FULL_RETRY=on이면 예전처럼.
   const needsFullRetry =
-    cliches.length > 0 ||
-    unsupportedSuperlatives.length > 0 ||
+    ((!fixes || process.env.CLICHE_FULL_RETRY === "on") && (cliches.length > 0 || unsupportedSuperlatives.length > 0)) ||
     languageMismatches.length > 0 ||
     presetBookMismatch ||
     presetSubjectMismatch ||
@@ -2173,6 +2207,36 @@ export async function generateEssay(
     }
   }
 
+  // 외국어 단계가 아닌데 영어로 쓰였거나 영어 제목·문장이 섞인 단계는 그 단계만 한국어로 다시 쓴다(분량 보정보다 먼저 — 번역 뒤 분량을 다시 맞춘다).
+  if (koreanGuardOn()) {
+    const targets = attempt.sections.filter((sec) => {
+      const el = elements.find((e) => e.label === sec.label);
+      return !!el && !detectElementLanguage(input.subject, el) && !!koreanLanguageIssue(sec.content);
+    });
+    if (targets.length > 0) {
+      console.warn(`[generateEssay] 한국어 단계에 영어 감지: ${JSON.stringify(targets.map((t) => ({ label: t.label, ...koreanLanguageIssue(t.content) })))}`);
+      const fixed = await Promise.all(
+        attempt.sections.map(async (sec) => {
+          if (!targets.includes(sec)) return sec;
+          const el = elements.find((e) => e.label === sec.label);
+          try {
+            const res = await generate({ label: "generateEssay:koreanFix", role: "write", prompt: koreanRewritePrompt(sec.label, sec.content, el?.description ?? ""), effort: writeEffort() });
+            const next = res.text.trim();
+            if (acceptKoreanRewrite(sec.content, next)) {
+              console.log(`[generateEssay] 한국어로 다시 씀 label="${sec.label}" (${sec.content.length}→${next.length}자)`);
+              return { ...sec, content: next };
+            }
+            console.warn(`[generateEssay] 한국어 재작성 거부(각주 변경 또는 영어가 남음) label="${sec.label}"`);
+          } catch (err) {
+            console.error("[generateEssay] 한국어 재작성 실패(원문 유지)", err);
+          }
+          return sec;
+        })
+      );
+      attempt = { ...attempt, sections: fixed };
+    }
+  }
+
   // 품질 재시도까지 거치고도 분량 범위를 못 맞춘 단계는, 검색 없이 그 단계 글 하나만 한 번 보정한다(전체 재생성은 오히려 분량이 흔들린다 — 실측 1344→1294자).
   {
     const remaining = checkLengthCompliance(attempt.sections, elements);
@@ -2268,9 +2332,11 @@ export async function generateEssay(
         const urls = stripInlineUrls(notes.content);
         const reported = reduceReportedSpeech(urls.content);
         const josa = fixJosaAfterTitle(reported.content);
+        const ordinals = stripOrdinalEnumerators(josa.content);
         if (notes.removed + urls.removed + reported.changed + josa.changed > 0)
           console.warn(`[generateEssay] 작업 메모 ${notes.removed}개·본문 주소 ${urls.removed}개 제거, 전달형 꼬리 ${reported.changed}개·제목 조사 ${josa.changed}개 정리 label="${s.label}"`);
-        content = josa.content;
+        content = ordinals.content;
+        if (ordinals.changed > 0) console.warn(`[generateEssay] 서수 나열 표지(첫째·둘째) ${ordinals.changed}개 정리`);
       }
       return { ...s, content };
     }),
@@ -3511,6 +3577,10 @@ ${content}`.trim(),
   }
   const hangul = (t: string) => (t.match(/[가-힣]/g) ?? []).length / Math.max(1, t.replace(/\s/g, "").length);
   if (issue.unit === "words" && hangul(next) > 0.05 && hangul(content) <= 0.05) return {};
+  if (issue.unit !== "words" && koreanGuardOn() && flippedToEnglish(content, next)) {
+    console.warn(`[generateEssay] 분량 보정 거부(한국어 글이 영어로 바뀜) label="${issue.label}"`);
+    return {};
+  }
   if (distance(measure(next)) >= distance(issue.actual)) {
     console.warn(`[generateEssay] 분량 보정 거부(범위에 가까워지지 않음) label="${issue.label}" ${issue.actual}->${measure(next)}`);
     return { candidate: next };
