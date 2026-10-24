@@ -1,6 +1,7 @@
 import { validateCoreTaskInfo } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { withSourceScope } from "@/lib/llm/scope";
+import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
 import { parseSourceScope } from "@/lib/essay/source-scope";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -13,7 +14,7 @@ import { normalizeBookTitleKey } from "@/lib/gemini/generate-essay";
 import { canonicalize } from "@/lib/selection/canonical";
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
-import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
+import { enforceGenerationLimit, recordGeneration, LimitExceededError, releaseGeneration } from "@/lib/usage/throttle";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
@@ -22,7 +23,9 @@ import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
 // 걸리는 만큼 여유 있게 60초로 잡아둔다 (Vercel Pro 기준 상한, 15번 챕터 참고).
 export const maxDuration = 180;
 
-export const POST = routeUsage("essay", async function POST(req: NextRequest) {
+export const POST = routeUsage("essay", withUiLangRoute(async function POST(req: NextRequest) {
+  // 사용 횟수는 생성 전에 자리를 잡고(동시 요청 구멍 방지), 결과를 못 만들면 돌려준다 — throttle.ts.
+  let reservation: string | null = null;
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
@@ -53,7 +56,7 @@ export const POST = routeUsage("essay", async function POST(req: NextRequest) {
     }
 
     try {
-      await enforceGenerationLimit(identity, admin);
+      reservation = await enforceGenerationLimit(identity, admin);
     } catch (err) {
       if (err instanceof LimitExceededError) {
         return NextResponse.json({ error: err.message }, { status: 429 });
@@ -95,7 +98,7 @@ export const POST = routeUsage("essay", async function POST(req: NextRequest) {
               submissionId,
               resultText: essayResultToText(result),
             });
-            await recordGeneration(identity, "generate", !!avoidanceInstruction);
+            await recordGeneration(identity, "generate", !!avoidanceInstruction, reservation);
 
             if (result.recommendedBookTitle) {
               // 정규화된 값으로 저장 — 겹낫표/공백 차이로 같은 책이 다른 항목처럼
@@ -171,12 +174,14 @@ export const POST = routeUsage("essay", async function POST(req: NextRequest) {
       });
     }
 
+    if (result.type !== "essay") await releaseGeneration(reservation);
     return response;
   } catch (err) {
+    await releaseGeneration(reservation);
     console.error("[/api/tasks/generate/essay] failed", err);
     return NextResponse.json(
       { error: "원고 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요." },
       { status: 500 }
     );
   }
-});
+}));

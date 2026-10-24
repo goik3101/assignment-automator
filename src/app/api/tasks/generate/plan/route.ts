@@ -1,6 +1,7 @@
 import { validateCoreTaskInfo } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { withSourceScope } from "@/lib/llm/scope";
+import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
 import { parseSourceScope } from "@/lib/essay/source-scope";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -11,7 +12,7 @@ import { saveResultEmbedding, planResultToText } from "@/lib/clusters/save-resul
 import { buildRecommendationGuidance, recordRecommendation } from "@/lib/recommendations/recommendation-diversity";
 import { saveHistory } from "@/lib/histories/save-history";
 import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
-import { enforceGenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
+import { enforceGenerationLimit, recordGeneration, LimitExceededError, releaseGeneration } from "@/lib/usage/throttle";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo, SourceRef } from "@/types/task";
@@ -21,7 +22,9 @@ import type { AdministrativeInfo, CoreTaskInfo, SourceRef } from "@/types/task";
 // Pro(60초)가 필요한지 판단한다. (기획서 15, 18, 19번 챕터 참고)
 export const maxDuration = 180;
 
-export const POST = routeUsage("plan", async function POST(req: NextRequest) {
+export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: NextRequest) {
+  // 사용 횟수는 생성 전에 자리를 잡고(동시 요청 구멍 방지), 결과를 못 만들면 돌려준다 — throttle.ts.
+  let reservation: string | null = null;
   try {
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
@@ -62,7 +65,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
     }
 
     try {
-      await enforceGenerationLimit(identity, admin);
+      reservation = await enforceGenerationLimit(identity, admin);
     } catch (err) {
       if (err instanceof LimitExceededError) {
         return NextResponse.json({ error: err.message }, { status: 429 });
@@ -99,7 +102,7 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
               submissionId,
               resultText: planResultToText(result),
             });
-            await recordGeneration(identity, "generate", !!avoidanceInstruction);
+            await recordGeneration(identity, "generate", !!avoidanceInstruction, reservation);
 
             for (const itemName of result.verifiedItemNames ?? []) {
               await recordRecommendation({
@@ -145,15 +148,17 @@ export const POST = routeUsage("plan", async function POST(req: NextRequest) {
       });
     }
 
+    if (result.type !== "plan") await releaseGeneration(reservation);
     return response;
   } catch (err) {
+    await releaseGeneration(reservation);
     console.error("[/api/tasks/generate/plan] failed", err);
     return NextResponse.json(
       { error: "실행계획 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요." },
       { status: 500 }
     );
   }
-});
+}));
 
 /** 클라이언트가 보낸 출처 목록은 번호·제목·http(s) 주소만 받는다(최대 20개). */
 function sanitizeReferenceSources(raw: unknown): SourceRef[] | undefined {

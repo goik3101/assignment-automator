@@ -1,5 +1,6 @@
 import { routeUsage } from "@/lib/llm/route-usage";
 import { withSourceScope } from "@/lib/llm/scope";
+import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
 import { parseSourceScope } from "@/lib/essay/source-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { generateEssay } from "@/lib/gemini/generate-essay";
@@ -8,7 +9,7 @@ import { buildAvoidanceInstruction } from "@/lib/clusters/avoidance";
 import { saveResultEmbedding, essayResultToText, planResultToText } from "@/lib/clusters/save-result-embedding";
 import { getCurrentHistoryBySubmission, saveHistory } from "@/lib/histories/save-history";
 import { getServerSupabase } from "@/lib/supabase/server-client";
-import { enforceRegenerationLimit, recordGeneration, LimitExceededError } from "@/lib/usage/throttle";
+import { enforceRegenerationLimit, recordGeneration, LimitExceededError, releaseGeneration } from "@/lib/usage/throttle";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { EssayResult, InsufficientDataResult, PlanResult } from "@/types/task";
 
@@ -17,7 +18,9 @@ import type { EssayResult, InsufficientDataResult, PlanResult } from "@/types/ta
 // 클라이언트는 submissionId와 수정 방향(revisionInstructions)만 보내면 된다.
 export const maxDuration = 180;
 
-export const POST = routeUsage("regenerate", async function POST(req: NextRequest, ctx: RouteContext<"/api/tasks/[submissionId]/regenerate">) {
+export const POST = routeUsage("regenerate", withUiLangRoute(async function POST(req: NextRequest, ctx: RouteContext<"/api/tasks/[submissionId]/regenerate">) {
+  // 사용 횟수는 생성 전에 자리를 잡고(동시 요청 구멍 방지), 결과를 못 만들면 돌려준다 — throttle.ts.
+  let reservation: string | null = null;
   try {
     const { submissionId } = await ctx.params;
     const { revisionInstructions, sourceScope } = (await req.json()) as { revisionInstructions?: string; sourceScope?: unknown };
@@ -33,7 +36,7 @@ export const POST = routeUsage("regenerate", async function POST(req: NextReques
     const admin = isLimitExempt(req, user.email); // 11-6: 관리자는 모든 제한에서 예외
 
     try {
-      await enforceRegenerationLimit(user.id, admin);
+      reservation = await enforceRegenerationLimit(user.id, admin);
     } catch (err) {
       if (err instanceof LimitExceededError) {
         return NextResponse.json({ error: err.message }, { status: 429 });
@@ -77,6 +80,7 @@ export const POST = routeUsage("regenerate", async function POST(req: NextReques
     );
 
     if (result.type === "insufficient_data") {
+      await releaseGeneration(reservation);
       return NextResponse.json(result);
     }
 
@@ -89,7 +93,8 @@ export const POST = routeUsage("regenerate", async function POST(req: NextReques
     await recordGeneration(
       { userId: user.id, guestId: null, isNewGuest: false },
       "regenerate",
-      !!avoidanceInstruction
+      !!avoidanceInstruction,
+      reservation
     );
     await saveHistory(supabase, {
       userId: user.id,
@@ -107,10 +112,11 @@ export const POST = routeUsage("regenerate", async function POST(req: NextReques
 
     return NextResponse.json({ ...result, clusterId: history.cluster_id, submissionId });
   } catch (err) {
+    await releaseGeneration(reservation);
     console.error("[/api/tasks/[submissionId]/regenerate] failed", err);
     return NextResponse.json(
       { error: "재생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요." },
       { status: 500 }
     );
   }
-});
+}));
