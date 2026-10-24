@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 export default function AdminLoginPage() {
-  const [code, setCode] = useState("");
+  const [id, setId] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -13,7 +14,7 @@ export default function AdminLoginPage() {
     const res = await fetch("/api/admin/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ id, password }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -32,17 +33,31 @@ export default function AdminLoginPage() {
       <h1 className="mb-6 text-[22px] font-bold tracking-tight">관리자 로그인</h1>
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       <input
-        type="password"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
+        type="text"
+        value={id}
+        onChange={(e) => setId(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-        placeholder="관리자 코드"
+        placeholder="ID"
+        autoComplete="username"
+        autoCapitalize="none"
+        spellCheck={false}
+        maxLength={100}
         className="mb-3 w-full rounded-full border border-border bg-surface px-3 py-2 text-sm"
         autoFocus
       />
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+        placeholder="비밀번호"
+        autoComplete="current-password"
+        maxLength={200}
+        className="mb-3 w-full rounded-full border border-border bg-surface px-3 py-2 text-sm"
+      />
       <button
         onClick={handleSubmit}
-        disabled={!code || loading}
+        disabled={!id || !password || loading}
         className="w-full rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40"
       >
         {loading ? "확인 중..." : "로그인"}

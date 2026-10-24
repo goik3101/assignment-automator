@@ -306,7 +306,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
     {
       tab: "account",
       title: t("계정 정보"),
-      keywords: [t("로그아웃"), t("계정 탈퇴"), t("코드로 로그인하기"), t("이메일")],
+      keywords: [t("로그아웃"), t("계정 탈퇴"), t("관리자 로그인"), t("이메일")],
       node: loading ? null : (
         <>
           <Group title={t("계정 정보")}>
@@ -322,7 +322,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
               </Row>
             )}
             {!isAdmin && (
-              <Row label={t("코드로 로그인하기")} desc={t("관리자 코드가 있다면 여기서 들어갈 수 있어요.")}>
+              <Row label={t("관리자 로그인")} desc={t("관리자 계정이 있다면 여기서 들어갈 수 있어요.")}>
                 <Link href="/admin/login" className={`${btnCls} bg-background hover:bg-raised`}>
                   {t("열기")}
                 </Link>

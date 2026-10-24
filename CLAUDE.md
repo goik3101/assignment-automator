@@ -64,11 +64,11 @@ src/
       expected-questions/route.ts -- 9-3: 예상 질문 (구술·발표형만, 로그인/제한 없음)
     histories/[id]/memo-note/route.ts -- F8/9-2: 암기노트 (생성 후 user_histories.memo_note에 캐시)
     admin/
-      login/route.ts             -- F12: 관리자 코드 로그인 (실패 반복 시 IP 잠금)
+      login/route.ts             -- F12: 관리자 ID·비밀번호 로그인 (실패 반복 시 IP 잠금)
       logout/route.ts
       stats/route.ts             -- 관리자 통계 (11-6)
   admin/
-    login/page.tsx                -- 관리자 코드 입력 화면
+    login/page.tsx                -- 관리자 ID·비밀번호 입력 화면
     page.tsx                      -- 관리자 대시보드 (Server Component, 쿠키 직접 검증)
   components/
     AssignmentFlow.tsx          -- M1 핵심 플로우 (클라이언트 컴포넌트)
@@ -99,7 +99,7 @@ src/
     links/
       validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
     admin/
-      session.ts                  -- 관리자 세션 쿠키 서명/검증 (HMAC, ADMIN_LOGIN_CODE를 키로 재사용)
+      session.ts                  -- 관리자 세션 쿠키 서명/검증 (HMAC, ADMIN_SESSION_SECRET 또는 ADMIN_LOGIN_PASSWORD를 키로 사용)
       lockout.ts                  -- 로그인 실패 반복 시 IP 잠금
       stats.ts                    -- 대시보드 집계 쿼리
     supabase/

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  adminCodeMatches,
+  adminCredentialsMatch,
+  adminLoginConfigured,
   createAdminSessionToken,
   ADMIN_COOKIE_NAME,
   ADMIN_SESSION_MAX_AGE_SECONDS,
@@ -14,11 +15,10 @@ function getClientIp(req: NextRequest): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
 }
 
-// F12/11-6: 관리자 코드 로그인. 코드는 서버 환경변수(ADMIN_LOGIN_CODE)로만 보관하고,
+// F12/11-6: 관리자 ID·비밀번호 로그인. 둘 다 서버 환경변수(ADMIN_LOGIN_ID, ADMIN_LOGIN_PASSWORD)로만 보관하고,
 // 반복 실패 시 IP 기준으로 잠근다.
 export async function POST(req: NextRequest) {
-  const adminCode = process.env.ADMIN_LOGIN_CODE;
-  if (!adminCode) {
+  if (!adminLoginConfigured()) {
     return NextResponse.json({ error: "관리자 로그인이 설정되어 있지 않습니다." }, { status: 500 });
   }
 
@@ -30,14 +30,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = (await req.json().catch(() => null)) as { code?: unknown } | null;
-  const code = body?.code;
+  const body = (await req.json().catch(() => null)) as { id?: unknown; password?: unknown } | null;
+  const id = body?.id;
+  const password = body?.password;
   // 너무 긴 입력은 비교하지 않고 실패로 센다(시도 횟수에는 포함).
-  const success = typeof code === "string" && code.length <= 200 && adminCodeMatches(code);
+  const success =
+    typeof id === "string" && id.length <= 100 && typeof password === "string" && password.length <= 200 && adminCredentialsMatch(id, password);
   await recordAttempt(ip, success);
 
   if (!success) {
-    return NextResponse.json({ error: "코드가 일치하지 않습니다." }, { status: 401 });
+    return NextResponse.json({ error: "ID 또는 비밀번호가 일치하지 않습니다." }, { status: 401 });
   }
 
   // 관리자는 개인화 설정·히스토리처럼 "로그인해야 쓸 수 있는" 기능도 그대로
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
     });
     if (verifyError) throw verifyError;
   } catch (err) {
-    // 이 부분이 실패해도 관리자 코드 자체는 맞았으니 관리자 대시보드는
+    // 이 부분이 실패해도 관리자 ID·비밀번호 자체는 맞았으니 관리자 대시보드는
     // 그대로 쓸 수 있게 둔다 — 개인화/히스토리만 못 쓰는 정도로 완화 실패.
     console.error("[/api/admin/login] 관리자 예약 계정 로그인 실패(관리자 대시보드는 계속 이용 가능)", err);
   }
