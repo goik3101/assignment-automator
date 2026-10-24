@@ -5,6 +5,8 @@ import { isLimitExempt } from "@/lib/admin/session";
 import { LlmError } from "@/lib/llm";
 import {
   actorKey,
+  ipActorKey,
+  GUEST_IP_DAILY_LIMITS,
   enforceStudyLimit,
   recordStudyUsage,
   StudyLimitError,
@@ -43,6 +45,8 @@ export async function runStudyRoute(
     requireContext?: boolean;
     /** 본문 크기 상한(바이트에 가까운 글자 수). */
     maxBodyChars?: number;
+    /** 처리 중 예상 못 한 오류가 났을 때 사용자에게 보여줄 문구(기본 문구 대신). */
+    failureMessage?: string;
   },
   handler: (c: StudyRequestCtx) => Promise<unknown>
 ): Promise<Response> {
@@ -76,8 +80,13 @@ export async function runStudyRoute(
       context.lang = lang;
     }
 
+    // 비로그인에는 IP 단위 상한을 더 건다(쿠키를 지우고 새 게스트가 되는 우회 방지). 종류별로 상한이 정의된 경우만.
+    const ipLimit = GUEST_IP_DAILY_LIMITS[opts.kind];
+    const ipKey = !identity.userId && !isAdmin && ipLimit ? ipActorKey(req.headers) : null;
+
     try {
       await enforceStudyLimit(key, opts.kind, isAdmin);
+      if (ipKey) await enforceStudyLimit(ipKey, opts.kind, false, ipLimit);
     } catch (err) {
       if (err instanceof StudyLimitError) return json(err.message, 429);
       throw err;
@@ -85,6 +94,7 @@ export async function runStudyRoute(
 
     const result = await handler({ req, body, supabase, identity, isAdmin, key, context, lang });
     await recordStudyUsage(isAdmin ? null : key, opts.kind);
+    if (ipKey) await recordStudyUsage(ipKey, opts.kind);
 
     const response = NextResponse.json(result);
     if (identity.isNewGuest && identity.guestId) {
@@ -102,7 +112,7 @@ export async function runStudyRoute(
     // 프롬프트·학생 입력은 로그에 남기지 않는다(종류와 오류 종류만).
     console.error(`[/api/study:${opts.kind}] failed`, err instanceof LlmError ? `LlmError(${err.kind})` : err instanceof Error ? err.name : "unknown");
     if (err instanceof LlmError && err.kind === "quota") return json("AI 사용량이 일시적으로 가득 찼어요. 잠시 후 다시 시도해 주세요.", 503);
-    return json("처리하지 못했어요. 잠시 후 다시 시도해 주세요.", 500);
+    return json(opts.failureMessage ?? "처리하지 못했어요. 잠시 후 다시 시도해 주세요.", 500);
   }
 }
 
