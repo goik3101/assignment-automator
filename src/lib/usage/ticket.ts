@@ -2,11 +2,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 // "같은 과제" 표. 과제 하나가 원고 1 + 외부 제작 계획 N개로 나뉘어 요청돼도 하루 생성 횟수는 한 번만 센다.
 // 실측(2026-10-24): 신문(원고 + 만평/광고 계획 2)이 3회로 세여 하루 2회 한도에서는 끝까지 만들 수 없었다.
-// 처음 센 요청이 표를 돌려주고, 같은 사용자의 이어지는 요청이 30분 안에 그 표를 내면 다시 세지 않는다(한 표로 최대 6회).
+// 처음 센 요청이 표를 돌려주고, 같은 사용자의 이어지는 요청이 30분 안에 그 표를 내면 다시 세지 않는다(한 표로 최대 4회).
 // DB 없이 서명으로 확인한다 — alias import 없음(node:test에서 바로 불러온다).
 
 export const TICKET_TTL_MS = 30 * 60 * 1000;
-export const TICKET_MAX_USES = 6;
+// 정상 과제의 외부 제작 산출물은 보통 1~3개다. 요청 본문의 산출물 목록은 클라이언트가 보낸 값이라, 많이 적어 넣은 과제로 표 하나를 오래 쓰지 못하게 상한을 낮게 둔다.
+export const TICKET_MAX_USES = 4;
 
 function sign(payload: string, secret: string): string {
   return createHmac("sha256", secret).update(payload).digest("base64url");
@@ -21,7 +22,7 @@ export function assignmentKey(info: AssignmentShape): string {
   return createHash("sha256").update(text).digest("base64url").slice(0, 22);
 }
 
-/** 이 과제에서 표로 이어서 만들 수 있는 계획 수 = 외부 제작 산출물 수(최대 TICKET_MAX_USES). */
+/** 이 과제에서 한 표로 만들 수 있는 계획 수 = 외부 제작 산출물 수(최대 TICKET_MAX_USES). 표를 처음 발급한 계획 요청도 이 수에 포함해서 센다(원고가 발급한 표는 0회에서 시작). */
 export function planUseCap(info: AssignmentShape): number {
   const n = (info.task_elements ?? []).filter((e) => e.type === "external_production").length;
   return Math.min(TICKET_MAX_USES, Math.max(1, n));

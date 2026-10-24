@@ -75,6 +75,8 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
       verifyTicket(generationTicket, owner, secret, Date.now(), scope) &&
       consumeTicketUse(generationTicket as string, Date.now(), planUseCap(coreTaskInfo));
     const ticketOut = followUp ? (generationTicket as string) : owner && secret ? issueTicket(owner, secret, Date.now(), scope) : undefined;
+    // 이 요청이 표를 새로 발급했다면(원고 없이 계획부터 시작한 과제) 이 요청 자신도 그 표의 사용 횟수에 넣는다 — 안 그러면 한 번 더 공짜로 만들 수 있다.
+    if (!followUp && ticketOut) consumeTicketUse(ticketOut, Date.now(), planUseCap(coreTaskInfo));
 
     if (!followUp && !admin && !identity.userId && !(await verifyTurnstile(turnstileToken ?? null))) {
       return NextResponse.json({ error: "캡차 확인에 실패했습니다. 다시 시도해주세요." }, { status: 403 });

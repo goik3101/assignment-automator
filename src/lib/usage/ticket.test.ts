@@ -33,3 +33,16 @@ test("표는 같은 과제에만 통하고, 그 과제의 계획 수만큼만 �
   assert.equal(consumeTicketUse(t2, Date.now(), planUseCap(news)), true);
   assert.equal(consumeTicketUse(t2, Date.now(), planUseCap(news)), false);
 });
+
+test("한 표로 쓸 수 있는 계획 수 상한은 4이고, 표를 처음 발급한 계획도 그 수에 든다", () => {
+  const many = { topic: "많은 산출물", task_elements: Array.from({ length: 6 }, (_, i) => ({ type: "external_production", label: `산출물${i}` })) };
+  assert.equal(TICKET_MAX_USES, 4);
+  assert.equal(planUseCap(many), 4);
+  assert.equal(planUseCap({ topic: "없음", task_elements: [] }), 1);
+  // 원고 없이 계획만 있는 과제(외부 제작 2개): 첫 계획이 표를 발급하며 1회, 나머지 1개가 이어서 1회 — 합계 2회에서 막힌다.
+  const plansOnly = { topic: "포스터와 영상", task_elements: [{ type: "external_production", label: "포스터" }, { type: "external_production", label: "영상" }] };
+  const t = issueTicket("g:xyz", "s", Date.now(), assignmentKey(plansOnly));
+  assert.equal(consumeTicketUse(t, Date.now(), planUseCap(plansOnly)), true); // 발급한 첫 계획
+  assert.equal(consumeTicketUse(t, Date.now(), planUseCap(plansOnly)), true); // 두 번째 계획
+  assert.equal(consumeTicketUse(t, Date.now(), planUseCap(plansOnly)), false); // 세 번째는 거절
+});
