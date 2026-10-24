@@ -84,7 +84,9 @@ export function summarizeTrace(trace: Trace, now = Date.now()): UsageSummary {
 export function withUsageLogging<A extends [Request, ...unknown[]]>(
   name: string,
   handler: (...args: A) => Promise<Response | undefined>,
-  canExpose: (req: Request) => boolean = () => false
+  canExpose: (req: Request) => boolean = () => false,
+  /** 요청이 끝날 때마다 부른다(대시보드 기록용). 던져도 응답에는 영향이 없다. */
+  onDone?: (info: { name: string; summary: UsageSummary; status: number; threw: boolean }) => Promise<void> | void
 ): (...args: A) => Promise<Response | undefined> {
   return (...args: A) =>
     withLlmTrace(name, async (trace) => {
@@ -97,6 +99,13 @@ export function withUsageLogging<A extends [Request, ...unknown[]]>(
       }
       const summary = summarizeTrace(trace);
       if (summary.calls > 0) console.log("[llm-usage] " + JSON.stringify(summary));
+      if (onDone) {
+        try {
+          await onDone({ name, summary, status: thrown ? 500 : (res?.status ?? 200), threw: !!thrown });
+        } catch {
+          /* 기록 실패는 사용자 응답과 무관하다 */
+        }
+      }
       if (thrown) throw thrown;
       if (res && summary.calls > 0 && args[0].headers.get("x-studed-test") === "1" && canExpose(args[0])) {
         try {

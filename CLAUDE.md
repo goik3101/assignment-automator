@@ -101,7 +101,9 @@ src/
     admin/
       session.ts                  -- 관리자 세션 쿠키 서명/검증 (HMAC, ADMIN_SESSION_SECRET 또는 ADMIN_LOGIN_PASSWORD를 키로 사용)
       lockout.ts                  -- 로그인 실패 반복 시 IP 잠금
-      stats.ts                    -- 대시보드 집계 쿼리
+      stats.ts                    -- 대시보드 집계 쿼리(기존 지표)
+      dashboard.ts / dashboard-pure.ts -- 관리자 대시보드 데이터(사용자·생성·AI 비용/오류·보안 점검). pure는 alias import 없는 순수 함수(테스트용)
+      ai-usage-log.ts             -- AI 요청 1건을 ai_usage_log(마이그레이션 0018)에 기록. 표가 없으면 조용히 건너뜀. routeUsage가 호출
     supabase/
       service-client.ts         -- service_role 키 서버 전용 클라이언트 (clusters/task_embeddings/usage_events용, RLS 무시)
       server-client.ts          -- 세션이 실린 서버 클라이언트 (user_histories용, RLS 그대로 적용)

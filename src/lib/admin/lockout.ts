@@ -7,6 +7,11 @@ const WINDOW_MINUTES = Number(process.env.ADMIN_LOGIN_LOCKOUT_MINUTES ?? 15);
 // 공격 중에는 관리자도 잠시 못 들어오지만(공격이 끝나면 자동 해제), 코드가 뚫리는 것보다 낫다.
 const GLOBAL_MAX_FAILURES = Number(process.env.ADMIN_LOGIN_GLOBAL_MAX_FAILURES ?? 30);
 
+/** 대시보드에 보여줄 잠금 기준(isLockedOut과 같은 값). */
+export function getLockoutConfig() {
+  return { maxFailuresPerIp: MAX_FAILURES, globalMaxFailures: GLOBAL_MAX_FAILURES, windowMinutes: WINDOW_MINUTES };
+}
+
 export async function isLockedOut(ip: string): Promise<boolean> {
   const supabase = getServiceClient();
   const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
