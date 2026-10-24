@@ -190,7 +190,7 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
 }
 
 /**
- * 홈: "수행평가 및 과제". 새 창작물 카드 + 지금까지 만든 결과물(AI 모드)·학습 과제(학습 모드)를 한 격자에 모아서 보여주고,
+ * 홈: "과제". 새 창작물 카드 + 지금까지 만든 결과물(AI 모드)·학습 과제(학습 모드)를 한 격자에 모아서 보여주고,
  * 아래 고정된 입력창(HomeChat)으로 새 안내문이나 기존 과제를 바로 질문한다. 비로그인이면 새 창작물 카드만 보인다.
  */
 export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
@@ -377,7 +377,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         {(empty || !user) && (
           <section aria-label={t("시작하기")} className="mx-auto mt-12 w-full max-w-[1200px] [&>*]:max-w-2xl">
             <h2 className="text-base font-bold">
-              {user ? t("아직 만든 결과물이 없어요") : t("수행평가 안내문을 올려 보세요")}
+              {user ? t("아직 만든 결과물이 없어요") : t("과제 안내문을 올려 보세요")}
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-muted">
               {user

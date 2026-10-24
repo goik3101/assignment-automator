@@ -28,7 +28,14 @@ const clock = (sec: number) => `${Math.floor(Math.abs(sec) / 60)}:${String(Math.
 
 function Paper({ exam, studyRef, onAgain }: { exam: Exam; studyRef: StudyRef; onAgain: () => void }) {
   const t = useT();
-  const [answer, setAnswer] = useState("");
+  // 작성 조건마다 답 칸을 따로 둔다(조건이 없으면 한 칸). 채점에는 조건 이름을 붙여 한 답안으로 합쳐 보낸다.
+  const parts = exam.requirements.length > 0 ? exam.requirements : [""];
+  const [answers, setAnswers] = useState<string[]>(() => parts.map(() => ""));
+  const answer =
+    exam.requirements.length > 0
+      ? parts.map((r, i) => (answers[i]?.trim() ? `[${r}]\n${answers[i].trim()}` : "")).filter(Boolean).join("\n\n")
+      : (answers[0] ?? "");
+  const typedLength = answers.reduce((n, a) => n + a.trim().length, 0);
   const [hintsShown, setHintsShown] = useState(0);
   const [remaining, setRemaining] = useState(exam.durationMin * 60);
   const [grading, setGrading] = useState(false);
@@ -119,7 +126,7 @@ function Paper({ exam, studyRef, onAgain }: { exam: Exam; studyRef: StudyRef; on
     );
   }
 
-  const tooShort = answer.trim().length < 20;
+  const tooShort = typedLength < 20;
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -131,13 +138,6 @@ function Paper({ exam, studyRef, onAgain }: { exam: Exam; studyRef: StudyRef; on
       </div>
       <div className="rounded-2xl border border-border-strong bg-background p-5">
         <p className="text-[16px] font-bold leading-relaxed">{exam.task}</p>
-        {exam.requirements.length > 0 && (
-          <ul className="mt-3 space-y-1 text-sm text-muted">
-            {exam.requirements.map((r, i) => (
-              <li key={i} className="flex gap-2"><span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-faint" aria-hidden />{r}</li>
-            ))}
-          </ul>
-        )}
       </div>
 
       {hintsShown > 0 && (
@@ -151,19 +151,29 @@ function Paper({ exam, studyRef, onAgain }: { exam: Exam; studyRef: StudyRef; on
         </ol>
       )}
 
-      <label className="block">
-        <span className="mb-1.5 flex items-center justify-between text-[13px] font-semibold">
+      <div className="space-y-4">
+        <p className="flex items-center justify-between text-[13px] font-semibold">
           <span className="inline-flex items-center gap-1.5"><PenLine size={14} strokeWidth={1.8} />{t("내 답안")}</span>
-          <span className="font-normal text-faint tabular-nums">{t("{n}자", { n: answer.trim().length })}</span>
-        </span>
-        <textarea
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          rows={9}
-          placeholder={t("공부한 내용을 떠올리며 빈 종이에 쓰듯이 적어 보세요.")}
-          className="w-full resize-y rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-relaxed placeholder:text-faint focus:border-foreground"
-        />
-      </label>
+          <span className="font-normal text-faint tabular-nums">{t("{n}자", { n: typedLength })}</span>
+        </p>
+        {parts.map((r, i) => (
+          <label key={i} className="block">
+            {r && (
+              <span className="mb-1.5 flex gap-2 text-[13.5px] font-semibold leading-snug">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-raised text-[11px] tabular-nums">{i + 1}</span>
+                {r}
+              </span>
+            )}
+            <textarea
+              value={answers[i] ?? ""}
+              onChange={(e) => setAnswers((prev) => prev.map((a, j) => (j === i ? e.target.value : a)))}
+              rows={r ? 4 : 9}
+              placeholder={r ? t("이 조건에 맞춰 써 보세요.") : t("공부한 내용을 떠올리며 빈 종이에 쓰듯이 적어 보세요.")}
+              className="w-full resize-y rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-relaxed placeholder:text-faint focus:border-foreground"
+            />
+          </label>
+        ))}
+      </div>
 
       {error && <p role="alert" className="rounded-xl border border-danger/50 px-4 py-3 text-sm text-danger">{error}</p>}
 
@@ -183,7 +193,7 @@ function Paper({ exam, studyRef, onAgain }: { exam: Exam; studyRef: StudyRef; on
           )}
         </Button>
       </div>
-      {tooShort && answer.length > 0 && <p className="text-xs text-faint">{t("20자 이상 써야 채점할 수 있어요.")}</p>}
+      {tooShort && typedLength > 0 && <p className="text-xs text-faint">{t("20자 이상 써야 채점할 수 있어요.")}</p>}
     </div>
   );
 }

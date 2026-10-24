@@ -42,12 +42,12 @@ export function isSuspiciousSubject(subject: string): boolean {
   return ![...KNOWN_SUBJECTS, ...EXTRA_SUBJECTS].some((k) => key === k || key.startsWith(k));
 }
 
-/** 모델이 준 과목이 의심스러우면 주제·항목 이름에서 과목을 추정한다. 못 찾으면 "수행평가"(뒤 단계가 요구하는 필수값). */
+/** 모델이 준 과목이 의심스러우면 주제·항목 이름에서 과목을 추정한다. 못 찾으면 "과제"(뒤 단계가 요구하는 필수값 — 화면에 과목 칩으로 보인다). */
 export function fallbackSubject(subject: string, ...texts: string[]): string {
   if (!isSuspiciousSubject(subject)) return subject;
   const t = texts.join(" ");
   for (const [re, name] of SUBJECT_KEYWORDS) if (re.test(t)) return name;
   // 못 찾았다: 짧고 조사로 끝나지 않는 값이면 모델의 값을 존중(예: 처음 보는 과목명), 아니면 필수값 기본값
   const s = subject.trim();
-  return s.length >= 2 && s.length <= 8 && !SUBJECT_JOSA_END.test(s) && !/^['"“‘]/.test(s) ? s : "수행평가";
+  return s.length >= 2 && s.length <= 8 && !SUBJECT_JOSA_END.test(s) && !/^['"“‘]/.test(s) ? s : "과제";
 }

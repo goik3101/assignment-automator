@@ -15,13 +15,12 @@ import {
   type SubjectCandidate,
 } from "@/types/learning";
 import { learningApi, STATUS_LABEL } from "./api";
-import { ArrowLeft, ArrowRight, Check, TriangleAlert } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import StudyRail from "@/components/study/StudyRail";
 import Breadcrumb from "@/components/Breadcrumb";
 import { useT } from "@/lib/i18n";
 
 type SaveState = "saved" | "saving" | "unsaved" | "error";
-type Pane = "material" | "write";
 
 interface SessionPayload {
   session: LearningSession;
@@ -332,15 +331,15 @@ export default function LearningWorkspace({ id }: { id: string }) {
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<SessionPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({});
-  const [pane, setPane] = useState<Pane>("write");
   const [notice, setNotice] = useState<string | null>(null);
   const [researching, setResearching] = useState(false);
-  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  /** 피드백을 받는 중인 항목 id(한 번에 하나만). */
+  const [feedbackBusy, setFeedbackBusy] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [askOpen, setAskOpen] = useState(false);
+  /** 표현·문법 질문 칸이 열린 항목 id. */
+  const [askOpenId, setAskOpenId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [changingSubject, setChangingSubject] = useState(false);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -364,7 +363,6 @@ export default function LearningWorkspace({ id }: { id: string }) {
     setDrafts(merged);
     setSaveState(Object.fromEntries(toResync.map((sid) => [sid, "unsaved" as SaveState])));
     setData(payload);
-    setSelectedId((cur) => cur ?? payload.sections.find((s) => s.status !== "completed")?.id ?? payload.sections[0]?.id ?? null);
     setLoadError(null);
     return toResync;
   }, []);
@@ -424,8 +422,6 @@ export default function LearningWorkspace({ id }: { id: string }) {
   }, []);
 
   const sections = useMemo(() => data?.sections ?? [], [data]);
-  const selected = sections.find((s) => s.id === selectedId) ?? null;
-  const selectedIdx = selected ? sections.indexOf(selected) : -1;
   const doneCount = sections.filter((s) => s.status === "completed").length;
   const allDone = sections.length > 0 && doneCount === sections.length;
 
@@ -441,7 +437,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
 
   async function flushSave(sectionId: string): Promise<boolean> {
     clearTimeout(timers.current[sectionId]);
-    if ((saveState[sectionId] ?? "saved") === "saved" && drafts[sectionId] === selected?.draft) return true;
+    if ((saveState[sectionId] ?? "saved") === "saved" && drafts[sectionId] === sections.find((s) => s.id === sectionId)?.draft) return true;
     return saveDraft(sectionId);
   }
 
@@ -460,16 +456,15 @@ export default function LearningWorkspace({ id }: { id: string }) {
     }
   }
 
-  async function handleFeedback() {
-    if (!selected) return;
-    setFeedbackBusy(true);
+  async function handleFeedback(sectionId: string) {
+    setFeedbackBusy(sectionId);
     setNotice(null);
     try {
-      const saved = await flushSave(selected.id);
+      const saved = await flushSave(sectionId);
       if (!saved) throw new Error("작성한 내용을 먼저 저장하지 못했어요. 잠시 후 다시 시도해주세요.");
-      const q = askOpen ? question.trim() : "";
+      const q = askOpenId === sectionId ? question.trim() : "";
       const res = await learningApi<{ feedback: LearningFeedback; usage: LearningUsage }>(
-        `/api/learning/sections/${selected.id}/feedback`,
+        `/api/learning/sections/${sectionId}/feedback`,
         { method: "POST", body: JSON.stringify({ question: q || undefined }) }
       );
       setData((d) =>
@@ -478,7 +473,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
               ...d,
               usage: res.usage,
               sections: d.sections.map((s) =>
-                s.id === selected.id
+                s.id === sectionId
                   ? {
                       ...s,
                       feedback: res.feedback,
@@ -491,26 +486,27 @@ export default function LearningWorkspace({ id }: { id: string }) {
           : d
       );
       setQuestion("");
-      setAskOpen(false);
+      setAskOpenId(null);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "피드백을 받지 못했어요.");
     } finally {
-      setFeedbackBusy(false);
+      setFeedbackBusy(null);
     }
   }
 
-  async function handleComplete() {
-    if (!selected) return;
+  async function handleComplete(sectionId: string) {
     setNotice(null);
     try {
-      const saved = await flushSave(selected.id);
+      const saved = await flushSave(sectionId);
       if (!saved) throw new Error("작성한 내용을 먼저 저장하지 못했어요.");
-      await learningApi(`/api/learning/sections/${selected.id}/complete`, { method: "POST" });
+      await learningApi(`/api/learning/sections/${sectionId}/complete`, { method: "POST" });
       setData((d) =>
-        d ? { ...d, sections: d.sections.map((s) => (s.id === selected.id ? { ...s, status: "completed" } : s)) } : d
+        d ? { ...d, sections: d.sections.map((s) => (s.id === sectionId ? { ...s, status: "completed" } : s)) } : d
       );
-      const next = sections.find((s, i) => i > selectedIdx && s.status !== "completed");
-      if (next) setSelectedId(next.id);
+      // 다음으로 아직 안 끝난 항목의 칸으로 옮겨 준다.
+      const idx = sections.findIndex((s) => s.id === sectionId);
+      const next = sections.find((s, i) => i > idx && s.status !== "completed");
+      if (next) document.getElementById(`draft-${next.id}`)?.focus();
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "완료 처리하지 못했어요.");
     }
@@ -549,8 +545,6 @@ export default function LearningWorkspace({ id }: { id: string }) {
   const needSubject = data.needsSubjectSelection && !session.focus_subject && session.subject_mode !== "none";
   const researchDone = session.research_status === "done";
   const usageLeft = usage.unlimited ? Infinity : usage.limit - usage.used;
-  const draft = selected ? (drafts[selected.id] ?? "") : "";
-  const state = selected ? (saveState[selected.id] ?? "saved") : "saved";
 
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 py-6 md:px-8">
@@ -624,7 +618,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                 : t("자료 조사 시작")}
           </button>
           {usageLeft <= 0 && <p className="mt-2 text-xs text-danger">{t("오늘 사용할 수 있는 횟수를 모두 썼어요.")}</p>}
-          <p className="mt-3 text-xs text-muted">{t("자료 없이 바로 작성을 시작해도 돼요. 왼쪽 항목을 골라 써 내려가면 자동으로 저장돼요.")}</p>
+          <p className="mt-3 text-xs text-muted">{t("자료 없이 바로 작성을 시작해도 돼요. 아래 항목별 칸에 써 내려가면 자동으로 저장돼요.")}</p>
         </section>
       )}
 
@@ -642,196 +636,147 @@ export default function LearningWorkspace({ id }: { id: string }) {
           <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">{assembled}</pre>
         </section>
       ) : (
-        <div className="space-y-6">
-          <nav aria-label={t("작성 항목")}>
-            <p className="mb-2 text-xs text-muted">
-              {t("{done}/{total} 항목 완료", { done: doneCount, total: sections.length })}
+        <div className="space-y-5">
+          <p className="text-xs text-muted">{t("{done}/{total} 항목 완료", { done: doneCount, total: sections.length })}</p>
+          {allDone && (
+            <p className="rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
+              {t("모든 항목을 완료했어요. 위의 “내가 쓴 내용 모아보기”에서 한 번에 확인하고 복사할 수 있어요.")}
             </p>
-            <ul className="flex gap-2 overflow-x-auto pb-2">
-              {sections.map((s, i) => (
-                <li key={s.id} className="shrink-0">
-                  <button
-                    onClick={() => setSelectedId(s.id)}
-                    aria-current={s.id === selectedId ? "true" : undefined}
-                    className={[
-                      "flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors",
-                      s.id === selectedId ? "border-foreground bg-raised" : "border-border text-muted hover:border-border-strong hover:text-foreground",
-                    ].join(" ")}
-                  >
-                    <span className="truncate">
-                      {i + 1}. {s.label}
-                    </span>
-                    <StatusBadge status={s.status} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          {selected && (
-            <div className="min-w-0 space-y-5">
-              {allDone && (
-                <p className="rounded-xl border border-border-strong bg-raised px-4 py-3 text-sm">
-                  {t("모든 항목을 완료했어요. 위의 “내가 쓴 내용 모아보기”에서 한 번에 확인하고 복사할 수 있어요.")}
-                </p>
-              )}
-
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-xl font-bold">{selected.label}</h2>
-                <div className="flex items-center gap-3">
-                <button
-                  onClick={handleComplete}
-                  disabled={!draft.trim() || selected.status === "completed"}
-                  className="inline-flex h-9 items-center justify-center rounded-xl border border-border-strong px-4 text-sm font-semibold transition-colors hover:bg-raised disabled:opacity-40"
-                >
-                  {selected.status === "completed" ? t("완료됨") : t("이 항목 완료")}
-                </button>
-                <div className="inline-flex gap-0.5 rounded-lg bg-raised p-0.5 text-xs lg:hidden">
-                  {(["material", "write"] as Pane[]).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setPane(p)}
-                      aria-pressed={pane === p}
-                      className={["rounded-md px-3 py-1 font-semibold", pane === p ? "bg-surface text-foreground shadow-sm" : "text-muted"].join(" ")}
-                    >
-                      {p === "material" ? t("자료") : t("작성")}
-                    </button>
-                  ))}
-                </div>
-                </div>
-              </div>
-
-              <div className="space-y-5">
-                <section
-                  aria-label={t("조사 자료")}
-                  className={[pane === "material" ? "block" : "hidden", "lg:block", "min-w-0 rounded-2xl border border-border bg-surface p-5"].join(" ")}
-                >
-                  <h3 className="mb-3 text-sm font-semibold">{t("자료 읽기")}</h3>
-                  {selected.research ? (
-                    <>
-                      <article className="prose prose-sm max-w-none prose-neutral dark:prose-invert">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.research.content}</ReactMarkdown>
-                      </article>
-                      {selected.research.sources.length > 0 && (
-                        <div className="mt-5 border-t border-border pt-4">
-                          <h4 className="mb-1 text-xs font-semibold text-muted">{t("출처")}</h4>
-                          <p className="mb-2 text-xs text-muted">
-                            {t("“연결 확인됨”은 주소가 열린다는 뜻일 뿐, 그 페이지가 내용을 뒷받침한다는 뜻은 아니에요.")}{" "}
-                            {t("중요한 사실은 링크를 열어 직접 확인하세요.")}
-                          </p>
-                          <ol className="space-y-1 text-sm">
-                            {selected.research.sources.map((src) => (
-                              <li key={src.n} className="flex flex-wrap gap-x-2">
-                                <span className="text-muted">[{src.n}]</span>
-                                <a href={src.url} target="_blank" rel="noopener noreferrer" className="break-all text-accent underline underline-offset-2">
-                                  {src.title}
-                                </a>
-                                <span className="text-xs text-muted">
-                                  {src.url_valid === false ? t("(없는 페이지)") : src.url_valid ? t("(연결 확인됨)") : t("(자동 확인 불가 — 직접 열어 보세요)")}
-                                  {src.tier ? ` · ${t(SOURCE_TIER_LABEL[src.tier])}` : ""}
-                                </span>
-                              </li>
-                            ))}
-                          </ol>
-                        </div>
-                      )}
-                    </>
-                  ) : researchDone ? (
-                    <p className="text-sm text-muted">{t("이 항목의 자료는 찾지 못했어요. 과제 안내문과 다른 항목의 자료를 참고해서 써보세요.")}</p>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      {t("아직 자료를 조사하지 않았어요. 위에서 “자료 조사 시작”을 누르면 이 항목의 자료가 여기 나타나요.")}
-                    </p>
-                  )}
-                </section>
-
-                <section
-                  aria-label={t("내 답변")}
-                  className={[pane === "write" ? "block" : "hidden", "lg:block", "min-w-0 space-y-3"].join(" ")}
-                >
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="learning-draft" className="text-sm font-bold">
-                      {t("내 답변")}
-                    </label>
-                    <span className="text-xs text-muted" aria-live="polite">
-                      {state === "saving" && t("저장 중...")}
-                      {state === "saved" && t("저장됨")}
-                      {state === "unsaved" && t("저장 대기 중...")}
-                      {state === "error" && (
-                        <button onClick={() => void saveDraft(selected.id)} className="text-danger underline underline-offset-2">
-                          {t("저장 실패 · 다시 저장")}
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                  <textarea
-                    id="learning-draft"
-                    value={draft}
-                    onChange={(e) => onDraftChange(selected.id, e.target.value)}
-                    rows={14}
-                    placeholder={t("자료를 읽고 내 말로 직접 써보세요. 쓰는 대로 자동 저장돼요.")}
-                    className="w-full resize-y rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-[1.8] placeholder:text-faint focus:border-foreground"
-                  />
-                  <div className="flex items-center justify-between text-xs text-muted">
-                    <span>
-                      {t("{n} / {max}자", { n: draft.length.toLocaleString(), max: MAX_DRAFT_CHARS.toLocaleString() })}
-                    </span>
-                    {selected.status === "completed" && <span>{t("완료한 항목이에요. 고치면 “수정 중”으로 바뀌어요.")}</span>}
-                  </div>
-
-                  {askOpen && (
-                    <div>
-                      <label htmlFor="learning-question" className="mb-1 block text-xs text-muted">
-                        {t("표현·문법이 궁금하면 질문을 적어주세요 (피드백과 함께 답해요)")}
-                      </label>
-                      <input
-                        id="learning-question"
-                        value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        maxLength={300}
-                        placeholder={t("예: 이 문장에서 ‘which’를 써도 되나요?")}
-                        className="h-10 w-full rounded-xl border border-border-strong bg-background px-4 text-sm placeholder:text-faint focus:border-foreground"
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={handleFeedback}
-                      disabled={feedbackBusy || draft.trim().length < 10 || usageLeft <= 0}
-                      className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
-                    >
-                      {feedbackBusy ? t("살펴보는 중...") : t("AI 피드백 받기")}
-                    </button>
-                    <button onClick={() => setAskOpen((v) => !v)} className="text-xs text-muted underline underline-offset-2 hover:text-foreground">
-                      {askOpen ? t("질문 닫기") : t("표현/문법 질문하기")}
-                    </button>
-                  </div>
-                  {draft.trim().length < 10 && <p className="text-xs text-muted">{t("10자 이상 직접 쓰면 피드백을 받을 수 있어요.")}</p>}
-                  {usageLeft <= 0 && <p className="text-xs text-danger">{t("오늘 사용할 수 있는 AI 횟수를 모두 썼어요. 작성한 내용은 그대로 저장돼요.")}</p>}
-                </section>
-              </div>
-
-              {selected.feedback && <FeedbackPanel fb={selected.feedback} />}
-
-              <div className="flex justify-between pt-2 text-sm">
-                <button
-                  onClick={() => selectedIdx > 0 && setSelectedId(sections[selectedIdx - 1].id)}
-                  disabled={selectedIdx <= 0}
-                  className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-foreground disabled:opacity-30"
-                >
-                  <ArrowLeft size={14} strokeWidth={1.8} /> {t("이전 항목")}
-                </button>
-                <button
-                  onClick={() => selectedIdx < sections.length - 1 && setSelectedId(sections[selectedIdx + 1].id)}
-                  disabled={selectedIdx >= sections.length - 1}
-                  className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-foreground disabled:opacity-30"
-                >
-                  {t("다음 항목")} <ArrowRight size={14} strokeWidth={1.8} />
-                </button>
-              </div>
-            </div>
           )}
+
+          {/* 항목마다 따로 쓰는 칸 — 한 화면에 모두 펼쳐 둔다(이전/다음으로 넘기지 않는다). */}
+          {sections.map((s, i) => {
+            const draft = drafts[s.id] ?? "";
+            const state = saveState[s.id] ?? "saved";
+            return (
+              <section key={s.id} aria-labelledby={`item-${s.id}`} className="rounded-2xl border border-border bg-surface p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 id={`item-${s.id}`} className="flex min-w-0 items-center gap-2.5 text-base font-bold">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-raised text-xs tabular-nums">{i + 1}</span>
+                    <span className="min-w-0">{s.label}</span>
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={s.status} />
+                    <button
+                      onClick={() => void handleComplete(s.id)}
+                      disabled={!draft.trim() || s.status === "completed"}
+                      className="inline-flex h-8 items-center justify-center rounded-lg border border-border-strong px-3 text-xs font-semibold transition-colors hover:bg-raised disabled:opacity-40"
+                    >
+                      {s.status === "completed" ? t("완료됨") : t("이 항목 완료")}
+                    </button>
+                  </div>
+                </div>
+
+                {researchDone && (
+                  <details className="mb-3 rounded-xl bg-background px-4 py-3">
+                    <summary className="cursor-pointer select-none text-[13px] font-semibold">{t("자료 읽기")}</summary>
+                    <div className="mt-3">
+                      {s.research ? (
+                        <>
+                          <article className="prose prose-sm max-w-none prose-neutral dark:prose-invert">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.research.content}</ReactMarkdown>
+                          </article>
+                          {s.research.sources.length > 0 && (
+                            <div className="mt-4 border-t border-border pt-3">
+                              <h4 className="mb-1 text-xs font-semibold text-muted">{t("출처")}</h4>
+                              <p className="mb-2 text-xs text-muted">
+                                {t("“연결 확인됨”은 주소가 열린다는 뜻일 뿐, 그 페이지가 내용을 뒷받침한다는 뜻은 아니에요.")}{" "}
+                                {t("중요한 사실은 링크를 열어 직접 확인하세요.")}
+                              </p>
+                              <ol className="space-y-1 text-sm">
+                                {s.research.sources.map((src) => (
+                                  <li key={src.n} className="flex flex-wrap gap-x-2">
+                                    <span className="text-muted">[{src.n}]</span>
+                                    <a href={src.url} target="_blank" rel="noopener noreferrer" className="break-all text-accent underline underline-offset-2">
+                                      {src.title}
+                                    </a>
+                                    <span className="text-xs text-muted">
+                                      {src.url_valid === false ? t("(없는 페이지)") : src.url_valid ? t("(연결 확인됨)") : t("(자동 확인 불가 — 직접 열어 보세요)")}
+                                      {src.tier ? ` · ${t(SOURCE_TIER_LABEL[src.tier])}` : ""}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted">{t("이 항목의 자료는 찾지 못했어요. 과제 안내문과 다른 항목의 자료를 참고해서 써보세요.")}</p>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                <textarea
+                  id={`draft-${s.id}`}
+                  aria-labelledby={`item-${s.id}`}
+                  value={draft}
+                  onChange={(e) => onDraftChange(s.id, e.target.value)}
+                  rows={6}
+                  placeholder={t("자료를 읽고 내 말로 직접 써보세요. 쓰는 대로 자동 저장돼요.")}
+                  className="w-full resize-y rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-[1.8] placeholder:text-faint focus:border-foreground"
+                />
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                  <span>{t("{n} / {max}자", { n: draft.length.toLocaleString(), max: MAX_DRAFT_CHARS.toLocaleString() })}</span>
+                  <span aria-live="polite">
+                    {state === "saving" && t("저장 중...")}
+                    {state === "saved" && draft && t("저장됨")}
+                    {state === "unsaved" && t("저장 대기 중...")}
+                    {state === "error" && (
+                      <button onClick={() => void saveDraft(s.id)} className="text-danger underline underline-offset-2">
+                        {t("저장 실패 · 다시 저장")}
+                      </button>
+                    )}
+                  </span>
+                </div>
+
+                {askOpenId === s.id && (
+                  <div className="mt-3">
+                    <label htmlFor={`question-${s.id}`} className="mb-1 block text-xs text-muted">
+                      {t("표현·문법이 궁금하면 질문을 적어주세요 (피드백과 함께 답해요)")}
+                    </label>
+                    <input
+                      id={`question-${s.id}`}
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      maxLength={300}
+                      placeholder={t("예: 이 문장에서 ‘which’를 써도 되나요?")}
+                      className="h-10 w-full rounded-xl border border-border-strong bg-background px-4 text-sm placeholder:text-faint focus:border-foreground"
+                    />
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => void handleFeedback(s.id)}
+                    disabled={feedbackBusy !== null || draft.trim().length < 10 || usageLeft <= 0}
+                    className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-4 text-[13px] font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    {feedbackBusy === s.id ? t("살펴보는 중...") : t("AI 피드백 받기")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setQuestion("");
+                      setAskOpenId((v) => (v === s.id ? null : s.id));
+                    }}
+                    className="text-xs text-muted underline underline-offset-2 hover:text-foreground"
+                  >
+                    {askOpenId === s.id ? t("질문 닫기") : t("표현/문법 질문하기")}
+                  </button>
+                  {s.status === "completed" && <span className="text-xs text-muted">{t("완료한 항목이에요. 고치면 “수정 중”으로 바뀌어요.")}</span>}
+                </div>
+
+                {s.feedback && (
+                  <div className="mt-4">
+                    <FeedbackPanel fb={s.feedback} />
+                  </div>
+                )}
+              </section>
+            );
+          })}
+
+          <p className="text-xs text-muted">{t("10자 이상 직접 쓰면 항목마다 피드백을 받을 수 있어요.")}</p>
+          {usageLeft <= 0 && <p className="text-xs text-danger">{t("오늘 사용할 수 있는 AI 횟수를 모두 썼어요. 작성한 내용은 그대로 저장돼요.")}</p>}
         </div>
       )}
       </div>

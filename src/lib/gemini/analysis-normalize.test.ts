@@ -21,11 +21,11 @@ test("과목 필드가 주제 문장의 첫 단어면 추정으로 대체", () =
   assert.equal(fallbackSubject("물의", "실험 설계 보고서"), "과학");
   assert.equal(fallbackSubject("'My", "영어 발표 대본"), "영어");
   assert.equal(fallbackSubject("국어", "아무 주제"), "국어");
-  assert.equal(fallbackSubject("이", "정체불명"), "수행평가");
+  assert.equal(fallbackSubject("이", "정체불명"), "과제");
 });
 test("낱말 속 '법'(방법 등)에 과목 추정이 걸리지 않는다", () => {
   assert.equal(fallbackSubject("스마트폰을", "앱 기획", "개선 방법 제시"), "정보");
-  assert.equal(fallbackSubject("이", "정책 제안", "해결 방법과 대책"), "수행평가");
+  assert.equal(fallbackSubject("이", "정책 제안", "해결 방법과 대책"), "과제");
   assert.equal(fallbackSubject("매주", "실험 방법", "탐구 보고서"), "과학");
   assert.equal(fallbackSubject("이", "법 개정 필요성", ""), "사회");
 });

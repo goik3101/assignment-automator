@@ -73,8 +73,8 @@ export const learning: Record<string, string> = {
   "다시 조사하기": "Research again",
   "자료 조사 시작": "Start research",
   "오늘 사용할 수 있는 횟수를 모두 썼어요.": "You've used all of today's requests.",
-  "자료 없이 바로 작성을 시작해도 돼요. 왼쪽 항목을 골라 써 내려가면 자동으로 저장돼요.":
-    "You can start writing without any material. Pick an item on the left and write; it saves automatically.",
+  "자료 없이 바로 작성을 시작해도 돼요. 아래 항목별 칸에 써 내려가면 자동으로 저장돼요.":
+    "You can start writing without any material. Write in each item's box below; it saves automatically.",
 
   // 모아보기
   "내가 쓴 내용": "What I wrote",
@@ -119,6 +119,7 @@ export const learning: Record<string, string> = {
   "질문 닫기": "Close question",
   "표현/문법 질문하기": "Ask about wording/grammar",
   "10자 이상 직접 쓰면 피드백을 받을 수 있어요.": "Write at least 10 characters to get feedback.",
+  "10자 이상 직접 쓰면 항목마다 피드백을 받을 수 있어요.": "Write at least 10 characters in an item to get feedback on it.",
   "오늘 사용할 수 있는 AI 횟수를 모두 썼어요. 작성한 내용은 그대로 저장돼요.":
     "You've used all of today's AI requests. What you wrote is still saved.",
   "이전 항목": "Previous item",

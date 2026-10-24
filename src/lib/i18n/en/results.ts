@@ -142,6 +142,7 @@ export const results: Record<string, string> = {
   "내 답안": "My answer",
   "{n}자": "{n} chars",
   "공부한 내용을 떠올리며 빈 종이에 쓰듯이 적어 보세요.": "Recall what you studied and write it as if on a blank sheet.",
+  "이 조건에 맞춰 써 보세요.": "Write your answer for this part.",
   "힌트 보기 ({n}/{total})": "Show hint ({n}/{total})",
   "채점하는 중": "Grading",
   "제출하고 채점받기": "Submit and get graded",

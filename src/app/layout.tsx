@@ -7,7 +7,7 @@ import { getLang } from "@/lib/i18n/server";
 
 export const metadata: Metadata = {
   title: "studed",
-  description: "겹치지 않는, 출처 있는 수행평가 도우미",
+  description: "겹치지 않는, 출처 있는 과제 도우미",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
