@@ -1,19 +1,24 @@
 import Link from "next/link";
 import { FileText, Wrench } from "lucide-react";
 import { getServerSupabase } from "@/lib/supabase/server-client";
+import { getSessionUser } from "@/lib/supabase/session-user";
 import DeleteHistoryButton from "@/components/DeleteHistoryButton";
 import { getTrashedSubmissionIds } from "@/lib/histories/trash";
 import { getT } from "@/lib/i18n/server";
 
 // F7: 과거 히스토리 조회 (로그인 사용자). RLS 덕분에 이 쿼리는 자동으로 본인 것만
 // 가져온다 — user_id로 따로 필터링할 필요가 없다 (server-client.ts, RLS 정책 참고).
-export default async function HistoriesPage() {
+// 처음엔 최근 50개만 보여주고 "더 보기"로 50개씩 늘린다 — 결과물이 많은 사용자는 한 번에 수백 개를 그리느라 HTML이 1MB를 넘고 오래 걸렸다.
+const PAGE_SIZE = 50;
+const MAX_LIMIT = 500;
+
+export default async function HistoriesPage(props: PageProps<"/histories">) {
   const { t, lang } = await getT();
   const locale = lang === "en" ? "en-US" : "ko-KR";
+  const rawLimit = Number((await props.searchParams).limit);
+  const limit = Number.isFinite(rawLimit) ? Math.min(MAX_LIMIT, Math.max(PAGE_SIZE, Math.floor(rawLimit))) : PAGE_SIZE;
   const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser(supabase);
 
   if (!user) {
     return (
@@ -23,14 +28,18 @@ export default async function HistoriesPage() {
     );
   }
 
-  const { data: allHistories, error } = await supabase
-    .from("user_histories")
-    .select("id, submission_id, created_at, subject, title, output_type")
-    .eq("is_current", true)
-    .order("created_at", { ascending: false });
-
-  const { ids: trashed } = await getTrashedSubmissionIds(supabase);
-  const histories = allHistories?.filter((h) => !trashed.has(h.submission_id));
+  // 목록과 휴지통 목록을 동시에 가져온다. 한 개 더(limit+1) 읽어서 "더 보기"가 필요한지 안다.
+  const [{ data: allHistories, error }, { ids: trashed }] = await Promise.all([
+    supabase
+      .from("user_histories")
+      .select("id, submission_id, created_at, subject, title, output_type")
+      .eq("is_current", true)
+      .order("created_at", { ascending: false })
+      .limit(limit + 1),
+    getTrashedSubmissionIds(supabase),
+  ]);
+  const hasMore = (allHistories?.length ?? 0) > limit;
+  const histories = allHistories?.slice(0, limit).filter((h) => !trashed.has(h.submission_id));
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8 md:px-10">
@@ -70,6 +79,17 @@ export default async function HistoriesPage() {
           </li>
         ))}
       </ul>
+      {hasMore && (
+        <div className="mt-6 flex justify-center">
+          <Link
+            href={`/histories?limit=${Math.min(MAX_LIMIT, limit + PAGE_SIZE)}`}
+            scroll={false}
+            className="rounded-full border border-border-strong px-4 py-2 text-[13px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground"
+          >
+            {t("더 보기")}
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

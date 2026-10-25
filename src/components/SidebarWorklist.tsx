@@ -34,13 +34,14 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    // 두 목록을 따로 불러온다 — 한쪽(예: 학습 모드 테이블 미적용)이 실패해도 다른 쪽은 보여준다.
-    const load = (url: string) =>
-      fetch(url)
-        .then((res) => (res.ok ? res.json() : null))
-        .catch(() => null);
-    Promise.all([load("/api/histories"), load("/api/learning/sessions")]).then(([h, l]) => {
+    // 제목·날짜만 담은 가벼운 전용 조회 한 번(한쪽 표가 없어도 서버가 다른 쪽을 돌려준다). 홈 화면용 목록(/api/histories)은 미리보기용 본문까지 읽어 무겁다.
+    fetch("/api/worklist")
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null)
+      .then((w) => {
       if (cancelled) return;
+      const h = w as { histories?: unknown } | null;
+      const l = w as { sessions?: unknown } | null;
       const merged: WorkItem[] = [
         ...((l?.sessions ?? []) as { id: string; title: string; subject: string | null; updated_at: string }[]).map((s) => ({
           key: `l-${s.id}`,

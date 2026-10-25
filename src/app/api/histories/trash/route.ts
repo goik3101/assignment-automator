@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server-client";
+import { getSessionUser } from "@/lib/supabase/session-user";
 
 // 휴지통 목록(자동 작성 모드 결과물). trashed_histories 표(0014)가 없으면 available:false.
 export async function GET() {
   try {
     const supabase = await getServerSupabase();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return NextResponse.json({ histories: [], available: true });
 
     const { data: trashed, error } = await supabase

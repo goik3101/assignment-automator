@@ -14,7 +14,7 @@ import SettingsModal from "./settings/SettingsModal";
 import { useT } from "@/lib/i18n";
 
 const NAV = [
-  { href: "/", label: "내 창작물 관리", icon: LayoutGrid },
+  { href: "/", label: "내 창작물", icon: LayoutGrid },
   { href: "/histories", label: "히스토리", icon: Clock },
 ] as const;
 

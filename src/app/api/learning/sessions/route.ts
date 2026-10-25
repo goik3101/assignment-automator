@@ -14,6 +14,11 @@ export async function GET(req: NextRequest) {
     const { supabase } = auth;
 
     const trashedOnly = req.nextUrl.searchParams.get("trashed") === "1";
+    // 사이드바용 최근 히스토리는 학습 과제 조회와 서로 무관하므로 먼저 시작해 두고 나중에 받는다.
+    const historiesPromise =
+      req.nextUrl.searchParams.get("withHistories") === "1"
+        ? supabase.from("user_histories").select("id, title, subject, created_at").eq("is_current", true).order("created_at", { ascending: false }).limit(8)
+        : null;
     const base = supabase
       .from("learning_sessions")
       .select("id, title, subject, status, admin_info, focus_subject, research_status, updated_at, created_at, deleted_at");
@@ -41,13 +46,8 @@ export async function GET(req: NextRequest) {
     }
 
     let histories: { id: string; title: string | null; subject: string; created_at: string }[] | undefined;
-    if (req.nextUrl.searchParams.get("withHistories") === "1") {
-      const { data } = await supabase
-        .from("user_histories")
-        .select("id, title, subject, created_at")
-        .eq("is_current", true)
-        .order("created_at", { ascending: false })
-        .limit(8);
+    if (historiesPromise) {
+      const { data } = await historiesPromise;
       histories = data ?? [];
     }
 

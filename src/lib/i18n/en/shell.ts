@@ -7,7 +7,7 @@ export const shell: Record<string, string> = {
   "사이드바 펼치기": "Expand sidebar",
   "사이드바 접기": "Collapse sidebar",
   "주 메뉴": "Main menu",
-  "내 창작물 관리": "My creations",
+  "더 보기": "Show more",
   "히스토리": "History",
   "관리자 대시보드": "Admin dashboard",
   "작업 목록": "Recent work",

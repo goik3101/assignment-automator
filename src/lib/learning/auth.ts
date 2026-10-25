@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server-client";
+import { getSessionUser } from "@/lib/supabase/session-user";
 import { isLimitExempt } from "@/lib/admin/session";
 
 /**
@@ -10,9 +11,8 @@ import { isLimitExempt } from "@/lib/admin/session";
  */
 export async function requireLearningUser(req: NextRequest) {
   const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // 학습 화면은 자동 저장·목록 조회가 잦아서 인증 서버를 매번 거치지 않는다(session-user.ts). 데이터 접근은 RLS가 지킨다.
+  const user = await getSessionUser(supabase);
   if (!user) {
     return {
       error: NextResponse.json({ error: "학습 모드는 로그인 후 이용할 수 있어요." }, { status: 401 }),

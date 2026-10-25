@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import Breadcrumb from "@/components/Breadcrumb";
 import { getServerSupabase } from "@/lib/supabase/server-client";
+import { getSessionUser } from "@/lib/supabase/session-user";
 import { EssayPanel, PlanPanel } from "@/components/ResultPanel";
 import StudyRail from "@/components/study/StudyRail";
 import type { EssayResult, PlanResult } from "@/types/task";
@@ -11,9 +12,7 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
   const { id } = await props.params;
   const { t, lang } = await getT();
   const supabase = await getServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser(supabase);
 
   if (!user) {
     return (

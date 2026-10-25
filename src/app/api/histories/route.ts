@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/lib/supabase/server-client";
+import { getSessionUser } from "@/lib/supabase/session-user";
 import { makePreview } from "@/lib/histories/preview";
 import { getTrashedSubmissionIds } from "@/lib/histories/trash";
 
@@ -9,20 +10,21 @@ import { getTrashedSubmissionIds } from "@/lib/histories/trash";
 export async function GET() {
   try {
     const supabase = await getServerSupabase();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return NextResponse.json({ histories: [] });
 
-    const { data, error } = await supabase
-      .from("user_histories")
-      .select("id, submission_id, title, subject, output_type, created_at, raw_text_result")
-      .eq("is_current", true)
-      .order("created_at", { ascending: false })
-      .limit(60);
+    // 목록과 휴지통 목록은 서로 기다릴 필요가 없다 — 동시에 가져온다.
+    const [{ data, error }, { ids: trashed }] = await Promise.all([
+      supabase
+        .from("user_histories")
+        .select("id, submission_id, title, subject, output_type, created_at, raw_text_result")
+        .eq("is_current", true)
+        .order("created_at", { ascending: false })
+        .limit(60),
+      getTrashedSubmissionIds(supabase),
+    ]);
     if (error) throw error;
 
-    const { ids: trashed } = await getTrashedSubmissionIds(supabase);
     const histories = (data ?? [])
       .filter((h) => !trashed.has(h.submission_id))
       .slice(0, 40)
