@@ -52,6 +52,7 @@ import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
 import { exampleLength, lengthGuideLines } from "@/lib/essay/length-plan";
+import { bodyLines, buildTrimModel, describeUnitsForModel, lineBudgets, replaceLines, trimStopAt, trimToRange, type TrimResult } from "@/lib/essay/length-trim";
 import { buildFormRulesBlock } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
@@ -3533,16 +3534,189 @@ ${sec.content}`.trim(),
  * 분량 보정. 한 번에 목표를 넘겨 반대쪽으로 벗어나면(실측: 1222자 → 1888자, 목표 1350~1650) 그 결과를 바탕으로 한 번 더 반대 방향으로 보정하고,
  * 원래보다 범위에 가까워졌을 때만 쓴다.
  */
-async function adjustSectionLength(content: string, issue: LengthIssue, description: string): Promise<string | null> {
+export async function adjustSectionLength(content: string, issue: LengthIssue, description: string): Promise<string | null> {
   const measure = (t: string) => (issue.unit === "words" ? countWords(t) : countChars(t, issue.countsSpaces));
   const distance = (n: number) => (issue.min > 0 && n < issue.min ? issue.min - n : issue.max > 0 && n > issue.max ? n - issue.max : 0);
-  const first = await adjustSectionLengthOnce(content, issue, description);
-  if (first.accepted) return first.accepted;
-  if (!first.candidate) return null;
-  const candidateLen = measure(first.candidate);
-  if (distance(candidateLen) === 0) return first.candidate;
-  const second = await adjustSectionLengthOnce(first.candidate, { ...issue, actual: candidateLen }, description);
-  return second.accepted && distance(measure(second.accepted)) < distance(issue.actual) ? second.accepted : null;
+  // 초과한 글은 먼저 문장 삭제로 줄인다 — "N으로 다시 써 줘"는 목표의 10~20%만 줄여 범위에 못 들어갔다(trimSectionLength 주석).
+  let base = content;
+  let baseIssue = issue;
+  let trimmedText: string | null = null;
+  const trimmed = await trimSectionLength(content, issue).catch((err) => {
+    console.error("[generateEssay] 문장 삭제 보정 실패(다시 쓰기 방식으로 진행)", err);
+    return null;
+  });
+  if (trimmed && trimmed.removed.length > 0 && distance(trimmed.count) < distance(issue.actual)) {
+    console.log(`[generateEssay] 문장 삭제 보정 label="${issue.label}" ${issue.actual} -> ${trimmed.count}${unitWord(issue.unit)} (${trimmed.removed.length}문장 삭제, 범위 안=${trimmed.inRange})`);
+    if (trimmed.inRange) return trimmed.text;
+    trimmedText = trimmed.text;
+    base = trimmed.text;
+    baseIssue = { ...issue, actual: trimmed.count };
+  }
+  // 문장을 지워도 범위에 못 들어가면(한 문단에 문장 하나인 글 등) 문단마다 최대치를 숫자로 주고 줄여 쓴다(compressLines 주석).
+  if (issue.max > 0 && baseIssue.actual > issue.max) {
+    const compressed = await compressLines(base, baseIssue).catch((err) => {
+      console.error("[generateEssay] 문단별 줄이기 실패(다시 쓰기 방식으로 진행)", err);
+      return null;
+    });
+    if (compressed) {
+      const n = measure(compressed);
+      console.log(`[generateEssay] 문단별 줄이기 label="${issue.label}" ${baseIssue.actual} -> ${n}${unitWord(issue.unit)}`);
+      if (distance(n) === 0) return compressed;
+      if (distance(n) < distance(baseIssue.actual)) {
+        trimmedText = compressed;
+        base = compressed;
+        baseIssue = { ...baseIssue, actual: n };
+      }
+    }
+  }
+  // 문장 삭제·문단별 줄이기로 이미 줄였으면 여기서 멈춘다 — 글 전체를 다시 쓰는 보정은 한 번에 14~25초가 걸리는데 범위에 거의 못 닿는다(실측 2026-10-26, 6번 중 1번 도달).
+  if (trimmedText !== null && issue.max > 0 && baseIssue.actual > issue.max) return trimmedText;
+  // 결과가 범위에 들어올 때까지(최대 2번) 실제로 센 숫자를 알려 주며 이어서 보정한다. 한 번에 목표를 못 맞추는 것이 원인이었으므로(trimSectionLength 주석),
+  // "조금이라도 가까워지면 끝"이 아니라 매번 다시 세어 범위 밖이면 한 번 더 한다. 처음보다 가까워진 가장 좋은 결과만 쓴다.
+  let best: string | null = trimmedText;
+  let bestDistance = distance(baseIssue.actual);
+  let cur = base;
+  for (let pass = 0; pass < 2; pass++) {
+    const r = await adjustSectionLengthOnce(cur, { ...baseIssue, actual: measure(cur) }, description);
+    const out = r.accepted ?? r.candidate;
+    if (!out) break;
+    const d = distance(measure(out));
+    if (d < bestDistance) {
+      best = out;
+      bestDistance = d;
+    }
+    if (d === 0) break;
+    cur = out;
+  }
+  return best;
+}
+
+const TRIM_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: { delete_order: { type: Type.ARRAY, items: { type: Type.INTEGER }, description: "지워도 되는 문장 번호. 가장 지워도 되는 것부터." } },
+  required: ["delete_order"],
+};
+
+/**
+ * 상한을 넘은 단계를 문장 삭제로 줄인다. 원인(실측 2026-10-26, 영어 263단어→상한 190): 모델에게 "목표 N으로 다시 써 줘"라고 하면
+ * 목표와 상관없이 10~20%만 줄여(205·224·234단어) 범위에 못 들어가는데, 기존 보정은 "조금이라도 가까워지면" 받아들이고 끝났다.
+ * 모델은 단어 수를 못 세므로 지울 문장의 순서만 정하게 하고, 몇 개를 지울지는 코드가 세면서 정한다. 각주·인용·굵은 문장·채점 대상 어법이 사라지는 삭제는 건너뛴다.
+ * LENGTH_TRIM=off 또는 ESSAY_QUALITY_FIXES=off면 쓰지 않는다.
+ */
+export async function trimSectionLength(content: string, issue: LengthIssue): Promise<TrimResult | null> {
+  if (process.env.LENGTH_TRIM === "off" || !qualityFixesOn()) return null;
+  if (!(issue.max > 0 && issue.actual > issue.max)) return null;
+  const measure = (t: string) => (issue.unit === "words" ? countWords(t) : countChars(t, issue.countsSpaces));
+  const forms: GrammarForm[] = issue.unit === "words" ? (["passive", "itThat", "relative"] as GrammarForm[]).filter((f) => !missingGrammarForms(content, [f]).length) : [];
+  const markersOf = (t: string) => [...new Set(t.match(/\[\d+\]/g) ?? [])].sort().join(",");
+  const origMarkers = markersOf(content);
+  const quotes = [...content.matchAll(/[「『“"]([^」』”"\n]{4,})[」』”"]/g)].map((m) => m[1]);
+  const bolds = [...content.matchAll(/\*\*([^*\n]{4,})\*\*/g)].map((m) => m[1].trim());
+  const accept = (t: string) =>
+    markersOf(t) === origMarkers && quotes.every((q) => t.includes(q)) && bolds.every((b) => t.includes(b)) && missingGrammarForms(t, forms).length === 0;
+  const model = buildTrimModel(content);
+  if (!model.units.some((u) => !u.locked)) return null;
+  const uw = issue.unit === "words" ? "단어" : "자";
+  const stopAt = trimStopAt(issue.min, issue.max);
+  let order: number[] = [];
+  try {
+    const res = await generate({
+      label: "generateEssay:lengthTrim",
+      role: "lite",
+      effort: "minimal",
+      schema: TRIM_SCHEMA,
+      prompt: `아래 글은 지금 ${issue.actual}${uw}인데 ${lengthRangeText(issue)}여야 한다(목표 ${stopAt}${uw} 안팎). 줄이려면 문장을 지워야 한다.
+문장 앞의 [번호](크기)는 지울 수 있는 문장이고, "(유지)"가 붙은 문장은 지울 수 없다. 지워도 앞뒤가 자연스럽게 이어지고 핵심 내용이 남는 문장의 번호를 delete_order에 가장 지워도 되는 것부터 나열해라.
+- 먼저: 앞 문장을 되풀이하는 문장, 부연·예시·덧붙인 설명, 덜 중요한 세부.
+- 나중: 필수 항목의 핵심 내용, 근거가 되는 사실, 수동태·관계대명사·It ~ that 강조처럼 채점 대상인 문장.
+- 필요한 양보다 조금 넉넉하게(약 ${Math.max(3, Math.round((issue.actual - stopAt) / 15))}개 이상) 나열할 것. 코드가 순서대로 지우다가 목표에 닿으면 멈춘다.
+
+${describeUnitsForModel(model, (s) => measure(s))}`,
+    });
+    const parsed = JSON.parse(res.text) as { delete_order?: unknown };
+    if (Array.isArray(parsed.delete_order)) order = parsed.delete_order.filter((n): n is number => Number.isInteger(n));
+  } catch (err) {
+    console.warn("[generateEssay] 삭제 순서 요청 실패(길이순 삭제로 진행)", err instanceof Error ? err.message : err);
+  }
+  return trimToRange(model, order, measure, { min: issue.min, max: issue.max }, accept);
+}
+
+const COMPRESS_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    lines: {
+      type: Type.ARRAY,
+      items: { type: Type.OBJECT, properties: { id: { type: Type.INTEGER }, text: { type: Type.STRING } }, required: ["id", "text"] },
+    },
+  },
+  required: ["lines"],
+};
+
+/**
+ * 문장 삭제로 못 줄이는 글(한 문단에 문장 하나, 문장을 지우면 항목이 사라지는 경우)을 문단별 최대치를 숫자로 주고 다시 쓰게 한다.
+ * 글 전체를 "190단어로"라고 시키면 10~20%만 줄지만(실측 2026-10-26, 228→224·252), 문단마다 "최대 N단어"를 주고 코드가 문단별로 다시 세어
+ * 줄지 않은 문단만 한 번 더 시키면 수렴한다. 각주·굵은 표현·인용·문단별 채점 대상 어법이 달라지거나 글이 늘어난 문단은 원문을 쓴다.
+ */
+export async function compressLines(content: string, issue: LengthIssue): Promise<string | null> {
+  if (process.env.LENGTH_TRIM === "off" || !qualityFixesOn()) return null;
+  if (!(issue.max > 0)) return null;
+  const measure = (t: string) => (issue.unit === "words" ? countWords(t) : countChars(t, issue.countsSpaces));
+  const uw = issue.unit === "words" ? "단어" : "자";
+  const stopAt = trimStopAt(issue.min, issue.max);
+  const markersOf = (t: string) => [...new Set(t.match(/\[\d+\]/g) ?? [])].sort().join(",");
+  const hangul = (t: string) => /[가-힣]/.test(t);
+  let cur = content;
+  for (let pass = 0; pass < 4; pass++) {
+    const total = measure(cur);
+    if (total <= stopAt) break;
+    const lines = bodyLines(cur);
+    const sizes = lines.map((l) => ({ index: l.index, size: measure(l.text) }));
+    const nonBody = Math.max(0, total - sizes.reduce((n, s) => n + s.size, 0));
+    const budgets = lineBudgets(sizes, nonBody, stopAt);
+    const asked = lines.filter((l) => budgets.has(l.index));
+    if (asked.length === 0) break;
+    const res = await generate({
+      label: "generateEssay:lengthCompress",
+      role: "lite",
+      effort: "minimal",
+      schema: COMPRESS_SCHEMA,
+      prompt: `아래는 글의 문단(줄)들이다. 각 줄을 id마다 정해진 최대 ${uw} 수 이하로 줄여 다시 써라.
+- 의미와 핵심 사실은 남기고 군더더기·부연을 덜어 문장을 짧게 바꿔 쓸 것. 줄을 합치거나 나누거나 빼지 말고 id마다 한 줄씩 돌려줄 것.
+- [1] 같은 각주 표기, **굵게** 표시한 표현, 따옴표로 직접 인용한 문장은 그대로 둘 것.
+- 수동태, It is/was … that 강조 구문, 관계대명사(which/who/that)가 들어간 문장이면 그 표현은 유지할 것.
+- 글의 언어를 바꾸지 말 것(영어 글은 영어로). ${issue.unit === "words" ? "영어 단어 수" : issue.countsSpaces ? "공백 포함 글자 수" : "공백 제외 글자 수"}를 세어 최대치 이하인지 확인하고 출력할 것.
+
+${asked.map((l) => `id=${l.index} (현재 ${measure(l.text)}${uw}, 최대 ${budgets.get(l.index)}${uw}) ${l.text}`).join("\n")}`,
+    });
+    let parsed: { lines?: { id: number; text: string }[] };
+    try {
+      parsed = JSON.parse(res.text);
+    } catch {
+      break;
+    }
+    const formsHeld = (text: string) => (issue.unit === "words" ? (["passive", "itThat", "relative"] as GrammarForm[]).filter((f) => !missingGrammarForms(text, [f]).length) : []);
+    const holders = new Map<GrammarForm, number>();
+    for (const l of lines) for (const f of formsHeld(l.text)) holders.set(f, (holders.get(f) ?? 0) + 1);
+    const edits = new Map<number, string>();
+    for (const item of parsed.lines ?? []) {
+      const orig = asked.find((l) => l.index === item.id);
+      const next = typeof item.text === "string" ? item.text.trim() : "";
+      if (!orig || !next || measure(next) >= measure(orig.text)) continue;
+      // 채점 대상 어법은 글 전체에서 그 형태를 가진 줄이 하나뿐일 때만 이 줄이 반드시 유지해야 한다(다른 줄에도 있으면 이 줄은 바뀌어도 된다).
+      const forms = formsHeld(orig.text).filter((f) => (holders.get(f) ?? 0) <= 1);
+      const quotes = [...orig.text.matchAll(/[「『“"]([^」』”"\n]{4,})[」』”"]/g)].map((m) => m[1]);
+      const bolds = [...orig.text.matchAll(/\*\*([^*\n]{4,})\*\*/g)].map((m) => m[1].trim());
+      if (markersOf(next) !== markersOf(orig.text) || quotes.some((q) => !next.includes(q)) || bolds.some((b) => !next.includes(b))) continue;
+      if (missingGrammarForms(next, forms).length > 0) continue;
+      for (const f of formsHeld(orig.text)) if (missingGrammarForms(next, [f]).length > 0) holders.set(f, (holders.get(f) ?? 1) - 1);
+      if (issue.unit === "words" && hangul(next) && !hangul(orig.text)) continue;
+      edits.set(item.id, next);
+    }
+    console.log(`[generateEssay] 문단별 줄이기 ${pass + 1}번째: ${asked.length}줄 요청 → ${edits.size}줄 반영 (${asked.map((l) => `${measure(l.text)}→${edits.has(l.index) ? measure(edits.get(l.index)!) : "유지"}/${budgets.get(l.index)}`).join(" ")})`);
+    if (edits.size === 0) break;
+    cur = replaceLines(cur, edits);
+  }
+  return cur !== content ? cur : null;
 }
 
 async function adjustSectionLengthOnce(
@@ -3555,12 +3729,15 @@ async function adjustSectionLengthOnce(
   const distance = (n: number) => (issue.min > 0 && n < issue.min ? issue.min - n : issue.max > 0 && n > issue.max ? n - issue.max : 0);
   const shorten = issue.max > 0 && issue.actual > issue.max;
   const goal = issue.min > 0 && issue.max > 0 ? Math.round((issue.min + issue.max) / 2) : issue.min > 0 ? Math.round(issue.min * 1.1) : Math.round(issue.max * 0.85);
+  // 문단(소제목 아래 한 덩어리)마다 줄일 몫을 숫자로 준다 — 전체 숫자만 주면 모델이 10~20%만 줄인다(실측 2026-10-26).
+  const bodyParagraphs = content.split("\n").filter((l) => l.trim() && !/^\s*(?:#|\||(?:[-*_]\s*){3,}$)/.test(l)).length;
+  const paragraphBudget = shorten && bodyParagraphs >= 2 && qualityFixesOn() ? `\n- 본문 문단이 ${bodyParagraphs}개이므로 문단마다 평균 ${Math.max(1, Math.floor(goal / bodyParagraphs))}${uw} 안팎(합계가 ${goal}${uw}가 되게)으로 줄여 쓸 것. 문단을 빼지는 말고 문장을 짧게 바꿔 쓸 것.` : "";
   const res = await generate({
     label: "generateEssay:lengthAdjust",
     role: "main",
     prompt: `
 아래 글의 분량을 ${lengthRangeText(issue)}(${issue.unit === "words" ? "영어 단어 수" : issue.countsSpaces ? "공백 포함" : "공백 제외"}) 범위로 고쳐서 글 전체를 다시 써줘. 지금은 ${issue.actual}${uw}이고 목표는 약 ${goal}${uw}다.
-${shorten ? "- 핵심 내용과 필수 항목은 남기고 중복·군더더기 표현만 덜어낼 것." : "- 이미 있는 내용을 설명·이유·연결·구체화로 자연스럽게 늘릴 것. 새로운 사실·수치·연도·인물·인용문·출처를 추가하지 말 것(기존에 없는 사실은 쓰지 말 것)."}
+${shorten ? "- 핵심 내용과 필수 항목은 남기고 중복·군더더기 표현만 덜어낼 것." + paragraphBudget : "- 이미 있는 내용을 설명·이유·연결·구체화로 자연스럽게 늘릴 것. 새로운 사실·수치·연도·인물·인용문·출처를 추가하지 말 것(기존에 없는 사실은 쓰지 말 것)."}
 - 기존 문장의 각주 표기([1] 등)와 따옴표로 직접 인용한 문장은 그대로 유지할 것. 각주를 새로 만들거나 번호를 바꾸지 말 것.
 - 굵게(**…**) 표시된 문장·표현(채점 대상 어법 등)은 한 글자도 바꾸지 말고 그대로 남길 것.${issue.unit === "words" && qualityFixesOn() ? "\n- 수동태, It is/was … that 강조 구문, 관계대명사(which/who/that)가 들어간 문장은 지우지 말고 남길 것(채점 대상이다)." : ""}
 - 글의 언어·문체·형식(소제목 등)은 그대로 유지하고, 분량을 채우려고 같은 말을 반복하지 말 것.
