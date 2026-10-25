@@ -12,8 +12,8 @@ export function classifyHttpStatus(status: number): LinkStatus {
 
 /** fetch가 던진 오류: DNS 조회 실패(도메인 자체가 없음)만 invalid, 시간 초과·연결 끊김·TLS 등은 unverifiable. */
 export function classifyFetchError(err: unknown): LinkStatus {
-  const e = err as { cause?: { code?: string }; name?: string };
-  const code = e?.cause?.code;
+  const e = err as { cause?: { code?: string }; code?: string; name?: string };
+  const code = e?.cause?.code ?? (e as { code?: string })?.code; // fetch는 cause에, node:dns·http 오류는 오류 자체에 코드가 있다
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") return code === "ENOTFOUND" ? "invalid" : "unverifiable";
   return "unverifiable";
 }

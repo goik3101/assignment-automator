@@ -1,5 +1,9 @@
 import { lookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
+import { Readable } from "node:stream";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 
 // SSRF 방어: 서버가 출처 주소로 직접 접속하는 경로(validate-sources.ts)에서, 내부망·로컬·클라우드 메타데이터 주소로는
 // 접속하지 않게 한다. 주소는 모델의 검색 결과뿐 아니라 요청 본문(실행 계획의 referenceSources)으로도 들어오므로 믿지 않는다.
@@ -15,7 +19,7 @@ export class UnsafeUrlError extends Error {
   }
 }
 
-const ALLOWED_PORTS = new Set(["", "80", "443"]); // URL.port는 기본 포트면 빈 문자열
+const ALLOWED_PORTS = new Set(["", "80", "443", "8080", "8443"]); // URL.port는 기본 포트면 빈 문자열. 주소가 공인 IP로 검증되므로 내부 서비스는 포트와 무관하게 막힌다
 const BLOCKED_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".localdomain", ".home.arpa", ".intranet", ".lan", ".corp"];
 const MAX_REDIRECTS = 5;
 
@@ -139,19 +143,78 @@ const defaultResolver: Resolver = async (host) => (await lookup(host, { all: tru
 /**
  * 1차 검사 + 도메인이 가리키는 주소를 모두 조회해 하나라도 사설·로컬이면 막는다(공인처럼 보이는 이름이 내부 IP를 가리키는 경우).
  * 도메인이 아예 없으면 조회 오류를 그대로 던진다(호출하는 쪽의 기존 "도메인 없음 = 무효" 분류가 유지된다).
+ * 검사를 통과한 주소 목록도 함께 돌려준다 — 접속할 때 이 주소로 고정해서 검사와 접속 사이에 DNS 응답이 바뀌는 우회(DNS rebinding)를 막는다.
  */
-export async function assertPublicUrl(raw: string, resolve: Resolver = defaultResolver): Promise<URL> {
+export async function resolvePublicUrl(raw: string, resolve: Resolver = defaultResolver): Promise<{ url: URL; addresses: string[] }> {
   const checked = checkPublicUrlSyntax(raw);
   if (!checked.ok) throw new UnsafeUrlError(checked.reason);
-  const host = checked.url.hostname.replace(/^\[|\]$/g, "");
+  const host = checked.url.hostname.replace(/^[|]$/g, "");
   if (ipBlockedOrNull(host) === null) {
     const addresses = await resolve(host);
     if (addresses.length === 0 || addresses.some((a) => ipBlockedOrNull(a) !== false)) throw new UnsafeUrlError("내부 주소로 연결되는 도메인");
+    return { url: checked.url, addresses };
   }
-  return checked.url;
+  return { url: checked.url, addresses: [host] };
 }
 
-type FetchImpl = (input: string, init: RequestInit) => Promise<Response>;
+export async function assertPublicUrl(raw: string, resolve: Resolver = defaultResolver): Promise<URL> {
+  return (await resolvePublicUrl(raw, resolve)).url;
+}
+
+type FetchImpl = (input: string, init: RequestInit, addresses: string[]) => Promise<Response>;
+
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+
+/**
+ * 검사를 통과한 주소로만 접속하는 fetch 대용. Node 내장 fetch는 접속 주소를 고정할 수 없어서(별도 패키지 없이는) http(s).request의 lookup 훅을 쓴다.
+ * 응답 압축(gzip/deflate/br)은 여기서 풀고, 리다이렉트는 따라가지 않는다(guardedFetch가 매번 다시 검사하며 따라간다).
+ */
+export function pinnedFetch(href: string, init: RequestInit, addresses: string[]): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    const u = new URL(href);
+    const method = (init.method ?? "GET").toUpperCase();
+    const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined), "Accept-Encoding": "gzip, deflate, br" };
+    const req = (u.protocol === "https:" ? httpsRequest : httpRequest)(
+      u,
+      {
+        method,
+        headers,
+        signal: init.signal ?? undefined,
+        // 호스트 이름은 그대로 두고(인증서 검사·Host 헤더 유지) 접속 주소만 이미 검사한 목록으로 고정한다.
+        lookup: ((_host: string, opts: { all?: boolean }, cb: (...args: unknown[]) => void) => {
+          const list = addresses.map((address) => ({ address, family: isIP(address) }));
+          if (opts?.all) cb(null, list);
+          else cb(null, list[0].address, list[0].family);
+        }) as never,
+      },
+      (res) => {
+        const out = new Headers();
+        for (const [k, v] of Object.entries(res.headers)) {
+          if (Array.isArray(v)) v.forEach((x) => out.append(k, x));
+          else if (v !== undefined) out.set(k, v);
+        }
+        const status = res.statusCode ?? 0;
+        if (method === "HEAD" || NULL_BODY_STATUSES.has(status)) {
+          res.resume();
+          resolve(new Response(null, { status, statusText: res.statusMessage, headers: out }));
+          return;
+        }
+        const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
+        const decoder = enc === "gzip" || enc === "x-gzip" ? createGunzip() : enc === "deflate" ? createInflate() : enc === "br" ? createBrotliDecompress() : null;
+        if (decoder) {
+          out.delete("content-encoding");
+          out.delete("content-length");
+        }
+        const stream = decoder ? res.pipe(decoder) : res;
+        // 압축이 깨진 응답은 본문 읽기 단계에서 오류로 끝난다(호출하는 쪽의 본문 확인 실패 처리).
+        stream.on("error", () => res.destroy());
+        resolve(new Response(Readable.toWeb(stream) as ReadableStream, { status, statusText: res.statusMessage, headers: out }));
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 /**
  * fetch를 리다이렉트마다 주소를 다시 검사하며 따라간다(공인 사이트가 내부 주소로 돌려보내는 우회를 막는다).
@@ -162,11 +225,11 @@ export async function guardedFetch(
   init: RequestInit,
   deps: { fetchImpl?: FetchImpl; resolve?: Resolver } = {}
 ): Promise<{ response: Response; url: string }> {
-  const doFetch: FetchImpl = deps.fetchImpl ?? ((u, i) => fetch(u, i));
+  const doFetch: FetchImpl = deps.fetchImpl ?? pinnedFetch;
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const safe = await assertPublicUrl(current, deps.resolve);
-    const response = await doFetch(safe.href, { ...init, redirect: "manual" });
+    const { url: safe, addresses } = await resolvePublicUrl(current, deps.resolve);
+    const response = await doFetch(safe.href, { ...init, redirect: "manual" }, addresses);
     const location = response.headers.get("location");
     if (response.status >= 300 && response.status < 400 && location) {
       await response.body?.cancel().catch(() => {});

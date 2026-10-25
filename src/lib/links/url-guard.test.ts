@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertPublicUrl, checkPublicUrlSyntax, guardedFetch, ipBlockedOrNull, readTextCapped, UnsafeUrlError } from "./url-guard.ts";
+import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
+import { assertPublicUrl, checkPublicUrlSyntax, guardedFetch, ipBlockedOrNull, pinnedFetch, readTextCapped, UnsafeUrlError } from "./url-guard.ts";
+import { classifyFetchError } from "./url-status.ts";
 
 const publicResolver = async () => ["93.184.216.34"];
 
@@ -11,7 +14,7 @@ test("공인 http(s) 주소는 통과한다", () => {
 });
 
 test("http(s)가 아닌 스킴·로그인 정보·허용 밖 포트는 막는다", () => {
-  for (const u of ["file:///etc/passwd", "ftp://example.com/", "gopher://example.com/", "javascript:alert(1)", "https://user:pw@example.com/", "http://example.com:8080/", "https://example.com:22/", "not a url", ""]) {
+  for (const u of ["file:///etc/passwd", "ftp://example.com/", "gopher://example.com/", "javascript:alert(1)", "https://user:pw@example.com/", "http://example.com:8081/", "https://example.com:22/", "not a url", ""]) {
     assert.equal(checkPublicUrlSyntax(u).ok, false, u);
   }
 });
@@ -114,4 +117,41 @@ test("readTextCapped: 상한을 넘는 본문은 앞부분만 읽고 끝낸다",
 test("readTextCapped: 상한 안의 본문은 그대로, 본문 없는 응답은 빈 문자열", async () => {
   assert.equal(await readTextCapped(new Response("<html>ok</html>"), 1000), "<html>ok</html>");
   assert.equal(await readTextCapped(new Response(null, { status: 204 })), "");
+});
+
+test("pinnedFetch: DNS를 다시 조회하지 않고 검사한 주소로만 접속한다(가짜 호스트 이름이어도 고정 주소로 연결)", async () => {
+  const server = createServer((req, res) => {
+    if (req.url === "/gz") {
+      res.writeHead(200, { "content-type": "text/html", "content-encoding": "gzip" });
+      res.end(gzipSync("<html>압축 본문</html>"));
+    } else if (req.url === "/r") {
+      res.writeHead(302, { location: "http://127.0.0.1/x" });
+      res.end();
+    } else {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end(req.headers.host ?? "");
+    }
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  try {
+    const plain = await pinnedFetch(`http://never-resolves.invalid:${port}/`, { method: "GET" }, ["127.0.0.1"]);
+    assert.equal(await plain.text(), `never-resolves.invalid:${port}`); // Host 헤더는 원래 이름 그대로
+    const gz = await pinnedFetch(`http://never-resolves.invalid:${port}/gz`, { method: "GET" }, ["127.0.0.1"]);
+    assert.equal(await gz.text(), "<html>압축 본문</html>");
+    assert.equal(gz.headers.get("content-encoding"), null);
+    const head = await pinnedFetch(`http://never-resolves.invalid:${port}/`, { method: "HEAD" }, ["127.0.0.1"]);
+    assert.equal(head.status, 200);
+    const redirect = await pinnedFetch(`http://never-resolves.invalid:${port}/r`, { method: "GET" }, ["127.0.0.1"]);
+    assert.equal(redirect.status, 302);
+    assert.equal(redirect.headers.get("location"), "http://127.0.0.1/x");
+  } finally {
+    server.close();
+  }
+});
+
+test("도메인 없음(ENOTFOUND)은 fetch의 cause와 node:dns 오류 모두 무효로 분류한다", () => {
+  assert.equal(classifyFetchError(Object.assign(new Error("x"), { code: "ENOTFOUND" })), "invalid");
+  assert.equal(classifyFetchError(Object.assign(new Error("x"), { cause: { code: "ENOTFOUND" } })), "invalid");
+  assert.equal(classifyFetchError(Object.assign(new Error("x"), { code: "EAI_AGAIN" })), "unverifiable");
 });
