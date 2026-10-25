@@ -24,4 +24,9 @@ test("수동태·관계대명사", () => {
   assert.deepEqual(missingGrammarForms("The G-Saver was invented to solve poor heating.", ["passive"]), []);
   assert.deepEqual(missingGrammarForms("It collects heat, which increases heating efficiency.", ["relative"]), []);
   assert.deepEqual(missingGrammarForms("This is the place where people live.", ["relative"]), ["relative"]);
+  // 관계대명사 that도 인정, 접속사 that·so that·강조 구문의 that은 아님
+  assert.deepEqual(missingGrammarForms("Design approaches that can mitigate this exist.", ["relative"]), []);
+  assert.deepEqual(missingGrammarForms("It uses a filter that removes bacteria.", ["relative"]), []);
+  assert.deepEqual(missingGrammarForms("Studies show that the pen works. I saved money so that I could buy it.", ["relative"]), ["relative"]);
+  assert.deepEqual(missingGrammarForms("It is the filter that removes bacteria.", ["relative"]), ["relative"]);
 });

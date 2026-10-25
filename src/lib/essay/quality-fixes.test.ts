@@ -219,3 +219,13 @@ test("강연·대화를 듣고 정리하는 단계는 기록지 규칙(지어내
   assert.deepEqual(inferFormKinds({ label: "화법의 원리 파악하기", description: "강연 또는 대화를 듣고 맥락을 고려하여 말하기의 내용을 파악한다." }), ["observation_record"]);
   assert.notDeepEqual(inferFormKinds({ label: "문제 해결 방안 쓰기", description: "현안을 담은 기사에서 사회 문제를 찾아 해결 방안을 쓴다." }), ["observation_record"]);
 });
+
+test("예시 답안 분량은 '예시'가 들어간 문장 안에서 찾는다(숫자가 멀리 있어도)", async () => {
+  const { exampleLength } = await import("./length-plan.ts");
+  const guide = "최종 글은 전체 120단어 이상으로 작성한다. 예시 형식은 칸별이며, 예시 분량은 용도 약 2문장, 특징·장점 2개, 한계점 약 2문장, 개선 제안 약 2~3문장으로 전체 약 136단어이다. 예시는 베끼지 않는다.";
+  assert.equal(exampleLength(guide, "words"), 136);
+  assert.equal(exampleLength("예시 분량 표기: 안내문 하단에 총 (136) 단어 표기가 있음", "words"), 136);
+  assert.equal(exampleLength("영어 120단어 이상", "words"), null);
+  assert.equal(exampleLength("예시 답안은 같은 칸 구성이며 전체 136단어(용도·특징·한계점·제안에 각각 대략 30~40단어)임.", "words"), 136);
+  assert.equal(exampleLength("예시 답안은 약 600자 분량이다. 800자 내외로 쓸 것.", "chars"), 600);
+});

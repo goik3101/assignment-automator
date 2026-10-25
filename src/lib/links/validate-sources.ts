@@ -2,6 +2,7 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 import type { SourceRef } from "@/types/task";
 import { classifySourceTier } from "./source-quality";
 import { classifyFetchError, classifyHttpStatus, toUrlValid, type LinkStatus } from "./url-status";
+import { guardedFetch, UnsafeUrlError } from "./url-guard";
 
 const TIMEOUT_MS = 5000;
 
@@ -91,32 +92,40 @@ async function checkUrl(url: string): Promise<CheckResult> {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     // HEAD를 우선 시도 (더 가볍다). 일부 서버는 HEAD를 막아두므로 실패하면 GET으로 재시도.
-    let res = await fetch(url, { method: "HEAD", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
+    // 내부망·로컬 주소로 가는 요청(직접 지정이든 리다이렉트든)은 guardedFetch가 막는다(SSRF 방어, url-guard.ts).
+    let { response: res, url: reachedUrl } = await guardedFetch(url, { method: "HEAD", signal: controller.signal, headers: BROWSER_HEADERS });
     let haveBody = false;
     if (res.status >= 400) {
-      res = await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
+      ({ response: res, url: reachedUrl } = await guardedFetch(url, { method: "GET", signal: controller.signal, headers: BROWSER_HEADERS }));
       haveBody = true;
     }
     // 검색 그라운딩이 주는 URL이 리다이렉트 링크일 수 있어서(Gemini의 vertexaisearch 등) 리다이렉트를 다 따라간 최종 URL을 쓴다.
-    let finalUrl = res.url || url;
+    let finalUrl = reachedUrl || url;
     if (looksLikeBotCheck(finalUrl, "")) return { status: "unverifiable", finalUrl: url };
     const byStatus = classifyHttpStatus(res.status);
     if (byStatus !== "valid") return { status: byStatus, finalUrl };
 
     // HTTP 상태는 정상이어도 내용이 없는 오류/주차 페이지일 수 있으므로 본문을 확인한다(같은 5초 예산 안에서).
     try {
-      const bodyRes = haveBody ? res : await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
-      finalUrl = bodyRes.url || finalUrl;
+      let bodyRes = res;
+      if (!haveBody) {
+        const got = await guardedFetch(url, { method: "GET", signal: controller.signal, headers: BROWSER_HEADERS });
+        bodyRes = got.response;
+        finalUrl = got.url || finalUrl;
+      }
       const bodyText = await bodyRes.text();
       if (looksLikeBotCheck(finalUrl, bodyText)) return { status: "unverifiable", finalUrl: url };
       if (looksLikeJunkPage(finalUrl, bodyText)) return { status: "invalid", finalUrl };
       if (/html|text\//i.test(bodyRes.headers.get("content-type") ?? "")) rememberPageText([url, finalUrl], bodyText);
       return { status: "valid", finalUrl };
-    } catch {
+    } catch (err) {
+      if (err instanceof UnsafeUrlError) throw err;
       // 본문 확인만 실패(느린 서버 등) — 상태 코드는 정상이었으니 과도하게 엄격해지지 않게 valid로 둔다.
       return { status: "valid", finalUrl };
     }
   } catch (err) {
+    // 막힌 주소는 "없는 출처"로 확정한다 — 응답이 항상 같아서 내부 주소가 실제로 있는지 새지 않는다.
+    if (err instanceof UnsafeUrlError) return { status: "invalid", finalUrl: url };
     return { status: classifyFetchError(err), finalUrl: url };
   } finally {
     clearTimeout(timer);

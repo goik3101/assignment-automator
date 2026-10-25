@@ -92,3 +92,18 @@ export function lengthGuideLines(elements: (PlanElement & { target_length?: unkn
       return `- "${e.label}" 단계: 공백 포함 ${round50(p.min)}~${round50(p.max)}자 안팎(${p.basis}).`;
     });
 }
+
+/** writing_guide에 적힌 예시 답안 분량("예시 분량: 총 136단어", "총 (136) 단어")을 읽는다. */
+export function exampleLength(guide: string | undefined, unit: "chars" | "words" | undefined): number | null {
+  if (!guide) return null;
+  // "예시"가 들어간 문장 안의 가장 큰 "N단어/N자"를 쓴다 — 실측(2026-10-24): "예시 분량은 용도 약 2문장, …, 전체 약 136단어이다"처럼 숫자가 멀리 있었다.
+  const num = unit === "words" ? /\(?\s*(\d{2,4})\s*\)?\s*(?:단어|words?)/gi : /\(?\s*(\d{2,5})\s*\)?\s*자(?![가-힣])/g;
+  for (const sentence of guide.split(/(?<=[.!?。])\s+|\n+/)) {
+    if (!/예시|견본|sample/i.test(sentence)) continue;
+    // 칸별 분량("각각 30~40단어")이 함께 적혀도 예시 전체 분량은 그 문장에서 가장 큰 수다(실측 2026-10-24).
+    const all = [...sentence.matchAll(num)].map((m) => Number(m[1]));
+    const n = all.length ? Math.max(...all) : NaN;
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}

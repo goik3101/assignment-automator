@@ -15,6 +15,7 @@ import { resolveIdentity, GUEST_COOKIE_NAME } from "@/lib/auth/identity";
 import { enforceGenerationLimit, recordGeneration, LimitExceededError, releaseGeneration } from "@/lib/usage/throttle";
 import { assignmentKey, issueTicket, planUseCap, ticketSecret, verifyTicket, consumeTicketUse } from "@/lib/usage/ticket";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
+import { checkPublicUrlSyntax } from "@/lib/links/url-guard";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo, SourceRef } from "@/types/task";
 
@@ -178,14 +179,14 @@ export const POST = routeUsage("plan", withUiLangRoute(async function POST(req: 
   }
 }));
 
-/** 클라이언트가 보낸 출처 목록은 번호·제목·http(s) 주소만 받는다(최대 20개). */
+/** 클라이언트가 보낸 출처 목록은 번호·제목·공인 http(s) 주소만 받는다(최대 20개). 내부망·로컬 주소는 서버가 접속하기 전에 여기서 버린다(SSRF 방어, url-guard.ts). */
 function sanitizeReferenceSources(raw: unknown): SourceRef[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: SourceRef[] = [];
   for (const r of raw.slice(0, 20)) {
     if (!r || typeof r !== "object") continue;
     const { n, title, url, url_valid } = r as Record<string, unknown>;
-    if (typeof n !== "number" || !Number.isInteger(n) || typeof url !== "string" || !/^https?:\/\//i.test(url) || url.length > 2000) continue;
+    if (typeof n !== "number" || !Number.isInteger(n) || typeof url !== "string" || url.length > 2000 || !checkPublicUrlSyntax(url).ok) continue;
     out.push({ n, title: typeof title === "string" ? title.slice(0, 300) : "", url, url_valid: typeof url_valid === "boolean" ? url_valid : null });
   }
   return out.length ? out : undefined;
