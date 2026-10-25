@@ -23,8 +23,8 @@ const CLEFT = /\bIt\s+(?:is|was)\s+(?:not\s+)?(?:only\s+)?(?:the|a|an|this|these
 const DUMMY_IT_ADJ = /\bIt\s+(?:is|was)\s+(?:very\s+|so\s+|really\s+)?(?:important|necessary|clear|true|possible|impossible|likely|unlikely|obvious|essential|natural|surprising|certain|interesting|amazing|good|bad|strange|fortunate|unfortunate|vital|crucial)\s+that\b/i;
 const RELATIVE = /(?:\w|,)\s+(?:which|who|whom|whose)\s+\w+/i;
 // 관계대명사 that: 명사 바로 뒤 that + 동사("approaches that can mitigate"). 실측(2026-10-24): which/who만 봐서 that을 쓴 글을 누락으로 판정해 보완 호출이 붙었다.
-// "so that / such that / now that"과 동사 뒤 접속사 that("shows that the …")은 동사가 바로 이어지지 않아 걸리지 않는다. It~that 강조 구문은 따로 뺀다.
-const RELATIVE_THAT = /\b(?!(?:so|such|now|is|was|are|were)\b)[a-z]{3,}\s+that\s+(?:is|are|was|were|can|could|will|would|may|might|must|should|has|have|had|does|do|did|makes|helps|allows|keeps|lets|uses|reduces|provides|[a-z]+(?:s|ed))\b/i;
+// "so that / such that / now that"과 접속사 that("shows that the …", "believe that students use …")은 앞 단어 목록으로 뺀다(목록 밖 동사는 놓칠 수 있는 휴리스틱). It~that 강조 구문은 따로 뺀다.
+const RELATIVE_THAT = /\b(?!(?:so|such|now|is|was|are|were)\b)(?!(?:show|think|believe|know|find|found|argue|suggest|ensure|mean|note|see|saw|realize|learn|hope|claim|state|explain|prove|indicate|report|say|said|add|agree|assume|conclude|confirm|demonstrate|discover|expect|feel|imply|insist|mention|notice|predict|reveal|recognize|suppose|understand|wish|warn|remember|decide|given|provided)(?:s|ed|es|ing|d)?\s+that\b)[a-z]{3,}\s+that\s+(?:is|are|was|were|can|could|will|would|may|might|must|should|has|have|had|does|do|did|makes|helps|allows|keeps|lets|uses|reduces|provides|[a-z]+(?:s|ed))\b/i;
 
 function has(form: GrammarForm, text: string): boolean {
   const t = text.replace(/\*\*/g, "").replace(/\[\d+\]/g, "");

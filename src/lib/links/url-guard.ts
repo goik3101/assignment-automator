@@ -76,11 +76,15 @@ export function isBlockedIPv6(groups: number[]): boolean {
   if (groups.slice(0, 7).every((g) => g === 0) && g7 === 1) return true; // ::1
   if ((g0 & 0xffc0) === 0xfe80) return true; // fe80::/10 링크로컬
   if ((g0 & 0xfe00) === 0xfc00) return true; // fc00::/7 고유 로컬
+  if ((g0 & 0xffc0) === 0xfec0) return true; // fec0::/10 사이트 로컬(폐기됐지만 일부 망에 남아 있다)
   if ((g0 & 0xff00) === 0xff00) return true; // ff00::/8 멀티캐스트
   if (g0 === 0x2001 && g1 === 0x0db8) return true; // 문서용
+  if (g0 === 0x2001 && g1 === 0) return true; // Teredo: 안에 든 IPv4가 가려져 있어 판별 대신 막는다
+  if (g0 === 0x64 && g1 === 0xff9b && g2 === 1) return true; // 64:ff9b:1::/48 로컬용 NAT64
   if (g0 === 0x2002) return embeddedV4(g1, g2); // 6to4: 안에 든 IPv4를 본다
   const first5Zero = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0;
   if (first5Zero && (g5 === 0xffff || g5 === 0)) return embeddedV4(g6, g7); // ::ffff:a.b.c.d(IPv4 매핑), ::a.b.c.d(구식 호환)
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0xffff && g5 === 0) return embeddedV4(g6, g7); // ::ffff:0:a.b.c.d(SIIT 변환 주소)
   if (g0 === 0x64 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) return embeddedV4(g6, g7); // NAT64
   return false;
 }
@@ -176,4 +180,37 @@ export async function guardedFetch(
     return { response, url: safe.href };
   }
   throw new UnsafeUrlError("리다이렉트가 너무 많음");
+}
+
+export const MAX_BODY_BYTES = 3_000_000;
+
+/**
+ * 응답 본문을 최대 maxBytes까지만 읽어 문자열로 돌려준다(초과분은 버리고 연결을 닫는다).
+ * 끝없이 큰 응답이 서버 메모리를 채우거나 5초 안에 못 끝나는 일을 막는다. 잘려도 오류·빈 페이지 판별에는 앞부분이면 충분하다.
+ */
+export async function readTextCapped(response: Response, maxBytes: number = MAX_BODY_BYTES): Promise<string> {
+  const body = response.body;
+  if (!body) return "";
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const room = maxBytes - total;
+      const piece = value.byteLength > room ? value.subarray(0, room) : value;
+      chunks.push(piece);
+      total += piece.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    merged.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder("utf-8").decode(merged);
 }

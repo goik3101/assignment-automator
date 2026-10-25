@@ -29,4 +29,6 @@ test("수동태·관계대명사", () => {
   assert.deepEqual(missingGrammarForms("It uses a filter that removes bacteria.", ["relative"]), []);
   assert.deepEqual(missingGrammarForms("Studies show that the pen works. I saved money so that I could buy it.", ["relative"]), ["relative"]);
   assert.deepEqual(missingGrammarForms("It is the filter that removes bacteria.", ["relative"]), ["relative"]);
+  // 접속사 that 뒤에 복수 명사가 와도 관계대명사로 세지 않는다
+  assert.deepEqual(missingGrammarForms("Experts believe that students use phones. Data shows that users prefer it.", ["relative"]), ["relative"]);
 });

@@ -2,7 +2,7 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 import type { SourceRef } from "@/types/task";
 import { classifySourceTier } from "./source-quality";
 import { classifyFetchError, classifyHttpStatus, toUrlValid, type LinkStatus } from "./url-status";
-import { guardedFetch, UnsafeUrlError } from "./url-guard";
+import { guardedFetch, readTextCapped, UnsafeUrlError } from "./url-guard";
 
 const TIMEOUT_MS = 5000;
 
@@ -113,7 +113,7 @@ async function checkUrl(url: string): Promise<CheckResult> {
         bodyRes = got.response;
         finalUrl = got.url || finalUrl;
       }
-      const bodyText = await bodyRes.text();
+      const bodyText = await readTextCapped(bodyRes);
       if (looksLikeBotCheck(finalUrl, bodyText)) return { status: "unverifiable", finalUrl: url };
       if (looksLikeJunkPage(finalUrl, bodyText)) return { status: "invalid", finalUrl };
       if (/html|text\//i.test(bodyRes.headers.get("content-type") ?? "")) rememberPageText([url, finalUrl], bodyText);

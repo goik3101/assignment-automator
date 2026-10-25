@@ -3562,7 +3562,7 @@ async function adjustSectionLengthOnce(
 아래 글의 분량을 ${lengthRangeText(issue)}(${issue.unit === "words" ? "영어 단어 수" : issue.countsSpaces ? "공백 포함" : "공백 제외"}) 범위로 고쳐서 글 전체를 다시 써줘. 지금은 ${issue.actual}${uw}이고 목표는 약 ${goal}${uw}다.
 ${shorten ? "- 핵심 내용과 필수 항목은 남기고 중복·군더더기 표현만 덜어낼 것." : "- 이미 있는 내용을 설명·이유·연결·구체화로 자연스럽게 늘릴 것. 새로운 사실·수치·연도·인물·인용문·출처를 추가하지 말 것(기존에 없는 사실은 쓰지 말 것)."}
 - 기존 문장의 각주 표기([1] 등)와 따옴표로 직접 인용한 문장은 그대로 유지할 것. 각주를 새로 만들거나 번호를 바꾸지 말 것.
-- 굵게(**…**) 표시된 문장·표현(채점 대상 어법 등)은 한 글자도 바꾸지 말고 그대로 남길 것.${issue.unit === "words" ? "\n- 수동태, It is/was … that 강조 구문, 관계대명사(which/who/that)가 들어간 문장은 지우지 말고 남길 것(채점 대상이다)." : ""}
+- 굵게(**…**) 표시된 문장·표현(채점 대상 어법 등)은 한 글자도 바꾸지 말고 그대로 남길 것.${issue.unit === "words" && qualityFixesOn() ? "\n- 수동태, It is/was … that 강조 구문, 관계대명사(which/who/that)가 들어간 문장은 지우지 말고 남길 것(채점 대상이다)." : ""}
 - 글의 언어·문체·형식(소제목 등)은 그대로 유지하고, 분량을 채우려고 같은 말을 반복하지 말 것.
 ${description ? `- 이 글이 다뤄야 할 내용: ${description}\n` : ""}결과는 고친 글 본문만 출력할 것(설명·머리말 없이).
 
@@ -3577,8 +3577,8 @@ ${content}`.trim(),
     console.warn(`[generateEssay] 분량 보정 거부(각주 변경) label="${issue.label}"`);
     return {};
   }
-  // 영어 글: 원래 있던 어법 형태(수동태·It~that 강조·관계대명사)가 줄이면서 사라지면 거부한다 — 실측(2026-10-24): 315→200단어로 줄이며 It~that·관계대명사가 빠졌다.
-  if (issue.unit === "words") {
+  // 영어 글: 원래 있던 어법 형태(수동태·It~that 강조·관계대명사)가 줄이면서 사라지면 거부한다(ESSAY_QUALITY_FIXES=off면 건너뜀) — 실측(2026-10-24): 315→200단어로 줄이며 It~that·관계대명사가 빠졌다.
+  if (issue.unit === "words" && qualityFixesOn()) {
     const forms: GrammarForm[] = ["passive", "itThat", "relative"];
     const had = forms.filter((f) => !missingGrammarForms(content, [f]).length);
     const lost = missingGrammarForms(next, had);

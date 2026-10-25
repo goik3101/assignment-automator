@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertPublicUrl, checkPublicUrlSyntax, guardedFetch, ipBlockedOrNull, UnsafeUrlError } from "./url-guard.ts";
+import { assertPublicUrl, checkPublicUrlSyntax, guardedFetch, ipBlockedOrNull, readTextCapped, UnsafeUrlError } from "./url-guard.ts";
 
 const publicResolver = async () => ["93.184.216.34"];
 
@@ -41,7 +41,7 @@ test("공인 IPv4 경계는 막지 않는다", () => {
 test("IPv6 로컬·링크로컬·고유 로컬·매핑된 사설 IPv4는 막는다", () => {
   for (const u of [
     "http://[::1]/", "http://[::]/", "http://[fe80::1]/", "http://[fc00::1]/", "http://[fd12:3456::1]/", "http://[ff02::1]/",
-    "http://[::ffff:127.0.0.1]/", "http://[::ffff:169.254.169.254]/", "http://[::ffff:a00:1]/", "http://[64:ff9b::a00:1]/", "http://[2002:7f00:1::]/", "http://[2001:db8::1]/",
+    "http://[::ffff:127.0.0.1]/", "http://[::ffff:169.254.169.254]/", "http://[::ffff:a00:1]/", "http://[64:ff9b::a00:1]/", "http://[2002:7f00:1::]/", "http://[2001:db8::1]/", "http://[fec0::1]/", "http://[::ffff:0:7f00:1]/", "http://[::127.0.0.1]/", "http://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/", "http://[64:ff9b:1::a00:1]/",
   ]) {
     assert.equal(checkPublicUrlSyntax(u).ok, false, u);
   }
@@ -102,4 +102,16 @@ test("guardedFetch: location 없는 3xx(304 등)는 그대로 돌려준다", asy
   const fetchImpl = async () => new Response(null, { status: 304 });
   const { response } = await guardedFetch("https://example.com/", {}, { fetchImpl, resolve: publicResolver });
   assert.equal(response.status, 304);
+});
+
+test("readTextCapped: 상한을 넘는 본문은 앞부분만 읽고 끝낸다", async () => {
+  const big = new Response("가".repeat(10_000)); // 한글 3바이트 × 10,000
+  const text = await readTextCapped(big, 3000);
+  assert.ok(text.length >= 999 && text.length <= 1001);
+  assert.ok(text.startsWith("가가가"));
+});
+
+test("readTextCapped: 상한 안의 본문은 그대로, 본문 없는 응답은 빈 문자열", async () => {
+  assert.equal(await readTextCapped(new Response("<html>ok</html>"), 1000), "<html>ok</html>");
+  assert.equal(await readTextCapped(new Response(null, { status: 204 })), "");
 });
