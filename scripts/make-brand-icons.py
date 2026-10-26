@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "public" / "studed_icon_black_transparent.png"
+WORDMARK = ROOT / "public" / "studed_logo_black_transparent.png"
 BG = (12, 12, 13, 255)  # globals.css 다크 배경 --background(#0c0c0d)
 FG = (255, 255, 255, 255)
 
@@ -43,6 +44,20 @@ def make_icon(size: int, rounded: bool, glyph_ratio: float = 0.66) -> Image.Imag
     return canvas.resize((size, size), Image.LANCZOS)
 
 
+def make_og(dark: bool, width: int = 1200, height: int = 630, logo_ratio: float = 0.62) -> Image.Image:
+    """링크 미리보기(Open Graph) 이미지: 가운데 STUDED 워드마크. dark면 검은 바탕 + 흰 글자, 아니면 흰 바탕 + 검은 글자."""
+    src = Image.open(WORDMARK).convert("RGBA")
+    alpha = src.getchannel("A").crop(src.getbbox())
+    w = round(width * logo_ratio)
+    h = round(alpha.height * w / alpha.width)
+    alpha = alpha.resize((w, h), Image.LANCZOS)
+    bg = BG if dark else (255, 255, 255, 255)
+    fg = FG if dark else (17, 17, 19, 255)  # globals.css 라이트 --foreground(#111113)
+    canvas = Image.new("RGBA", (width, height), bg)
+    canvas.paste(Image.new("RGBA", (w, h), fg), ((width - w) // 2, (height - h) // 2), alpha)
+    return canvas.convert("RGB")
+
+
 def main() -> None:
     app = ROOT / "src" / "app"
     brand = ROOT / "brand"
@@ -59,6 +74,9 @@ def main() -> None:
     make_icon(1024, rounded=True).save(brand / "studed-icon-1024.png")
     make_icon(1024, rounded=False).save(brand / "studed-icon-1024-square.png")
     make_icon(512, rounded=True).save(brand / "studed-icon-512.png")
+    # 링크 미리보기(1200x630): 흰 바탕 / 검은 바탕 두 가지
+    make_og(dark=False).save(brand / "studed-og-white.png")
+    make_og(dark=True).save(brand / "studed-og-black.png")
     print("ok")
 
 
