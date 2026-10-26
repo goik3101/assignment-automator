@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, Lightbulb, RotateCcw, Shuffle, X } from "
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import StudyState, { CachedNote } from "./StudyState";
+import ExamNudge from "./ExamNudge";
 import { useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
 import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
@@ -154,7 +155,7 @@ function Deck({ cards, onRestart }: { cards: Card[]; onRestart: () => void }) {
   );
 }
 
-export default function FlashcardsModal({ studyRef, onClose, reuse = false }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean }) {
+export default function FlashcardsModal({ studyRef, onClose, reuse = false, onOpenExam }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean; onOpenExam?: () => void }) {
   const t = useT();
   // 설정 > AI 설정의 카드 수. 창이 열릴 때 한 번 읽는다.
   const [prefs] = useState(() => loadStudyPrefs().flashcards);
@@ -171,6 +172,7 @@ export default function FlashcardsModal({ studyRef, onClose, reuse = false }: { 
           <>
             <Deck key={seed} cards={cards} onRestart={() => setSeed((s) => s + 1)} />
             <CachedNote at={fromCache} onRefresh={() => { setSeed(0); void refresh(); }} busy={loading} />
+            <ExamNudge onOpenExam={onOpenExam} />
           </>
         ) : (
           data && <p className="py-10 text-center text-sm text-muted">{t("카드로 만들 만한 내용이 부족해요.")}</p>

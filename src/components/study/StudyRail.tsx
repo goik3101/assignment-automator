@@ -61,6 +61,9 @@ export default function StudyRail({
   const chat = useChat(studyRef);
   const locked = !studyRef;
   const close = () => setTool(null);
+  // 이미 만들어 둔 자료가 있으면 새로 만들지 않고 이어서 연다(하루 1회 제한에 걸리지 않게).
+  const open = (id: Tool) => setTool({ id, reuse: saved.some((s) => s.tool === id) });
+  const openExam = () => open("exam");
 
   useEffect(() => {
     // 브라우저 저장소는 마운트 뒤에만 읽을 수 있다(서버 렌더와 어긋나지 않게).
@@ -238,6 +241,7 @@ export default function StudyRail({
           </div>
           <ChatView
             chat={chat}
+            onMemorizeTool={(id) => open(id)}
             // 안내가 빠져 대화 목록이 비어도 입력창은 맨 아래에 둔다.
             className="flex-1 justify-end"
             placeholder={t("이 과제에 대해 무엇이든 물어보세요")}
@@ -260,9 +264,9 @@ export default function StudyRail({
         </section>
       </div>
 
-      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
-      {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
-      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
+      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenExam={openExam} />}
+      {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenExam={openExam} />}
+      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenExam={openExam} />}
       {studyRef && tool?.id === "exam" && <ExamModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
     </aside>
   );

@@ -107,6 +107,12 @@ export const results: Record<string, string> = {
   "내용을 읽고 문제를 만들고 있어요...": "Reading the material and writing questions...",
   "문제로 만들 만한 내용이 부족해요.": "Not enough content to make questions from.",
 
+  // AI 채팅 > 암기 방법 고르기, 요약·플래시카드·퀴즈 > 가상 시험 안내
+  "어떤 방법으로 외워 볼까요?": "How would you like to memorize this?",
+  "정리해줘": "Summarize it",
+  "다 외우셨다면 가상 시험도 볼 수 있어요": "Once you've memorized it, you can take a mock exam too.",
+  "가상 시험 보기": "Take the mock exam",
+
   // 플래시카드
   "전부 알고 있어요. 이제 가상 시험으로 확인해 볼까요?": "You know them all. Ready to check with a mock exam?",
   "헷갈린 카드가 {n}장 있어요. 한 번 더 보면 확실히 기억나요.": "{n} cards were tricky. One more pass and you'll remember them.",

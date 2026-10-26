@@ -10,7 +10,7 @@ export type StudyKind = "chat" | "summary" | "flashcards" | "quiz" | "exam" | "e
 const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 
 export const STUDY_DAILY_LIMITS: Record<StudyKind, number> = {
-  chat: num(process.env.STUDY_LIMIT_CHAT, 40),
+  chat: num(process.env.STUDY_LIMIT_CHAT, 20), // 2026-10-26 사용자 결정: 40 → 20 (관리자는 enforceStudyLimit에서 제외)
   // 출시 기준(2026-10-24 사용자 결정): 공부 자료 생성은 종류별 하루 1회. 채점·채팅은 별도.
   summary: num(process.env.STUDY_LIMIT_SUMMARY, 1),
   flashcards: num(process.env.STUDY_LIMIT_FLASHCARDS, 1),

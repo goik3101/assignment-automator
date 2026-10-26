@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Lightbulb } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import StudyState, { CachedNote } from "./StudyState";
+import ExamNudge from "./ExamNudge";
 import { useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
 import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
@@ -18,7 +19,7 @@ interface Summary {
   easyExplanations?: { topic: string; explanation: string }[];
 }
 
-export default function SummaryModal({ studyRef, onClose, reuse = false }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean }) {
+export default function SummaryModal({ studyRef, onClose, reuse = false, onOpenExam }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean; onOpenExam?: () => void }) {
   const t = useT();
   // 설정 > AI 설정의 요약 설정(상세도·형식·쉬운 설명). 창이 열릴 때 한 번 읽는다.
   const [prefs] = useState(() => loadStudyPrefs().summary);
@@ -81,6 +82,7 @@ export default function SummaryModal({ studyRef, onClose, reuse = false }: { stu
               </div>
             )}
             <CachedNote at={fromCache} onRefresh={refresh} busy={loading} />
+            <ExamNudge onOpenExam={onOpenExam} />
           </div>
         )}
       </StudyState>

@@ -10,6 +10,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: SourceRef[];
+  /** 암기 요청에 대한 답이면 true — 답 아래에 외우는 방법(플래시카드·퀴즈·정리) 선택 버튼을 보여준다. */
+  offerMemorize?: boolean;
   /** 사용자가 붙인 사진 미리보기(화면용). */
   imageUrl?: string;
 }
@@ -55,8 +57,8 @@ export function useChat(initialContext: ChatContextRef = null) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((data as { error?: string }).error ?? t("답변을 받지 못했어요."));
-        const { reply, sources } = data as { reply: string; sources?: SourceRef[] };
-        setMessages((prev) => [...prev, { id: nextId(), role: "assistant", content: reply, sources }]);
+        const { reply, sources, offerMemorize } = data as { reply: string; sources?: SourceRef[]; offerMemorize?: boolean };
+        setMessages((prev) => [...prev, { id: nextId(), role: "assistant", content: reply, sources, offerMemorize: offerMemorize === true }]);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         setError(err instanceof Error ? err.message : t("답변을 받지 못했어요. 잠시 후 다시 시도해 주세요."));

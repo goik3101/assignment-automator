@@ -5,6 +5,7 @@ import { CircleCheck, CircleX, RotateCcw } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
 import StudyState, { CachedNote } from "./StudyState";
+import ExamNudge from "./ExamNudge";
 import { useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
 import { isTextAnswerCorrect, type QuizQuestion as Question } from "@/lib/study/quiz-validate";
@@ -214,7 +215,7 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
   );
 }
 
-export default function QuizModal({ studyRef, onClose, reuse = false }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean }) {
+export default function QuizModal({ studyRef, onClose, reuse = false, onOpenExam }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean; onOpenExam?: () => void }) {
   const t = useT();
   // 설정 > AI 설정의 퀴즈 설정. 창이 열릴 때 한 번 읽는다(이 창은 버튼을 누른 뒤에만 그려져 서버 렌더와 어긋나지 않는다).
   const [prefs] = useState(() => loadStudyPrefs().quiz);
@@ -230,6 +231,7 @@ export default function QuizModal({ studyRef, onClose, reuse = false }: { studyR
           <>
             <Runner key={run} questions={data.questions} onRetryAll={() => setRun((r) => r + 1)} />
             <CachedNote at={fromCache} onRefresh={() => { setRun((r) => r + 1); void refresh(); }} busy={loading} />
+            <ExamNudge onOpenExam={onOpenExam} />
           </>
         ) : (
           data && <p className="py-10 text-center text-sm text-muted">{t("문제로 만들 만한 내용이 부족해요.")}</p>

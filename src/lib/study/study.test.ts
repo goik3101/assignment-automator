@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseContextRef, clip, learningToText } from "./context-pure.ts";
+import { parseContextRef, clip, learningToText, assignmentInfoToText } from "./context-pure.ts";
+import { buildChatPrompt, offersMemorize, routedAnswer } from "./chat-pure.ts";
 import { sanitizeTurns } from "./turns.ts";
 import { validateQuizQuestion } from "./quiz-validate.ts";
 
@@ -26,6 +27,69 @@ test("학습 모드 본문: 조사 자료와 학생 글을 구분해 붙이고 �
   ]);
   assert.match(t, /## 인물 배경\n\[조사 자료\]\n조사 내용\n\[학생이 쓴 글\]\n내가 쓴 글/);
   assert.match(t, /## 나의 다짐$/);
+});
+
+test("안내문 정보: 주제·요구사항·해야 할 일·작성 기준을 담고 행정정보는 넣지 않는다", () => {
+  const t = assignmentInfoToText(
+    {
+      topic: "인권 선구자 탐구",
+      requirements: ["인물 1명 선정", "출처 표기"],
+      task_elements: [
+        { label: "탐구 보고서", description: "인물을 조사해 쓴다", target_length: { min: 750, max: 850, counts_spaces: true }, required_items: ["인물 배경", "주요 활동"] },
+        { label: "영어 요약", description: "", target_length: { min: 100, max: 120, counts_spaces: true, unit: "words" } },
+      ],
+      writing_guide: "항목마다 소제목을 단다",
+      due_date: "2026-11-30",
+    },
+    "내 진로는 법조인"
+  );
+  assert.match(t, /주제: 인권 선구자 탐구/);
+  assert.match(t, /- 인물 1명 선정/);
+  assert.match(t, /- 탐구 보고서 \(분량 750~850자\): 인물을 조사해 쓴다\n {2}필수 항목: 인물 배경, 주요 활동/);
+  assert.match(t, /- 영어 요약 \(분량 100~120단어\)$/m);
+  assert.match(t, /작성 기준.*\n항목마다 소제목을 단다/);
+  assert.match(t, /학생이 이번 과제에 덧붙인 요청: 내 진로는 법조인/);
+  assert.doesNotMatch(t, /2026-11-30/);
+});
+
+test("안내문 정보: 비었거나 모양이 달라도 던지지 않는다", () => {
+  for (const bad of [null, undefined, "x", 5, [], {}, { task_elements: "x", requirements: 3 }, { task_elements: [null, 1, { label: "" }] }]) {
+    assert.equal(assignmentInfoToText(bad), "");
+  }
+  assert.equal(assignmentInfoToText(null, "  "), "");
+  assert.equal(assignmentInfoToText({ topic: "가".repeat(5000) }).length <= 3000 + 10, true);
+});
+
+test("채팅 프롬프트: 안내문·자료·대화·문체 규칙 순서, 안내문이 없으면 그 블록을 뺀다", () => {
+  const turns = [{ role: "user" as const, content: "이 수행평가 핵심 개념 설명해줘" }];
+  const withInfo = buildChatPrompt({
+    context: { title: "인권", subject: "사회", sourceLabel: "AI가 작성한 결과물", text: "본문", assignmentInfo: "주제: 인권" },
+    turns,
+    toneRules: "[문체]",
+  });
+  assert.ok(withInfo.indexOf("[과제 안내") < withInfo.indexOf("[과제 자료") && withInfo.indexOf("[과제 자료") < withInfo.indexOf("[대화]") && withInfo.indexOf("[대화]") < withInfo.indexOf("[문체]"));
+  assert.match(withInfo, /학생: 이 수행평가 핵심 개념 설명해줘/);
+  const noInfo = buildChatPrompt({ context: { title: "t", subject: "s", sourceLabel: "x", text: "본문" }, turns, toneRules: "R" });
+  assert.doesNotMatch(noInfo, /\[과제 안내/);
+  const none = buildChatPrompt({ turns, toneRules: "R" });
+  assert.doesNotMatch(none, /\[과제 (안내|자료)/);
+});
+
+test("채팅 1차 답변: 검색이 필요 없다고 하고 답이 있을 때만 그대로 쓴다", () => {
+  assert.equal(routedAnswer({ needs_search: false, answer: "  답이에요 " }), "답이에요");
+  assert.equal(routedAnswer({ needs_search: true, answer: "일단 답" }), null);
+  assert.equal(routedAnswer({ needs_search: false, answer: "  " }), null);
+  assert.equal(routedAnswer({ needs_search: false }), null);
+  assert.equal(routedAnswer({ needs_search: false, answer: 5 }), null);
+  assert.equal(routedAnswer(null), null);
+});
+
+test("암기 방법 고르기: 저장된 과제가 있고 모델이 true라고 했을 때만 켠다", () => {
+  assert.equal(offersMemorize({ offer_memorize: true }, true), true);
+  assert.equal(offersMemorize({ offer_memorize: true }, false), false);
+  assert.equal(offersMemorize({ offer_memorize: false }, true), false);
+  assert.equal(offersMemorize({ offer_memorize: "true" }, true), false);
+  assert.equal(offersMemorize(null, true), false);
 });
 
 test("대화 정리: 역할 검사·길이/개수 제한·마지막은 user", () => {

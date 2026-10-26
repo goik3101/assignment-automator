@@ -143,6 +143,7 @@ docs/
 - **실험 규칙:** 효과가 실측으로 확인된 변경만 적용하고, 실패하면 기존 방식으로 돌아갈 수 있게(환경변수 스위치 등) 하며, 효과가 없으면 억지로 수정하지 않고 되돌린다. 이미 기각한 실험은 `docs/current-goals.md`의 진행 상태에서 확인하고 같은 방식으로 반복하지 않는다. 추측을 사실처럼 말하지 말고 측정값에는 표본 수를 함께 적는다.
 - **조사 노트 캐시**(`lib/essay/research-cache*.ts`)는 기본 꺼짐이다(다양성 저하 우려). 켜려면 `RESEARCH_CACHE=on`.
 - **품질 개선 스위치**: `ESSAY_QUALITY_FIXES=off`면 2026-10-21~22 점검에서 바꾼 프롬프트·후처리(양식 충실 규칙, writing_guide 사용, 작업 메모·주소 제거 등)를 전부 예전 방식으로 되돌린다. 글쓰기 호출만 다른 모델로 바꾸려면 `OPENAI_MODEL_WRITE`(없으면 `OPENAI_MODEL_MAIN`). 안내문 분석은 `OPENAI_MODEL_ANALYZE`, 공부 도구(요약·플래시카드·퀴즈·가상 시험·암기노트·예상 질문)는 `OPENAI_MODEL_STUDY`(둘 다 없으면 `OPENAI_MODEL_LITE`, 현재 gpt-6-luna). 테스트 스크립트는 `SOURCE_STATS_LOG=off`로 링크 통계(source_validations)에 기록을 남기지 않는다. 속도 스위치(2026-10-23, 기본 켜짐): `ESSAY_PARALLEL_WRITE=off`(단계별 동시 글쓰기 끄기, `lib/essay/parallel-write.ts`), `ESSAY_BOOK_EXCERPT=legacy`(구절 요구 책 과제를 예전 경로로), `ESSAY_AUTHOR_PRECHECK=off`, `PLAN_REUSE_ESSAY_FACTS=off`(계획이 원고 사실을 재사용하지 않고 다시 조사).
+- **AI 채팅**(`lib/study/chat.ts`, 프롬프트 조립은 alias 없는 `chat-pure.ts`): 안내문 분석 결과(`StudyContext.assignmentInfo`, 행정정보 제외)를 채팅에만 함께 보여준다(요약·퀴즈 등은 "자료에 있는 내용만" 규칙 때문에 섞지 않음). 값싼 공부 도구용 모델(`OPENAI_MODEL_STUDY`)이 검색 없이 먼저 답하고, 검색이 필요하다고 한 질문만 `OPENAI_MODEL_MAIN`이 검색을 강제해 다시 답한다. `CHAT_ROUTING=off`면 예전처럼 main 한 번. 하루 상한은 `STUDY_LIMIT_CHAT`(기본 20, 2026-10-26 결정; 관리자는 제외).
 - 분석 결과 `core_task_info.writing_guide`는 채점 기준표·양식·예시에서 뽑은 "어떻게 써야 하는지"다(배점·날짜는 여전히 administrative_info). 생성 프롬프트에만 쓰고 과제 임베딩(core-task-text.ts)에는 넣지 않는다.
 
 ## 자주 헷갈릴 수 있는 부분

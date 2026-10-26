@@ -3,14 +3,22 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ImagePlus, LoaderCircle, SendHorizontal, X } from "lucide-react";
+import { CircleHelp, ImagePlus, Layers, LoaderCircle, NotebookText, SendHorizontal, X } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { prepareImage, type PreparedImage } from "@/lib/ui/image";
 import type { ChatMessage, useChat } from "./useChat";
 
 type Chat = ReturnType<typeof useChat>;
 
-function Message({ m }: { m: ChatMessage }) {
+export type MemorizeTool = "flashcards" | "quiz" | "summary";
+
+const MEMORIZE_CHOICES: { id: MemorizeTool; label: string; icon: typeof Layers }[] = [
+  { id: "flashcards", label: "플래시카드", icon: Layers },
+  { id: "quiz", label: "퀴즈", icon: CircleHelp },
+  { id: "summary", label: "정리해줘", icon: NotebookText },
+];
+
+function Message({ m, onMemorizeTool }: { m: ChatMessage; onMemorizeTool?: (tool: MemorizeTool) => void }) {
   const t = useT();
   if (m.role === "user") {
     return (
@@ -42,6 +50,23 @@ function Message({ m }: { m: ChatMessage }) {
           ))}
         </ol>
       )}
+      {m.offerMemorize && onMemorizeTool && (
+        <div className="mt-3">
+          <p className="text-[13px] font-semibold">{t("어떤 방법으로 외워 볼까요?")}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {MEMORIZE_CHOICES.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => onMemorizeTool(id)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-raised px-3.5 text-[13px] font-semibold transition-colors hover:bg-border-strong"
+              >
+                <Icon size={14} strokeWidth={1.8} />
+                {t(label)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -57,6 +82,7 @@ export default function ChatView({
   disabledReason,
   composerFirst = false,
   className = "",
+  onMemorizeTool,
 }: {
   chat: Chat;
   placeholder: string;
@@ -70,6 +96,8 @@ export default function ChatView({
   /** true면 입력창이 위, 대화가 그 아래에 펼쳐진다(홈 화면). 기본은 대화 위·입력창 아래(채팅 레일). */
   composerFirst?: boolean;
   className?: string;
+  /** 있으면 암기 요청에 대한 답 아래에 "플래시카드·퀴즈·정리해줘" 버튼을 보여주고, 눌렀을 때 부른다(저장된 과제 화면에서만 넘긴다). */
+  onMemorizeTool?: (tool: MemorizeTool) => void;
 }) {
   const t = useT();
   const [text, setText] = useState("");
@@ -122,7 +150,7 @@ export default function ChatView({
         <div ref={listRef} className={`min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-4 ${messagesClassName}`} aria-live="polite">
           {!hasMessages && empty}
           {chat.messages.map((m) => (
-            <Message key={m.id} m={m} />
+            <Message key={m.id} m={m} onMemorizeTool={onMemorizeTool} />
           ))}
           {chat.busy && (
             <p role="status" className="flex items-center gap-2 text-[13px] text-muted">
