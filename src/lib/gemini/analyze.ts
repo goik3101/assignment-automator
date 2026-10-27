@@ -2,9 +2,9 @@ import { Type, type Schema } from "@google/genai";
 import { generate, type LlmPart } from "@/lib/llm";
 import { normalizeSubject } from "./normalize-subject";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
-import { fallbackSubject, forceTextSubmissionIfNoExternalHint } from "./analysis-normalize";
+import { dropNonSubmissionActivities, dropNote, fallbackSubject, forceTextSubmissionIfNoExternalHint } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
-import { qualityFixesOn } from "@/lib/essay/quality-flags";
+import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import type { AnalyzeResult } from "@/types/task";
 
 // 기획서 6-0 1단계: 안내문에서 administrative_info(제출기한 등)와
@@ -49,7 +49,9 @@ export const ANALYZE_SCHEMA: Schema = {
         requirements: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: "구체적으로 요구되는 조건들 (분량, 형식 등)",
+          description:
+            "구체적으로 요구되는 조건들 (분량, 형식 등). 채점 기준표에 있는 내용·형식·개수 조건(예: '스토리보드 8장면', '5문장 이내', '10줄')도 " +
+            "숫자를 바꾸지 말고 안내문 표현 그대로 옮길 것(배점·날짜는 제외).",
         },
         task_elements: {
           type: Type.ARRAY,
@@ -125,7 +127,7 @@ export const ANALYZE_SCHEMA: Schema = {
   ],
 };
 
-const SYSTEM_INSTRUCTION = `
+const BASE_SYSTEM_INSTRUCTION = `
 너는 한국 고등학교 수행평가 안내문을 분석하는 도우미다.
 입력으로 안내문 사진 또는 학생이 직접 입력한 주제 텍스트, 그리고 선택적으로 학생이 추가한 지침을 받는다.
 아래 스키마에 맞춰 정확히 JSON으로만 응답하라.
@@ -204,6 +206,18 @@ const SYSTEM_INSTRUCTION = `
 - 활동 시간·수업 시간("약 25분 가량", "30분간 진행")은 분량이 아니다. target_length_text에는 글자수·단어수, 또는 발표·말하기의 시간("발표 시간 5분")만 넣을 것.
 `.trim();
 
+// 개수·시험지 조건과 수업 중 기록지 처리(FORM_REQUIREMENTS=off면 넣지 않는다). 개수는 뒤 단계에서 코드가 세므로 숫자를 그대로 적는 것이 핵심이다.
+const FORM_REQUIREMENTS_INSTRUCTION = `
+- 수업 중 다른 사람의 발표·활동을 듣거나 보면서 그 자리에서 적는 기록지(청중 기록지, 동료·상호 평가지, 듣기 활동지)는 학생이 미리 만들어 제출하는 결과물이 아니다.
+  task_elements에 넣지 말 것(그것밖에 만들 결과물이 없는 과제만 예외). 안내문에 있으면 requirements에 "수업 중 직접 작성: 청중 기록지"처럼 한 줄로만 남길 것.
+- 발표·말하기를 "대본 없이" 하라고 한 경우, 그 발표 자체는 학생이 말로 수행하는 것이라 task_elements에 넣지 말고 requirements에 "대본 없이 발표(시간 …)"로 남길 것. 발표 준비로 만드는 개요·스토리보드·발표 자료는 별도 단계로 둔다.
+- "8장면", "5문장 이내", "10줄", "3문단"처럼 개수가 정해진 조건은 해당 단계의 description과 requirements에 숫자 그대로 적을 것(채점 기준표에만 있어도 옮길 것). 개수를 세어 바꾸거나 빼지 말 것.
+`;
+function systemInstruction(): string {
+  return formRequirementsOn() ? `${BASE_SYSTEM_INSTRUCTION}
+${FORM_REQUIREMENTS_INSTRUCTION.trim()}` : BASE_SYSTEM_INSTRUCTION;
+}
+
 const FLOWING_LABEL_PATTERN = /대본|발표문|연설|비평문|감상문|독후감|서평|편지|일기|소설|에세이|칼럼|소감/;
 
 // required_items 후처리: 모델이 채운 값을 그대로 믿지 않고 코드가 정리한다 —
@@ -276,7 +290,7 @@ export async function analyzeAssignment(
       label: "analyze",
       role: "analyze",
       prompt: parts,
-      system: SYSTEM_INSTRUCTION,
+      system: systemInstruction(),
       schema: ANALYZE_SCHEMA,
       ...(process.env.ANALYZE_EFFORT ? { effort: process.env.ANALYZE_EFFORT as "minimal" | "low" | "medium" } : {}),
     });
@@ -353,7 +367,10 @@ export async function analyzeAssignment(
     };
   });
 
-  const task_elements = distributeSharedLength(task_elements_raw).map((e) => forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic));
+  const distributed = distributeSharedLength(task_elements_raw).map((e) => forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic));
+  // 수업 중 작성하는 기록지는 만들 결과물에서 빼고, 왜 없는지 학생이 볼 수 있게 요구사항에 한 줄 남긴다.
+  const { kept: task_elements, dropped: droppedSheets } = formRequirementsOn() ? dropNonSubmissionActivities(distributed, [...parsed.core_task_info.requirements, parsed.core_task_info.writing_guide ?? "", parsed.administrative_info?.other_notes ?? ""]) : { kept: distributed, dropped: [] };
+  if (droppedSheets.length > 0) console.warn(`[analyzeAssignment] 수업 중 작성 기록지·대본 없는 발표는 만들 결과물에서 제외: ${droppedSheets.map((d) => d.label).join(", ")}`);
 
   // 최종 안전장치: 프롬프트로 "빈 문자열 금지"를 지시해도(위 스키마 설명 참고)
   // 실제로 빈 문자열이 돌아올 수 있다는 게 이 프로젝트에서 반복 확인된
@@ -382,7 +399,7 @@ export async function analyzeAssignment(
   return {
     ...parsed,
     subject,
-    core_task_info: { ...coreRest, task_elements, ...(writingGuide ? { writing_guide: writingGuide } : {}) },
+    core_task_info: { ...coreRest, requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], task_elements, ...(writingGuide ? { writing_guide: writingGuide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }

@@ -16,7 +16,9 @@ import {
   FORM_FIDELITY_RULES,
   writingGuideBlock,
 } from "./prompts";
-import { qualityFixesOn } from "@/lib/essay/quality-flags";
+import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
+import { applyFormRequirements, buildFormLimitBlock, checkFormRequirements, isSceneListElement, requirementsForElement } from "@/lib/essay/form-requirements";
+import { formWarningText, repairFormRequirements } from "@/lib/essay/form-repair";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
 import {
   extractYears,
@@ -238,7 +240,7 @@ ${structuredFacts ?? input.referenceFactsText}
     : ""
 }
 ${itemsBlock}
-${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${fixes && readBook ? bookBasedBlock(readBook) : ""}${fixes && panelItems ? panelBlock(panelItems) : ""}
+${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${element && formRequirementsOn() ? buildFormLimitBlock([{ label: element.label, reqs: requirementsForElement(element, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, input.coreTaskInfo.task_elements.map((e) => e.label)) }]) : ""}${fixes && readBook ? bookBasedBlock(readBook) : ""}${fixes && panelItems ? panelBlock(panelItems) : ""}
 ${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentStatGuidance ? `\n${input.recentStatGuidance}\n` : ""}
@@ -388,6 +390,8 @@ export async function generatePlan(
   input: GeneratePlanInput
 ): Promise<PlanResult | InsufficientDataResult> {
   const start = Date.now();
+  // 안내문의 개수 조건("8장면")은 필수 항목("장면 1…8")으로 펼친다(생성 시점에만 — form-requirements.ts).
+  if (formRequirementsOn()) input = { ...input, coreTaskInfo: applyFormRequirements(input.coreTaskInfo) };
 
   const wantSearch = needsFactSearch(
     input.coreTaskInfo.topic,
@@ -714,6 +718,22 @@ ${freeText}`,
     validatedSources = lim.sources;
   }
 
+  // 시험지·안내문의 문장·문단 수 조건(장면 수는 필수 항목 검사가 맡는다): 어긴 경우 검색 없이 한 번만 고치고, 못 맞추면 경고로 알린다.
+  let formWarning: string | undefined;
+  const formEl = targetElement(input);
+  if (formEl && formRequirementsOn()) {
+    const reqs = requirementsForElement(formEl, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, input.coreTaskInfo.task_elements.map((e) => e.label));
+    const skipScene = isSceneListElement(formEl);
+    const issues = checkFormRequirements(content, reqs, { skipScene });
+    if (issues.length > 0) {
+      console.warn(`[generatePlan] 형식 조건 위반: ${JSON.stringify(issues.map((i) => ({ unit: i.req.word, min: i.req.min, max: i.req.max, actual: i.actual })))}`);
+      const r = await repairFormRequirements({ label: formEl.label, content, description: formEl.description, reqs, issues, skipScene });
+      console.log(`[generatePlan] 형식 조건 보완 적용=${r.repaired} 남은 위반=${r.remaining.length}건`);
+      if (r.repaired) content = r.content;
+      if (r.remaining.length > 0) formWarning = formWarningText(r.remaining);
+    }
+  }
+
   content = tidyOutputText(content);
 
   console.log(`[generatePlan] latency_ms=${Date.now() - start}`);
@@ -726,9 +746,7 @@ ${freeText}`,
     latency_ms: Date.now() - start,
     verifiedItemNames,
     structureWarning:
-      planIssues.missing.length > 0
-        ? `안내문이 요구한 항목이 비어 있어요: ${planIssues.missing.join(", ")}. 제출 전에 직접 보완해주세요.`
-        : undefined,
+      [planIssues.missing.length > 0 ? `안내문이 요구한 항목이 비어 있어요: ${planIssues.missing.join(", ")}. 제출 전에 직접 보완해주세요.` : "", formWarning ?? ""].filter(Boolean).join(" ") || undefined,
     factConsistencyWarning:
       planIssues.badYears.length > 0
         ? `자료 수집에서 확정한 내용에 없는 연도가 있어요: ${planIssues.badYears.map((y) => `${y}년`).join(", ")}. 자료 수집 내용과 맞는지 확인해주세요.`

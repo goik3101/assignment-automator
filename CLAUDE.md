@@ -95,7 +95,8 @@ src/
     essay/                        -- 완성 원고 품질 규칙(순수 함수, alias import 없음): deliverable(신문 등 산출물 형식·참고목록/작업설명 제거),
                                      length-plan(단계 역할별 분량 가이드), form-rules(글 종류별 작성 방식), source-select(출처 2~3개로 정리),
                                      claim-check(문장↔출처 페이지 대조), coverage·repetition(누락·반복 검사), excerpt-need(원문 구절 요구 여부), research-notes(조사→글쓰기 사실 노트), research-cache(+key: 같은 수행평가 학생끼리 조사 노트 재사용, 마이그레이션 0017),
-                                     quality-flags(품질 개선 스위치 ESSAY_QUALITY_FIXES=off로 되돌림), prompt-scope(과제에 해당할 때만 공통 규칙 블록 포함), opinion-citations(감상 문장 각주 제거)
+                                     quality-flags(품질 개선 스위치 ESSAY_QUALITY_FIXES=off로 되돌림), prompt-scope(과제에 해당할 때만 공통 규칙 블록 포함), opinion-citations(감상 문장 각주 제거),
+                                     form-requirements·form-repair(안내문의 개수 조건 — 8장면·N문장·N문단 — 을 프롬프트에 전하고 생성 뒤 코드로 세어 어긴 단계만 한 번 보완. FORM_REQUIREMENTS=off로 되돌림)
     links/
       validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
     admin/
@@ -144,6 +145,7 @@ docs/
 - **조사 노트 캐시**(`lib/essay/research-cache*.ts`)는 기본 꺼짐이다(다양성 저하 우려). 켜려면 `RESEARCH_CACHE=on`.
 - **품질 개선 스위치**: `ESSAY_QUALITY_FIXES=off`면 2026-10-21~22 점검에서 바꾼 프롬프트·후처리(양식 충실 규칙, writing_guide 사용, 작업 메모·주소 제거 등)를 전부 예전 방식으로 되돌린다. 글쓰기 호출만 다른 모델로 바꾸려면 `OPENAI_MODEL_WRITE`(없으면 `OPENAI_MODEL_MAIN`). 안내문 분석은 `OPENAI_MODEL_ANALYZE`, 공부 도구(요약·플래시카드·퀴즈·가상 시험·암기노트·예상 질문)는 `OPENAI_MODEL_STUDY`(둘 다 없으면 `OPENAI_MODEL_LITE`, 현재 gpt-6-luna). 테스트 스크립트는 `SOURCE_STATS_LOG=off`로 링크 통계(source_validations)에 기록을 남기지 않는다. 속도 스위치(2026-10-23, 기본 켜짐): `ESSAY_PARALLEL_WRITE=off`(단계별 동시 글쓰기 끄기, `lib/essay/parallel-write.ts`), `ESSAY_BOOK_EXCERPT=legacy`(구절 요구 책 과제를 예전 경로로), `ESSAY_AUTHOR_PRECHECK=off`, `PLAN_REUSE_ESSAY_FACTS=off`(계획이 원고 사실을 재사용하지 않고 다시 조사).
 - **AI 채팅**(`lib/study/chat.ts`, 프롬프트 조립은 alias 없는 `chat-pure.ts`): 안내문 분석 결과(`StudyContext.assignmentInfo`, 행정정보 제외)를 채팅에만 함께 보여준다(요약·퀴즈 등은 "자료에 있는 내용만" 규칙 때문에 섞지 않음). 값싼 공부 도구용 모델(`OPENAI_MODEL_STUDY`)이 검색 없이 먼저 답하고, 검색이 필요하다고 한 질문만 `OPENAI_MODEL_MAIN`이 검색을 강제해 다시 답한다. `CHAT_ROUTING=off`면 예전처럼 main 한 번. 하루 상한은 `STUDY_LIMIT_CHAT`(기본 20, 2026-10-26 결정; 관리자는 제외).
+- **개수 조건**(2026-10-27): 안내문의 "8장면"·"5문장 이내" 같은 조건은 분석 결과를 바꾸지 않고 생성 시점에만 읽는다(`essay/form-requirements.ts`). 장면 수는 필수 항목 "장면 1…N"으로 펼치고, 문장·줄·문단 상한이 있는 단계는 기본 분량 가이드를 빼며, 생성 뒤 문장·문단 수를 코드로 센다(줄 수는 셀 수 없어 프롬프트로만). 수업 중 직접 쓰는 기록지(청중 기록지 등)와 "대본 없이" 말로 하는 발표는 분석 단계가 만들 결과물에서 뺀다(`dropNonSubmissionActivities`, 뺀 것은 요구사항에 한 줄로 남김). `FORM_REQUIREMENTS=off`로 전부 되돌린다.
 - 분석 결과 `core_task_info.writing_guide`는 채점 기준표·양식·예시에서 뽑은 "어떻게 써야 하는지"다(배점·날짜는 여전히 administrative_info). 생성 프롬프트에만 쓰고 과제 임베딩(core-task-text.ts)에는 넣지 않는다.
 
 ## 자주 헷갈릴 수 있는 부분

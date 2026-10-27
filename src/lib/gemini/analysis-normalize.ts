@@ -51,3 +51,37 @@ export function fallbackSubject(subject: string, ...texts: string[]): string {
   const s = subject.trim();
   return s.length >= 2 && s.length <= 8 && !SUBJECT_JOSA_END.test(s) && !/^['"“‘]/.test(s) ? s : "과제";
 }
+
+// 수업 중 다른 사람의 발표·활동을 듣거나 보면서 그 자리에서 적는 기록지(청중 기록지·동료/상호 평가지·듣기 활동지)는
+// 학생이 미리 만들어 제출하는 결과물이 아니다 — 아직 일어나지 않은 발표를 지어내게 되므로 만들 결과물에서 뺀다.
+// 실측(2026-10-27, 합성 안내문): 분석이 "청중 기록지"를 글로 제출하는 단계로 뽑아 그대로 생성 대상이 됐다.
+const OBSERVER_LABEL = /청중\s*(?:기록|평가|반응|의견)|동료\s*평가|상호\s*평가|모둠원?\s*평가|듣기\s*활동지|관찰\s*기록지/;
+const SHEET_LABEL = /기록지|평가지|활동지|학습지/;
+const OBSERVE_DESC = /(?:다른|타|상대)\s*(?:모둠|조|팀|친구|학생|반)[^.\n]{0,40}(?:발표|활동|공연|토론|시연)[^.\n]{0,30}(?:듣|보|관람|시청|관찰)/;
+
+export function isObservationSheet(el: { label: string; description: string }): boolean {
+  return OBSERVER_LABEL.test(el.label) || (SHEET_LABEL.test(el.label) && OBSERVE_DESC.test(el.description));
+}
+
+// 대본 없이 말로 하는 발표("대본은 없어야 하며 자연스럽게 말해야 한다")는 글로 제출하는 결과물이 아니다 — 만들면 안내문이 금지한 대본이 된다.
+// 발표 준비 단계(개요·스토리보드·발표 자료·대본 작성)는 이름에 그런 낱말이 있으므로 그대로 둔다.
+const NO_SCRIPT = /대본\s*(?:은|을|이)?\s*(?:없|쓰지|사용하지|작성하지|읽지)|대본\s*없이/;
+const ORAL_LABEL = /발표|말하기|스피치|연설|토론/;
+const WRITTEN_LABEL = /대본|원고|개요|스토리보드|계획|기획|보고서|자료|정리|메모|요약/;
+
+export function isScriptlessSpeech(el: { label: string; description: string }, context: string[] = []): boolean {
+  return ORAL_LABEL.test(el.label) && !WRITTEN_LABEL.test(el.label) && NO_SCRIPT.test(`${el.description} ${context.join(" ")}`);
+}
+
+/** 만들 결과물에서 뺀 이유를 학생이 볼 수 있게 요구사항에 남기는 한 줄. */
+export function dropNote(el: { label: string; description: string }): string {
+  return isObservationSheet(el) ? `수업 중 직접 작성: ${el.label} (AI가 만들지 않음)` : `직접 수행: ${el.label} (대본 없이 말하기 — AI가 만들지 않음)`;
+}
+
+/** 수업 중 작성하는 기록지와 대본 없는 발표를 만들 결과물에서 뺀다. 그것밖에 없는 과제면 그대로 둔다. */
+export function dropNonSubmissionActivities<T extends { label: string; description: string }>(els: T[], context: string[] = []): { kept: T[]; dropped: T[] } {
+  const skip = (e: T) => isObservationSheet(e) || isScriptlessSpeech(e, context);
+  const kept = els.filter((e) => !skip(e));
+  if (kept.length === 0) return { kept: els, dropped: [] };
+  return { kept, dropped: els.filter(skip) };
+}

@@ -13,3 +13,11 @@ export function qualityFixesOn(): boolean {
 export function writerGeneralKnowledgeOn(): boolean {
   return process.env.ESSAY_WRITER_KNOWLEDGE === "general";
 }
+
+/**
+ * 안내문의 개수 조건(장면 수·문장 수·문단 수)을 생성 프롬프트에 전하고 생성 뒤 코드로 검사·보완할지(form-requirements.ts).
+ * FORM_REQUIREMENTS=off면 예전 방식(조건은 텍스트로만 전달, 기본 분량 가이드 그대로).
+ */
+export function formRequirementsOn(): boolean {
+  return process.env.FORM_REQUIREMENTS !== "off";
+}

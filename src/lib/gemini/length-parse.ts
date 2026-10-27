@@ -33,6 +33,16 @@ export function parseLengthConstraint(text: string, opts?: { english?: boolean; 
   if (chars) return chars;
 
   // 발표 시간만 적힌 경우("약 3분 분량"): 분당 분량으로 환산한다
+  // "2분30초~3분"·"2분~3분" 같은 범위는 양 끝을 모두 쓴다(첫 숫자만 읽으면 하한만 잡혀 목표가 어긋난다 — 실측: 540~660자).
+  const range = t.match(/(\d{1,2})\s*분\s*(?:(\d{1,2})\s*초)?\s*[~∼–-]\s*(\d{1,2})\s*분\s*(?:(\d{1,2})\s*초)?/);
+  if (range && opts?.minutesAllowed !== false) {
+    const lo = Number(range[1]) + Number(range[2] ?? 0) / 60;
+    const hi = Number(range[3]) + Number(range[4] ?? 0) / 60;
+    if (lo > 0 && hi >= lo && hi <= 30) {
+      const r = opts?.english ? WORDS_PER_MINUTE : CHARS_PER_MINUTE;
+      return { min: Math.round(lo * r.min), max: Math.round(hi * r.max), unit: opts?.english ? "words" : undefined };
+    }
+  }
   const mm = t.match(/(\d{1,3}(?:\.\d+)?)\s*분/);
   if (mm && opts?.minutesAllowed !== false) {
     const minutes = Number(mm[1]);

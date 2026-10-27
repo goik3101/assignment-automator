@@ -219,3 +219,14 @@ test("강연·대화를 듣고 정리하는 단계는 기록지 규칙(지어내
   assert.deepEqual(inferFormKinds({ label: "화법의 원리 파악하기", description: "강연 또는 대화를 듣고 맥락을 고려하여 말하기의 내용을 파악한다." }), ["observation_record"]);
   assert.notDeepEqual(inferFormKinds({ label: "문제 해결 방안 쓰기", description: "현안을 담은 기사에서 사회 문제를 찾아 해결 방안을 쓴다." }), ["observation_record"]);
 });
+
+test("괄호 없는 본문 문장('이 글은 … 목적으로 한다 … 자료를 …')은 작업 메모로 지우지 않는다", () => {
+  const purpose = "이 글은 교실에서 스마트폰 사용을 제한하는 정책의 찬반을 매체 발표용으로 정리하는 것을 목적으로 한다. 발표 청중이 통계 근거를 이해하도록 돕는 자료를 만들기 위해 작성한다.";
+  assert.deepEqual(stripWorkNotes(purpose), { content: purpose, removed: 0 });
+  assert.equal(stripWorkNotes("(이 글의 내용은 공개 자료를 확인해 다듬었습니다.)").removed, 1); // 괄호로 쓴 작업 메모는 그대로 지운다
+});
+
+test("글 끝에 붙은 '(근거 표시는 … 각주 번호로 연결했으며 …)' 작업 설명을 지운다(실측 2026-10-27, 실제 안내문 개요)", () => {
+  const body = ["근거 문장이다[1].", "", "(근거 표시는 본문 문장에 각주 번호로 연결했으며, 발표 자료에는 동일한 번호를 표기한다.)"].join("\n");
+  assert.equal(stripMetaNoteLines(body).content.trim(), "근거 문장이다[1].");
+});

@@ -3,7 +3,8 @@
 // 이 값은 생성 지시용 가이드일 뿐 강제 기준이 아니다(강제는 안내문이 명시한 분량만 — 부족 여부는 필수 항목 충족으로 본다).
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
 import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
-import { qualityFixesOn } from "./quality-flags.ts";
+import { qualityFixesOn, formRequirementsOn } from "./quality-flags.ts";
+import { hasSizeLimit, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 
 export type LengthRole =
   | "material" // 항목별 조사 자료(소제목 구조)
@@ -15,6 +16,7 @@ export type LengthRole =
   | "script" // 발표문·대본·연설
   | "report" // 보고서·논설문·감상문·에세이·비평
   | "plan" // 계획·개요·설계
+  | "scenes" // 장면 번호 소제목(스토리보드·컷)으로 쓰는 단계 — 장면마다 화면·대사 한두 문장
   | "general";
 
 export interface PlanElement {
@@ -36,6 +38,7 @@ export function lengthRoleOf(el: PlanElement): LengthRole {
   const label = el.label;
   const text = `${el.label} ${el.description}`;
   if (inferDeliverableForm(el) === "newspaper") return "newspaper";
+  if (formRequirementsOn() && isSceneListElement(el)) return "scenes";
   if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return qualityFixesOn() && !isResearchMaterialStep(el) ? "report_sections" : "material";
   if (/소감|느낀\s*점|후기|성찰|반성|다짐/.test(label)) return "reflection";
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
@@ -62,6 +65,10 @@ export function planLength(el: PlanElement): LengthPlan {
       const n = Math.max(items, 2);
       return { role, min: n * 250, max: n * 450, basis: `보고서 항목 ${n}개 × 항목당 한두 문단` };
     }
+    case "scenes": {
+      const n = Math.max(items, 2);
+      return { role, min: n * 70, max: n * 200, basis: `장면 ${n}개 × 장면당 화면 설명·대사 한두 문장` };
+    }
     case "newspaper":
       return { role, min: 900 + itemBoost / 2, max: 1500 + itemBoost, basis: "신문 한 면에 들어갈 기사·표·후기" };
     case "reflection":
@@ -83,10 +90,17 @@ export function planLength(el: PlanElement): LengthPlan {
 
 const round50 = (n: number) => Math.round(n / 50) * 50;
 
-/** 프롬프트에 넣을 분량 가이드 줄(안내문에 분량이 없는 단계만). */
-export function lengthGuideLines(elements: (PlanElement & { target_length?: unknown })[]): string[] {
+/**
+ * 프롬프트에 넣을 분량 가이드 줄(안내문에 분량이 없는 단계만). ctx를 주면 안내문이 문장·줄·문단 상한을 정한 단계는 뺀다 —
+ * 기본 범위(예: 발표 900~1700자)가 "5문장 이내"와 부딪혀 모델이 숫자 큰 쪽을 따랐다(form-requirements.ts).
+ */
+export function lengthGuideLines(
+  elements: (PlanElement & { target_length?: unknown })[],
+  ctx?: { requirements: string[]; guide?: string; labels: string[] }
+): string[] {
   return elements
     .filter((e) => !e.target_length)
+    .filter((e) => !(ctx && formRequirementsOn() && hasSizeLimit(requirementsForElement(e, ctx.requirements, ctx.guide, ctx.labels))))
     .map((e) => {
       const p = planLength(e);
       return `- "${e.label}" 단계: 공백 포함 ${round50(p.min)}~${round50(p.max)}자 안팎(${p.basis}).`;

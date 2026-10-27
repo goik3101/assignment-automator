@@ -44,7 +44,17 @@ import {
   stripModelReferenceBlock,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
-import { qualityFixesOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { formRequirementsOn, qualityFixesOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import {
+  applyFormRequirements,
+  buildFormLimitBlock,
+  buildSceneBlock,
+  checkFormRequirements,
+  isSceneListElement,
+  requirementsForElement,
+  sceneBlockInputs,
+} from "@/lib/essay/form-requirements";
+import { formWarningText, repairFormRequirements } from "@/lib/essay/form-repair";
 import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
 import { GRAMMAR_REPAIR_TEXT, missingGrammarForms, requiredGrammarForms } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
@@ -562,11 +572,14 @@ ${input.previousOutputText}
     });
   const lengthTargetBlock = lengthTargetLines.length ? `\n【분량 — 반드시 지킬 것】\n${lengthTargetLines.join("\n")}\n` : "";
   // 안내문에 분량이 없는 단계는 역할·항목 수로 정한 권장 범위를 준다(length-plan.ts) — 모든 단계에 같은 글자 수를 주지 않고, 부족 여부는 글자 수가 아니라 필수 항목 충족으로 본다.
-  const guideLines = lengthGuideLines(elements);
+  const formOn = formRequirementsOn();
+  const formCtx = { requirements: input.coreTaskInfo.requirements, guide: input.coreTaskInfo.writing_guide, labels: input.coreTaskInfo.task_elements.map((e) => e.label) };
+  const guideLines = lengthGuideLines(elements, formOn ? formCtx : undefined);
+  const formLimitBlock = formOn ? buildFormLimitBlock(elements.map((el) => ({ label: el.label, reqs: requirementsForElement(el, formCtx.requirements, formCtx.guide, formCtx.labels) }))) : "";
   const defaultLengthBlock =
     lengthTargetBlock +
     (guideLines.length
-      ? "\n[분량 가이드 — 안내문에 분량 지시가 없는 단계] 필요한 내용을 다 담기 위한 권장 범위다. 항목마다 필요한 설명·근거는 충분히 쓰되 같은 사실을 반복해 분량을 채우지 말고, 반대로 중요한 설명을 빼서 줄이지도 말 것.\n" + guideLines.join("\n") + "\n"
+      ? "\n[분량 가이드 — 안내문에 분량 지시가 없는 단계] 필요한 내용을 다 담기 위한 권장 범위다. 항목마다 필요한 설명·근거는 충분히 쓰되 같은 사실을 반복해 분량을 채우지 말고, 반대로 중요한 설명을 빼서 줄이지도 말 것." + (formOn ? " 단, [안내문의 작성 기준·양식·예시]나 형식 조건에 예시 분량·줄·문장·문단 수가 있으면 그것이 이 권장 범위보다 우선한다.\n" : "\n") + guideLines.join("\n") + "\n"
       : "");
   const formRulesBlock = buildFormRulesBlock(elements);
   // 책 과제인가 / 인상 깊은 구절(원문 인용)을 요구하는가에 따라 검색·인용 규칙의 범위를 정한다(essay/excerpt-need.ts).
@@ -585,16 +598,19 @@ ${input.previousOutputText}
         .join("\n\n");
   // 제출용 보고서(탐구 보고서 등)는 소제목 구조는 같지만 조사 자료(불릿 메모) 규칙 대신 보고서 문단 규칙을 준다(deliverable.ts isFinalReportForm).
   const fixes = qualityFixesOn();
-  const reportEls = fixes ? structuredEls.filter((el) => !isResearchMaterialStep(el)) : [];
-  const materialEls = structuredEls.filter((el) => !reportEls.includes(el));
+  // 장면 번호 소제목으로 쓰는 단계(스토리보드 등)는 조사 자료도 문단 보고서도 아니다 — 장면 블록이 따로 지시한다.
+  const sceneEls = formOn ? structuredEls.filter(isSceneListElement) : [];
+  const reportEls = fixes ? structuredEls.filter((el) => !isResearchMaterialStep(el) && !sceneEls.includes(el)) : [];
+  const materialEls = structuredEls.filter((el) => !reportEls.includes(el) && !sceneEls.includes(el));
+  const sceneBlock = buildSceneBlock(sceneBlockInputs(sceneEls));
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
       `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +
       `글자 그대로, 순서도 그대로 — 번호·기호·꾸밈말을 앞뒤에 붙이지 말 것)으로 나눠 쓰고, 어떤 ` +
       `항목도 빼거나 합치지 말 것. 항목마다 실제 내용이 있어야 한다(소제목만 쓰고 비워두지 말 것). ` +
-      (reportEls.length === 0 ? `이 단계는 하나의 긴 글이 아니라 항목별로 구조화된 조사 자료다.\n` : "\n") +
+      (reportEls.length === 0 && sceneEls.length === 0 ? `이 단계는 하나의 긴 글이 아니라 항목별로 구조화된 조사 자료다.\n` : "\n") +
       structuredEls
-        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}${!fixes ? "" : reportEls.includes(el) ? " (제출용 글 — 항목마다 문단으로)" : " (조사 자료 — 항목마다 사실 정리)"}`)
+        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}${!fixes || sceneEls.includes(el) ? "" : reportEls.includes(el) ? " (제출용 글 — 항목마다 문단으로)" : " (조사 자료 — 항목마다 사실 정리)"}`)
         .join("\n") +
       (materialEls.length ? `\n${RESEARCH_MATERIAL_RULES}` : "") +
       (reportEls.length ? `\n${REPORT_SECTION_RULES}` : "") +
@@ -660,7 +676,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${defaultLengthBlock}${structuredBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -1611,6 +1627,9 @@ export async function generateEssay(
   const start = Date.now();
   // 영어로 쓸 때는 안내문의 글자 수 기준(한국어)을 영어 글자 수로 늘린다 — 그대로 두면 분량 보정이 영어 글을 절반 이하로 잘라 낸다.
   if (currentOutputLang() === "en") input = { ...input, coreTaskInfo: scaleLengthsForEnglish(input.coreTaskInfo) };
+  // 안내문의 개수 조건: "8장면" 같은 단위는 필수 항목("장면 1…8")으로 펼친다(생성 시점에만 — 저장된 분석 결과·화면은 그대로).
+  const formOn = formRequirementsOn();
+  if (formOn) input = { ...input, coreTaskInfo: applyFormRequirements(input.coreTaskInfo) };
   // 신문처럼 "실제로 제출할 산출물" 단계는 조사 자료 형식("### 항목명" 불릿 나열)이 아니라 그 산출물의 형식으로 쓴다 —
   // 분석 단계가 안내문 문장을 required_items로 베껴 sections로 분류해도 여기서 바로잡는다(deliverable.ts).
   const fixes = qualityFixesOn();
@@ -2257,6 +2276,27 @@ export async function generateEssay(
     }
   }
 
+  // 시험지·안내문의 장면·문장·문단 수 조건: 생성 뒤 코드로 세고, 어긴 단계만 검색 없이 한 번 고친다(form-repair.ts). 못 맞추면 경고로 알린다.
+  const formWarningByLabel = new Map<string, string>();
+  if (formOn) {
+    const checked = await Promise.all(
+      attempt.sections.map(async (sec) => {
+        const el = elements.find((e) => e.label === sec.label);
+        if (!el) return sec;
+        const reqs = requirementsForElement(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, input.coreTaskInfo.task_elements.map((e) => e.label));
+        const skipScene = isSceneListElement(el);
+        const issues = checkFormRequirements(sec.content, reqs, { skipScene });
+        if (issues.length === 0) return sec;
+        console.warn(`[generateEssay] 형식 조건 위반 label="${sec.label}": ${JSON.stringify(issues.map((i) => ({ unit: i.req.word, min: i.req.min, max: i.req.max, actual: i.actual })))}`);
+        const r = await repairFormRequirements({ label: sec.label, content: sec.content, description: el.description, reqs, issues, skipScene });
+        console.log(`[generateEssay] 형식 조건 보완 label="${sec.label}" 적용=${r.repaired} 남은 위반=${r.remaining.length}건`);
+        if (r.remaining.length > 0) formWarningByLabel.set(sec.label, formWarningText(r.remaining));
+        return r.repaired ? { ...sec, content: r.content } : sec;
+      })
+    );
+    attempt = { ...attempt, sections: checked };
+  }
+
   // 품질 재시도까지 거치고도 분량 범위를 못 맞춘 단계는, 검색 없이 그 단계 글 하나만 한 번 보정한다(전체 재생성은 오히려 분량이 흔들린다 — 실측 1344→1294자).
   {
     const remaining = checkLengthCompliance(attempt.sections, elements);
@@ -2496,7 +2536,7 @@ export async function generateEssay(
         label: s.label,
         markdown: renumberedContent,
         sources: renumberedSources,
-        lengthWarning: lengthWarningByLabel.get(s.label),
+        lengthWarning: [lengthWarningByLabel.get(s.label), formWarningByLabel.get(s.label)].filter(Boolean).join(" ") || undefined,
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
         noSourcesWarning: renumberedSources.length === 0 && sectionHasVerifiableClaim(s),
         structureWarning:

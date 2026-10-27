@@ -48,3 +48,9 @@ test("'각 기사 200자 이상'처럼 하한만 복사된 값은 나누지 않�
   const els = ["a", "b", "c", "d", "e"].map((label) => ({ label, target_length: { min: 200, max: 0, counts_spaces: true }, _lengthText: "200자 이상" }));
   assert.deepEqual(distributeSharedLength(els).map((e) => e.target_length?.min), [200, 200, 200, 200, 200]);
 });
+
+test("발표 시간 범위(\"2분30초~3분\")는 양 끝을 모두 쓴다", () => {
+  assert.deepEqual(p("발표시간: 2분30초~3분"), { min: 675, max: 990, unit: undefined });
+  assert.deepEqual(p("2분~3분"), { min: 540, max: 990, unit: undefined });
+  assert.deepEqual(p("2분30초~3분", true), { min: 250, max: 390, unit: "words" });
+});
