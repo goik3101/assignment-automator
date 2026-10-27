@@ -29,6 +29,7 @@ import { validateSources, getCachedPageText } from "@/lib/links/validate-sources
 import {
   buildNewspaperBlock,
   buildSourceListSection,
+  stripTrailingItemHeading,
   inferDeliverableForm,
   isFinalReportForm,
   isProseForm,
@@ -2504,7 +2505,7 @@ export async function generateEssay(
     }
     console.log(`[generateEssay] 출처 목록 항목을 확인된 출처 ${list.length}개로 채움 label="${label}"`);
     const sections = [...attempt.sections];
-    sections[idx] = { ...sec, content: `${sec.content}\n\n${buildSourceListSection(item, list)}` };
+    sections[idx] = { ...sec, content: `${stripTrailingItemHeading(sec.content, item)}\n\n${buildSourceListSection(item, list)}` };
     attempt = { ...attempt, sections };
   }
   // 요약 줄에서 각주를 지운 자리에 남는 "…되었다 ." 공백도 정리한다(본문은 tidyOutputText가 이미 정리).

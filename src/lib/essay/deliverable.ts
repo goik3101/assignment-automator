@@ -207,6 +207,21 @@ export function isSourceListItem(item: string): boolean {
   return SOURCE_LIST_ITEM.test(item) && !/분석|비교|평가|신뢰도\s*(?:판단|비교)/.test(item);
 }
 
+/**
+ * 출처 목록 항목은 시스템이 채우는데, 모델이 글 끝에 항목 이름만 덩그러니("출처", "### 출처", "**출처**:") 남기는 일이 있다(실측 2026-10-27: 시스템이 붙인 "### 출처" 바로 위에 "출처" 한 줄).
+ * 글 맨 끝에 있는, 항목 이름만 적힌 줄을 지운다. 그 아래에 내용이 이어지는 소제목은 건드리지 않는다.
+ */
+export function stripTrailingItemHeading(content: string, item: string): string {
+  const esc = item.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const bare = new RegExp(`^\\s*(?:#{1,4}\\s*)?(?:\\*\\*)?${esc}(?:\\*\\*)?\\s*[:：]?\\s*$`);
+  const lines = content.replace(/\s+$/, "").split("\n");
+  while (lines.length > 0 && bare.test(lines[lines.length - 1])) {
+    lines.pop();
+    while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
+  }
+  return lines.join("\n");
+}
+
 /** 시스템이 실제로 확인한 출처로 출처 목록 항목을 채운다(모델이 쓰지 않는다). */
 export function buildSourceListSection(item: string, sources: { title: string; url: string }[]): string {
   const lines = sources.map((s) => `- ${s.title?.trim() || hostOf(s.url)}: ${s.url}`);

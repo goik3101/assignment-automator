@@ -1,7 +1,7 @@
 // 2026-10-21 글 품질·출처 점검에서 고친 순수 함수들. 실측 사례(gb_frz 8건)를 그대로 옮긴 입력을 쓴다.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSourceListSection, fixJosaAfterTitle, isFinalReportForm, isResearchMaterialStep, isSourceListItem, reduceReportedSpeech, stripInlineUrls, stripMetaNoteLines, stripWorkNotes } from "./deliverable.ts";
+import { buildSourceListSection, stripTrailingItemHeading, fixJosaAfterTitle, isFinalReportForm, isResearchMaterialStep, isSourceListItem, reduceReportedSpeech, stripInlineUrls, stripMetaNoteLines, stripWorkNotes } from "./deliverable.ts";
 import { stripOpinionCitations } from "./opinion-citations.ts";
 import { buildFacts, parseBookResearch, parseFactJson } from "./research-notes.ts";
 import { buildFormRulesBlock, inferFormKinds } from "./form-rules.ts";
@@ -229,4 +229,12 @@ test("괄호 없는 본문 문장('이 글은 … 목적으로 한다 … 자료
 test("글 끝에 붙은 '(근거 표시는 … 각주 번호로 연결했으며 …)' 작업 설명을 지운다(실측 2026-10-27, 실제 안내문 개요)", () => {
   const body = ["근거 문장이다[1].", "", "(근거 표시는 본문 문장에 각주 번호로 연결했으며, 발표 자료에는 동일한 번호를 표기한다.)"].join("\n");
   assert.equal(stripMetaNoteLines(body).content.trim(), "근거 문장이다[1].");
+});
+
+test("모델이 글 끝에 남긴 항목 이름만의 줄('출처', '### 출처', '**출처**:')을 지우고, 내용이 있는 소제목은 건드리지 않는다", () => {
+  assert.equal(stripTrailingItemHeading("본문이다[1].\n\n출처", "출처"), "본문이다[1].");
+  assert.equal(stripTrailingItemHeading("본문이다[1].\n\n### 출처\n", "출처"), "본문이다[1].");
+  assert.equal(stripTrailingItemHeading("본문이다[1].\n\n**출처**:", "출처"), "본문이다[1].");
+  assert.equal(stripTrailingItemHeading("### 출처\n- 내용이 있는 목록", "출처"), "### 출처\n- 내용이 있는 목록");
+  assert.equal(stripTrailingItemHeading("본문이다.", "출처"), "본문이다.");
 });
