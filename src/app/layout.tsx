@@ -4,10 +4,13 @@ import Sidebar from "@/components/Sidebar";
 import Footer from "@/components/Footer";
 import { LangProvider } from "@/lib/i18n";
 import { getLang } from "@/lib/i18n/server";
+import { SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_URL, jsonLdString } from "@/lib/seo/site";
 
-const SITE_TITLE = "STUDED AI";
-const SITE_DESCRIPTION =
-  "수행평가 안내문 사진만 올리면 AI가 원고나 실행 계획을 만들어 줘요. 실제 검색 출처를 달고, 다른 학생과 겹치지 않게 써 주고, 요약·퀴즈·플래시카드로 공부까지 이어가요.";
+// 검색엔진·AI 검색이 사이트가 무엇인지 확실히 알도록 사이트와 운영 주체를 알린다.
+const SITE_JSON_LD = [
+  { "@context": "https://schema.org", "@type": "WebSite", name: SITE_TITLE, url: SITE_URL, inLanguage: "ko", description: SITE_DESCRIPTION },
+  { "@context": "https://schema.org", "@type": "Organization", name: SITE_TITLE, url: SITE_URL, logo: `${SITE_URL}/icon.png` },
+];
 
 export const metadata: Metadata = {
   // 링크 미리보기 이미지 주소가 이 도메인 기준으로 만들어진다. 비우면 Vercel 배포 주소로 떨어진다.
@@ -34,6 +37,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang={lang} className="h-full antialiased" suppressHydrationWarning>
       <head>
+        {SITE_JSON_LD.map((data, i) => (
+          <script key={i} type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdString(data) }} />
+        ))}
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
         {/* 한글 UI 서체: Pretendard Variable(필요한 글자만 내려받는 dynamic subset). */}
         <link
