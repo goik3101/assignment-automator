@@ -31,11 +31,21 @@ export const TUTOR_SYSTEM = `
 - 학생이 사진을 올렸으면 먼저 무엇을 해야 하는 과제인지(주제·요구사항·분량·제출 조건)를 파악해서 답한다.
 `.trim();
 
+/** 글쓰기 전용 모델 호출에만 덧붙인다 — 실측(2026-10-29)에서 "요구에 맞춰 바로 작성합니다" 같은 군더더기와 합니다체, 요청하지 않은 완성 글까지 나왔다. */
+export const TUTOR_WRITING_RULES = `
+[글쓰기 답변 형식 — 반드시 지킬 것]
+- 인사, 작업 과정 설명("요청대로 작성합니다" 같은 말), 다음 제안("원하면 ~해 드릴게요")을 붙이지 말고 학생이 요청한 글부터 바로 쓴다.
+- 학생이 요청한 것만 쓴다. 근거와 개요를 달라고 했으면 완성된 글까지 쓰지 않는다.
+- 학생에게 하는 말은 ~해요체로 하고, 제출용 글 본문은 과제에 맞는 문체로 쓴다.
+`.trim();
+
 /** 검색 없이 먼저 답해 보는 호출에만 덧붙인다 — 검색이 필요한 요청은 답을 비우고 신호만 보내 검색 경로로 넘긴다. */
 export const TUTOR_ROUTING_RULES = `
 - 응답은 JSON이다. 검색이 필요 없으면 needs_search를 false로 하고 answer에 답을 쓴다.
 - 최신 정보, 수치·날짜·통계, 인물·책·작품·기관의 세부 사실을 글에 써야 하거나 학생이 출처·링크를 달라고 하면 needs_search를 true로 하고 answer는 빈 문자열로 둔다(검색해서 다시 답한다).
-- 학생이 말한 내용으로 쓸 수 있는 글, 일반 개념 설명, 개요·구성 짜기, 문장 다듬기, 계획 세우기는 needs_search를 false로 한다.
+- 학생이 말한 내용으로 쓸 수 있는 글, 일반 개념 설명, 안내문 분석, 계획 세우기는 needs_search를 false로 한다.
+- 학생이 수행평가·과제에 낼 글(근거 목록, 개요, 초안, 본문, 대본, 보고서, 감상문)을 새로 쓰게 하거나 학생이 쓴 글을 고쳐 쓰게 하면 needs_writing을 true로 하고 answer는 빈 문자열로 둔다(글쓰기 전용 모델이 따로 쓴다). 질문 답하기, 개념 설명, 안내문 분석, 계획 세우기, 암기 정리, 잡담은 needs_writing을 false로 하고 answer에 직접 쓴다.
+- 핵심 정보가 비어서 학생에게 되물어야 하면 needs_writing을 false로 두고 question과 한 문장 answer만 채운다.
 - 학생이 사진을 올렸으면 image_text에 사진에 적힌 글을 가능한 그대로 옮겨 적는다. 사진이 없으면 빈 문자열이다.
 `.trim();
 
@@ -85,6 +95,29 @@ export function sanitizeTutorQuestion(raw: unknown): TutorQuestion | null {
 export function questionFromStored(raw: unknown): TutorQuestion | null {
   const q = raw as { text?: unknown; options?: unknown; allowOther?: unknown } | null;
   return sanitizeTutorQuestion(q && typeof q === "object" ? { ...q, allow_other: q.allowOther } : null);
+}
+
+export type TutorRoute =
+  | { mode: "direct"; answer: string; question: TutorQuestion | null }
+  | { mode: "model"; writing: boolean; search: boolean };
+
+/**
+ * 값싼 모델의 1차 응답으로 다음 길을 정한다. 되물을 게 있으면 그 자리에서 되묻고(싼 모델이 끝까지 처리),
+ * 글쓰기 요청이면 글쓰기 모델로, 검색이 필요하면 검색 가능한 모델로 넘긴다. 그 밖에는 1차 답을 그대로 쓴다.
+ * writeRouting=false(TUTOR_WRITE_ROUTING=off)면 글쓰기 판단을 무시한다(예전처럼 싼 모델이 글도 쓴다).
+ */
+export function decideTutorRoute(
+  data: { needs_search?: unknown; needs_writing?: unknown; answer?: unknown; question?: unknown } | null | undefined,
+  canAsk: boolean,
+  writeRouting = true
+): TutorRoute {
+  const answer = typeof data?.answer === "string" ? data.answer.trim() : "";
+  const question = canAsk ? sanitizeTutorQuestion(data?.question) : null;
+  if (question && answer) return { mode: "direct", answer, question };
+  const search = data?.needs_search === true;
+  const writing = writeRouting && data?.needs_writing === true;
+  if (!search && !writing && answer) return { mode: "direct", answer, question: null };
+  return { mode: "model", writing, search };
 }
 
 /** 최근 대화에서 AI가 이미 되물은 횟수로 남은 질문 횟수를 센다. */

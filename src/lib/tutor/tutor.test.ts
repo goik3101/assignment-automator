@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTutorPrompt, questionFromStored, questionsLeft, sanitizeTutorQuestion, titleFromMessage, TUTOR_QUESTION_CAP } from "./tutor-pure.ts";
+import { buildTutorPrompt, decideTutorRoute, questionFromStored, questionsLeft, sanitizeTutorQuestion, titleFromMessage, TUTOR_QUESTION_CAP } from "./tutor-pure.ts";
 import { isUuid, parseContextRef, tutorToText } from "../study/context-pure.ts";
 
 const UUID = "0e2e2ca1-701d-485b-b8b1-0cc3ce8cf30e";
@@ -76,4 +76,25 @@ test("학습 도구 자료: 길면 오래된 대화부터 버리고 최근 글�
   assert.match(t, /최근 질문/);
   assert.match(t, /최근 답/);
   assert.doesNotMatch(t, /오래된 질문/);
+});
+
+test("튜터 길 정하기: 일반 답은 그대로, 글쓰기는 글쓰기 모델로, 검색은 검색으로, 되묻기는 그 자리에서", () => {
+  const ask = { text: "어떤 입장으로 쓸까요?", options: ["찬성", "반대"], allow_other: true };
+  assert.deepEqual(decideTutorRoute({ needs_search: false, needs_writing: false, answer: " 설명이에요 " }, true), { mode: "direct", answer: "설명이에요", question: null });
+  assert.deepEqual(decideTutorRoute({ needs_search: false, needs_writing: true, answer: "" }, true), { mode: "model", writing: true, search: false });
+  assert.deepEqual(decideTutorRoute({ needs_search: true, needs_writing: false, answer: "" }, true), { mode: "model", writing: false, search: true });
+  assert.deepEqual(decideTutorRoute({ needs_search: true, needs_writing: true, answer: "" }, true), { mode: "model", writing: true, search: true });
+  // 글쓰기라고 했어도 답이 이미 있으면 글쓰기 모델로 보낸다(글쓰기 판단이 우선)
+  assert.equal(decideTutorRoute({ needs_writing: true, answer: "초안이에요" }, true).mode, "model");
+  // 되물을 게 있으면 글쓰기 판단과 상관없이 그 자리에서 되묻는다
+  const q = decideTutorRoute({ needs_writing: true, answer: "하나만 확인할게요.", question: ask }, true);
+  assert.equal(q.mode, "direct");
+  assert.equal(q.mode === "direct" && q.question?.options.length, 2);
+  // 질문 횟수를 다 썼으면(canAsk=false) 질문은 버리고 글쓰기로 간다
+  assert.deepEqual(decideTutorRoute({ needs_writing: true, answer: "하나만 확인할게요.", question: ask }, false), { mode: "model", writing: true, search: false });
+  // TUTOR_WRITE_ROUTING=off면 글쓰기 판단을 무시하고 1차 답을 쓴다
+  assert.deepEqual(decideTutorRoute({ needs_writing: true, answer: "초안" }, true, false), { mode: "direct", answer: "초안", question: null });
+  // 답도 판단도 없으면 main 모델 폴백
+  assert.deepEqual(decideTutorRoute({}, true), { mode: "model", writing: false, search: false });
+  assert.deepEqual(decideTutorRoute(null, true), { mode: "model", writing: false, search: false });
 });

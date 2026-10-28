@@ -1,10 +1,15 @@
 import { Type, type Schema } from "@google/genai";
 import { generate, generateJson, type LlmPart } from "@/lib/llm";
 import { buildSourceList, insertCitationMarkers } from "@/lib/gemini/citations";
-import { ANTI_AI_TONE_RULES } from "@/lib/gemini/prompts";
+import { ANTI_AI_TONE_RULES, COPYRIGHT_RULES, FACTUAL_RIGOR_RULES, FORM_FIDELITY_RULES } from "@/lib/gemini/prompts";
 import { dedupeAdjacentMarkers } from "@/lib/gemini/citation-cleanup";
 import type { SourceRef } from "@/types/task";
-import { buildTutorPrompt, sanitizeTutorQuestion, TUTOR_ROUTING_RULES, TUTOR_SYSTEM, type TutorQuestion, type TutorTurn } from "./tutor-pure";
+import { buildTutorPrompt, decideTutorRoute, TUTOR_ROUTING_RULES, TUTOR_SYSTEM, TUTOR_WRITING_RULES, type TutorQuestion, type TutorTurn } from "./tutor-pure";
+
+/** 글쓰기 호출의 추론 강도 — 메인 원고 쓰기(ESSAY_WRITE_EFFORT)와 같은 설정을 따른다. */
+function writeEffort(): "minimal" | "low" {
+  return process.env.ESSAY_WRITE_EFFORT === "low" ? "low" : "minimal";
+}
 
 export interface TutorAnswer {
   reply: string;
@@ -20,7 +25,8 @@ function routedSchema(canAsk: boolean): Schema {
     type: Type.OBJECT,
     properties: {
       needs_search: { type: Type.BOOLEAN, description: "웹 검색으로 확인해야 답할 수 있으면 true" },
-      answer: { type: Type.STRING, description: "needs_search가 false일 때 학생에게 보낼 답. true면 빈 문자열" },
+      needs_writing: { type: Type.BOOLEAN, description: "수행평가·과제에 낼 글(근거·개요·초안·본문)을 새로 쓰거나 학생 글을 고쳐 써야 하면 true" },
+      answer: { type: Type.STRING, description: "needs_search·needs_writing이 모두 false일 때 학생에게 보낼 답. 하나라도 true면 빈 문자열" },
       image_text: { type: Type.STRING, description: "학생이 올린 사진에 적힌 글을 가능한 그대로 옮긴 것. 사진이 없으면 빈 문자열" },
       ...(canAsk
         ? {
@@ -38,7 +44,7 @@ function routedSchema(canAsk: boolean): Schema {
           }
         : {}),
     },
-    required: ["needs_search", "answer", "image_text", ...(canAsk ? ["question"] : [])],
+    required: ["needs_search", "needs_writing", "answer", "image_text", ...(canAsk ? ["question"] : [])],
   };
 }
 
@@ -55,12 +61,14 @@ export async function answerTutor(params: {
   parts.push({ text: prompt });
   const system = params.lang === "en" ? `${TUTOR_SYSTEM}\n- 답은 영어로 쓴다(위의 "존댓말" 지시보다 이 지시가 우선). 학생이 다른 언어를 명시하면 그 언어를 따른다.` : TUTOR_SYSTEM;
 
-  // 값싼 공부 도구용 모델이 검색 없이 먼저 답하고(되묻기 포함), 검색이 필요하다고 하면 검색 가능한 main 모델이 검색을 강제해 다시 쓴다.
-  // 사진은 이 첫 호출에서만 보낸다 — 거기서 옮겨 적은 글을 저장해 두고 이후 턴에는 글만 쓴다.
+  // 값싼 공부 도구용 모델이 먼저 보고 일반 질문·개념 설명·안내문 분석·되묻기는 그대로 답한다. 수행평가 글쓰기는 메인에서 원고를 쓰는 모델(write)로,
+  // 검색이 필요한 질문은 검색 가능한 main 모델로 넘긴다. 사진은 이 첫 호출에서만 보낸다 — 거기서 옮겨 적은 글을 저장해 두고 이후 턴에는 글만 쓴다.
+  // TUTOR_WRITE_ROUTING=off면 글쓰기도 첫 모델이 쓴다(예전 방식).
   let imageText = "";
-  let forceSearch = false;
+  let writing = false;
+  let search = false;
   try {
-    const { data } = await generateJson<{ needs_search?: boolean; answer?: string; image_text?: string; question?: unknown }>({
+    const { data } = await generateJson<{ needs_search?: boolean; needs_writing?: boolean; answer?: string; image_text?: string; question?: unknown }>({
       label: "tutor",
       role: "study",
       system: `${system}\n${TUTOR_ROUTING_RULES}`,
@@ -70,14 +78,12 @@ export async function answerTutor(params: {
       maxOutputTokens: 6000,
     });
     imageText = typeof data.image_text === "string" ? data.image_text.trim().slice(0, 6000) : "";
-    const answer = typeof data.answer === "string" ? data.answer.trim() : "";
-    if (data.needs_search !== true && answer) {
-      const question = params.questionsLeft > 0 ? sanitizeTutorQuestion(data.question) : null;
-      return { reply: answer, sources: [], question, imageText };
-    }
-    forceSearch = data.needs_search === true;
+    const route = decideTutorRoute(data, params.questionsLeft > 0, process.env.TUTOR_WRITE_ROUTING !== "off");
+    if (route.mode === "direct") return { reply: route.answer, sources: [], question: route.question, imageText };
+    writing = route.writing;
+    search = route.search;
   } catch (err) {
-    console.warn("[tutor] 검색 없는 1차 답변 실패 — 검색 경로로 이어서 답합니다", err instanceof Error ? err.name : "unknown");
+    console.warn("[tutor] 1차 판단 실패 — main 모델로 이어서 답합니다", err instanceof Error ? err.name : "unknown");
   }
 
   // 2차: 사진 글을 이미 옮겨 적었으면 사진을 다시 보내지 않는다.
@@ -85,12 +91,14 @@ export async function answerTutor(params: {
   const searchParts: LlmPart[] =
     imageText || !image ? [{ text: buildTutorPrompt({ turns: searchTurns, toneRules: ANTI_AI_TONE_RULES, questionsLeft: 0 }) }] : parts;
   const res = await generate({
-    label: "tutor:search",
-    role: "main",
-    system,
+    label: writing ? "tutor:write" : "tutor:search",
+    role: writing ? "write" : "main",
+    // 글쓰기에는 메인 원고 생성과 같은 품질 규칙(양식 따르기·사실 서술·저작권)을 더한다.
+    system: writing ? `${system}\n\n${TUTOR_WRITING_RULES}\n\n${FORM_FIDELITY_RULES}\n\n${FACTUAL_RIGOR_RULES}\n\n${COPYRIGHT_RULES}` : system,
     prompt: searchParts,
-    search: { force: forceSearch, maxCalls: 2 },
-    effort: "low",
+    // 검색이 필요하다고 한 경우만 검색(강제). 글쓰기만이면 검색 없이 쓰고(메인 원고 쓰기와 같게), 그 밖의 폴백은 모델 판단에 맡긴다 — 최대 2회.
+    ...(search || !writing ? { search: { force: search, maxCalls: 2 } } : {}),
+    effort: writing && !search ? writeEffort() : "low",
     maxOutputTokens: 6000,
   });
   const text = res.text.trim();
