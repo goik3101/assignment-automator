@@ -103,7 +103,7 @@ export function evaluateSecurityConfig(env: Record<string, string | undefined>):
       id: "turnstile",
       label: "비로그인 생성 캡차(Turnstile)",
       ok: has("TURNSTILE_SECRET_KEY") && has("NEXT_PUBLIC_TURNSTILE_SITE_KEY"),
-      hint: "TURNSTILE_SECRET_KEY와 NEXT_PUBLIC_TURNSTILE_SITE_KEY를 Vercel 환경변수에 넣으세요. 없으면 비로그인 생성이 막힙니다.",
+      hint: "캡차 키가 없어 봇 방지가 꺼져 있어요(비로그인 생성은 그대로 열려 있음). TURNSTILE_SECRET_KEY와 NEXT_PUBLIC_TURNSTILE_SITE_KEY를 Vercel 환경변수에 넣으면 켜집니다.",
     },
     {
       id: "admin-password",
