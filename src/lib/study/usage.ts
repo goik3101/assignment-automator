@@ -5,7 +5,7 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 // (인스턴스마다 따로 세므로 정확하진 않지만, 표가 없다고 제한이 사라지지는 않게 한다).
 // analyze·expected_questions는 예전엔 제한이 없던 경로(비용 방어용으로 추가). study_usage_events.kind의 check 제약에
 // 아직 없는 값이라, 마이그레이션 전에는 DB 기록이 조용히 건너뛰어지고 서버 메모리 카운터가 대신 제한을 건다.
-export type StudyKind = "chat" | "summary" | "flashcards" | "quiz" | "exam" | "exam_grade" | "questions" | "analyze" | "expected_questions";
+export type StudyKind = "chat" | "summary" | "flashcards" | "quiz" | "exam" | "exam_grade" | "questions" | "analyze" | "expected_questions" | "tutor";
 
 const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 
@@ -21,6 +21,8 @@ export const STUDY_DAILY_LIMITS: Record<StudyKind, number> = {
   // 정상 사용(과제 하나에 분석 1~3회, 예상 질문 1회)보다 훨씬 넉넉한 값 — 남용 방어용이지 일반 학생을 막으려는 값이 아니다.
   analyze: num(process.env.STUDY_LIMIT_ANALYZE, 30),
   expected_questions: num(process.env.STUDY_LIMIT_EXPECTED_QUESTIONS, 30),
+  // AI 튜터(글쓰기까지 하는 채팅)는 메시지 한 번이 AI 채팅보다 무거워서 따로 센다. 관리자는 제외.
+  tutor: num(process.env.STUDY_LIMIT_TUTOR, 20),
 };
 
 // 비로그인은 쿠키를 지우면 새 사용자가 되므로 IP 단위 상한을 한 번 더 건다. 학교처럼 공용 IP가 흔해서 일부러 크게 잡는다.
@@ -39,6 +41,7 @@ const KIND_LABEL: Record<StudyKind, string> = {
   questions: "제작 전 질문",
   analyze: "안내문 분석",
   expected_questions: "예상 질문",
+  tutor: "AI 튜터",
 };
 
 /** 사용자에게 그대로 보여줘도 되는 안내 메시지를 담은 에러. */

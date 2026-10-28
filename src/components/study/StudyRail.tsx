@@ -44,12 +44,15 @@ export default function StudyRail({
   title,
   className = "",
   lockedReason,
+  hideChat = false,
 }: {
   /** 아직 저장된 과제가 없으면(생성 중이거나 비로그인) null — 그때는 lockedReason을 보여주고 도구를 잠근다. */
   studyRef: StudyRef | null;
   title: string;
   className?: string;
   lockedReason?: string;
+  /** AI 튜터 화면처럼 큰 대화창이 따로 있으면 레일 안의 작은 AI 채팅은 숨긴다. */
+  hideChat?: boolean;
 }) {
   const t = useT();
   const { lang } = useLang();
@@ -150,14 +153,16 @@ export default function StudyRail({
               <Icon size={18} strokeWidth={1.6} />
             </button>
           ))}
-          <button
-            onClick={() => toggle(false)}
-            aria-label={t("AI 채팅")}
-            title={t("AI 채팅")}
-            className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-foreground/80 transition-colors hover:bg-raised hover:text-foreground"
-          >
-            <MessageCircle size={18} strokeWidth={1.6} />
-          </button>
+          {!hideChat && (
+            <button
+              onClick={() => toggle(false)}
+              aria-label={t("AI 채팅")}
+              title={t("AI 채팅")}
+              className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-foreground/80 transition-colors hover:bg-raised hover:text-foreground"
+            >
+              <MessageCircle size={18} strokeWidth={1.6} />
+            </button>
+          )}
         </div>
       )}
 
@@ -223,6 +228,7 @@ export default function StudyRail({
           </section>
         )}
 
+        {!hideChat && (
         <section aria-label={t("AI 채팅")} className="flex min-h-[300px] flex-1 flex-col lg:min-h-[260px]">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-muted">
@@ -262,6 +268,7 @@ export default function StudyRail({
             }
           />
         </section>
+        )}
       </div>
 
       {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenExam={openExam} />}

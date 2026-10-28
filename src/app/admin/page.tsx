@@ -31,6 +31,7 @@ const ROUTE_LABELS: Record<string, string> = {
   expectedQuestions: "예상 질문",
   memoNote: "암기노트",
   studyChat: "AI 채팅",
+  tutor: "AI 튜터",
 };
 const KIND_LABELS: Record<string, string> = {
   chat: "AI 채팅",

@@ -12,11 +12,13 @@ export interface ChatMessage {
   sources?: SourceRef[];
   /** 암기 요청에 대한 답이면 true — 답 아래에 외우는 방법(플래시카드·퀴즈·정리) 선택 버튼을 보여준다. */
   offerMemorize?: boolean;
+  /** AI 튜터가 되묻는 질문(선택 버튼용). */
+  question?: { text: string; options: string[]; allowOther: boolean } | null;
   /** 사용자가 붙인 사진 미리보기(화면용). */
   imageUrl?: string;
 }
 
-export type ChatContextRef = { kind: "history" | "learning" | "submission"; id: string } | null;
+export type ChatContextRef = { kind: "history" | "learning" | "submission" | "tutor"; id: string } | null;
 
 let counter = 0;
 const nextId = () => `m${Date.now().toString(36)}${(counter++).toString(36)}`;

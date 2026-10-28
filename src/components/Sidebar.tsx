@@ -3,18 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Clock, LayoutGrid, Menu, PanelLeftClose, PanelLeftOpen, Plus, ShieldCheck, X } from "lucide-react";
+import { Clock, LayoutGrid, Menu, PanelLeftClose, PanelLeftOpen, Plus, ShieldCheck, Sparkles, X } from "lucide-react";
 import AuthBar from "./AuthBar";
 import { Logo } from "./Logo";
 import { useAdminStatus } from "@/lib/admin/use-admin-status";
 import { openNewCreation } from "@/lib/ui/new-creation";
 import SidebarWorklist from "./SidebarWorklist";
+import SidebarTutorList from "./SidebarTutorList";
 import SidebarQuickActions from "./SidebarQuickActions";
 import SettingsModal from "./settings/SettingsModal";
 import { useT } from "@/lib/i18n";
 
 const NAV = [
   { href: "/", label: "내 창작물", icon: LayoutGrid },
+  { href: "/tutor", label: "AI 튜터", icon: Sparkles },
   { href: "/histories", label: "히스토리", icon: Clock },
 ] as const;
 
@@ -25,6 +27,8 @@ export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const { isAdmin } = useAdminStatus();
+  // AI 튜터 화면에서는 작업 목록이 튜터와 나눈 대화로 바뀌고, "새 창작물" 버튼은 "새 대화"가 된다.
+  const inTutor = pathname.startsWith("/tutor");
 
   const linkClass = (active: boolean) =>
     [
@@ -35,6 +39,10 @@ export default function Sidebar() {
 
   function startNew() {
     setOpen(false);
+    if (inTutor) {
+      router.push("/tutor");
+      return;
+    }
     openNewCreation((href) => router.push(href), pathname === "/");
   }
 
@@ -81,14 +89,14 @@ export default function Sidebar() {
         <div className="px-3 pt-3 md:pt-0">
           <button
             onClick={startNew}
-            title={t("새 창작물")}
+            title={inTutor ? t("새 대화") : t("새 창작물")}
             className={[
               "flex h-11 w-full items-center gap-2.5 rounded-xl bg-accent px-3.5 text-[14px] font-bold text-accent-foreground transition-opacity hover:opacity-90",
               collapsed ? "md:justify-center md:px-0" : "",
             ].join(" ")}
           >
             <Plus size={18} strokeWidth={2.2} className="shrink-0" />
-            {!collapsed && <span>{t("새 창작물")}</span>}
+            {!collapsed && <span>{inTutor ? t("새 대화") : t("새 창작물")}</span>}
           </button>
         </div>
 
@@ -118,7 +126,13 @@ export default function Sidebar() {
           )}
         </nav>
 
-        {!collapsed ? <SidebarWorklist onNavigate={() => setOpen(false)} /> : <div className="flex-1" />}
+        {collapsed ? (
+          <div className="flex-1" />
+        ) : inTutor ? (
+          <SidebarTutorList onNavigate={() => setOpen(false)} />
+        ) : (
+          <SidebarWorklist onNavigate={() => setOpen(false)} />
+        )}
 
         <div className="border-t border-border p-3">
           <SidebarQuickActions collapsed={collapsed} onNavigate={() => setOpen(false)} />

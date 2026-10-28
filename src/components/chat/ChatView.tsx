@@ -18,7 +18,7 @@ const MEMORIZE_CHOICES: { id: MemorizeTool; label: string; icon: typeof Layers }
   { id: "summary", label: "정리해줘", icon: NotebookText },
 ];
 
-function Message({ m, onMemorizeTool }: { m: ChatMessage; onMemorizeTool?: (tool: MemorizeTool) => void }) {
+export function Message({ m, onMemorizeTool }: { m: ChatMessage; onMemorizeTool?: (tool: MemorizeTool) => void }) {
   const t = useT();
   if (m.role === "user") {
     return (

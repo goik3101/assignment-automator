@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLang } from "@/lib/i18n";
 
-export type StudyRef = { kind: "history" | "learning" | "submission"; id: string };
+export type StudyRef = { kind: "history" | "learning" | "submission" | "tutor"; id: string };
 
 interface CacheEntry<T> {
   at: number;

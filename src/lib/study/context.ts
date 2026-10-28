@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { assignmentInfoToText, clip, learningToText, type StudyContextRef } from "./context-pure";
+import { assignmentInfoToText, clip, learningToText, tutorToText, type StudyContextRef } from "./context-pure";
 import { essayResultToText, planResultToText } from "@/lib/clusters/save-result-embedding";
 import type { EssayResult, PlanResult } from "@/types/task";
 
@@ -8,7 +8,7 @@ import type { EssayResult, PlanResult } from "@/types/task";
 export type { StudyContextRef } from "./context-pure";
 
 export interface StudyContext {
-  kind: "history" | "learning";
+  kind: "history" | "learning" | "tutor";
   id: string;
   title: string;
   subject: string;
@@ -46,6 +46,27 @@ export async function loadStudyContext(supabase: SupabaseClient, ref: StudyConte
       text: clip(text),
       sourceLabel: "AI가 작성한 결과물",
       assignmentInfo: assignmentInfoToText(data.core_task_info, data.instructions as string | null),
+    };
+  }
+
+  if (ref.kind === "tutor") {
+    const { data: conv } = await supabase.from("tutor_conversations").select("id, title").eq("id", ref.id).maybeSingle();
+    if (!conv) return null;
+    const { data: msgs } = await supabase
+      .from("tutor_messages")
+      .select("role, content, attachment_text")
+      .eq("conversation_id", ref.id)
+      .order("created_at", { ascending: true })
+      .limit(200);
+    const text = tutorToText((msgs ?? []) as { role: string; content: string; attachment_text: string | null }[]);
+    if (!text) return null;
+    return {
+      kind: "tutor",
+      id: ref.id,
+      title: (conv as { title: string }).title,
+      subject: "AI 튜터",
+      text,
+      sourceLabel: "AI 튜터와 나눈 대화(학생의 요청과 AI가 쓴 글)",
     };
   }
 

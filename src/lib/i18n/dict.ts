@@ -4,4 +4,5 @@ import { shell } from "./en/shell.ts";
 import { home } from "./en/home.ts";
 import { results } from "./en/results.ts";
 import { learning } from "./en/learning.ts";
-export const EN: Record<string, string> = { ...common, ...shell, ...home, ...results, ...learning };
+import { tutor } from "./en/tutor.ts";
+export const EN: Record<string, string> = { ...common, ...shell, ...home, ...results, ...learning, ...tutor };
