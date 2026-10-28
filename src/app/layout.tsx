@@ -22,8 +22,11 @@ export const metadata: Metadata = {
     locale: "ko_KR",
   },
   twitter: { card: "summary_large_image", title: SITE_TITLE, description: SITE_DESCRIPTION },
-  // 네이버 서치어드바이저 사이트 소유확인 (<head>에 meta 태그로 출력됨)
-  verification: { other: { "naver-site-verification": "86760b577ad975637f9cffd259517205b99619c9" } },
+  // 네이버 서치어드바이저 / 구글 서치 콘솔 사이트 소유확인 (<head>에 meta 태그로 출력됨)
+  verification: {
+    google: "CH2alcvPbpUkFMOpS67XBidPHfqQCNry2juLFDHJIBE",
+    other: { "naver-site-verification": "86760b577ad975637f9cffd259517205b99619c9" },
+  },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
