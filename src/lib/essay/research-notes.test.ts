@@ -78,3 +78,25 @@ test("책 조사 응답을 읽고, 서지는 페이지 본문에 실제로 있�
   assert.equal(confirmBookFromPages(long, () => "the little prince by antoine de saint-exupéry"), true);
   assert.equal(confirmBookFromPages(facts, () => null), false);
 });
+
+import { mergeFacts } from "./research-notes.ts";
+
+test("보강 조사 사실을 합칠 때 중복은 버리고 번호를 다시 매긴다", () => {
+  const base = [
+    { id: "F1", fact: "2012년 헌법재판소가 인터넷 실명제를 위헌으로 결정했다.", url: "https://a.go.kr/1", title: "A" },
+    { id: "F2", fact: "제한적 본인확인제는 2007년에 도입됐다.", url: "https://a.go.kr/2", title: "A" },
+  ];
+  const extra = [
+    // 같은 사실을 표현만 바꾼 것 — 버린다
+    { id: "F1", fact: "헌법재판소는 2012년 인터넷 실명제가 위헌이라고 결정했다.", url: "https://b.org/x", title: "B" },
+    { id: "F2", fact: "악성 댓글은 2016년 기준 하루 평균 3만 건 신고됐다.", url: "https://b.org/y", title: "B" },
+  ];
+  const merged = mergeFacts(base, extra);
+  assert.equal(merged.length, 3);
+  assert.deepEqual(merged.map((f) => f.id), ["F1", "F2", "F3"]);
+  assert.match(merged[2].fact, /악성 댓글/);
+  // 같은 주소의 같은 문장도 버린다
+  assert.equal(mergeFacts(base, [{ ...base[0], id: "F9" }]).length, 2);
+  // 상한을 넘기지 않는다
+  assert.equal(mergeFacts(base, extra, 2).length, 2);
+});

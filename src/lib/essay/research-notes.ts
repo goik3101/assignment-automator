@@ -189,6 +189,41 @@ export function buildFacts(raw: RawFact[], consulted: string[] | undefined, max 
   return picked.map((r, i) => ({ id: `F${i + 1}`, fact: r.fact, url: r.url, title: r.title, printedTitle: r.printedTitle, printedAuthor: r.printedAuthor }));
 }
 
+/** 문자 2-gram 집합(보강 조사가 같은 사실을 다른 표현으로 다시 가져왔는지 보는 데 쓴다). */
+function bigrams(text: string): Set<string> {
+  const t = text.replace(/[\s.,·'"“”’‘()\[\]]/g, "");
+  const out = new Set<string>();
+  for (let i = 0; i + 2 <= t.length; i++) out.add(t.slice(i, i + 2));
+  return out;
+}
+
+function similarity(a: string, b: string): number {
+  const A = bigrams(a);
+  const B = bigrams(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+
+/**
+ * 보강 조사로 얻은 사실을 기존 노트에 덧붙인다. 같은 주소의 같은 문장이나 표현만 바꾼 중복은 버리고,
+ * 전체 상한(max)을 넘지 않게 자른 뒤 번호(F1…)를 다시 매긴다 — 번호는 글쓰기 프롬프트에 그대로 쓰이므로 빈 번호가 있으면 안 된다.
+ * 임계값 0.45는 실제 문장으로 재어 정했다: 어순만 바꾼 같은 사실 0.50, 같은 판결의 다른 측면 0.34, 서로 다른 사실 0.02~0.04.
+ * 같은 사건의 다른 측면(0.34)은 남긴다 — 하나로 합칠지는 글쓰기가 판단할 일이고, 어차피 같은 페이지면 근거 수 계산에서 한 곳으로 센다.
+ */
+export function mergeFacts(base: Fact[], extra: Fact[], max = 14): Fact[] {
+  const merged = [...base];
+  for (const f of extra) {
+    if (merged.length >= max) break;
+    const dup = merged.some(
+      (m) => (normalizeUrl(m.url) === normalizeUrl(f.url) && m.fact.replace(/\s+/g, "") === f.fact.replace(/\s+/g, "")) || similarity(m.fact, f.fact) >= 0.45
+    );
+    if (!dup) merged.push(f);
+  }
+  return merged.map((f, i) => ({ ...f, id: `F${i + 1}` }));
+}
+
 export function factSheetText(facts: Fact[]): string {
   return facts.map((f) => `[${f.id}] ${f.fact}`).join("\n");
 }

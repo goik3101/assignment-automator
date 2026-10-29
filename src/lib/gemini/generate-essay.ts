@@ -45,7 +45,16 @@ import {
   stripModelReferenceBlock,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
-import { formRequirementsOn, qualityFixesOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { evidenceSlotsOn, formRequirementsOn, qualityFixesOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import {
+  NO_EVIDENCE_PLAN,
+  evidenceResearchBlock,
+  evidenceTopUpBlock,
+  distinctHostCount,
+  needsMoreEvidence,
+  planEvidence,
+  type EvidencePlan,
+} from "@/lib/essay/evidence-slots";
 import {
   applyFormRequirements,
   buildFormLimitBlock,
@@ -80,6 +89,7 @@ import {
   extractSummaryLines,
   factSheetText,
   mapFactMarkers,
+  mergeFacts,
   normalizeUrl,
   parseFactJson,
   type Fact,
@@ -1067,6 +1077,20 @@ async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["t
     .map((e) => `- "${e.label}": ${e.description}${e.required_items?.length ? ` (다룰 항목: ${e.required_items.join(" / ")})` : ""}`)
     .join("\n");
   const bookTask = !!input.presetBook;
+  // 안내문이 "서로 다른 근거 N개"를 요구하면 조사에 그 수와 학생의 입장을 전한다(evidence-slots.ts). 해당 없으면 slots=0 — 프롬프트가 예전 그대로다.
+  const evidence: EvidencePlan =
+    evidenceSlotsOn() && !bookTask
+      ? planEvidence(
+          {
+            topic: input.coreTaskInfo.topic,
+            requirements: input.coreTaskInfo.requirements,
+            writing_guide: input.coreTaskInfo.writing_guide,
+            task_elements: elements,
+          },
+          input.instructions
+        )
+      : NO_EVIDENCE_PLAN;
+  const evidenceBlock = evidenceResearchBlock(evidence);
   // 출처별로 묶어 쓰면 주소·제목이 출처당 한 번만 나와 출력 토큰이 줄어든다(출력 단가가 입력의 8배). ESSAY_RESEARCH_FORMAT=flat이면 예전 사실 단위 형식.
   const grouped = process.env.ESSAY_RESEARCH_FORMAT !== "flat";
   const bookBlock = bookTask
@@ -1093,7 +1117,7 @@ ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된
 ${items}
 ${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 것] ${input.presetSubject.name}\n` : ""}${input.instructions ? `[학생이 입력한 내용]\n${input.instructions}\n` : ""}${
     qualityFixesOn() && input.coreTaskInfo.writing_guide ? `[안내문의 작성 기준 — 채점 기준이 요구하는 내용을 빠짐없이 조사할 것]\n${input.coreTaskInfo.writing_guide}\n` : ""
-  }
+  }${evidenceBlock ? `${evidenceBlock}\n` : ""}
 규칙:${
     qualityFixesOn()
       ? `
@@ -1102,7 +1126,7 @@ ${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 
 - 고등학교 교과서·수업에서 다루는 수준의 사실을 고를 것. 대학 교재 수준의 이론·수치(예: 반응 엔탈피 값, 전문 학술 용어)는 안내문이 요구하지 않으면 담지 말 것.`
       : ""
   }
-- 검색으로 확인한 사실만 쓴다. 사실 10~14개를, 위 각 단계·항목마다 최소 2개씩 고르게 담을 것. 논설·토론이면 찬성·반대 양쪽 근거를 함께 담을 것.
+- 검색으로 확인한 사실만 쓴다. 사실 10~14개를, 위 각 단계·항목마다 최소 2개씩 고르게 담을 것.${evidenceBlock ? "" : " 논설·토론이면 찬성·반대 양쪽 근거를 함께 담을 것."}
 - 각 사실은 한국어 한 문장으로, 연도·수치·이름 같은 확인 가능한 값을 포함한다. 출처에 없는 값은 쓰지 않는다.${
     qualityFixesOn()
       ? `
@@ -1161,7 +1185,35 @@ ${
     const rawAuthor = parsedBook?.book.author || input.presetBook?.author;
     const author = rawAuthor && qualityFixesOn() ? koreanAuthorName(rawAuthor) : rawAuthor;
 
-    return { facts, queries, book: parsedBook ? { title: parsedBook.book.title || input.presetBook!.title, author } : undefined };
+    // 요구된 근거 수만큼 서로 다른 페이지에서 사실이 나오지 않았으면 딱 한 번만 보강 조사한다(검색 1회 추가, 약 5~10초).
+    // 실패하거나 쓸 사실이 없으면 1차 결과를 그대로 쓴다 — 폴백으로 되돌아가지 않는다.
+    let allFacts = facts;
+    let allQueries = queries;
+    if (needsMoreEvidence(evidence, allFacts.map((f) => f.url))) {
+      console.warn(
+        `[generateEssay] 근거 보강 조사 시작: 요구 근거=${evidence.slots}개 확보한 페이지=${distinctHostCount(allFacts.map((f) => f.url))}곳 입장=${evidence.stance ?? "지정 없음"}`
+      );
+      try {
+        const more = await generate({
+          label: "generateEssay:research2",
+          role: "main",
+          prompt: `${prompt}\n\n${evidenceTopUpBlock(evidence, allFacts.map((f) => f.fact))}`,
+          search: { force: true, maxCalls: 1 },
+          effort: "low",
+        });
+        const moreRaw = more.rawText ? parseFactJson(more.rawText) : [];
+        const moreFacts = buildFacts(keepInScope(moreRaw.length > 0 ? moreRaw : parseFactJson(more.text), currentSourceScope()), more.grounding?.consulted);
+        const added = moreFacts ? mergeFacts(allFacts, moreFacts) : allFacts;
+        console.log(
+          `[generateEssay] 근거 보강 결과: 새 사실 ${added.length - allFacts.length}개 추가(받은 사실 ${moreFacts?.length ?? 0}개) 서로 다른 페이지=${distinctHostCount(added.map((f) => f.url))}곳`
+        );
+        allFacts = added;
+        allQueries = [...allQueries, ...(more.grounding?.queries ?? [])];
+      } catch (err) {
+        console.error("[generateEssay] 근거 보강 조사 실패(1차 결과로 진행)", err);
+      }
+    }
+    return { facts: allFacts, queries: allQueries, book: parsedBook ? { title: parsedBook.book.title || input.presetBook!.title, author } : undefined };
   } catch (err) {
     console.error("[generateEssay] 조사 호출 실패(기존 경로로 폴백)", err);
     return null;
@@ -2445,7 +2497,20 @@ export async function generateEssay(
   // 출처 수 정리: 많이 쓰이고 신뢰도 높은 출처로 모으되(보통 3개, 안내문이 개수를 요구하면 그 수), 고른 출처가 문장을 뒷받침하지 못하면 원래 출처를 살린다(limitSources).
   {
     const wanted = requiredSourceCount([...input.coreTaskInfo.requirements, ...elements.map((e) => e.description)]);
-    const limit = Math.min(8, Math.max(2, wanted ?? 3));
+    // 안내문이 "서로 다른 근거 N개"를 요구하는 글은 기본 한도(3개)가 근거들을 다시 한 출처로 모아 버린다 —
+    // 근거 수 + 1(배경·도입 사실용)까지 남긴다. ESSAY_EVIDENCE_SLOTS=off면 예전 한도 그대로(evidence-slots.ts).
+    const slots = evidenceSlotsOn()
+      ? planEvidence(
+          {
+            topic: input.coreTaskInfo.topic,
+            requirements: input.coreTaskInfo.requirements,
+            writing_guide: input.coreTaskInfo.writing_guide,
+            task_elements: elements,
+          },
+          input.instructions
+        ).slots
+      : 0;
+    const limit = Math.min(8, Math.max(2, wanted ?? (slots >= 2 ? slots + 1 : 3)));
     console.log(`[generateEssay] 각주 추적: 출처정리직전=${countMarkers(attempt.sections)} 출처=${attempt.sources.length}`);
     const contentsNow = attempt.sections.map((s) => s.content);
     const base = retainedAtLimit(contentsNow, attempt.sources, limit, pageTexts);

@@ -23,6 +23,14 @@ export function formRequirementsOn(): boolean {
 }
 
 /**
+ * 안내문이 요구한 "서로 다른 근거 N개"를 조사 프롬프트에 전하고, 확보한 근거가 N개 페이지에 못 미치면 한 번만 보강 조사를 할지(evidence-slots.ts).
+ * 출처 정리 한도도 그 수에 맞춰 늘린다. ESSAY_EVIDENCE_SLOTS=off면 예전처럼 조사 규칙 고정·한도 3.
+ */
+export function evidenceSlotsOn(): boolean {
+  return process.env.ESSAY_EVIDENCE_SLOTS !== "off";
+}
+
+/**
  * 읽은 출처 페이지에서 값을 못 찾아 각주를 지운 문장 뒤에 "[확인 필요]"를 남길지(claim-check.ts). UNVERIFIED_MARK=off면 예전처럼 각주만 지운다.
  */
 export function unverifiedMarkOn(): boolean {
