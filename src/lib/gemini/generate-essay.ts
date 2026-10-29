@@ -2576,11 +2576,17 @@ export async function generateEssay(
           input.instructions
         ).slots
       : 0;
-    const limit = Math.min(8, Math.max(2, wanted ?? (slots >= 2 ? slots + 1 : 3)));
+    // 기본 한도 3개는 너무 공격적이었다 — 실측(저장된 생성 45회): 16회에서 본문 각주 49개가 지워졌고 24회에서 출처 32개가 목록에서 빠졌다.
+    // 조사 노트가 여는 페이지가 보통 3~5곳이라 한도를 5로 두면 억지로 옮길 일이 거의 없다. SOURCE_LIMIT으로 예전 값(3)으로 되돌린다.
+    const base3 = Number(process.env.SOURCE_LIMIT) || 5;
+    const limit = Math.min(8, Math.max(2, wanted ?? (slots >= 2 ? Math.max(slots + 1, base3) : base3)));
     console.log(`[generateEssay] 각주 추적: 출처정리직전=${countMarkers(attempt.sections)} 출처=${attempt.sources.length}`);
     const contentsNow = attempt.sections.map((s) => s.content);
     const base = retainedAtLimit(contentsNow, attempt.sources, limit, pageTexts);
-    const forced = base.items.length > 0 ? await judgeSourceSupport(base.items.slice(0, 24), base.chosen, pageTexts) : new Map<string, number>();
+    // 작은 모델이 "이 출처도 그 문장을 뒷받침한다"고 판정하면 각주를 그쪽으로 옮기는데, 그 판정의 정확도를 사람이 확인한 적이 없다
+    // (PROGRESS 2026-10-28 파일럿). 틀리면 문장과 무관한 출처가 조용히 붙는다 — 기본으로 쓰지 않고 숫자·이름이 실제로 일치할 때만 옮긴다.
+    // SOURCE_JUDGE=on이면 예전처럼 모델 판정도 쓴다.
+    const forced = base.items.length > 0 && process.env.SOURCE_JUDGE === "on" ? await judgeSourceSupport(base.items.slice(0, 24), base.chosen, pageTexts) : new Map<string, number>();
     const lim = limitSources(contentsNow, attempt.sources, limit, pageTexts, forced);
     if (lim.sources.length < attempt.sources.length) {
       console.log(

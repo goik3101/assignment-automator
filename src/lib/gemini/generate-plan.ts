@@ -721,7 +721,8 @@ ${freeText}`,
   }
   if (validatedSources.length > 0) {
     const wanted = requiredSourceCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]);
-    const lim = limitSources([content], validatedSources, Math.min(8, Math.max(2, wanted ?? 3)));
+    // 완성 원고 쪽과 같은 기준(기본 5, SOURCE_LIMIT으로 되돌림) — 한도 3은 확보한 출처와 각주를 과하게 잘라냈다.
+    const lim = limitSources([content], validatedSources, Math.min(8, Math.max(2, wanted ?? (Number(process.env.SOURCE_LIMIT) || 5))));
     content = lim.contents[0];
     validatedSources = lim.sources;
   }
