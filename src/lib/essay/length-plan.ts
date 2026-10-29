@@ -39,6 +39,9 @@ export function lengthRoleOf(el: PlanElement): LengthRole {
   const text = `${el.label} ${el.description}`;
   if (inferDeliverableForm(el) === "newspaper") return "newspaper";
   if (formRequirementsOn() && isSceneListElement(el)) return "scenes";
+  // 개요·계획은 항목이 여럿이어도 보고서가 아니다 — 항목 수로만 정하면 "개요"에 보고서 분량(항목 7개 × 250~450 = 1,750~3,150자)이 붙어
+  // 실제로 2,000~2,700자짜리 개요가 나왔다(실측 2026-10-29, 26회 중앙 2,481자). 라벨이 개요·계획이면 계획 분량을 먼저 적용한다.
+  if (/계획|개요|설계|구상|기획/.test(label) && !/보고서|논설|논술|에세이|소논문/.test(label)) return "plan";
   if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return qualityFixesOn() && !isResearchMaterialStep(el) ? "report_sections" : "material";
   if (/소감|느낀\s*점|후기|성찰|반성|다짐/.test(label)) return "reflection";
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
