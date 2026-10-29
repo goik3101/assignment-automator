@@ -81,7 +81,7 @@ import { lengthGuideLines } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
-import { mergeParallelParts, ownSection, parallelWriteInstruction, parallelWriteOn, previousStepsBlock } from "@/lib/essay/parallel-write";
+import { itemGroups, itemWriteInstruction, mergeItemParts, mergeParallelParts, ownSection, parallelWriteInstruction, parallelWriteOn, previousStepsBlock } from "@/lib/essay/parallel-write";
 import { stepWaves } from "@/lib/essay/step-order";
 import { acceptKoreanRewrite, flippedToEnglish, koreanGuardOn, koreanLanguageIssue, koreanRewritePrompt } from "@/lib/essay/korean-guard";
 import { currentOutputLang, scaleLengthsForEnglish } from "@/lib/llm/output-lang";
@@ -1334,7 +1334,30 @@ async function generateOnce(
     const prefetch = validateSources(urls.map((url, i) => ({ n: i + 1, title: "", url, url_valid: null })));
     // 단계가 여러 개면 단계별로 동시에 쓴다(parallel-write.ts — ESSAY_PARALLEL_WRITE=off로 한 번에 쓰기).
     let writes: Awaited<ReturnType<typeof generate>>[];
-    if (parallelWriteOn(labels.length)) {
+    // 단계가 하나뿐이면 단계별 동시 쓰기가 안 걸린다 — 필수 항목이 넉넉하면 항목을 나눠 동시에 쓴다(parallel-write.ts).
+    const soloItemGroups =
+      labels.length === 1 && process.env.ESSAY_ITEM_PARALLEL !== "off" && elements[0]?.items_format === "sections"
+        ? itemGroups(elements[0]?.required_items)
+        : [];
+    if (soloItemGroups.length > 1) {
+      const all = soloItemGroups.flat();
+      console.log(`[generateEssay] 항목 나눠 쓰기: ${soloItemGroups.map((g) => g.join("+")).join(" / ")}`);
+      const parts = await Promise.all(
+        soloItemGroups.map((group, i) =>
+          generate({
+            label: "generateEssay:write",
+            role: "write",
+            prompt: `${prompt}
+
+${itemWriteInstruction(labels[0], group, all, i === 0)}`,
+            effort: writeEffort(),
+          })
+        )
+      );
+      if (parts.some((p) => !p.text)) throw new Error("AI가 빈 응답을 반환했습니다.");
+      // 합친 글 하나로 돌려준다 — 아래 mergeParallelParts(단계별 합치기)가 다시 돌면 안 된다. 호출별 토큰·비용은 trace가 따로 센다.
+      writes = [{ ...parts[0], text: mergeItemParts(parts.map((p) => p.text), labels[0]) }];
+    } else if (parallelWriteOn(labels.length)) {
       // 안내문이 "A를 바탕으로 B"라고 한 단계는 순서대로 쓰고, 뒤 단계에 앞 단계의 완성된 글(사실 번호 포함)을 넘긴다(step-order.ts).
       // 의존 표현이 없으면 웨이브가 하나라 예전처럼 전부 동시에 쓴다.
       const waves = stepOrderOn() ? stepWaves(elements, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide) : [labels];
@@ -1720,6 +1743,17 @@ export async function generateEssay(
   input: GenerateEssayInput
 ): Promise<EssayResult | InsufficientDataResult> {
   const start = Date.now();
+  // 30초를 넘기면 학생이 "그냥 ChatGPT가 낫다"고 느낀다 — 필수 경로(조사·글쓰기)는 끝까지 하되,
+  // 품질 교정용 추가 모델 호출(재생성·부분 보완·분량 보정·형식 보완·한국어 재작성·항목 재판정)은 예산을 넘기면 건너뛴다.
+  // 건너뛴 것은 로그와 화면 경고로 남는다. ESSAY_TIME_BUDGET_MS=0이면 예전처럼 전부 실행.
+  const timeBudgetMs = process.env.ESSAY_TIME_BUDGET_MS === undefined ? 22000 : Number(process.env.ESSAY_TIME_BUDGET_MS);
+  const overBudget = (what: string): boolean => {
+    if (!timeBudgetMs) return false;
+    const spent = Date.now() - start;
+    if (spent <= timeBudgetMs) return false;
+    console.warn(`[generateEssay] 시간 예산 초과(${(spent / 1000).toFixed(1)}초) — ${what} 건너뜀`);
+    return true;
+  };
   // 영어로 쓸 때는 안내문의 글자 수 기준(한국어)을 영어 글자 수로 늘린다 — 그대로 두면 분량 보정이 영어 글을 절반 이하로 잘라 낸다.
   if (currentOutputLang() === "en") input = { ...input, coreTaskInfo: scaleLengthsForEnglish(input.coreTaskInfo) };
   // 안내문의 개수 조건: "8장면" 같은 단위는 필수 항목("장면 1…8")으로 펼친다(생성 시점에만 — 저장된 분석 결과·화면은 그대로).
@@ -1902,7 +1936,7 @@ export async function generateEssay(
     console.warn(`[generateEssay] 필수 항목 누락 감지: ${JSON.stringify(missingItems)}`);
   }
   // 소제목 없이 쓰는 단계(신문·편지 등)의 필수 항목 누락과, 단계·항목 사이에 거의 같은 문장이 되풀이되는지도 본다.
-  const flowingGaps = await confirmCoverageGaps(attempt.sections);
+  const flowingGaps = overBudget("소제목 없는 단계의 항목 확인") ? [] : await confirmCoverageGaps(attempt.sections);
   if (flowingGaps.length > 0) console.warn(`[generateEssay] 필수 항목 누락 감지(소제목 없는 단계): ${JSON.stringify(flowingGaps)}`);
   // 영어 글쓰기의 필수 어법(수동태·It~that 강조·관계대명사)이 빠졌으면 그 단계만 부분 보완한다(english-grammar.ts — 코드로 판정).
   const grammarGaps: CoverageGap[] = [];
@@ -2015,9 +2049,9 @@ export async function generateEssay(
       if (same) same.missing = [...same.missing, ...g.missing];
       else merged.push({ ...g, missing: [...g.missing] });
     }
-    attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
+    if (!overBudget("단계 부분 보완")) attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
   }
-  if (needsFullRetry) {
+  if (needsFullRetry && !overBudget("전체 재생성")) {
     console.warn(
       `[generateEssay] 품질 문제 감지, 1회 재시도: cliches=${JSON.stringify(cliches)} unsupportedSuperlatives=${JSON.stringify(unsupportedSuperlatives)} languageMismatches=${JSON.stringify(languageMismatches)} presetBookMismatch=${presetBookMismatch} corruptedSections=${JSON.stringify(corruptedSections)} uncitedBookMentions=${JSON.stringify(uncitedBookMentions)} bookMentionsNeedingVerification=${bookMentionsNeedingVerification.length}건 lengthIssues=${lengthIssues.length}건`
     );
@@ -2363,7 +2397,7 @@ export async function generateEssay(
   }
 
   // 외국어 단계가 아닌데 영어로 쓰였거나 영어 제목·문장이 섞인 단계는 그 단계만 한국어로 다시 쓴다(분량 보정보다 먼저 — 번역 뒤 분량을 다시 맞춘다).
-  if (koreanGuardOn()) {
+  if (koreanGuardOn() && !overBudget("한국어 재작성 검사")) {
     const targets = attempt.sections.filter((sec) => {
       const el = elements.find((e) => e.label === sec.label);
       return !!el && !detectElementLanguage(input.subject, el) && !!koreanLanguageIssue(sec.content);
@@ -2394,7 +2428,7 @@ export async function generateEssay(
 
   // 시험지·안내문의 장면·문장·문단 수 조건: 생성 뒤 코드로 세고, 어긴 단계만 검색 없이 한 번 고친다(form-repair.ts). 못 맞추면 경고로 알린다.
   const formWarningByLabel = new Map<string, string>();
-  if (formOn) {
+  if (formOn && !overBudget("형식 조건 보완")) {
     const checked = await Promise.all(
       attempt.sections.map(async (sec) => {
         const el = elements.find((e) => e.label === sec.label);
@@ -2415,7 +2449,7 @@ export async function generateEssay(
 
   // 품질 재시도까지 거치고도 분량 범위를 못 맞춘 단계는, 검색 없이 그 단계 글 하나만 한 번 보정한다(전체 재생성은 오히려 분량이 흔들린다 — 실측 1344→1294자).
   {
-    const remaining = checkLengthCompliance(attempt.sections, elements);
+    const remaining = overBudget("분량 보정") ? [] : checkLengthCompliance(attempt.sections, elements);
     if (remaining.length > 0) {
       const adjusted = await Promise.all(
         attempt.sections.map(async (sec) => {
@@ -2611,7 +2645,7 @@ export async function generateEssay(
   // 필수 항목(소제목) 구조는 재시도까지 거치고도 남은 누락만 정직하게 알린다.
   // 소제목 없는 단계(신문 등)는 처음에 누락이 확인된 경우에만 다시 판정한다(모델 호출 최소화). 떼어 둔 "제작 참고"도 포함해서 본다.
   const finalFlowingGaps =
-    flowingGaps.length > 0
+    flowingGaps.length > 0 && !overBudget("항목 누락 재판정")
       ? await confirmCoverageGaps(
           attempt.sections.map((s) => ({ ...s, content: s.productionNotes ? `${s.content}\n\n### ${"제작 참고"}\n${s.productionNotes}` : s.content }))
         )

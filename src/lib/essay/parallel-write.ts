@@ -35,6 +35,42 @@ ${filled.map((d) => `## ${d.label}\n${d.content.trim()}`).join("\n\n")}
 `.trim();
 }
 
+/**
+ * 단계가 하나뿐인 과제(평가지 한 장 등)는 단계별 동시 쓰기가 안 걸려 긴 글을 한 번에 쓴다 —
+ * 실측(2026-10-30, 실제 사회 평가지): 조사 9.7초 + 글쓰기 17.6초로 글쓰기가 병목이었다.
+ * 필수 항목이 넉넉하면 항목을 두 묶음으로 나눠 동시에 쓰고 항목 순서대로 이어 붙인다.
+ */
+export function itemGroups(items: string[] | undefined, min = 4): string[][] {
+  const list = (items ?? []).filter((i) => i.trim());
+  if (list.length < min) return [];
+  const half = Math.ceil(list.length / 2);
+  return [list.slice(0, half), list.slice(half)];
+}
+
+export function itemWriteInstruction(label: string, mine: string[], all: string[], withSummary: boolean): string {
+  const others = all.filter((i) => !mine.includes(i));
+  return `
+【이번 호출에서 쓸 항목 — 반드시 지킬 것】
+"## ${label}" 단계의 항목은 여러 사람이 나눠서 동시에 쓴다. 너는 ${mine.map((i) => `"${i}"`).join(", ")} 항목만 쓴다.
+${others.length ? `${others.map((i) => `"${i}"`).join(", ")} 항목은 쓰지 말 것(다른 사람이 쓴다 — 그 항목 내용을 여기서 미리 설명하지도 말 것). ` : ""}사실·수치·각주 번호는 위 [사실 노트]에 있는 것만 쓴다.
+${withSummary ? `맨 위에 과제 전체를 요약한 불릿 3줄을 먼저 쓰고, 이어서 "## ${label}" 제목 줄을 쓴 다음` : `"## ${label}" 제목 줄 없이 곧바로`} 네 항목의 "### 항목이름" 소제목부터 쓴다.
+`.trim();
+}
+
+/** 항목 묶음별 출력에서 "### 항목" 부분만 모아 한 단계 본문으로 잇는다. */
+export function mergeItemParts(parts: string[], label: string, withSummaryFirst = true): string {
+  const first = parts[0] ?? "";
+  const headIdx = first.split("\n").findIndex((l) => /^##(?!#)/.test(l) || /^###(?!#)/.test(l));
+  const summary = withSummaryFirst && headIdx > 0 ? first.split("\n").slice(0, headIdx).join("\n").trim() : "";
+  const bodies = parts.map((p) => {
+    const lines = ownSection(p, label).split("\n");
+    const start = lines.findIndex((l) => /^###(?!#)/.test(l));
+    return (start >= 0 ? lines.slice(start) : lines).join("\n").trim();
+  });
+  const body = `## ${label}\n\n${bodies.filter(Boolean).join("\n\n")}`;
+  return summary ? `${summary}\n\n${body}` : body;
+}
+
 const squash = (s: string) => s.replace(/[\s/·・,.\-–—()[\]{}<>「」『』"'*#:]/g, "").toLowerCase();
 
 /** 한 호출의 출력에서 그 단계의 본문만 꺼낸다(제목을 못 찾으면 앞쪽 요약 불릿을 뺀 나머지 전체). */

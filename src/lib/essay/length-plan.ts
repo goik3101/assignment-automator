@@ -65,8 +65,10 @@ export function planLength(el: PlanElement): LengthPlan {
       return { role, min: n * 160, max: n * 380, basis: `조사 항목 ${n}개 × 항목당 사실 2~4문장` };
     }
     case "report_sections": {
+      // 항목당 250~450자는 학교 평가지 칸(보통 기준선 5~6줄)보다 훨씬 길다 — 실측(2026-10-30): 항목 7개 평가지가 1,900~2,300자로 나와
+      // "길고 반복적"이라는 지적과 글쓰기 14초(전체 29초)의 원인이 됐다. 안내문도 "칸의 기준선만큼" 쓰라고 한다.
       const n = Math.max(items, 2);
-      return { role, min: n * 250, max: n * 450, basis: `보고서 항목 ${n}개 × 항목당 한두 문단` };
+      return { role, min: n * 160, max: n * 300, basis: `보고서 항목 ${n}개 × 항목당 대여섯 문장` };
     }
     case "scenes": {
       const n = Math.max(items, 2);
