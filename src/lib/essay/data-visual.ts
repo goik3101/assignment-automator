@@ -14,17 +14,29 @@ export interface VisualElement {
   required_items?: string[];
 }
 
-/** 이 단계가 글 안에 표·그래프를 직접 만들어야 하는가. */
-export function needsDataTable(el: VisualElement, requirements: string[] = [], guide?: string): boolean {
+/** 단계 이름이 긴 실제 안내문("경제 문제 분석 및 소견 평가지")은 요구사항에 통째로 나오지 않는다 — 이름의 낱말이 겹치면 그 단계를 말한 것으로 본다. */
+const GENERIC_LABEL_WORD = /^(?:작성|제출|활동|내용|자료|단계|과제|결과|글|및|또는)$/;
+function labelMentioned(label: string, line: string): boolean {
+  const text = line.replace(/\s/g, "");
+  const whole = label.replace(/\s/g, "");
+  if (whole.length >= 2 && text.includes(whole)) return true;
+  return label
+    .split(/[\s·/,()]+/)
+    .filter((w) => w.length >= 2 && !GENERIC_LABEL_WORD.test(w))
+    .some((w) => text.includes(w));
+}
+
+/**
+ * 이 단계가 글 안에 표·그래프를 직접 만들어야 하는가.
+ * soleStep(이번에 만드는 단계가 하나뿐)이면 안내문의 조건이 모두 그 단계의 것이다.
+ */
+export function needsDataTable(el: VisualElement, requirements: string[] = [], guide?: string, soleStep = false): boolean {
   const own = `${el.label} ${el.description} ${(el.required_items ?? []).join(" ")}`;
   if (DATA_VISUAL.test(own) || BARE_TABLE.test(own)) return true;
-  // 단계 이름을 말하는 요구사항·작성 기준에서도 읽는다(단계가 하나면 전체가 그 단계의 조건이다).
-  const mine = el.label.replace(/\s/g, "");
   return [...requirements, guide ?? ""].some((line) => {
     if (!line) return false;
-    const text = line.replace(/\s/g, "");
-    const mentions = mine.length >= 2 && text.includes(mine);
-    return (mentions || requirements.length === 0) && (DATA_VISUAL.test(line) || BARE_TABLE.test(line));
+    if (!soleStep && !labelMentioned(el.label, line)) return false;
+    return DATA_VISUAL.test(line) || BARE_TABLE.test(line);
   });
 }
 

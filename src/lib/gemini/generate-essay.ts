@@ -42,7 +42,9 @@ import {
   fixJosaAfterTitle,
   stripOrdinalEnumerators,
   stripMetaNoteLines,
+  stripHeadingDirectives,
   stripModelReferenceBlock,
+  tabTableToMarkdown,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
@@ -610,7 +612,7 @@ ${input.previousOutputText}
   const formRulesBlock = buildFormRulesBlock(elements);
   // 안내문이 표·그래프를 요구한 단계는 글 안에 마크다운 표로 직접 쓰게 한다(data-visual.ts) — 해당 단계가 없으면 빈 문자열.
   const dataTableBlock = qualityFixesOn()
-    ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide)).map((el) => el.label))
+    ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((el) => el.label))
     : "";
   // 책 과제인가 / 인상 깊은 구절(원문 인용)을 요구하는가에 따라 검색·인용 규칙의 범위를 정한다(essay/excerpt-need.ts).
   const isBookPrompt = !!input.presetBook || needsBookCandidateSelection(input, elements);
@@ -640,7 +642,13 @@ ${input.previousOutputText}
       `항목도 빼거나 합치지 말 것. 항목마다 실제 내용이 있어야 한다(소제목만 쓰고 비워두지 말 것). ` +
       (reportEls.length === 0 && sceneEls.length === 0 ? `이 단계는 하나의 긴 글이 아니라 항목별로 구조화된 조사 자료다.\n` : "\n") +
       structuredEls
-        .map((el) => `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}${!fixes || sceneEls.includes(el) ? "" : reportEls.includes(el) ? " (제출용 글 — 항목마다 문단으로)" : " (조사 자료 — 항목마다 사실 정리)"}`)
+        // 괄호 설명을 항목 줄에 붙이면 모델이 그걸 소제목에 그대로 베낀다(실측 2026-10-30: "### 해결 방안 (제출용 글 — 항목마다 문단)").
+        // 설명은 다음 줄에 따로 적어 소제목으로 옮겨 붙을 자리를 없앤다.
+        .map(
+          (el) =>
+            `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}` +
+            (!fixes || sceneEls.includes(el) ? "" : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
+        )
         .join("\n") +
       (materialEls.length ? `\n${RESEARCH_MATERIAL_RULES}` : "") +
       (reportEls.length ? `\n${REPORT_SECTION_RULES}` : "") +
@@ -1143,6 +1151,7 @@ ${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 
       : ""
   }
 - 같은 사실을 중복하지 말고, 서로 다른 신뢰도 높은 페이지(공식 기관·원문·신뢰 매체 우선)에서 고른다. 위키형·블로그·동영상은 다른 근거가 없을 때만.
+- 기관·포털의 첫 화면 주소(예: https://www.me.go.kr/ , .../main.do)는 근거가 될 수 없다. 그 사실이 실제로 적힌 보도자료·통계표·기사 페이지의 주소를 쓸 것.
 - url은 검색 중 실제로 열어 본 페이지 주소여야 하고, title은 그 페이지 제목이다.${grouped ? " 같은 페이지에서 나온 사실은 한 항목의 facts에 모아 url과 title을 한 번만 쓴다." : ""}
 - 검색은 1번만 한다(그 한 번에 쿼리 2~3개). 조사할 것은 과제 주제의 사실뿐이다 — 수행평가 방식·발표 시간·분량·모둠 같은 과제 지시 자체는 검색하지 않는다.
 ${
@@ -1747,10 +1756,12 @@ export async function generateEssay(
   // 품질 교정용 추가 모델 호출(재생성·부분 보완·분량 보정·형식 보완·한국어 재작성·항목 재판정)은 예산을 넘기면 건너뛴다.
   // 건너뛴 것은 로그와 화면 경고로 남는다. ESSAY_TIME_BUDGET_MS=0이면 예전처럼 전부 실행.
   const timeBudgetMs = process.env.ESSAY_TIME_BUDGET_MS === undefined ? 22000 : Number(process.env.ESSAY_TIME_BUDGET_MS);
-  const overBudget = (what: string): boolean => {
+  // 안내문이 요구한 것을 채우는 보완(필수 항목·표·형식 조건·날조 문장 수정)은 예산을 조금 넘겨도 한 번은 한다 — 요구사항 미충족이 더 큰 손해다.
+  const overBudget = (what: string, kind: "optional" | "required" = "optional"): boolean => {
     if (!timeBudgetMs) return false;
+    const limit = kind === "required" ? timeBudgetMs + 4000 : timeBudgetMs;
     const spent = Date.now() - start;
-    if (spent <= timeBudgetMs) return false;
+    if (spent <= limit) return false;
     console.warn(`[generateEssay] 시간 예산 초과(${(spent / 1000).toFixed(1)}초) — ${what} 건너뜀`);
     return true;
   };
@@ -1968,7 +1979,7 @@ export async function generateEssay(
   // 안내문이 요구한 표·그래프가 글에 실제로 없으면 그 단계만 다시 쓰게 한다(data-visual.ts — 설명·자리 표시로 대신한 경우).
   if (fixes) {
     for (const el of elements) {
-      if (!needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide)) continue;
+      if (!needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)) continue;
       const sec = attempt.sections.find((s) => s.label === el.label);
       if (!sec || hasDataTable(sec.content)) continue;
       console.warn(`[generateEssay] 표·그래프를 글에 만들지 않음 label="${el.label}"`);
@@ -2049,7 +2060,10 @@ export async function generateEssay(
       if (same) same.missing = [...same.missing, ...g.missing];
       else merged.push({ ...g, missing: [...g.missing] });
     }
-    if (!overBudget("단계 부분 보완")) attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
+    // 안내문이 요구한 항목·표·날조 문장 수정이 섞여 있으면 "필수"로 본다(되풀이 정리만 남았으면 건너뛰어도 된다).
+    const requiredRepair = merged.length > 0 || activityRewrites.length > 0;
+    if (!overBudget("단계 부분 보완", requiredRepair ? "required" : "optional"))
+      attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
   }
   if (needsFullRetry && !overBudget("전체 재생성")) {
     console.warn(
@@ -2537,6 +2551,14 @@ export async function generateEssay(
       const metaStripped = stripMetaNoteLines(refStripped.content);
       if (metaStripped.removed > 0) console.warn(`[generateEssay] 작업 설명 괄호 줄 ${metaStripped.removed}개 제거 label="${s.label}"`);
       let content = newspaperLabels.has(s.label) ? stripWorkMarkers(metaStripped.content) : metaStripped.content;
+      if (fixes) {
+        // 소제목에 베껴 붙은 작성 지시("### 해결 방안 (제출용 글 — 항목마다 문단)")와 탭으로 줄 맞춘 표를 바로잡는다.
+        const heading = stripHeadingDirectives(content);
+        const table = tabTableToMarkdown(heading.content);
+        if (heading.removed + table.converted > 0)
+          console.warn(`[generateEssay] 소제목의 작성 지시 ${heading.removed}개 제거, 탭 표 ${table.converted}개를 표로 변환 label="${s.label}"`);
+        content = table.content;
+      }
       if (fixes) {
         const notes = stripWorkNotes(content);
         const urls = stripInlineUrls(notes.content);

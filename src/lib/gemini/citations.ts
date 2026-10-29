@@ -152,6 +152,8 @@ export function insertCitationMarkers(
 export function tidyOutputText(text: string): string {
   return text
     .replace(/^(#{2,4}[ \t]*)[「『](.+?)[」』][ \t]*$/gm, "$1$2")
+    // 각주 뒤에 쉼표가 남아 "…값이다[1],." 처럼 끝나는 경우(실측 2026-10-30)
+    .replace(/(\[\d+\])\s*,\s*([.!?])/g, "$1$2")
     .replace(/[ \t]+([.,!?])(?=\s|$)/g, "$1")
     .replace(/(?<=\S)[ \t]{2,}/g, " ");
 }

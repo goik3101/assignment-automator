@@ -97,6 +97,54 @@ export function stripModelReferenceBlock(content: string): { content: string; st
   return { content, stripped: false };
 }
 
+/**
+ * 소제목에 따라붙은 작성 지시 괄호를 뗀다 — "### 해결 방안 (제출용 글 — 항목마다 문단)"(실측 2026-10-30).
+ * 안내문의 항목 이름이 원래 괄호를 품은 경우("국내 또는 해외에 미치는 영향(2가지)")는 건드리지 않는다: 작성 지시 낱말이 있을 때만.
+ */
+const HEADING_DIRECTIVE = /[ \t]*[(（][^)）\n]*(?:제출용|조사\s*자료|항목마다|소제목|문단으로|사실\s*정리|단계다)[^)）\n]*[)）][ \t]*$/;
+export function stripHeadingDirectives(content: string): { content: string; removed: number } {
+  let removed = 0;
+  const out = content
+    .split("\n")
+    .map((line) => {
+      if (!/^#{2,4}[ \t]/.test(line.trim())) return line;
+      const next = line.replace(HEADING_DIRECTIVE, "");
+      if (next !== line) removed++;
+      return next;
+    })
+    .join("\n");
+  return { content: removed ? out : content, removed };
+}
+
+/**
+ * 탭으로 줄 맞춘 표를 마크다운 표로 바꾼다 — 모델이 "연도\t값" 꼴로 쓰면 화면에서 표로 보이지 않는다(실측 2026-10-30).
+ * 2열 이상·2줄 이상 이어질 때만 바꾸고, 첫 줄을 머리줄로 쓴다.
+ */
+export function tabTableToMarkdown(content: string): { content: string; converted: number } {
+  const lines = content.split("\n");
+  const out: string[] = [];
+  let converted = 0;
+  for (let i = 0; i < lines.length; ) {
+    const block: string[][] = [];
+    let j = i;
+    while (j < lines.length) {
+      const cells = lines[j].split(/\t+|(?<=\S) {3,}(?=\S)/).map((c) => c.trim());
+      if (cells.length < 2 || cells.some((c) => !c) || /^\s*\|/.test(lines[j])) break;
+      block.push(cells);
+      j++;
+    }
+    if (block.length >= 2 && block.every((r) => r.length === block[0].length)) {
+      out.push(`| ${block[0].join(" | ")} |`, `| ${block[0].map(() => "---").join(" | ")} |`, ...block.slice(1).map((r) => `| ${r.join(" | ")} |`));
+      converted++;
+      i = j;
+      continue;
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  return { content: converted ? out.join("\n") : content, converted };
+}
+
 const WORK_MARKERS = /^\s*\(해석\)\s*/;
 /** 신문 기사 본문에 남은 작업용 표기("(해석)" 등)를 지운다. */
 export function stripWorkMarkers(content: string): string {
@@ -166,7 +214,9 @@ const META_NOTE_LINE = new RegExp(
     ")\\)[\\[\\]\\d.\\s]*$"
 );
 // 괄호 없이 쓴 같은 종류의 작업 설명(실측 2026-10-21: "참고 근거: 위 문장들에 사용된 사실 근거는 본문에 괄호로 붙인 번호를 통해 확인할 수 있다.").
-const BARE_META_LINE = /^\s*(?:참고\s*근거|근거\s*안내|출처\s*안내|작성\s*참고)\s*[:：].{0,200}$|^\s*(?:위|이)\s*(?:문장|내용|글)[^\n]{0,80}(?:번호|각주|출처)[^\n]{0,80}확인할\s*수\s*있다\.?\s*$/;
+// 실측(2026-10-30, 실제 제출 결과물): "(근거 표시) 위의 연도별 수치와 국가 수준의 농도 변화는 … 확인한 값이다[1],." —
+// 줄 전체가 괄호가 아니라 머리말만 괄호라 기존 두 패턴에 다 걸리지 않았다.
+const BARE_META_LINE = /^\s*(?:참고\s*근거|근거\s*안내|출처\s*안내|작성\s*참고)\s*[:：].{0,200}$|^\s*(?:위|이)\s*(?:문장|내용|글)[^\n]{0,80}(?:번호|각주|출처)[^\n]{0,80}확인할\s*수\s*있다\.?\s*$|^\s*\(\s*(?:근거|출처)\s*(?:표시|표기|안내)\s*\)[^\n]{0,200}$/;
 export function stripMetaNoteLines(content: string): { content: string; removed: number } {
   let removed = 0;
   const bare = process.env.ESSAY_QUALITY_FIXES !== "off";

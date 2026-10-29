@@ -35,6 +35,22 @@ export function normalizeUrl(raw: string): string {
   }
 }
 
+/**
+ * 기관·포털의 첫 화면 주소인가(me.go.kr/, air.go.kr/main.do 같은). 실측(2026-10-30, 실제 제출 결과물):
+ * 미세먼지 과제의 출처 2개가 둘 다 기관 메인 페이지여서 연도별 수치를 하나도 뒷받침하지 못했고, 링크 확인도 "자동 확인 불가"였다.
+ * 첫 화면은 내용이 계속 바뀌므로 어떤 구체적 사실의 근거도 될 수 없다.
+ */
+const LANDING_PATH = /^\/?(?:index|main|home|default)?(?:\.(?:do|jsp|html?|php|aspx?))?$/i;
+export function isLandingPage(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.search || u.hash) return false;
+    return LANDING_PATH.test(u.pathname.replace(/\/+$/, ""));
+  } catch {
+    return false;
+  }
+}
+
 function cleanFacts(arr: unknown[]): RawFact[] {
   return arr
     .map((x) => x as { fact?: unknown; url?: unknown; title?: unknown; printed_title?: unknown; printed_author?: unknown })
@@ -157,13 +173,16 @@ export function buildFacts(raw: RawFact[], consulted: string[] | undefined, max 
   const ok = new Set(consulted.map(normalizeUrl));
   const seen = new Set<string>();
   const eligible: RawFact[] = [];
+  const landing: RawFact[] = [];
   for (const r of raw) {
     if (!ok.has(normalizeUrl(r.url))) continue;
     const key = r.fact.replace(/\s+/g, "");
     if (seen.has(key)) continue;
     seen.add(key);
-    eligible.push(r);
+    // 기관 첫 화면 주소는 근거가 못 된다 — 다만 이것까지 버리면 사실이 너무 적어 폴백(느린 경로)으로 떨어지므로 뒤로 미뤄 둔다.
+    (isLandingPage(r.url) ? landing : eligible).push(r);
   }
+  if (eligible.length < 4 && landing.length > 0) eligible.push(...landing.slice(0, 4 - eligible.length));
   // 출처별로 묶어 쓴 응답은 앞쪽 출처의 사실이 몰려 있어, 앞에서부터 자르면 뒤 항목(예: 전개 과정)의 사실이 통째로 빠진다 — 넘칠 때는 출처를 돌아가며 고른다(순서는 원래대로).
   let picked = eligible.slice(0, max);
   if (balanced && eligible.length > max) {
