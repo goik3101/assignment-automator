@@ -21,3 +21,10 @@ export function writerGeneralKnowledgeOn(): boolean {
 export function formRequirementsOn(): boolean {
   return process.env.FORM_REQUIREMENTS !== "off";
 }
+
+/**
+ * 읽은 출처 페이지에서 값을 못 찾아 각주를 지운 문장 뒤에 "[확인 필요]"를 남길지(claim-check.ts). UNVERIFIED_MARK=off면 예전처럼 각주만 지운다.
+ */
+export function unverifiedMarkOn(): boolean {
+  return process.env.UNVERIFIED_MARK !== "off";
+}

@@ -156,6 +156,13 @@ export function isSceneListElement(el: { required_items?: string[] }): boolean {
   return items.length >= 2 && items.every((i) => SCENE_ITEM.test(i.trim()));
 }
 
+const SCENE_LABEL = /스토리보드|콘티|카드\s*뉴스|컷\s*만화|웹툰/;
+
+/** 장면 번호로 쓰는 단계인가 — 장면 번호 항목이 펼쳐졌거나, 이름이 스토리보드·카드뉴스처럼 장면 산출물인 단계. */
+export function isSceneLikeElement(el: { label: string; description?: string; required_items?: string[] }): boolean {
+  return isSceneListElement(el) || SCENE_LABEL.test(el.label);
+}
+
 /**
  * "8장면으로 구성"처럼 개수가 정해진 반복 단위가 있는데 필수 항목이 그 개수만큼 없으면, 항목을 "장면 1…장면 N"으로 바꾼다.
  * 원래 항목(화면 설명·대사 같은 장면마다 쓸 칸 이름)은 단계 설명으로 옮겨 장면마다 쓰게 한다. 개수 N은 2~20일 때만, 하한이 있는 조건("N 이상" 포함)만 다룬다.

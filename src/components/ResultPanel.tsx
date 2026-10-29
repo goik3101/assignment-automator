@@ -367,7 +367,7 @@ export function PlanPanel({
           <h3 className="mt-1 text-lg font-bold tracking-tight">{label}</h3>
         </div>
       )}
-      {result.sources.length === 0 && <NoSourcesWarning />}
+      {(result.noSourcesWarning ?? result.sources.length === 0) && <NoSourcesWarning />}
       {result.structureWarning && <StructureWarning message={result.structureWarning} />}
       {result.factConsistencyWarning && <StructureWarning message={result.factConsistencyWarning} />}
       <article className={ARTICLE}>

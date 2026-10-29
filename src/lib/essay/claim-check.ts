@@ -4,6 +4,21 @@
 
 export type PageTexts = Map<number, string | null>;
 
+/**
+ * 읽은 출처 페이지에서 값을 못 찾아 각주를 지운 문장 뒤에 남기는 표시. "거짓"이 아니라 "확인 필요"다 — 값이 이미지·다른 표기("10명 중 4명")로 있거나,
+ * 페이지 본문이 잘렸거나, 문장이 다른 출처의 내용일 수 있어서 코드는 틀렸다고 단정하지 못한다. 학생이 직접 확인하면 지운다.
+ */
+export const UNVERIFIED_MARK = "[확인 필요]";
+
+// 사실 주장이 아니라 학생의 의견·계획·제안을 말하는 문장(수치가 들어 있어도 "이렇게 하겠다/제안한다"는 말이라 확인 필요 표시를 붙이지 않는다).
+// 한계: 사실 주장을 "~필요하다"로 끝내는 문장도 여기 걸려 표시가 빠질 수 있다(미탐) — 표시는 학생의 확인을 돕는 용도라 놓치는 쪽이 덜 해롭다.
+const OPINION_OR_PLAN =
+  /(?:^|[\s"“(])(?:나는|내가|나도|저는|제가)|(?:생각한다|생각했다|생각된다|느꼈다|느낀다|바란다|다짐한다|제안한다|권한다|권고한다|예정이다|계획이다|하려\s*한다|할\s*것이다|해야\s*한다|필요하다)[.!?]?\s*$/;
+
+export function isOpinionOrPlan(text: string): boolean {
+  return OPINION_OR_PLAN.test(text.trim());
+}
+
 /** 대조할 수 있는 표지가 하나도 없는 문장은 검사 대상이 아니다. */
 export interface CheckTokens {
   numbers: string[];
@@ -62,7 +77,8 @@ export interface ClaimFinding {
 export function checkClaims(
   content: string,
   pages: PageTexts,
-  rank: (n: number) => number = () => 0
+  rank: (n: number) => number = () => 0,
+  opts: { markUnsupported?: boolean } = {}
 ): { content: string; findings: ClaimFinding[] } {
   const findings: ClaimFinding[] = [];
   const groups = [...content.matchAll(/(?:\[\d+\])+/g)];
@@ -114,8 +130,9 @@ export function checkClaims(
       continue;
     }
     // 읽은 페이지 중 뒷받침하는 곳이 없다 — 각주를 지운다(없는 근거를 있는 것처럼 보이지 않게). 읽지 못한 인용이 섞여 있으면 그 번호만 남긴다.
+    // 문장은 지우지 않는다 — 대신 확인이 필요한 사실 주장임을 그 자리에 표시한다(의견·계획 문장은 제외).
     const unreadable = cited.filter((n) => !readable.includes(n));
-    out += unreadable.map((n) => `[${n}]`).join("");
+    out += unreadable.map((n) => `[${n}]`).join("") + (opts.markUnsupported && !isOpinionOrPlan(text) ? UNVERIFIED_MARK : "");
     findings.push({ status: "unsupported", text, cited, tokens });
   }
   out += content.slice(cursor);

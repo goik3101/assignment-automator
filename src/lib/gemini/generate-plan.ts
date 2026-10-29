@@ -17,8 +17,10 @@ import {
   writingGuideBlock,
 } from "./prompts";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
-import { applyFormRequirements, buildFormLimitBlock, checkFormRequirements, isSceneListElement, requirementsForElement } from "@/lib/essay/form-requirements";
+import { applyFormRequirements, buildFormLimitBlock, checkFormRequirements, isSceneLikeElement, isSceneListElement, requirementsForElement } from "@/lib/essay/form-requirements";
+import { hasVerifiableClaimText } from "@/lib/essay/verifiable-claims";
 import { formWarningText, repairFormRequirements } from "@/lib/essay/form-repair";
+import { renderScopedGuide, scopedLinesFor } from "@/lib/essay/requirement-scope";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
 import {
   extractYears,
@@ -166,6 +168,12 @@ function buildStepAPrompt(input: GeneratePlanInput, notes: ResearchNotes | null 
     texts: [input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, element?.label ?? "", element?.description ?? "", input.instructions ?? ""],
     hasPresetSubject: !!input.fixedSubject,
   });
+  // 이 산출물에 걸리는 요구사항·작성 기준만 준다(다른 결과물이나 발표 방식 조건은 섞지 않는다 — requirement-scope.ts).
+  const scoped = element && formRequirementsOn();
+  const requirementsText = scoped
+    ? scopedLinesFor(element.label, input.coreTaskInfo.requirements, input.coreTaskInfo.task_elements, [element.label]).map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"
+    : input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)";
+  const guideText = scoped ? renderScopedGuide(input.coreTaskInfo.writing_guide, input.coreTaskInfo.task_elements, [element.label]) : input.coreTaskInfo.writing_guide;
   const itemsBlock = requiredItems
     ? `
 【필수 항목 구조 — 반드시 지킬 것】 이 산출물은 안내문이 요구한 다음 항목을 모두 포함해야 한다:
@@ -205,7 +213,7 @@ ${continuityBlock}너는 한국 고등학생의 수행평가 준비를 돕는 �
 [과목] ${input.subject}
 [과제 주제] ${input.coreTaskInfo.topic}
 [요구사항]
-${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
+${requirementsText}
 ${input.elementLabel && element ? `[만들 요소] ${element.label} — 이번에는 이 요소 하나만 만들 것. 같은 과제의 다른 요소(${input.coreTaskInfo.task_elements.filter((e) => e.label !== element.label).map((e) => `"${e.label}"`).join(", ") || "없음"})는 따로 만들어지니 여기 쓰지 말 것.\n` : ""}[이 요소에 대한 설명] ${element?.description ?? ""}
 ${
   input.fixedSubject
@@ -240,7 +248,7 @@ ${structuredFacts ?? input.referenceFactsText}
     : ""
 }
 ${itemsBlock}
-${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${element && formRequirementsOn() ? buildFormLimitBlock([{ label: element.label, reqs: requirementsForElement(element, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, input.coreTaskInfo.task_elements.map((e) => e.label)) }]) : ""}${fixes && readBook ? bookBasedBlock(readBook) : ""}${fixes && panelItems ? panelBlock(panelItems) : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${element && formRequirementsOn() ? buildFormLimitBlock([{ label: element.label, reqs: requirementsForElement(element, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, input.coreTaskInfo.task_elements.map((e) => e.label)) }]) : ""}${fixes && readBook ? bookBasedBlock(readBook) : ""}${fixes && panelItems ? panelBlock(panelItems) : ""}
 ${input.instructions ? `[학생이 추가로 입력한 지침]\n${input.instructions}` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentStatGuidance ? `\n${input.recentStatGuidance}\n` : ""}
@@ -745,6 +753,8 @@ ${freeText}`,
     sources: validatedSources,
     latency_ms: Date.now() - start,
     verifiedItemNames,
+    // 출처 0개만으로 경고하지 않고, 검증이 필요한 사실 주장이 실제로 있을 때만(스토리보드 같은 장면 단계는 수치·연도·책 제목이 있을 때만).
+    noSourcesWarning: validatedSources.length === 0 && hasVerifiableClaimText(content, { sceneList: !!formEl && formRequirementsOn() && isSceneLikeElement(formEl) }),
     structureWarning:
       [planIssues.missing.length > 0 ? `안내문이 요구한 항목이 비어 있어요: ${planIssues.missing.join(", ")}. 제출 전에 직접 보완해주세요.` : "", formWarning ?? ""].filter(Boolean).join(" ") || undefined,
     factConsistencyWarning:

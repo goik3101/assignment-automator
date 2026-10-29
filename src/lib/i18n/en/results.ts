@@ -48,6 +48,8 @@ export const results: Record<string, string> = {
     ". We can't judge whether the meaning of the Korean wording matches, so open the links to check important sentences.",
   "읽은 출처 페이지에서 확인되지 않아 각주를 뺀 문장 {n}개": "{n} sentences whose footnotes were removed because they weren't found on the source pages we read",
   "(찾지 못한 값: {v})": "(value not found: {v})",
+  "본문에서는 이 문장 끝에 [확인 필요]라고 표시했어요. 틀렸다는 뜻이 아니라, 읽은 페이지에서 그 값을 찾지 못했다는 뜻이에요.":
+    "We added a needs-checking tag (written in Korean) at the end of these sentences in the text. It doesn't mean they're wrong — only that we couldn't find the value on the page we read.",
   "제출 전에 이 문장들의 사실을 직접 검색해서 확인하거나 고쳐 주세요.": "Before submitting, search to verify these sentences or fix them.",
 
   // 경로 / 암기노트

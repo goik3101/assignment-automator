@@ -212,6 +212,7 @@ const FORM_REQUIREMENTS_INSTRUCTION = `
   task_elements에 넣지 말 것(그것밖에 만들 결과물이 없는 과제만 예외). 안내문에 있으면 requirements에 "수업 중 직접 작성: 청중 기록지"처럼 한 줄로만 남길 것.
 - 발표·말하기를 "대본 없이" 하라고 한 경우, 그 발표 자체는 학생이 말로 수행하는 것이라 task_elements에 넣지 말고 requirements에 "대본 없이 발표(시간 …)"로 남길 것. 발표 준비로 만드는 개요·스토리보드·발표 자료는 별도 단계로 둔다.
 - "8장면", "5문장 이내", "10줄", "3문단"처럼 개수가 정해진 조건은 해당 단계의 description과 requirements에 숫자 그대로 적을 것(채점 기준표에만 있어도 옮길 것). 개수를 세어 바꾸거나 빼지 말 것.
+- 그림 자료의 종류 제한("그림·그래프·표만 가능"), 제목 형식 조건("제목에는 명사형 키워드 1~2개"), 근거·출처 개수 조건은 안내문에 적힌 그대로 해당 결과물의 description이나 requirements에 남길 것. "만 가능"을 "활용할 수 있다"로 완화하거나 표현을 바꾸지 말 것.
 `;
 function systemInstruction(): string {
   return formRequirementsOn() ? `${BASE_SYSTEM_INSTRUCTION}

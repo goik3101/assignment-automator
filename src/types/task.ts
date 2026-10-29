@@ -199,6 +199,10 @@ export interface PlanResult {
   /** 이 생성에서 실제로 검증에 성공한 통계/사례 항목의 식별 문구 목록 —
    * 추천 다양성 시스템(recommendation-diversity.ts)이 이력을 기록할 때 쓴다. */
   verifiedItemNames?: string[];
+  /** 출처가 0개이면서 동시에 이 산출물에 검증이 필요한 사실 주장(수치·연도·책 제목·인용 등)이 실제로 있을 때만 true.
+   * 사실 주장이 없는 글(계획·약속·장면 묘사)에는 출처가 없는 게 정상이라 경고하지 않는다(EssayResult.noSourcesWarning과 같은 뜻).
+   * 이 필드가 없는 예전 저장 결과는 화면이 예전처럼 "출처 0개"로 판단한다. */
+  noSourcesWarning?: boolean;
   /** 안내문의 필수 항목(TaskElement.required_items, sections 형식)이 재시도 후에도
    * 소제목으로 존재하지 않을 때만 채워진다. */
   structureWarning?: string;

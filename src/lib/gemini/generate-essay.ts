@@ -45,17 +45,20 @@ import {
   stripModelReferenceBlock,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
-import { formRequirementsOn, qualityFixesOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { formRequirementsOn, qualityFixesOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import {
   applyFormRequirements,
   buildFormLimitBlock,
   buildSceneBlock,
   checkFormRequirements,
+  isSceneLikeElement,
   isSceneListElement,
   requirementsForElement,
   sceneBlockInputs,
 } from "@/lib/essay/form-requirements";
 import { formWarningText, repairFormRequirements } from "@/lib/essay/form-repair";
+import { renderScopedGuide, renderScopedRequirements } from "@/lib/essay/requirement-scope";
+import { BOOK_TITLE_PATTERN, FACTUAL_CLAIM_HINT_PATTERN, QUOTE_PATTERN, hasVerifiableClaimText } from "@/lib/essay/verifiable-claims";
 import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
 import { GRAMMAR_REPAIR_TEXT, missingGrammarForms, requiredGrammarForms } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
@@ -576,6 +579,14 @@ ${input.previousOutputText}
   const formOn = formRequirementsOn();
   const formCtx = { requirements: input.coreTaskInfo.requirements, guide: input.coreTaskInfo.writing_guide, labels: input.coreTaskInfo.task_elements.map((e) => e.label) };
   const guideLines = lengthGuideLines(elements, formOn ? formCtx : undefined);
+  // 요구사항·작성 기준은 문장마다 적용 단계를 나눠 준다 — 발표 시간·대본 금지처럼 만들지 않는 결과물의 조건이 개요에 섞이지 않게(requirement-scope.ts).
+  // 조사 프롬프트는 이 범위 나누기의 대상이 아니다(조사 단계는 이번 변경에서 건드리지 않는다).
+  const scopeAll = input.coreTaskInfo.task_elements;
+  const scopeGenerated = elements.map((e) => e.label);
+  const requirementsText = formOn
+    ? renderScopedRequirements(input.coreTaskInfo.requirements, scopeAll, scopeGenerated)
+    : input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)";
+  const guideText = formOn ? renderScopedGuide(input.coreTaskInfo.writing_guide, scopeAll, scopeGenerated) : input.coreTaskInfo.writing_guide;
   const formLimitBlock = formOn ? buildFormLimitBlock(elements.map((el) => ({ label: el.label, reqs: requirementsForElement(el, formCtx.requirements, formCtx.guide, formCtx.labels) }))) : "";
   const defaultLengthBlock =
     lengthTargetBlock +
@@ -674,10 +685,10 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 [과목] ${input.subject}
 [과제 주제] ${input.coreTaskInfo.topic}
 [요구사항]
-${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
+${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(input.coreTaskInfo.writing_guide) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -1149,6 +1160,7 @@ ${
     // 저자 원어 병기("파울로 코엘료 (Paulo Coelho)")는 글에 그대로 옮겨져 어색하다 — 한글 이름이 남으면 괄호를 뗀다.
     const rawAuthor = parsedBook?.book.author || input.presetBook?.author;
     const author = rawAuthor && qualityFixesOn() ? koreanAuthorName(rawAuthor) : rawAuthor;
+
     return { facts, queries, book: parsedBook ? { title: parsedBook.book.title || input.presetBook!.title, author } : undefined };
   } catch (err) {
     console.error("[generateEssay] 조사 호출 실패(기존 경로로 폴백)", err);
@@ -2410,7 +2422,7 @@ export async function generateEssay(
   attempt = {
     ...attempt,
     sections: attempt.sections.map((s) => {
-      const { content, findings } = checkClaims(s.content, pageTexts, tierRank);
+      const { content, findings } = checkClaims(s.content, pageTexts, tierRank, { markUnsupported: unverifiedMarkOn() });
       const checkedFindings = findings.filter((f) => f.status !== "unchecked");
       if (checkedFindings.length === 0) return s;
       const count = (st: ClaimFinding["status"]) => findings.filter((f) => f.status === st).length;
@@ -2513,6 +2525,8 @@ export async function generateEssay(
   const markdown = attempt.sections.map((s) => `## ${s.label}\n\n${s.content}`).join("\n\n");
   console.log(`[generateEssay] latency_ms=${Date.now() - start}`);
 
+  // 스토리보드 같은 장면 단계는 대사·화면 설명 때문에 "검증 안 됨" 배너가 불필요하게 뜨지 않게 따로 판정한다(verifiable-claims.ts).
+  const sceneListLabels = new Set(formOn ? elements.filter(isSceneLikeElement).map((e) => e.label) : []);
   const researchFacts: NonNullable<EssayResult["researchFacts"]> = [];
 
   return {
@@ -2539,7 +2553,7 @@ export async function generateEssay(
         sources: renumberedSources,
         lengthWarning: [lengthWarningByLabel.get(s.label), formWarningByLabel.get(s.label)].filter(Boolean).join(" ") || undefined,
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
-        noSourcesWarning: renumberedSources.length === 0 && sectionHasVerifiableClaim(s),
+        noSourcesWarning: renumberedSources.length === 0 && sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)),
         structureWarning:
           structureWarningByLabel.get(s.label) ??
           (fixes && !s.content.trim() ? "이 단계의 글을 만들지 못했어요. 이 단계만 다시 생성해 주세요." : undefined),
@@ -2557,7 +2571,7 @@ export async function generateEssay(
     // 확인돼도 noSourcesWarning이 안 뜨는 문제가 있었다.
     noSourcesWarning:
       attempt.sources.every((s) => s.url_valid === false || s.tier === "weak") &&
-      attempt.sections.some((s) => sectionHasVerifiableClaim(s)),
+      attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label))),
     // 추천 다양성 시스템(recommendation-diversity.ts)이 이 생성에서 실제로
     // 어떤 책이 최종 확정됐는지 기록할 수 있도록 노출한다. 책이 정확히 1권일
     // 때만 채운다(여러 권이면 어느 책을 "그 과제의 추천 항목"으로 기록해야
@@ -2586,7 +2600,6 @@ export async function generateEssay(
 // 그래서 둥근따옴표로 인용한 문장은 검증/약한출처 판별/마케팅 카피 판별 등
 // 이 파일의 모든 인용구 검사를 그대로 통과해버리는(=아예 검사 대상에서
 // 빠지는) 구멍이 있었다.
-const QUOTE_PATTERN = /"([^"]{8,150})"|“([^”]{8,150})”|「([^」]{8,150})」|『([^』]{8,150})』/g;
 
 function normalizeForCompare(s: string): string {
   return s.replace(/\s+/g, "").toLowerCase();
@@ -2658,7 +2671,6 @@ function detectUnverifiedQuotes(sections: RawSection[], sources: SourceRef[], in
 // 책 제목은 겹낫표(《》/『』)로 감싸 쓰기도 하고, 부호 없이 "책 제목: X"처럼도
 // 쓴다 — 실제 테스트에서 후자가 더 흔했다. 이 정규식은 s.citedBook(구조화
 // 필드)이 비어있을 때만 쓰는 보조 수단이고, 정상 경로는 citedBook을 우선한다.
-const BOOK_TITLE_PATTERN = /《[^》]{2,60}》|『[^』]{2,60}』/;
 
 /** 이 섹션이 책을 언급했는지 구조화 필드(citedBook) 우선, 없으면 겹낫표
  * 정규식으로 최선을 다해 판단한다. */
@@ -2974,8 +2986,7 @@ export function stripWeaklySourcedQuotes(
 // "수호했다"/"~의 원인이 되었다") — 특히 "환자의 생명권을 수호했다"처럼
 // 실제 업적(발명)을 과제 주제(인권)에 맞춰 해석까지 확장하는 문장이 각주
 // 없이 나온 사례가 실제로 발견되어 추가함.
-const FACTUAL_CLAIM_HINT_PATTERN =
-  /통계|수치|%|퍼센트|사례|자료|조사|보고서|논문|기사|뉴스|데이터|현황|정의|용어|전문|연구|평균|비율|\d{3,4}\s*년|\d+\s*세기|\d+\s*(시간|명|건|개|배|주|일)|최초|유일한?|결정적|창시|발명|창립|만들었다|제정했다|발표했다|창간했다|설립했다|수호했다|영향을\s*미쳤다|영향을\s*주었다|원인이\s*되었다|(?:로|으로)\s*이어졌다|기틀이\s*되었다|가능하게\s*했다/;
+// FACTUAL_CLAIM_HINT_PATTERN은 essay/verifiable-claims.ts로 옮겼다(위 설명은 그대로 이 규칙의 이력이다).
 
 /** [n] 각주 바로 앞의 "그 문장"만 잘라낸다 — 문장부호(. ! ? 개행)를 기준으로
  * 역방향 탐색. 완벽한 문장 분리기는 아니지만, 각주 바로 앞 절 정도의 맥락을
@@ -3096,11 +3107,9 @@ function stripFakeReferenceListFromSections(
  * 등 사실 주장 힌트(FACTUAL_CLAIM_HINT_PATTERN) 중 하나라도 있으면
  * "검증이 필요한 사실 주장이 있다"고 본다.
  */
-function sectionHasVerifiableClaim(s: RawSection): boolean {
+function sectionHasVerifiableClaim(s: RawSection, sceneList = false): boolean {
   if (mentionedBookTitle(s)) return true;
-  QUOTE_PATTERN.lastIndex = 0;
-  if (QUOTE_PATTERN.test(s.content)) return true;
-  return FACTUAL_CLAIM_HINT_PATTERN.test(s.content);
+  return hasVerifiableClaimText(s.content, { sceneList });
 }
 
 /** 문서 전체에서 공유되는 원래 번호([4]부터 시작하는 식) 대신, 각 섹션이

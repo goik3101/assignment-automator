@@ -102,6 +102,7 @@ export function ClaimCheckNote({ checks }: { checks: ClaimCheckSummary[] }) {
               </li>
             ))}
           </ul>
+          <p className="mt-1">{t("본문에서는 이 문장 끝에 [확인 필요]라고 표시했어요. 틀렸다는 뜻이 아니라, 읽은 페이지에서 그 값을 찾지 못했다는 뜻이에요.")}</p>
           <p className="mt-1">{t("제출 전에 이 문장들의 사실을 직접 검색해서 확인하거나 고쳐 주세요.")}</p>
         </div>
       )}
