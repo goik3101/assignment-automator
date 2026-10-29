@@ -8,10 +8,13 @@ export function qualityFixesOn(): boolean {
 
 /**
  * 조사→글쓰기의 글쓰기가 사실 노트 밖의 교과서 수준 일반 지식(대표 사건·인물·개념 설명)을 각주 없이 쓸 수 있게 할지.
- * 기본은 예전처럼 노트 밖 사실 금지(strict) — 출처 없는 문장이 늘어나는 위험이 있어 실측 확인 전까지는 켜지 않는다.
+ * **기본 켜짐**(2026-10-30). 금지해 두면 노트에 있는 10~14개 사실만으로 글을 채우느라 같은 사실이 되풀이되고 설명이 비었다 —
+ * 사용자가 보고한 "길고 반복적", "통계 해석의 비약"의 구조적 원인이다. 실측(실제 사회 안내문 n=3): 원인·배경 설명이 살아나고,
+ * 우려했던 "각주 없는 수치 문장"은 오히려 줄었다(금지 1회 2개 → 허용 3회 0·1·1개). 연도·수치·인용은 여전히 노트와 각주로만 쓴다.
+ * ESSAY_WRITER_KNOWLEDGE=strict면 예전처럼 노트 밖 금지.
  */
 export function writerGeneralKnowledgeOn(): boolean {
-  return process.env.ESSAY_WRITER_KNOWLEDGE === "general";
+  return process.env.ESSAY_WRITER_KNOWLEDGE !== "strict";
 }
 
 /**
