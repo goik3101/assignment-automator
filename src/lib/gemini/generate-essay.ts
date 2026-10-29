@@ -45,7 +45,7 @@ import {
   stripModelReferenceBlock,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
-import { evidenceSlotsOn, formRequirementsOn, qualityFixesOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { evidenceSlotsOn, formRequirementsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import {
   NO_EVIDENCE_PLAN,
   evidenceResearchBlock,
@@ -78,7 +78,8 @@ import { lengthGuideLines } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
-import { mergeParallelParts, parallelWriteInstruction, parallelWriteOn } from "@/lib/essay/parallel-write";
+import { mergeParallelParts, ownSection, parallelWriteInstruction, parallelWriteOn, previousStepsBlock } from "@/lib/essay/parallel-write";
+import { stepWaves } from "@/lib/essay/step-order";
 import { acceptKoreanRewrite, flippedToEnglish, koreanGuardOn, koreanLanguageIssue, koreanRewritePrompt } from "@/lib/essay/korean-guard";
 import { currentOutputLang, scaleLengthsForEnglish } from "@/lib/llm/output-lang";
 import {
@@ -1325,15 +1326,37 @@ async function generateOnce(
     const urls = [...new Set(notes.facts.map((f) => f.url))];
     const prefetch = validateSources(urls.map((url, i) => ({ n: i + 1, title: "", url, url_valid: null })));
     // 단계가 여러 개면 단계별로 동시에 쓴다(parallel-write.ts — ESSAY_PARALLEL_WRITE=off로 한 번에 쓰기).
-    const writes = parallelWriteOn(labels.length)
-      ? await Promise.all(
-          labels.map((l, i) =>
-            generate({ label: "generateEssay:write", role: "write", prompt: `${prompt}
+    let writes: Awaited<ReturnType<typeof generate>>[];
+    if (parallelWriteOn(labels.length)) {
+      // 안내문이 "A를 바탕으로 B"라고 한 단계는 순서대로 쓰고, 뒤 단계에 앞 단계의 완성된 글(사실 번호 포함)을 넘긴다(step-order.ts).
+      // 의존 표현이 없으면 웨이브가 하나라 예전처럼 전부 동시에 쓴다.
+      const waves = stepOrderOn() ? stepWaves(elements, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide) : [labels];
+      if (waves.length > 1) console.log(`[generateEssay] 단계 순서: ${waves.map((w) => w.join("+")).join(" → ")}`);
+      const byLabel = new Map<string, Awaited<ReturnType<typeof generate>>>();
+      const done: { label: string; content: string }[] = [];
+      for (const wave of waves) {
+        const prev = previousStepsBlock(done);
+        const parts = await Promise.all(
+          wave.map((l) =>
+            generate({
+              label: "generateEssay:write",
+              role: "write",
+              prompt: `${prompt}
 
-${parallelWriteInstruction(l, labels, i === 0)}`, effort: writeEffort() })
+${parallelWriteInstruction(l, labels, l === labels[0])}${prev ? `\n\n${prev}` : ""}`,
+              effort: writeEffort(),
+            })
           )
-        )
-      : [await generate({ label: "generateEssay:write", role: "write", prompt, effort: writeEffort() })];
+        );
+        wave.forEach((l, i) => {
+          byLabel.set(l, parts[i]);
+          done.push({ label: l, content: ownSection(parts[i].text, l) });
+        });
+      }
+      writes = labels.map((l) => byLabel.get(l)!);
+    } else {
+      writes = [await generate({ label: "generateEssay:write", role: "write", prompt, effort: writeEffort() })];
+    }
     const write = writes[0];
     if (writes.some((w) => !w.text)) throw new Error("AI가 빈 응답을 반환했습니다.");
     // 글쓰기가 번호를 거의 안 붙였으면(최소 effort에서 가끔 있음) 연도·수치가 같은 사실의 번호를 코드가 붙여 복구한다 — 재생성하지 않는다.

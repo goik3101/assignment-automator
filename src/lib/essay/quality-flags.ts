@@ -31,6 +31,16 @@ export function evidenceSlotsOn(): boolean {
 }
 
 /**
+ * 안내문이 "A를 바탕으로 B"라고 한 단계를 순서대로 쓰고, 뒤 단계에 앞 단계의 완성된 글을 넘길지(step-order.ts).
+ * **기본 꺼짐** — 실측(2026-10-29, 같은 안내문 off 5회/on 5회)에서 노린 효과(스토리보드 각주 0개)는 1/5 → 0/5로 한 건 줄었을 뿐이고,
+ * "개요에 없는 수치"는 오히려 0/5 → 1/5였으며, 생성 시간이 중앙 27.7초 → 31.7초로 늘어 30초를 4/5에서 넘겼다(글쓰기가 동시 8초 → 직렬 15.7초).
+ * 효과가 확인되면 ESSAY_STEP_ORDER=on으로 켠다.
+ */
+export function stepOrderOn(): boolean {
+  return process.env.ESSAY_STEP_ORDER === "on";
+}
+
+/**
  * 읽은 출처 페이지에서 값을 못 찾아 각주를 지운 문장 뒤에 "[확인 필요]"를 남길지(claim-check.ts). UNVERIFIED_MARK=off면 예전처럼 각주만 지운다.
  */
 export function unverifiedMarkOn(): boolean {
