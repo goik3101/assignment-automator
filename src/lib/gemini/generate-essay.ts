@@ -47,6 +47,7 @@ import {
 } from "@/lib/essay/deliverable";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
+import { findOwnActivitySentences, ownActivityRepairText } from "@/lib/essay/own-activity";
 import {
   NO_EVIDENCE_PLAN,
   evidenceResearchBlock,
@@ -1914,6 +1915,17 @@ export async function generateEssay(
     }
     if (grammarGaps.length > 0) console.warn(`[generateEssay] 필수 어법 누락 감지: ${JSON.stringify(grammarGaps.map((g) => g.label))}`);
   }
+  // 학생이 하지 않은 행동을 "했다"고 쓴 문장(사진 촬영·스크랩·부착 등) — 제출하면 거짓 기록이라 그 단계만 다시 쓰게 한다(own-activity.ts).
+  const activityRewrites: { label: string; instruction: string }[] = [];
+  if (fixes) {
+    for (const sec of attempt.sections) {
+      const hits = findOwnActivitySentences(sec.content);
+      if (hits.length > 0) activityRewrites.push({ label: sec.label, instruction: ownActivityRepairText(hits) });
+    }
+    if (activityRewrites.length > 0) {
+      console.warn(`[generateEssay] 하지 않은 활동을 썼다고 한 문장 감지: ${JSON.stringify(activityRewrites.map((r) => r.label))}`);
+    }
+  }
   const repeatedPairs = findRepeatedStatements(attempt.sections.map((s) => ({ label: s.label, content: s.content })));
   // 한두 건은 자연스러운 겹침(핵심 연도 문장 등)일 수 있어 3건 이상일 때만 되풀이로 본다.
   const repetitionIssue = repeatedPairs.length >= 3;
@@ -1981,14 +1993,14 @@ export async function generateEssay(
   const corruptionGaps: CoverageGap[] = fixes && !needsFullRetry
     ? corruptedSections.filter((l) => attempt.sections.some((s) => s.label === l)).map((label) => ({ label, missing: ["글 속에 섞인 한국어가 아닌 글자(한자·다른 나라 문자)를 뜻에 맞는 한국어 낱말로 바꿀 것 — 다른 문장은 그대로"] }))
     : [];
-  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue || grammarGaps.length > 0 || itemGaps.length > 0 || corruptionGaps.length > 0)) {
+  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue || grammarGaps.length > 0 || itemGaps.length > 0 || corruptionGaps.length > 0 || activityRewrites.length > 0)) {
     const merged: CoverageGap[] = [];
     for (const g of [...flowingGaps, ...itemGaps, ...grammarGaps, ...corruptionGaps]) {
       const same = merged.find((m) => m.label === g.label);
       if (same) same.missing = [...same.missing, ...g.missing];
       else merged.push({ ...g, missing: [...g.missing] });
     }
-    attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : []);
+    attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
   }
   if (needsFullRetry) {
     console.warn(
@@ -3640,7 +3652,9 @@ async function repairLocally(
   attempt: Attempt,
   elements: CoreTaskInfo["task_elements"],
   gaps: CoverageGap[],
-  repeated: ReturnType<typeof findRepeatedStatements>
+  repeated: ReturnType<typeof findRepeatedStatements>,
+  /** 누락이 아니라 "고쳐 써야 할 문장"을 지적하는 지시(하지 않은 활동을 썼다고 한 문장 등). */
+  rewrites: { label: string; instruction: string }[] = []
 ): Promise<Attempt> {
   const markersOf = (t: string) => t.match(/\[\d+\]/g) ?? [];
   const allMarkers = new Set(attempt.sections.flatMap((s) => markersOf(s.content)));
@@ -3648,6 +3662,7 @@ async function repairLocally(
     const issues: string[] = [];
     const gap = gaps.find((g) => g.label === sec.label);
     if (gap) issues.push(`다음 내용이 다뤄지지 않았다 — 이 단계의 형식에 맞게 실제 문장으로 추가할 것: ${gap.missing.join(", ")}`);
+    for (const r of rewrites.filter((x) => x.label === sec.label)) issues.push(r.instruction);
     // 되풀이는 뒤쪽 단계(b)의 문장을 다른 표현으로 고친다(앞 단계는 사실을 정리한 자료이므로 그대로 둔다).
     const dups = repeated.filter((p) => p.b.label === sec.label);
     if (dups.length > 0) {

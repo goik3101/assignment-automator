@@ -73,14 +73,29 @@ export function isScriptlessSpeech(el: { label: string; description: string }, c
   return ORAL_LABEL.test(el.label) && !WRITTEN_LABEL.test(el.label) && NO_SCRIPT.test(`${el.description} ${context.join(" ")}`);
 }
 
-/** 만들 결과물에서 뺀 이유를 학생이 볼 수 있게 요구사항에 남기는 한 줄. */
-export function dropNote(el: { label: string; description: string }): string {
-  return isObservationSheet(el) ? `수업 중 직접 작성: ${el.label} (AI가 만들지 않음)` : `직접 수행: ${el.label} (대본 없이 말하기 — AI가 만들지 않음)`;
+// 학생이 실물을 구해 붙이는 단계(신문 기사 스크랩, 사진 촬영·캡처, 인쇄해 부착)는 AI가 만들 수 있는 글이 아니다 —
+// 그대로 두면 모델이 "스마트폰으로 촬영했다", "캡처해 보관했다"처럼 학생이 하지도 않은 행동을 지어낸다(실측 2026-10-29, 실제 제출 결과물).
+// 쓸 항목(required_items)이 있거나 서술을 요구하면 글이 섞인 단계이므로 빼지 않는다 — 그쪽은 생성 규칙이 행동 날조만 막는다.
+const ARTIFACT_LABEL = /스크랩|기사\s*(?:찾기|수집|출력)|사진\s*(?:촬영|찍기|수집)|자료\s*사진/;
+const ARTIFACT_DESC = /스크랩|붙인다|붙여|부착|출력(?:해|하여|한다)|인쇄|촬영(?:해|하여|한다)|캡처|오려/;
+const WRITE_DESC = /작성|서술|쓴다|쓰시오|기록한다|정리한다|분석|설명/;
+
+export function isCollectedArtifact(el: { label: string; description: string; required_items?: string[] }): boolean {
+  if ((el.required_items?.length ?? 0) >= 2) return false;
+  const text = `${el.label} ${el.description}`;
+  return (ARTIFACT_LABEL.test(el.label) || ARTIFACT_DESC.test(text)) && ARTIFACT_DESC.test(text) && !WRITE_DESC.test(el.description);
 }
 
-/** 수업 중 작성하는 기록지와 대본 없는 발표를 만들 결과물에서 뺀다. 그것밖에 없는 과제면 그대로 둔다. */
-export function dropNonSubmissionActivities<T extends { label: string; description: string }>(els: T[], context: string[] = []): { kept: T[]; dropped: T[] } {
-  const skip = (e: T) => isObservationSheet(e) || isScriptlessSpeech(e, context);
+/** 만들 결과물에서 뺀 이유를 학생이 볼 수 있게 요구사항에 남기는 한 줄. */
+export function dropNote(el: { label: string; description: string; required_items?: string[] }): string {
+  if (isObservationSheet(el)) return `수업 중 직접 작성: ${el.label} (AI가 만들지 않음)`;
+  if (isCollectedArtifact(el)) return `직접 준비: ${el.label} (학생이 실제 자료를 찾아 붙이는 활동 — AI가 만들지 않음)`;
+  return `직접 수행: ${el.label} (대본 없이 말하기 — AI가 만들지 않음)`;
+}
+
+/** 수업 중 작성하는 기록지, 대본 없는 발표, 학생이 실물을 구해 붙이는 단계를 만들 결과물에서 뺀다. 그것밖에 없는 과제면 그대로 둔다. */
+export function dropNonSubmissionActivities<T extends { label: string; description: string; required_items?: string[] }>(els: T[], context: string[] = []): { kept: T[]; dropped: T[] } {
+  const skip = (e: T) => isObservationSheet(e) || isScriptlessSpeech(e, context) || isCollectedArtifact(e);
   const kept = els.filter((e) => !skip(e));
   if (kept.length === 0) return { kept: els, dropped: [] };
   return { kept, dropped: els.filter(skip) };
