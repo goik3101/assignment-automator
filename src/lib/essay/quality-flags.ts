@@ -41,6 +41,13 @@ export function stepOrderOn(): boolean {
 }
 
 /**
+ * "먼저 …를 설명한다"처럼 사실이 아니라 쓸 순서를 말하는 계획 문장의 각주를 뗄지(plan-citations.ts). PLAN_CITATIONS=off면 예전처럼 둔다.
+ */
+export function planCitationsOn(): boolean {
+  return process.env.PLAN_CITATIONS !== "off";
+}
+
+/**
  * 읽은 출처 페이지에서 값을 못 찾아 각주를 지운 문장 뒤에 "[확인 필요]"를 남길지(claim-check.ts). UNVERIFIED_MARK=off면 예전처럼 각주만 지운다.
  */
 export function unverifiedMarkOn(): boolean {

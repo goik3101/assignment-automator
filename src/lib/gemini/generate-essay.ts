@@ -45,7 +45,8 @@ import {
   stripModelReferenceBlock,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
-import { evidenceSlotsOn, formRequirementsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import {
   NO_EVIDENCE_PLAN,
   evidenceResearchBlock,
@@ -2489,6 +2490,21 @@ export async function generateEssay(
       return { ...s, content };
     }),
   };
+
+  // "먼저 …를 설명한다"처럼 쓸 순서를 말하는 계획 문장의 각주를 뗀다(plan-citations.ts — 그 출처 페이지에 "설명한다"는 계획이 있을 리 없다).
+  // 위 서수 정리("둘째," → "다음으로")가 끝난 뒤에 봐야 한다 — 먼저 보면 서수로 시작하던 계획 문장을 놓친다(실측 2026-10-29, 3회 중 1회).
+  if (fixes && attempt.notes && planCitationsOn()) {
+    let planStripped = 0;
+    const sections = attempt.sections.map((s) => {
+      const r = stripPlanCitations(s.content);
+      planStripped += r.stripped;
+      return r.stripped ? { ...s, content: r.content } : s;
+    });
+    if (planStripped > 0) {
+      console.warn(`[generateEssay] 계획·작업 서술 문장의 각주 ${planStripped}개 제거`);
+      attempt = { ...attempt, sections };
+    }
+  }
 
   // 문장↔출처 대조: 인용한 페이지 본문에 문장의 연도·수치·영문 이름이 실제로 있는지 본다(링크가 열리는지와는 별개의 문제 — 실측: 출생 연도를 단체 소개 페이지에 인용).
   console.log(`[generateEssay] 각주 추적: 후처리(따옴표·서술각주·상투구 제거)후=${countMarkers(attempt.sections)} 출처=${attempt.sources.length}`);
