@@ -48,6 +48,7 @@ import {
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { findOwnActivitySentences, ownActivityRepairText } from "@/lib/essay/own-activity";
+import { dataTableInstruction, dataTableRepairText, hasDataTable, needsDataTable } from "@/lib/essay/data-visual";
 import {
   NO_EVIDENCE_PLAN,
   evidenceResearchBlock,
@@ -607,6 +608,10 @@ ${input.previousOutputText}
       ? "\n[분량 가이드 — 안내문에 분량 지시가 없는 단계] 필요한 내용을 다 담기 위한 권장 범위다. 항목마다 필요한 설명·근거는 충분히 쓰되 같은 사실을 반복해 분량을 채우지 말고, 반대로 중요한 설명을 빼서 줄이지도 말 것." + (formOn ? " 단, [안내문의 작성 기준·양식·예시]나 형식 조건에 예시 분량·줄·문장·문단 수가 있으면 그것이 이 권장 범위보다 우선한다.\n" : "\n") + guideLines.join("\n") + "\n"
       : "");
   const formRulesBlock = buildFormRulesBlock(elements);
+  // 안내문이 표·그래프를 요구한 단계는 글 안에 마크다운 표로 직접 쓰게 한다(data-visual.ts) — 해당 단계가 없으면 빈 문자열.
+  const dataTableBlock = qualityFixesOn()
+    ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide)).map((el) => el.label))
+    : "";
   // 책 과제인가 / 인상 깊은 구절(원문 인용)을 요구하는가에 따라 검색·인용 규칙의 범위를 정한다(essay/excerpt-need.ts).
   const isBookPrompt = !!input.presetBook || needsBookCandidateSelection(input, elements);
   const wantsExcerpt = needsExcerpt([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""]);
@@ -701,7 +706,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -1924,6 +1929,16 @@ export async function generateEssay(
     }
     if (activityRewrites.length > 0) {
       console.warn(`[generateEssay] 하지 않은 활동을 썼다고 한 문장 감지: ${JSON.stringify(activityRewrites.map((r) => r.label))}`);
+    }
+  }
+  // 안내문이 요구한 표·그래프가 글에 실제로 없으면 그 단계만 다시 쓰게 한다(data-visual.ts — 설명·자리 표시로 대신한 경우).
+  if (fixes) {
+    for (const el of elements) {
+      if (!needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide)) continue;
+      const sec = attempt.sections.find((s) => s.label === el.label);
+      if (!sec || hasDataTable(sec.content)) continue;
+      console.warn(`[generateEssay] 표·그래프를 글에 만들지 않음 label="${el.label}"`);
+      activityRewrites.push({ label: el.label, instruction: dataTableRepairText(el.label) });
     }
   }
   const repeatedPairs = findRepeatedStatements(attempt.sections.map((s) => ({ label: s.label, content: s.content })));
