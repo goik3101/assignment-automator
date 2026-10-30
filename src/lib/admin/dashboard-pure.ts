@@ -35,6 +35,39 @@ export function seriesByDay<T>(
   return days.map((d) => points.get(d)!);
 }
 
+/** 'YYYY-MM-DD'가 실제 달력에 있는 날짜인지(2026-02-30 같은 값은 거절). */
+export function isValidDayKey(s: unknown): s is string {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
+
+/** 한국 시간 하루(00:00~24:00)의 UTC 시작·끝 시각(ISO). 끝은 포함하지 않는다. */
+export function kstDayRange(day: string): { start: string; end: string } {
+  const start = new Date(`${day}T00:00:00+09:00`);
+  return { start: start.toISOString(), end: new Date(start.getTime() + DAY_MS).toISOString() };
+}
+
+/**
+ * 한 날(KST)의 행들을 시간대(0~23시)별로 묶어 계열별 합계를 만든다. day 필드는 "00"~"23"이고, 그 날이 아닌 행은 버린다.
+ * 자정에 가까운 행이 UTC로는 다른 날이어도 한국 시간 기준으로 맞게 들어간다.
+ */
+export function hourlyByDay<T>(
+  rows: T[],
+  day: string,
+  getTime: (r: T) => string,
+  getValues: (r: T) => Record<string, number>
+): DayPoint[] {
+  const points: DayPoint[] = Array.from({ length: 24 }, (_, h) => ({ day: String(h).padStart(2, "0"), values: {} }));
+  for (const r of rows) {
+    const t = new Date(getTime(r));
+    if (Number.isNaN(t.getTime()) || kstDayKey(t) !== day) continue;
+    const hour = new Date(t.getTime() + KST_OFFSET_MS).getUTCHours();
+    for (const [k, v] of Object.entries(getValues(r))) points[hour].values[k] = (points[hour].values[k] ?? 0) + v;
+  }
+  return points;
+}
+
 export function sumSeries(points: DayPoint[], key: string): number {
   return points.reduce((s, p) => s + (p.values[key] ?? 0), 0);
 }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { kstDayKey, lastNDayKeys, seriesByDay, sumSeries, percentile, forecastMonthCost, maskIp, evaluateSecurityConfig } from "./dashboard-pure.ts";
+import { kstDayKey, lastNDayKeys, seriesByDay, sumSeries, percentile, forecastMonthCost, maskIp, evaluateSecurityConfig, isValidDayKey, kstDayRange, hourlyByDay } from "./dashboard-pure.ts";
 
 test("날짜 키는 한국 시간 기준: UTC 15시는 이미 다음 날", () => {
   assert.equal(kstDayKey("2026-10-24T14:59:59Z"), "2026-10-24");
@@ -72,4 +72,35 @@ test("보안 설정 점검: 값은 담지 않고 조건만 본다", () => {
   assert.equal(evaluateSecurityConfig({ ADMIN_LOGIN_PASSWORD: same, ADMIN_SESSION_SECRET: same }).find((c) => c.id === "admin-session-secret")?.ok, false);
   // 어느 점검에도 환경변수 값이 새어 나가지 않는다.
   assert.equal(JSON.stringify(good).includes("xxxx"), false);
+});
+
+test("달력에 있는 날짜만 통과", () => {
+  for (const ok of ["2026-10-30", "2024-02-29"]) assert.equal(isValidDayKey(ok), true);
+  for (const bad of ["2026-02-30", "2026-13-01", "2026-1-1", "20261030", "", null, undefined, 20261030, "2026-10-30T00:00"]) assert.equal(isValidDayKey(bad), false);
+});
+
+test("한국 시간 하루의 UTC 범위", () => {
+  assert.deepEqual(kstDayRange("2026-10-30"), { start: "2026-10-29T15:00:00.000Z", end: "2026-10-30T15:00:00.000Z" });
+});
+
+test("시간대별 집계: 한국 시간 기준으로 0~23시에 넣고 다른 날은 버린다", () => {
+  const rows = [
+    { at: "2026-10-29T15:00:00Z", k: "login" }, // KST 10/30 00:00 → 0시
+    { at: "2026-10-30T03:59:59Z", k: "guest" }, // KST 12:59 → 12시
+    { at: "2026-10-30T04:00:00Z", k: "login" }, // KST 13:00 → 13시
+    { at: "2026-10-30T04:30:00Z", k: "login" }, // 13시
+    { at: "2026-10-30T14:59:59Z", k: "regen" }, // KST 23:59 → 23시
+    { at: "2026-10-30T15:00:00Z", k: "login" }, // KST 10/31 00:00 → 다른 날, 버림
+    { at: "2026-10-29T14:59:59Z", k: "login" }, // KST 10/29 23:59 → 다른 날, 버림
+  ];
+  const h = hourlyByDay(rows, "2026-10-30", (r) => r.at, (r) => ({ [r.k]: 1 }));
+  assert.equal(h.length, 24);
+  assert.deepEqual(h.map((p) => p.day).slice(0, 3), ["00", "01", "02"]);
+  assert.deepEqual(h[0].values, { login: 1 });
+  assert.deepEqual(h[12].values, { guest: 1 });
+  assert.deepEqual(h[13].values, { login: 2 });
+  assert.deepEqual(h[23].values, { regen: 1 });
+  assert.equal(h.reduce((s, p) => s + Object.values(p.values).reduce((a, b) => a + b, 0), 0), 5);
+  // 잘못된 시각은 버린다
+  assert.equal(hourlyByDay([{ at: "not-a-date", k: "login" }], "2026-10-30", (r) => r.at, (r) => ({ [r.k]: 1 })).every((p) => Object.keys(p.values).length === 0), true);
 });

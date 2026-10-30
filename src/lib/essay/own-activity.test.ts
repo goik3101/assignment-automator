@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findOwnActivitySentences, isOwnActivitySentence } from "./own-activity.ts";
+import { countBlanks, findOwnActivitySentences, isOwnActivitySentence, isOwnRecordStep } from "./own-activity.ts";
 
 // 실제 제출 직전 결과물(2026-10-29)에서 그대로 가져온 문장들 — 학생이 하지 않은 행동을 썼다고 한 경우.
 const FABRICATED = [
@@ -27,4 +27,14 @@ test("소제목·표 줄은 보지 않고, 불릿 문장은 본다", () => {
   const hits = findOwnActivitySentences(content);
   assert.equal(hits.length, 1);
   assert.match(hits[0], /스마트폰으로/);
+});
+
+test("직접 수행 기록 단계를 가려내고 빈칸을 센다", () => {
+  assert.equal(isOwnRecordStep({ label: "자료 수집 및 기록", description: "자료를 조사해 기록한다." }), true);
+  assert.equal(isOwnRecordStep({ label: "청중 기록지", description: "" }), true);
+  assert.equal(isOwnRecordStep({ label: "정책 제안서", description: "해결 방안을 제안한다." }), false);
+  // 실제 결과물(결과물.2.txt)의 빈칸 표기
+  const t = "날짜: [직접 작성: 조사한 날짜]\n[직접 작성: 관할 시·군·구 이름]의 경보 빈도\n고농도 일수 [직접 작성: 캡처한 일수]일";
+  assert.equal(countBlanks(t), 3);
+  assert.equal(countBlanks("빈칸 없는 글"), 0);
 });

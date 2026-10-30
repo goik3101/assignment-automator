@@ -37,13 +37,36 @@ export function findOwnActivitySentences(content: string): string[] {
   return out;
 }
 
+/** 학생이 직접 수행한 것을 적는 단계인가(자료 수집·조사 기록·관찰 활동지). 이런 단계만 빈칸 규칙을 적용한다. */
+const OWN_RECORD_LABEL =
+  /자료\s*수집|수집\s*(?:및|과|·)?\s*기록|조사\s*(?:및|과|·)?\s*기록|관찰\s*기록|기록지|활동지|활동\s*기록|탐구\s*일지|취재/;
+const OWN_RECORD_DESC = /(?:직접|스스로)\s*(?:조사|수집|관찰|촬영|기록)|수행평가지에\s*(?:붙|적|기록)/;
+export function isOwnRecordStep(el: { label: string; description?: string }): boolean {
+  return OWN_RECORD_LABEL.test(el.label) || OWN_RECORD_DESC.test(el.description ?? "");
+}
+
+const BLANK = /\[직접\s*작성[^\]]*\]/g;
+export function countBlanks(content: string): number {
+  return (content.match(BLANK) ?? []).length;
+}
+
+/** 빈칸이 너무 많을 때 줄 보완 지시 — 본인만 아는 것만 남기고 나머지는 채우게 한다. */
+export function blankOveruseRepairText(max: number, found: number): string {
+  return (
+    `"[직접 작성: …]" 빈칸이 ${found}개나 된다(최대 ${max}개). 빈칸은 학생 본인만 알 수 있는 것(이름, 사는 지역·학교, 조사한 날짜, ` +
+    `본인이 직접 센 값, 설문에 응한 사람 수)에만 남기고, 나머지 빈칸은 실제 내용으로 채울 것 — 어떤 자료를 어디서 찾는지(기관·자료 이름), ` +
+    `조사 방법과 순서, 설문·인터뷰 문항 초안, 자료가 보여 주는 사실과 수치는 빈칸이 아니라 글로 쓴다. 다른 문장과 각주는 그대로 둘 것.`
+  );
+}
+
 /** 걸린 단계에 줄 보완 지시(이미 있는 "그 단계만 고치기" 경로로 전달한다). */
 export function ownActivityRepairText(sentences: string[]): string {
   const quoted = sentences.slice(0, 3).map((s) => `"${s.slice(0, 60)}…"`).join(" / ");
   return (
     `학생이 실제로 하지 않은 행동을 한 것처럼 쓴 문장이 있다(${quoted}). ` +
     `사진 촬영·캡처·스크랩·출력·부착·방문·인터뷰는 학생이 직접 하는 일이라 AI가 "했다"고 쓸 수 없다. ` +
-    `그 문장들은 자료의 내용(사실·수치·출처 기관)만 남겨 평서문으로 바꾸고, 학생이 직접 채워야 하는 자리는 "[직접 작성: 무엇]"으로 남길 것. ` +
+    `그 문장들은 자료의 내용(자료 이름·출처 기관·사실·수치)과 할 일의 방법을 쓰는 문장으로 바꾸고("~에서 ~를 확인한다"), ` +
+    `빈칸("[직접 작성: 무엇]")은 학생 본인만 알 수 있는 것(이름·사는 지역·조사한 날짜·본인이 직접 센 값)에만 남길 것. ` +
     `다른 문장과 사실(연도·수치·각주 번호)은 그대로 둘 것.`
   );
 }
