@@ -83,6 +83,8 @@ export interface ClaimCheckSummary {
   repointed: number;
   unverified: number;
   unsupported: { text: string; tokens: string }[];
+  /** 본문의 그 문장 뒤에 "[확인 필요]" 표시를 실제로 남겼는가(UNVERIFIED_MARK). 끄고 쓰면 화면 설명도 그 문장을 빼야 한다. */
+  marked?: boolean;
 }
 
 export interface EssayResult {

@@ -1403,10 +1403,14 @@ ${parallelWriteInstruction(l, labels, l === labels[0])}${prev ? `\n\n${prev}` : 
     if (writes.some((w) => !w.text)) throw new Error("AI가 빈 응답을 반환했습니다.");
     // 글쓰기가 번호를 거의 안 붙였으면(최소 effort에서 가끔 있음) 연도·수치가 같은 사실의 번호를 코드가 붙여 복구한다 — 재생성하지 않는다.
     let written = writes.length > 1 ? mergeParallelParts(writes.map((w) => w.text), labels) : write.text;
-    if ((written.match(/\[F\d+\]/g) ?? []).length < 2) {
+    // 번호가 빠진 수치 문장은 항상 복구한다 — 예전에는 "글 전체에 번호가 2개 미만"일 때만 돌려서, 번호를 몇 개만 붙이고
+    // 나머지 연도·수치 문장을 맨몸으로 둔 글이 그대로 나갔다(실측 2026-10-30, 오늘 코드로 만든 15편 중 12편).
+    // 노트의 사실과 숫자가 겹치는 문장에만 붙이고, 뒤의 문장↔출처 대조가 틀린 연결을 다시 걸러낸다.
+    {
+      const before = (written.match(/\[F\d+\]/g) ?? []).length;
       const rec = attachFactMarkers(written, notes.facts);
       written = rec.text;
-      console.warn(`[generateEssay] 글쓰기가 사실 번호를 거의 안 붙임 — 코드가 ${rec.attached}문장에 붙여 복구`);
+      if (rec.attached > 0) console.log(`[generateEssay] 번호가 빠진 수치 문장 ${rec.attached}개에 사실 번호를 붙임(글쓰기가 붙인 것 ${before}개)`);
     }
     const mapped = mapFactMarkers(written, notes.facts);
     const checked = await prefetch;
@@ -2622,6 +2626,7 @@ export async function generateEssay(
         repointed: count("repointed"),
         unverified: count("unverified"),
         unsupported: findings.filter((f) => f.status === "unsupported").map((f) => ({ text: f.text, tokens: describeToken(f.tokens) })),
+        marked: unverifiedMarkOn(),
       };
       if (claimCheck.repointed > 0 || claimCheck.unsupported.length > 0) {
         console.warn(

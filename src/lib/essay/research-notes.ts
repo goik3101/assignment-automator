@@ -303,7 +303,9 @@ export function extractSummaryLines(text: string): string[] {
  * 같은 값을 공유하는 사실이 둘 이상이면 문장과 겹치는 숫자가 가장 많은 쪽을 쓴다. 값이 없는 서술 문장은 건드리지 않는다.
  */
 export function attachFactMarkers(text: string, facts: Fact[]): { text: string; attached: number } {
-  const NUM = /(?<![\d.,])(1[0-9]{3}|20[0-9]{2})(?![\d])|\d+(?:\.\d+)?\s?%/g;
+  // 연도·퍼센트만 보면 "59,459톤", "26㎍/m³" 같은 값이 든 문장을 놓친다(실측 2026-10-30: 복구 후에도 남은 무각주 수치 문장이 전부 이런 값이었다).
+  const NUM =
+    /(?<![\d.,])(1[0-9]{3}|20[0-9]{2})(?![\d])|\d+(?:\.\d+)?\s?%|(?<![\d.])\d{1,3}(?:,\d{3})+(?![\d])|(?<![\d.])\d+(?:\.\d+)?\s?(?:㎍|㎎|톤|억|조|만\s?명|명|건|배|위)/g;
   const numsOf = (t: string) => new Set([...t.matchAll(NUM)].map((m) => m[0].replace(/\s/g, "")));
   const factNums = facts.map((f) => numsOf(f.fact));
   let attached = 0;
