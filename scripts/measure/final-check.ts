@@ -26,6 +26,7 @@ interface Case {
   extraRequirements?: string[];
 }
 const CASES: Case[] = [
+  { id: "국어(발표)", images: ["국어 -1/KakaoTalk_20260526_213359166.jpg"], instructions: "인터넷 실명제 도입에 반대하는 입장으로 발표할게." },
   { id: "카드뉴스(역사)", images: ["역사-2/photo_2026-10-21_01-03-10 - 복사본.jpg"], instructions: "책: 윤태호 작가의 《사일구》(4·19혁명)를 읽었다." },
   { id: "신문(역사)", images: ["역사-1 - 복사본/KakaoTalk_20261021_232340155_02.jpg", "역사-1 - 복사본/KakaoTalk_20261021_232340155_01.jpg"] },
   { id: "영어(발명품)", images: ["영어-1 - 복사본/KakaoTalk_20261021_232340155_08.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_06.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_07.jpg"] },
@@ -63,7 +64,7 @@ for (const c of CASES) {
       if (c.extraRequirements) core = { ...core, requirements: [...core.requirements, ...c.extraRequirements] };
       const textEls = core.task_elements.filter((e) => e.type === "text_submission");
       if (textEls.length === 0) return { result: null, usage: summarizeTrace(trace), subject, core };
-      const result = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions });
+      const result = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] } });
       return { result, usage: summarizeTrace(trace), subject, core };
     });
     if (!result || result.type !== "essay") {

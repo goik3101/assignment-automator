@@ -8,6 +8,7 @@ import { isPlanSentence } from "@/lib/essay/plan-citations";
 import { hasDataTable } from "@/lib/essay/data-visual";
 import { isLandingPage } from "@/lib/essay/research-notes";
 import { findRepeatedStatements } from "@/lib/essay/repetition";
+import { findRefusalSentences } from "@/lib/essay/refusal";
 
 const OUT = path.join(process.cwd(), "scratchpad", "measure", "out");
 const USER = path.join(process.cwd(), "수행평가 안내문");
@@ -18,8 +19,25 @@ interface Check {
   find: (text: string) => number;
 }
 
+/**
+ * 본문만 남긴다 — 맨 아래 "출처"·"근거자료 출처" 목록과 주소가 붙은 목록 줄은 본문 문장이 아니다.
+ * 실측(2026-10-31): 최신 코드로 만든 글 6편이 찍은 결함이 전부 이 줄들이었다
+ * ("120자 넘는 긴 문장"=긴 주소, "무각주 수치"=출처 제목 속 연도, "본문에 날 URL"=안내문이 요구한 출처 항목).
+ */
+const bodyOnly = (t: string) => {
+  const out: string[] = [];
+  let inSources = false;
+  for (const line of t.split("\n")) {
+    if (/^#{2,4}\s/.test(line)) inSources = /출처|참고\s*자료|references/i.test(line);
+    if (inSources) continue;
+    if (/^\s*[-*•]?\s*\S.*:\s*https?:\/\//.test(line)) continue; // "제목: https://…" 목록 줄
+    out.push(line);
+  }
+  return out.join("\n");
+};
+
 const sentences = (t: string) =>
-  t
+  bodyOnly(t)
     .split("\n")
     .filter((l) => !/^\s*(?:#|\|)/.test(l))
     // 각주가 마침표 뒤에 붙으면("판결했다.[1] 다음 문장") 공백만으로는 안 나뉜다 — 각주까지 포함해 끊는다.
@@ -31,11 +49,12 @@ const checks: Check[] = [
   { name: "하지 않은 활동을 했다고 씀", find: (t) => findOwnActivitySentences(t).length },
   { name: "계획 문장에 각주", find: (t) => sentences(t).filter((s) => /\[\d+\]/.test(s) && isPlanSentence(s.replace(/\[\d+\]\s*$/, ""))).length },
   { name: "빈칸 4개 이상", find: (t) => (countBlanks(t) > 3 ? 1 : 0) },
-  { name: "본문에 날 URL", find: (t) => (t.match(/^[^|]*https?:\/\/\S+/gm) ?? []).length },
+  { name: "본문에 날 URL", find: (t) => (bodyOnly(t).match(/^[^|]*https?:\/\/\S+/gm) ?? []).length },
   { name: "기관 첫 화면을 출처로", find: (t) => (t.match(/https?:\/\/\S+/g) ?? []).filter((u) => isLandingPage(u.replace(/[.,)]+$/, ""))).length },
   { name: "탭으로 맞춘 표(표로 안 보임)", find: (t) => t.split("\n").filter((l) => /\t/.test(l) && l.split("\t").length >= 2 && !/^\s*\|/.test(l)).length },
   { name: "소제목에 작성 지시 노출", find: (t) => (t.match(/^#{2,4}[^\n]*[(（][^)）\n]*(?:제출용|조사\s*자료|항목마다|문단으로)[^)）\n]*[)）]/gm) ?? []).length },
   { name: "작업 설명 문장", find: (t) => sentences(t).filter((s) => /^\(?\s*(?:근거|출처)\s*(?:표시|표기|안내)\s*\)|수행평가지에\s*(?:첨부|정리)할\s*파일/.test(s)).length },
+  { name: "못 하겠다고 쓴 거절문", find: (t) => findRefusalSentences(bodyOnly(t)).length },
   { name: "[확인 필요] 본문 노출", find: (t) => (t.match(/\[확인 필요\]/g) ?? []).length },
   { name: "서술형 각주 깨짐([1],.)", find: (t) => (t.match(/\[\d+\]\s*,\s*[.!?]/g) ?? []).length },
   { name: "수치 문장에 각주 없음", find: (t) => sentences(t).filter((s) => /\d{3,4}년|\d+(?:\.\d+)?\s*%|\d+\s*㎍|\d{1,3},\d{3}/.test(s) && !/\[\d+\]/.test(s)).length },
@@ -43,7 +62,8 @@ const checks: Check[] = [
   { name: "금지 자료(사진·영상) 언급", find: (t) => t.split("\n").filter((l) => /화면 설명|시각 자료|이미지/.test(l) && /사진|영상|동영상/.test(l)).length },
   { name: "표가 있어야 하는데 없음(표 언급만)", find: (t) => (/그래프|표로|도표/.test(t) && !hasDataTable(t) ? 1 : 0) },
   // ── 아직 본 적 없는 것들도 함께 센다(숨은 결함 찾기) ──
-  { name: "소제목만 있고 내용이 빈 항목", find: (t) => (t.match(/^###[^\n]*\n\s*(?=###|##\s|$)/gm) ?? []).length },
+  // 소제목 다음에 빈 줄이 오면 /$/가 m 플래그에서 그 빈 줄에 걸려 "내용 없음"으로 세던 버그를 고쳤다(2026-10-31).
+  { name: "소제목만 있고 내용이 빈 항목", find: (t) => (t.match(/^###[^\n]*\n(?:[ \t]*\n)*(?=#{2,3}\s|(?![\s\S]))/gm) ?? []).length },
   { name: "같은 각주가 붙어서 중복([1][1])", find: (t) => (t.match(/\[(\d+)\]\[\1\]/g) ?? []).length },
   { name: "출처 목록에 없는 각주 번호", find: (t) => {
       const maxN = Math.max(0, ...[...t.matchAll(/^\s*\[(\d+)\]\s*$|^\[(\d+)\]/gm)].map((m) => Number(m[1] ?? m[2])));
