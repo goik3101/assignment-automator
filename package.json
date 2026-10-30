@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "node --test \"src/**/*.test.ts\"",
+    "measure:scan": "node --import ./scripts/measure/loader/register.mjs scripts/measure/scan.ts"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",

@@ -96,7 +96,11 @@ src/
                                      length-plan(단계 역할별 분량 가이드), form-rules(글 종류별 작성 방식), source-select(출처 2~3개로 정리),
                                      claim-check(문장↔출처 페이지 대조), coverage·repetition(누락·반복 검사), excerpt-need(원문 구절 요구 여부), research-notes(조사→글쓰기 사실 노트), research-cache(+key: 같은 수행평가 학생끼리 조사 노트 재사용, 마이그레이션 0017),
                                      quality-flags(품질 개선 스위치 ESSAY_QUALITY_FIXES=off로 되돌림), prompt-scope(과제에 해당할 때만 공통 규칙 블록 포함), opinion-citations(감상 문장 각주 제거),
-                                     form-requirements·form-repair(안내문의 개수 조건 — 8장면·N문장·N문단 — 을 프롬프트에 전하고 생성 뒤 코드로 세어 어긴 단계만 한 번 보완. FORM_REQUIREMENTS=off로 되돌림)
+                                     form-requirements·form-repair(안내문의 개수 조건 — 8장면·N문장·N문단 — 을 프롬프트에 전하고 생성 뒤 코드로 세어 어긴 단계만 한 번 보완. FORM_REQUIREMENTS=off로 되돌림),
+                                     evidence-slots(안내문이 요구한 "서로 다른 근거 N개"와 학생 입장을 조사에 전하고, 근거가 한 페이지에 몰리면 1회 보강),
+                                     step-order(안내문이 "A를 바탕으로 B"라고 한 단계만 순차 생성 — 기본 꺼짐), plan-citations(쓸 순서를 말하는 계획 문장의 각주 제거),
+                                     own-activity(촬영·스크랩처럼 학생이 하지 않은 행동을 "했다"고 쓴 문장 탐지 + "[직접 작성]" 빈칸 과다 검사),
+                                     data-visual(안내문이 요구한 표·그래프를 실제로 만들었는지 + 안내문이 금지한 자료(사진·영상)를 썼는지)
     links/
       validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
     admin/
@@ -144,6 +148,13 @@ docs/
 - **실험 규칙:** 효과가 실측으로 확인된 변경만 적용하고, 실패하면 기존 방식으로 돌아갈 수 있게(환경변수 스위치 등) 하며, 효과가 없으면 억지로 수정하지 않고 되돌린다. 이미 기각한 실험은 `docs/current-goals.md`의 진행 상태에서 확인하고 같은 방식으로 반복하지 않는다. 추측을 사실처럼 말하지 말고 측정값에는 표본 수를 함께 적는다.
 - **조사 노트 캐시**(`lib/essay/research-cache*.ts`)는 기본 꺼짐이다(다양성 저하 우려). 켜려면 `RESEARCH_CACHE=on`.
 - **품질 개선 스위치**: `ESSAY_QUALITY_FIXES=off`면 2026-10-21~22 점검에서 바꾼 프롬프트·후처리(양식 충실 규칙, writing_guide 사용, 작업 메모·주소 제거 등)를 전부 예전 방식으로 되돌린다. 글쓰기 호출만 다른 모델로 바꾸려면 `OPENAI_MODEL_WRITE`(없으면 `OPENAI_MODEL_MAIN`). 안내문 분석은 `OPENAI_MODEL_ANALYZE`, 공부 도구(요약·플래시카드·퀴즈·가상 시험·암기노트·예상 질문)는 `OPENAI_MODEL_STUDY`(둘 다 없으면 `OPENAI_MODEL_LITE`, 현재 gpt-6-luna). 테스트 스크립트는 `SOURCE_STATS_LOG=off`로 링크 통계(source_validations)에 기록을 남기지 않는다. 속도 스위치(2026-10-23, 기본 켜짐): `ESSAY_PARALLEL_WRITE=off`(단계별 동시 글쓰기 끄기, `lib/essay/parallel-write.ts`), `ESSAY_BOOK_EXCERPT=legacy`(구절 요구 책 과제를 예전 경로로), `ESSAY_AUTHOR_PRECHECK=off`, `PLAN_REUSE_ESSAY_FACTS=off`(계획이 원고 사실을 재사용하지 않고 다시 조사).
+- **글 품질 작업(2026-10-29~30) 스위치** — 전부 기본 켜짐, 괄호 안 값으로 되돌린다. 근거와 측정값은 `PROGRESS.md`의 같은 날짜 항목에 있다.
+  `OPENAI_MODEL_WRITE=gpt-6-luna`(완성 원고 글쓰기만 luna — mini 대비 24.8→20.4초·되풀이 1.3→0쌍, 더 비싼 gpt-6-sol·gpt-5.6-luna는 이 과제에서 더 낫지 않았다), `ESSAY_WRITE_EFFORT=low`(luna는 minimal을 거부),
+  `ESSAY_WRITER_KNOWLEDGE=strict`(기본은 교과서 수준 일반 지식 허용 — 금지해 두면 노트 10~14개 사실만으로 글을 채우느라 같은 말이 되풀이됐다),
+  `UNVERIFIED_MARK=off`(본문에 "[확인 필요]" 표시), `ESSAY_EVIDENCE_SLOTS=off`, `PLAN_CITATIONS=off`, `ESSAY_STEP_ORDER=on`(순차 생성은 기본 꺼짐 — 효과 미확인·시간 +4초),
+  `ESSAY_MAX_BLANKS`(기본 3), `ESSAY_ITEM_PARALLEL=off`(단계가 하나뿐일 때 항목을 둘로 나눠 동시 쓰기), `ESSAY_TIME_BUDGET_MS`(기본 22000, 0이면 끔 — 넘으면 품질 교정용 추가 호출을 건너뛰되 안내문 요구를 채우는 보완은 +4초까지 허용),
+  `SOURCE_LIMIT`(출처 정리 한도, 기본 5 — 예전 3은 각주 49개·출처 32개를 잘라냈다), `SOURCE_JUDGE=on`(작은 모델 판정으로 각주를 옮기던 경로, 기본 꺼짐).
+- **측정 방법**: 실제 안내문 사진은 `수행평가 안내문/`(gitignore). 생성 품질은 "하나씩 고치기" 대신 **결함 검사기로 전수**로 본다 — 알려진 결함 14종(날조 활동·빈칸 과다·금지 자료·표 누락·계획 문장 각주·기관 첫 화면 출처·무각주 수치·되풀이·빈 항목·중복 각주·범위 밖 각주·소제목 중복·끊긴 문장·외국 문자). 측정 스크립트는 `scripts/measure/`.
 - **AI 채팅**(`lib/study/chat.ts`, 프롬프트 조립은 alias 없는 `chat-pure.ts`): 안내문 분석 결과(`StudyContext.assignmentInfo`, 행정정보 제외)를 채팅에만 함께 보여준다(요약·퀴즈 등은 "자료에 있는 내용만" 규칙 때문에 섞지 않음). 값싼 공부 도구용 모델(`OPENAI_MODEL_STUDY`)이 검색 없이 먼저 답하고, 검색이 필요하다고 한 질문만 `OPENAI_MODEL_MAIN`이 검색을 강제해 다시 답한다. `CHAT_ROUTING=off`면 예전처럼 main 한 번. 하루 상한은 `STUDY_LIMIT_CHAT`(기본 20, 2026-10-26 결정; 관리자는 제외).
 - **개수 조건**(2026-10-27): 안내문의 "8장면"·"5문장 이내" 같은 조건은 분석 결과를 바꾸지 않고 생성 시점에만 읽는다(`essay/form-requirements.ts`). 장면 수는 필수 항목 "장면 1…N"으로 펼치고, 문장·줄·문단 상한이 있는 단계는 기본 분량 가이드를 빼며, 생성 뒤 문장·문단 수를 코드로 센다(줄 수는 셀 수 없어 프롬프트로만). 수업 중 직접 쓰는 기록지(청중 기록지 등)와 "대본 없이" 말로 하는 발표는 분석 단계가 만들 결과물에서 뺀다(`dropNonSubmissionActivities`, 뺀 것은 요구사항에 한 줄로 남김). `FORM_REQUIREMENTS=off`로 전부 되돌린다.
 - **AI 튜터**(`/tutor`, `/tutor/[id]`, `components/tutor/TutorApp.tsx`, 서버 `lib/tutor/tutor.ts`·알리아스 없는 `tutor-pure.ts`, API `/api/tutor`·`/api/tutor/conversations`): 수행평가 내용을 글로 설명하거나 사진을 올리면 튜터가 꼭 필요한 것만 한 번에 하나씩 되묻고(최근 대화 기준 3번 상한, 코드가 스키마에서 질문 칸을 빼서 강제) 근거·개요·초안을 채팅으로 직접 쓴다. 값싼 모델(`OPENAI_MODEL_STUDY`)이 먼저 보고 일반 질문·개념 설명·안내문 분석·되묻기는 그대로 답하며, 수행평가 글쓰기(근거·개요·초안·다듬기)는 메인 원고와 같은 `write` 역할 모델(`OPENAI_MODEL_WRITE`, 없으면 MAIN)이 양식·사실·저작권 규칙과 함께 쓰고(`TUTOR_WRITE_ROUTING=off`면 예전처럼 값싼 모델이 씀), 검색이 필요한 질문은 main 모델이 검색을 강제해 답한다(`decideTutorRoute`). 사진은 첫 호출에서만 보내 거기서 옮겨 적은 글(`attachment_text`)만 저장해 다음 턴부터 쓴다. 대화는 `tutor_conversations`·`tutor_messages`(마이그레이션 0019, 본인만 보는 RLS, 메인의 `user_histories`·임베딩과 연결하지 않음)에 저장되고, 서버가 저장된 대화를 직접 읽어 모델에 보낸다(클라이언트가 보낸 대화를 믿지 않음). 사이드바는 `/tutor`에서 작업 목록을 튜터 대화(`SidebarTutorList`)로 바꾸고 "새 창작물"을 "새 대화"로 바꾼다. 대화가 시작되면 오른쪽에 `StudyRail`(`hideChat`)이 붙고, 공부 도구는 `StudyContextRef` kind `tutor`로 대화 내용(`tutorToText`)을 읽는다. 하루 상한 `STUDY_LIMIT_TUTOR`(기본 20, 관리자 제외).
