@@ -13,19 +13,25 @@ export default function StackedBars({
   series,
   format = (n) => String(Math.round(n)),
   height = 112,
+  labelOf = (key) => key.slice(5).replace("-", "/"),
+  unit = "일별",
 }: {
   data: DayPoint[];
   series: BarSeries[];
   format?: (n: number) => string;
   height?: number;
+  /** 막대의 키(날짜 또는 시각)를 눈금·말풍선에 보일 글자로 바꾼다. 기본은 "MM/DD". */
+  labelOf?: (key: string) => string;
+  /** 접근성 설명에 쓰는 구분("일별", "시간대별"). */
+  unit?: string;
 }) {
   const totals = data.map((p) => series.reduce((s, x) => s + (p.values[x.key] ?? 0), 0));
   const max = Math.max(...totals, 0);
-  const label = (day: string) => day.slice(5).replace("-", "/");
+  const label = labelOf;
 
   return (
     <div>
-      <div className="flex items-end gap-[3px]" style={{ height }} role="img" aria-label={series.map((s) => s.label).join(", ") + " 일별 그래프"}>
+      <div className="flex items-end gap-[3px]" style={{ height }} role="img" aria-label={series.map((s) => s.label).join(", ") + ` ${unit} 그래프`}>
         {data.map((p, i) => {
           const parts = series.map((s) => ({ s, v: p.values[s.key] ?? 0 })).filter((x) => x.v > 0);
           const tip = `${label(p.day)} — ` + (parts.length ? parts.map((x) => `${x.s.label} ${format(x.v)}`).join(", ") : "기록 없음");

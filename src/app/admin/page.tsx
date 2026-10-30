@@ -3,6 +3,8 @@ import { requireAdminOrRedirect } from "@/lib/admin/session";
 import { getAdminStats } from "@/lib/admin/stats";
 import { getDashboardData } from "@/lib/admin/dashboard";
 import StackedBars from "@/components/admin/StackedBars";
+import HourlyGenerations from "@/components/admin/HourlyGenerations";
+import { kstDayKey } from "@/lib/admin/dashboard-pure";
 import AdminLogoutButton from "./AdminLogoutButton";
 
 export const dynamic = "force-dynamic";
@@ -209,15 +211,19 @@ export default async function AdminDashboardPage() {
             />
             {d.generations.truncated && <p className="mt-2 text-[11px] text-faint">기록이 많아 일부(최근 2만 건)만 집계했어요.</p>}
           </Panel>
+          {/* 오른쪽: 날짜를 골라 그날 몇 시에 생성이 몇 건 있었는지 본다 */}
+          <HourlyGenerations today={kstDayKey(d.generatedAt)} minDay={kstDayKey(new Date(d.generatedAt).getTime() - 365 * 24 * 60 * 60 * 1000)} />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
           <Panel title="신규 가입 (일별)">
             <StackedBars data={d.users.signupDays} series={[{ key: "signups", label: "가입", className: "bg-foreground" }]} />
           </Panel>
-        </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard label="30일 신규 가입" value={`${d.users.signups30d}명`} />
-          <StatCard label="30일 내 접속" value={`${d.users.active30d}명`} />
-          <StatCard label="오늘 생성" value={stats.generations.today} sub={`7일 ${stats.generations.last7Days} · 30일 ${stats.generations.last30Days}`} />
-          <StatCard label="로그인 비율(30일)" value={pct(loginPct)} sub={`로그인 ${stats.loginRatio.loggedIn} · 비로그인 ${stats.loginRatio.guest}`} />
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard label="30일 신규 가입" value={`${d.users.signups30d}명`} />
+            <StatCard label="30일 내 접속" value={`${d.users.active30d}명`} />
+            <StatCard label="오늘 생성" value={stats.generations.today} sub={`7일 ${stats.generations.last7Days} · 30일 ${stats.generations.last30Days}`} />
+            <StatCard label="로그인 비율(30일)" value={pct(loginPct)} sub={`로그인 ${stats.loginRatio.loggedIn} · 비로그인 ${stats.loginRatio.guest}`} />
+          </div>
         </div>
       </section>
 
