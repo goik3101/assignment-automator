@@ -51,6 +51,7 @@ import {
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
+import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
   dataTableInstruction,
@@ -2007,6 +2008,34 @@ export async function generateEssay(
       if (found <= MAX_BLANKS) continue;
       console.warn(`[generateEssay] 직접 작성 빈칸이 ${found}개 label="${el.label}" — 본인만 아는 것만 남기고 채우게 함`);
       activityRewrites.push({ label: el.label, instruction: blankOveruseRepairText(MAX_BLANKS, found) });
+    }
+  }
+
+  // 각주 없이 남은 수치 문장: 노트에 있는 값이면 코드가 번호를 붙이고, 노트에 없는 값이면 그 단계만 다시 쓰게 한다(uncited-figures.ts).
+  if (fixes && attempt.notes) {
+    const factTexts = attempt.notes.facts.map((f) => f.fact);
+    const recovered = attempt.sections.map((s) => {
+      const found = findUncitedFigures(s.content, factTexts);
+      if (found.length === 0) return s;
+      // 노트에 있는 값인데 번호만 빠진 문장은 사실 번호를 붙였다가 바로 출처 번호로 바꾼다(모델 호출 없음).
+      const recoverable = found.filter((f) => f.inNotes);
+      if (recoverable.length === 0) return s;
+      const marked = attachFactMarkers(s.content, attempt.notes!.facts);
+      if (marked.attached === 0) return s;
+      const mapped = mapFactMarkers(marked.text, attempt.notes!.facts);
+      // 이 단계에서만 쓰는 번호가 새로 생기면 전체 출처 목록과 어긋난다 — 이미 있는 번호로만 바뀐 경우에만 받는다.
+      const known = new Set(attempt.sources.map((x) => x.n));
+      const ns = [...mapped.text.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
+      if (ns.some((n) => !known.has(n))) return s;
+      console.log(`[generateEssay] 각주 없던 수치 문장 ${marked.attached}개에 출처를 붙임 label="${s.label}"`);
+      return { ...s, content: mapped.text };
+    });
+    attempt = { ...attempt, sections: recovered };
+    for (const s of attempt.sections) {
+      const left = findUncitedFigures(s.content, factTexts).filter((f) => !f.inNotes);
+      if (left.length === 0) continue;
+      console.warn(`[generateEssay] 조사 자료에 없는 수치 ${left.length}개 label="${s.label}": ${JSON.stringify(left.slice(0, 2).map((x) => x.values))}`);
+      activityRewrites.push({ label: s.label, instruction: uncitedFigureRepairText(left) });
     }
   }
 
