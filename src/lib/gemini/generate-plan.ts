@@ -15,6 +15,7 @@ import {
   ACHIEVEMENT_INTERPRETATION_RULES,
   FORM_FIDELITY_RULES,
   writingGuideBlock,
+  OWN_RECORD_RULES,
 } from "./prompts";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import { applyFormRequirements, buildFormLimitBlock, checkFormRequirements, isSceneLikeElement, isSceneListElement, requirementsForElement } from "@/lib/essay/form-requirements";
@@ -32,8 +33,11 @@ import { validateSources } from "@/lib/links/validate-sources";
 import { verifyExcerpt, isWeakQuoteSource, STATISTIC_OR_NEWS_QUERY_TEMPLATES } from "@/lib/verification/excerpt-verification";
 import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceList, researchForTask, factSheetRules, writeEffort, type ResearchNotes } from "./generate-essay";
 import { attachFactMarkers, factSheetText, factsFromCitedText, mapFactMarkers } from "@/lib/essay/research-notes";
-import { fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripOrdinalEnumerators, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
+import { stripHeadingDirectives, tabTableToMarkdown, fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripOrdinalEnumerators, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
 import { limitSources, requiredSourceCount } from "@/lib/essay/source-select";
+import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
+import { bannedVisualRepairText, findBannedVisuals, visualPolicy, visualPolicyInstruction } from "@/lib/essay/data-visual";
+import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import type { CoreTaskInfo, PlanResult, ProductionStep, SourceRef, InsufficientDataResult } from "@/types/task";
 import { currentOutputLang } from "@/lib/llm/output-lang";
@@ -287,6 +291,8 @@ ${PHYSICAL_HEADING}
 코드가 이 줄을 기준으로 텍스트를 기계적으로 나누기 때문이다.
 ${ANTI_AI_TONE_RULES}
 ${fixes ? FORM_FIDELITY_RULES : ""}
+${fixes ? visualPolicyInstruction(visualPolicy([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", ...input.coreTaskInfo.task_elements.map((e) => e.description)]), element ? [element.label] : []) : ""}
+${fixes && element && isOwnRecordStep(element) ? OWN_RECORD_RULES : ""}
 ${scope.factualRigor ? FACTUAL_RIGOR_RULES : ""}
 ${scope.achievement ? ACHIEVEMENT_INTERPRETATION_RULES : ""}
 ${NO_META_COMMENTARY_RULE}
@@ -725,6 +731,47 @@ ${freeText}`,
     const lim = limitSources([content], validatedSources, Math.min(8, Math.max(2, wanted ?? (Number(process.env.SOURCE_LIMIT) || 5))));
     content = lim.contents[0];
     validatedSources = lim.sources;
+  }
+
+  // 완성 원고 경로와 같은 검사(2026-10-30): 소제목에 붙은 작성 지시, 탭으로 맞춘 표, 계획 문장에 붙은 각주는 모델을 부르지 않고 코드가 정리한다.
+  if (qualityFixesOn()) {
+    const heading = stripHeadingDirectives(content);
+    const table = tabTableToMarkdown(heading.content);
+    const planCites = stripPlanCitations(table.content);
+    if (heading.removed + table.converted + planCites.stripped > 0)
+      console.warn(`[generatePlan] 소제목 지시 ${heading.removed}개 제거, 탭 표 ${table.converted}개 변환, 계획 문장 각주 ${planCites.stripped}개 제거`);
+    content = planCites.content;
+  }
+
+  // 하지 않은 활동을 썼다고 하거나, 안내문이 금지한 자료를 쓰거나, 빈칸이 지나치게 많으면 한 번만 다시 쓰게 한다(완성 원고의 repairLocally와 같은 기준).
+  if (qualityFixesOn()) {
+    const policy = visualPolicy([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", ...input.coreTaskInfo.task_elements.map((e) => e.description)]);
+    const fabricated = findOwnActivitySentences(content);
+    const banned = findBannedVisuals(content, policy);
+    const blanks = countBlanks(content);
+    const issues = [
+      fabricated.length > 0 ? ownActivityRepairText(fabricated) : "",
+      banned.length > 0 ? bannedVisualRepairText(targetElement(input)?.label ?? "이 산출물", banned, policy) : "",
+      blanks > 3 ? blankOveruseRepairText(3, blanks) : "",
+    ].filter(Boolean);
+    if (issues.length > 0) {
+      console.warn(`[generatePlan] 품질 문제 감지(날조 ${fabricated.length}·금지자료 ${banned.length}·빈칸 ${blanks}) — 한 번 보완`);
+      const markers = (t: string) => (t.match(/\[\d+\]/g) ?? []).length;
+      try {
+        const res = await generate({
+          label: "generatePlan:repair",
+          role: "write",
+          effort: "low",
+          prompt: `아래 글에서 지적된 문제만 고쳐서 전체를 다시 써줘. 지적되지 않은 문장과 사실(연도·이름·수치), [n] 각주 표기는 그대로 둘 것. 제목 줄과 구조도 그대로 유지하고, 설명 없이 글만 출력할 것.\n\n[고칠 문제]\n${issues.map((i) => `- ${i}`).join("\n")}\n\n[글]\n${content}`,
+        });
+        const next = res.text.trim();
+        const ok = next && markers(next) >= markers(content) * 0.7 && next.length >= content.length * 0.7 && next.length <= content.length * 1.6;
+        if (ok) content = next;
+        console.log(`[generatePlan] 보완 ${ok ? "적용" : "거부(원문 유지)"}`);
+      } catch (err) {
+        console.error("[generatePlan] 보완 실패(원문 유지)", err);
+      }
+    }
   }
 
   // 시험지·안내문의 문장·문단 수 조건(장면 수는 필수 항목 검사가 맡는다): 어긴 경우 검색 없이 한 번만 고치고, 못 맞추면 경고로 알린다.
