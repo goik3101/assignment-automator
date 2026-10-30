@@ -48,3 +48,18 @@ test("안내문이 허용한 자료 종류를 읽고 금지된 자료를 찾는�
   // "사진 대신 도표로"는 위반이 아니다
   assert.equal(findBannedVisuals("화면 설명: 건물 사진 대신 도표로 보여 준다.", p).length, 0);
 });
+
+test("자료 종류 제한 문장을 표 요구로 읽지 않는다(실측 2026-10-31, 국어 매체 활용 주제발표)", () => {
+  const el = { label: "개요", description: "글의 목적·주제·예상 독자와 중심 내용을 쓴다." };
+  const reqs = [
+    "개요에는 글의 목적·주제·예상 독자를 구체적으로 설정하고, 뒷받침하는 정보를 3가지 이상 수집한다.",
+    "스토리보드의 그림 자료는 그림·그래프·표만 가능하다. 제목 부분에는 명사형 키워드를 1~2개까지 기록할 수 있다.",
+  ];
+  const guide = "개요에는 목적·주제·예상 독자를 담는다. 그림 자료는 그림·그래프·표만 가능하며 제목에는 명사형 키워드 1~2개까지 기록할 수 있다.";
+  assert.equal(needsDataTable(el, reqs, guide), false);
+  assert.equal(needsDataTable({ label: "스토리보드", description: "8개 장면으로 쓴다." }, reqs, guide), false);
+  // 같은 문장을 자료 제한으로는 그대로 읽는다 — 두 규칙이 어긋나지 않아야 한다.
+  assert.deepEqual(visualPolicy([...reqs, guide]).allowed.sort(), ["그래프", "그림", "표"]);
+  // 진짜로 표를 요구하면 여전히 참
+  assert.equal(needsDataTable(el, ["개요에는 연도별 수치를 표로 정리한다."], undefined), true);
+});

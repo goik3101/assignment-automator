@@ -8,6 +8,12 @@ const DATA_VISUAL = /그래프|도표|차트|통계\s*표|표로|표\s*(?:를|�
 /** "표현·발표·대표"처럼 낱말 속 "표"에 걸리지 않게, 단독 낱말이거나 자료를 뜻할 때만 본다. */
 const BARE_TABLE = /(?:^|[\s(·,])표(?:[\s)]|$|를|로|에|와|과|의)/;
 
+// 쓸 수 있는 자료 종류 제한(아래 visualPolicy와 needsDataTable이 같은 기준을 쓴다).
+const VISUAL_NOUNS = ["그림", "그래프", "표", "사진", "영상", "동영상", "삽화", "도표", "차트", "이미지", "인포그래픽", "만화"];
+/** "A·B만 (사용할 수) 있다 / 가능하다"처럼 종류를 한정한 문장, 또는 "사진은 사용할 수 없다"처럼 금지한 문장. */
+const ONLY_SENTENCE = /만\s*(?:사용|활용|가능|허용|쓸)/;
+const BAN_SENTENCE = /(?:사용|활용)(?:할\s*수)?\s*(?:없|불가|금지|안\s*됨|안\s*된다)|금지|쓰지\s*(?:말|않)/;
+
 export interface VisualElement {
   label: string;
   description: string;
@@ -26,17 +32,35 @@ function labelMentioned(label: string, line: string): boolean {
     .some((w) => text.includes(w));
 }
 
+/** 문장을 자른다(자료 종류 제한 문장을 한 문장씩 가려내려고). */
+const splitSentences = (text: string) => (text ?? "").split(/(?<=[.。!?])\s+|\n+|(?=\s*(?:※|■))/);
+
+/**
+ * "그림·그래프·표만 가능하다", "사진은 쓸 수 없다"처럼 **쓸 수 있는 자료 종류를 한정·금지한 문장**인가.
+ * 실측(2026-10-31, 국어 매체 활용 주제발표): 안내문의 "그림, 그래프, 표만 가능하며"를 needsDataTable이
+ * "이 단계는 표를 만들어라"로 읽어, 표를 요구한 적 없는 개요·스토리보드에 억지 표가 들어갔다.
+ * 같은 문장을 visualPolicy는 허용 목록으로 읽는다 — 한 문장을 두 규칙이 반대로 읽으면 안 된다.
+ */
+function isVisualPolicySentence(sentence: string): boolean {
+  if (!VISUAL_NOUNS.some((n) => sentence.includes(n))) return false;
+  return ONLY_SENTENCE.test(sentence) || BAN_SENTENCE.test(sentence);
+}
+
+/** 자료 종류 제한 문장을 뺀 나머지에서만 표·그래프 요구를 찾는다. */
+function wantsTable(text: string): boolean {
+  return splitSentences(text).some((s) => !isVisualPolicySentence(s) && (DATA_VISUAL.test(s) || BARE_TABLE.test(s)));
+}
+
 /**
  * 이 단계가 글 안에 표·그래프를 직접 만들어야 하는가.
  * soleStep(이번에 만드는 단계가 하나뿐)이면 안내문의 조건이 모두 그 단계의 것이다.
  */
 export function needsDataTable(el: VisualElement, requirements: string[] = [], guide?: string, soleStep = false): boolean {
-  const own = `${el.label} ${el.description} ${(el.required_items ?? []).join(" ")}`;
-  if (DATA_VISUAL.test(own) || BARE_TABLE.test(own)) return true;
+  if (wantsTable(`${el.label} ${el.description} ${(el.required_items ?? []).join(" ")}`)) return true;
   return [...requirements, guide ?? ""].some((line) => {
     if (!line) return false;
     if (!soleStep && !labelMentioned(el.label, line)) return false;
-    return DATA_VISUAL.test(line) || BARE_TABLE.test(line);
+    return wantsTable(line);
   });
 }
 
@@ -66,10 +90,6 @@ export function hasDataTable(content: string): boolean {
 // ── 쓸 수 있는 자료 종류 제한 ────────────────────────────────────
 // 실측(2026-10-29~30, 저장된 생성 26회 중 9회): 안내문이 "시각 자료는 그림·그래프·표만"이라고 못 박았는데도
 // 스토리보드 화면 설명에 "헌법재판소 건물 사진", "발표자가 손을 든 사진"이 들어갔다. 제한은 프롬프트로 이미 전달되는데도 어긴다.
-const VISUAL_NOUNS = ["그림", "그래프", "표", "사진", "영상", "동영상", "삽화", "도표", "차트", "이미지", "인포그래픽", "만화"];
-/** "A·B만 (사용할 수) 있다 / 가능하다"처럼 종류를 한정한 문장, 또는 "사진은 사용할 수 없다"처럼 금지한 문장. */
-const ONLY_SENTENCE = /만\s*(?:사용|활용|가능|허용|쓸)/;
-const BAN_SENTENCE = /(?:사용|활용)(?:할\s*수)?\s*(?:없|불가|금지|안\s*됨|안\s*된다)|금지|쓰지\s*(?:말|않)/;
 
 export interface VisualPolicy {
   /** 쓸 수 있는 자료 종류(비어 있으면 제한 없음) */
