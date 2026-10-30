@@ -63,6 +63,75 @@ export function hasDataTable(content: string): boolean {
   return false;
 }
 
+// ── 쓸 수 있는 자료 종류 제한 ────────────────────────────────────
+// 실측(2026-10-29~30, 저장된 생성 26회 중 9회): 안내문이 "시각 자료는 그림·그래프·표만"이라고 못 박았는데도
+// 스토리보드 화면 설명에 "헌법재판소 건물 사진", "발표자가 손을 든 사진"이 들어갔다. 제한은 프롬프트로 이미 전달되는데도 어긴다.
+const VISUAL_NOUNS = ["그림", "그래프", "표", "사진", "영상", "동영상", "삽화", "도표", "차트", "이미지", "인포그래픽", "만화"];
+/** "A·B만 (사용할 수) 있다 / 가능하다"처럼 종류를 한정한 문장, 또는 "사진은 사용할 수 없다"처럼 금지한 문장. */
+const ONLY_SENTENCE = /만\s*(?:사용|활용|가능|허용|쓸)/;
+const BAN_SENTENCE = /(?:사용|활용)(?:할\s*수)?\s*(?:없|불가|금지|안\s*됨|안\s*된다)|금지|쓰지\s*(?:말|않)/;
+
+export interface VisualPolicy {
+  /** 쓸 수 있는 자료 종류(비어 있으면 제한 없음) */
+  allowed: string[];
+  /** 쓰면 안 되는 자료 종류 */
+  banned: string[];
+}
+
+export function visualPolicy(texts: string[]): VisualPolicy {
+  const allowed = new Set<string>();
+  const banned = new Set<string>();
+  for (const raw of texts) {
+    for (const s of (raw ?? "").split(/(?<=[.。!?])\s+|\n+/)) {
+      const nouns = VISUAL_NOUNS.filter((n) => s.includes(n));
+      if (nouns.length === 0) continue;
+      if (ONLY_SENTENCE.test(s)) {
+        for (const n of nouns) allowed.add(n);
+      } else if (BAN_SENTENCE.test(s)) {
+        for (const n of nouns) banned.add(n);
+      }
+    }
+  }
+  // "그림·그래프·표만"이면 나머지는 자동으로 금지다.
+  if (allowed.size > 0) for (const n of VISUAL_NOUNS) if (!allowed.has(n)) banned.add(n);
+  for (const n of allowed) banned.delete(n);
+  return { allowed: [...allowed], banned: [...banned] };
+}
+
+/** 프롬프트에 넣을 한 줄. 제한이 없으면 빈 문자열. */
+export function visualPolicyInstruction(policy: VisualPolicy, labels: string[]): string {
+  if (policy.allowed.length === 0 && policy.banned.length === 0) return "";
+  const who = labels.length ? `${labels.map((l) => `"${l}"`).join(", ")} 단계의 ` : "";
+  return (
+    `\n【쓸 수 있는 자료 종류 — 반드시 지킬 것】 ${who}화면·지면에 넣을 수 있는 자료는 ` +
+    `${policy.allowed.length ? policy.allowed.join("·") + "뿐이다" : "안내문이 허용한 것뿐이다"}. ` +
+    `${policy.banned.length ? policy.banned.join("·") + "은(는) 쓸 수 없다 — " : ""}` +
+    `"건물 사진", "발표자 사진", "영상 클립"처럼 금지된 자료를 화면 설명·시각 자료 항목에 적지 말 것. ` +
+    `같은 내용을 허용된 자료(${policy.allowed.join("·") || "그림·그래프·표"})로 바꿔 쓸 것.\n`
+  );
+}
+
+/** 글에서 금지된 자료를 언급한 줄. */
+export function findBannedVisuals(content: string, policy: VisualPolicy): string[] {
+  if (policy.banned.length === 0) return [];
+  const re = new RegExp(policy.banned.join("|"));
+  return content
+    .split("\n")
+    .filter((l) => !/^\s*#/.test(l) && re.test(l))
+    // "사진을 쓰지 않는다", "사진 대신 도표로"처럼 안 쓴다고 밝힌 줄은 위반이 아니다.
+    .filter((l) => !/대신|쓰지\s*(?:말|않)|제외|금지/.test(l))
+    .map((l) => l.trim());
+}
+
+export function bannedVisualRepairText(label: string, lines: string[], policy: VisualPolicy): string {
+  return (
+    `"${label}" 단계가 안내문이 허용하지 않은 자료를 썼다(${policy.banned.join("·")}): ` +
+    `${lines.slice(0, 2).map((l) => `"${l.slice(0, 50)}…"`).join(" / ")}. ` +
+    `그 자리를 허용된 자료(${policy.allowed.join("·") || "그림·그래프·표"})로 바꿔 쓸 것 — 예를 들어 "건물 사진" 대신 ` +
+    `"연도별 수치를 담은 표"나 "제도 흐름을 그린 그림"처럼. 다른 문장과 사실·각주는 그대로 둘 것.`
+  );
+}
+
 export function dataTableRepairText(label: string): string {
   return (
     `"${label}" 단계가 안내문이 요구한 표·그래프를 글 안에 만들지 않고 설명으로 대신했다. ` +

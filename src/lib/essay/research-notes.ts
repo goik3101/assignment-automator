@@ -305,7 +305,7 @@ export function extractSummaryLines(text: string): string[] {
 export function attachFactMarkers(text: string, facts: Fact[]): { text: string; attached: number } {
   // 연도·퍼센트만 보면 "59,459톤", "26㎍/m³" 같은 값이 든 문장을 놓친다(실측 2026-10-30: 복구 후에도 남은 무각주 수치 문장이 전부 이런 값이었다).
   const NUM =
-    /(?<![\d.,])(1[0-9]{3}|20[0-9]{2})(?![\d])|\d+(?:\.\d+)?\s?%|(?<![\d.])\d{1,3}(?:,\d{3})+(?![\d])|(?<![\d.])\d+(?:\.\d+)?\s?(?:㎍|㎎|톤|억|조|만\s?명|명|건|배|위)/g;
+    /(?<![\d.,])(1[0-9]{3}|20[0-9]{2})(?![\d])|\d+(?:\.\d+)?\s?%|(?<![\d.])\d{1,3}(?:,\d{3})+(?![\d])|(?<![\d.])\d+(?:\.\d+)?\s?(?:㎍|㎎|[μu]g|mg|톤|억|조|만\s?명|명|건|배|위)/g;
   const numsOf = (t: string) => new Set([...t.matchAll(NUM)].map((m) => m[0].replace(/\s/g, "")));
   const factNums = facts.map((f) => numsOf(f.fact));
   let attached = 0;

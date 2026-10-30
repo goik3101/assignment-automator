@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dataTableInstruction, hasDataTable, needsDataTable } from "./data-visual.ts";
+import { dataTableInstruction, findBannedVisuals, hasDataTable, needsDataTable, visualPolicy } from "./data-visual.ts";
 
 test("안내문이 표·그래프를 말할 때만 걸린다", () => {
   assert.equal(needsDataTable({ label: "정책 제안서", description: "문제의 현황을 그래프로 제시한다." }), true);
@@ -33,4 +33,18 @@ test("마크다운 표가 실제로 있는지 본다", () => {
 test("해당 단계가 없으면 프롬프트에 아무것도 넣지 않는다", () => {
   assert.equal(dataTableInstruction([]), "");
   assert.match(dataTableInstruction(["정책 제안서"]), /마크다운 표로 직접/);
+});
+
+test("안내문이 허용한 자료 종류를 읽고 금지된 자료를 찾는다", () => {
+  const p = visualPolicy(["시각 자료는 그림·그래프·표만 사용할 수 있음.", "8개의 장면으로 작성할 것."]);
+  assert.deepEqual(p.allowed.sort(), ["그래프", "그림", "표"]);
+  assert.ok(p.banned.includes("사진") && p.banned.includes("영상"));
+  assert.ok(!p.banned.includes("그림"));
+  // 제한이 없으면 아무것도 금지하지 않는다
+  assert.deepEqual(visualPolicy(["자료를 활용해 발표할 것"]), { allowed: [], banned: [] });
+  // 실제 결과물에서 나온 위반 문장
+  const hits = findBannedVisuals("### 장면 3\n화면 설명: 헌법재판소 건물 사진과 함께 자막이 나타난다.\n대사: 안녕하세요.", p);
+  assert.equal(hits.length, 1);
+  // "사진 대신 도표로"는 위반이 아니다
+  assert.equal(findBannedVisuals("화면 설명: 건물 사진 대신 도표로 보여 준다.", p).length, 0);
 });

@@ -51,7 +51,16 @@ import {
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
-import { dataTableInstruction, dataTableRepairText, hasDataTable, needsDataTable } from "@/lib/essay/data-visual";
+import {
+  bannedVisualRepairText,
+  dataTableInstruction,
+  dataTableRepairText,
+  findBannedVisuals,
+  hasDataTable,
+  needsDataTable,
+  visualPolicy,
+  visualPolicyInstruction,
+} from "@/lib/essay/data-visual";
 import {
   NO_EVIDENCE_PLAN,
   evidenceResearchBlock,
@@ -612,6 +621,11 @@ ${input.previousOutputText}
       : "");
   const formRulesBlock = buildFormRulesBlock(elements);
   // 안내문이 표·그래프를 요구한 단계는 글 안에 마크다운 표로 직접 쓰게 한다(data-visual.ts) — 해당 단계가 없으면 빈 문자열.
+  // 안내문이 자료 종류를 제한했으면(그림·그래프·표만 등) 그 제한을 명시한다 — 전달만으로는 26회 중 9회가 사진·영상을 넣었다(data-visual.ts).
+  const visuals = qualityFixesOn()
+    ? visualPolicy([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", ...elements.map((e) => e.description)])
+    : { allowed: [], banned: [] };
+  const visualBlock = visualPolicyInstruction(visuals, elements.filter((e) => inferDeliverableForm(e) || isSceneLikeElement(e)).map((e) => e.label));
   // 학생이 직접 수행한 것을 적는 단계(자료 수집·조사 기록)는 "지어내지도, 비우지도 않기" 규칙을 따로 준다(own-activity.ts).
   const ownRecordBlock = qualityFixesOn() && elements.some(isOwnRecordStep) ? `\n${OWN_RECORD_RULES}\n` : "";
   const dataTableBlock = qualityFixesOn()
@@ -717,7 +731,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${ownRecordBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -1993,6 +2007,19 @@ export async function generateEssay(
       if (found <= MAX_BLANKS) continue;
       console.warn(`[generateEssay] 직접 작성 빈칸이 ${found}개 label="${el.label}" — 본인만 아는 것만 남기고 채우게 함`);
       activityRewrites.push({ label: el.label, instruction: blankOveruseRepairText(MAX_BLANKS, found) });
+    }
+  }
+
+  // 안내문이 허용하지 않은 자료(사진·영상 등)를 썼으면 그 단계만 다시 쓰게 한다(data-visual.ts).
+  if (fixes) {
+    const policy = visualPolicy([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", ...elements.map((e) => e.description)]);
+    if (policy.banned.length > 0) {
+      for (const sec of attempt.sections) {
+        const lines = findBannedVisuals(sec.content, policy);
+        if (lines.length === 0) continue;
+        console.warn(`[generateEssay] 허용되지 않은 자료 언급 label="${sec.label}": ${JSON.stringify(lines.slice(0, 2))}`);
+        activityRewrites.push({ label: sec.label, instruction: bannedVisualRepairText(sec.label, lines, policy) });
+      }
     }
   }
 
