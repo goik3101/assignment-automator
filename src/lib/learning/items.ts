@@ -1,4 +1,5 @@
 import { itemMatchesHeading } from "@/lib/research/research-items";
+import { needsSubjectSelection as needsSubject } from "@/lib/selection/selection-need";
 import type { CoreTaskInfo } from "@/types/task";
 
 export interface LearningItemDef {
@@ -32,16 +33,7 @@ export function deriveLearningItems(info: CoreTaskInfo): LearningItemDef[] {
   return items;
 }
 
-const SELECTION_HINT = /선정|선택|고르|고른|골라|정해서|정하여|정한 뒤|정하고/;
-
-/** 학생이 다룰 인물/대상을 스스로 골라야 하는 과제로 보이는지 — 그런 과제에서만
- * 세션 시작 때 "AI 추천 / 직접 선택" 단계를 보여준다(완벽한 판별이 아니라 명백한
- * 신호만 잡는 수준). */
+/** 학생이 다룰 인물/대상을 스스로 골라야 하는 과제로 보이는지. 판정은 selection-need.ts(순수 함수)에 있다. */
 export function needsSubjectSelection(info: CoreTaskInfo): boolean {
-  const haystack = [
-    info.topic,
-    ...info.requirements,
-    ...info.task_elements.flatMap((e) => [e.label, e.description, ...(e.required_items ?? [])]),
-  ].join(" ");
-  return SELECTION_HINT.test(haystack);
+  return needsSubject(info);
 }

@@ -21,12 +21,31 @@ function mediumOnly(value: string): boolean {
 /** 찬성·반대 같은 입장만 있는 답은 주제가 아니다. */
 const STANCE_ONLY = /^(?:찬성|반대|중립|찬성\s*측|반대\s*측)$/;
 
+
+/**
+ * 학생이 말하듯 쓴 주제에서 대화 말꼬리를 뗀다.
+ * 실측(2026-10-31): 지침 "노인 빈곤과 기초연금 문제로 할게."가 다룰 대상 이름으로 그대로 확정돼
+ * 프롬프트의 「…」에 들어갔고, 완성 원고 본문 첫 줄이 "노인 빈곤과 기초연금 문제로 할게. 시장에서…"로 나왔다.
+ */
+const TRAILING_TALK =
+  /\s*(?:(?:으?로|을|를|에\s*대해|에\s*관해)?\s*(?:하고\s*싶어요?|하고\s*싶다|할게요?|할래요?|하자|하겠어요?|하겠다|할\s*거(?:야|예요|에요)|쓸게요?|쓰고\s*싶어요?|정했어요?|정할게요?|골랐어요?|고를게요?|해\s*줘|해\s*주세요|으로요?|이에요|예요|입니다|이다))[.!~\s]*$/;
+
+export function cleanSubjectName(value: string): string {
+  let t = value.trim();
+  for (let i = 0; i < 3; i++) {
+    const next = t.replace(TRAILING_TALK, "").replace(/[\s.·,!~]+$/, "").trim();
+    if (next === t || next.length < 2) break;
+    t = next;
+  }
+  return t || value.trim();
+}
+
 function usableAnswer(a: string): string | null {
   const t = a.trim().replace(/^["'“”‘’]|["'“”‘’]$/g, "").trim();
   if (t.length < 2 || t.length > 80) return null;
   if (t.startsWith("(")) return null; // "(학생이 나중에 직접 쓰겠다고 함)", "(학생이 AI에게 맡김)"
   if (mediumOnly(t) || STANCE_ONLY.test(t)) return null;
-  return t;
+  return cleanSubjectName(t);
 }
 
 /**

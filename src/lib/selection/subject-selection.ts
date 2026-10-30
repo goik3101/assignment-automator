@@ -5,7 +5,7 @@ import { needsSubjectSelection } from "@/lib/learning/items";
 import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
 import { canonicalize } from "./canonical";
 import { selectFromCandidates, type HistoryEntry, type ScoredCandidate, type SelectionCandidate, type SelectionTier } from "./score";
-import { findStudentTopic, isMediumOnly } from "./student-topic";
+import { cleanSubjectName, findStudentTopic, isMediumOnly } from "./student-topic";
 import { DOMESTIC_CONSTRAINT, isDomesticScope } from "./domestic-scope";
 import type { CoreTaskInfo } from "@/types/task";
 
@@ -127,7 +127,7 @@ export async function selectSubjectForTask(
   if (spec0.student_specified_subject && isMediumOnly(spec0.student_specified_subject)) {
     console.warn(`[selection] 학생 지정으로 잡힌 값이 매체 이름이라 무시: "${spec0.student_specified_subject}"`);
   } else if (spec0.student_specified_subject) {
-    const c = canonicalize(spec0.student_specified_subject);
+    const c = canonicalize(cleanSubjectName(spec0.student_specified_subject));
     console.log(`[selection] 학생 직접 지정 → 자동 선정 생략: "${c.display}"`);
     return { kind: "user_specified", name: c.display, key: c.key, type: spec0.subject_type };
   }

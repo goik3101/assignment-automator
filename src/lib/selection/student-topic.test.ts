@@ -35,3 +35,12 @@ test("매체 이름만 있는 값 판별", () => {
   assert.equal(isMediumOnly("인터넷 실명제 반대"), false);
   assert.equal(isMediumOnly("신문 기사 속 혐오 표현"), false);
 });
+
+import { cleanSubjectName } from "./student-topic.ts";
+test("말하듯 쓴 주제에서 대화 말꼬리를 뗀다(실측 2026-10-31)", () => {
+  assert.equal(cleanSubjectName("노인 빈곤과 기초연금 문제로 할게."), "노인 빈곤과 기초연금 문제");
+  assert.equal(cleanSubjectName("세종대왕으로 하고 싶어요"), "세종대왕");
+  assert.equal(cleanSubjectName("미세먼지 문제를 쓸게요!"), "미세먼지 문제");
+  assert.equal(cleanSubjectName("4·19 혁명"), "4·19 혁명");
+  assert.equal(cleanSubjectName("인터넷 실명제"), "인터넷 실명제");
+});
