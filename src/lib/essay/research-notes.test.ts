@@ -100,3 +100,10 @@ test("보강 조사 사실을 합칠 때 중복은 버리고 번호를 다시 �
   // 상한을 넘기지 않는다
   assert.equal(mergeFacts(base, extra, 2).length, 2);
 });
+
+test("소수점을 문장 끝으로 보지 않는다(각주가 숫자 중간에 박히던 버그)", () => {
+  const facts = [{ id: "F1", fact: "2023년 폐기물 재활용률은 85.49%였다.", url: "https://a.go.kr/x", title: "A" }];
+  const r = attachFactMarkers("2023년 한국의 폐기물 재활용률은 85.49%이다.", facts);
+  assert.ok(!/85\.\[F1\]49/.test(r.text), `각주가 숫자 중간에 들어감: ${r.text}`);
+  assert.match(r.text, /85\.49%이다\.\[F1\]/);
+});

@@ -312,7 +312,9 @@ export function attachFactMarkers(text: string, facts: Fact[]): { text: string; 
   const lines = text.split("\n").map((line) => {
     if (/^\s*(?:#|\|)/.test(line)) return line;
     // 문장 단위(마침표 뒤)로 나눠 각 문장 끝에만 붙인다
-    return line.replace(/([^.!?。\n]+[.!?。])(?!\s*\[)/g, (sent: string) => {
+    // 소수점을 문장 끝으로 보면 안 된다 — 실측(2026-10-31, 사용자 결과물): "재활용률은 85.[1]49%이다"처럼 숫자 한가운데에 각주가 박혔다.
+    // 마침표를 품을 수 있게 게으른 매칭으로 바꾸고, 뒤에 숫자가 오는 마침표(소수점)는 문장 끝으로 보지 않는다.
+    return line.replace(/([^\n]+?[.!?。])(?!\d)(?!\s*\[)/g, (sent: string) => {
       if (/\[(?:F\d+|\d+)\]/.test(sent)) return sent;
       const nums = numsOf(sent);
       if (nums.size === 0) return sent;
