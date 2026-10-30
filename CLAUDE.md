@@ -101,7 +101,11 @@ src/
                                      step-order(안내문이 "A를 바탕으로 B"라고 한 단계만 순차 생성 — 기본 꺼짐), plan-citations(쓸 순서를 말하는 계획 문장의 각주 제거),
                                      own-activity(촬영·스크랩처럼 학생이 하지 않은 행동을 "했다"고 쓴 문장 탐지 + "[직접 작성]" 빈칸 과다 검사),
                                      data-visual(안내문이 요구한 표·그래프를 실제로 만들었는지 + 안내문이 금지한 자료(사진·영상)를 썼는지),
-                                     uncited-figures(각주 없는 수치 문장을 찾아 노트에 있는 값은 코드가 출처를 붙이고, 노트에 없는 값은 그 단계만 다시 쓰게 함)
+                                     uncited-figures(각주 없는 수치 문장을 찾아 노트에 있는 값은 코드가 출처를 붙이고, 노트에 없는 값은 그 단계만 다시 쓰게 함),
+                                     refusal(제출할 글에 섞인 "자료가 없어 못 쓰겠다·보내 주면 정리해 드리겠다" 같은 거절문을 찾아 그 단계만 다시 쓰게 함 — 날조 차단의 반작용)
+    selection/
+      selection-need.ts          -- 이 과제가 "학생이 대상을 골라야 하는 과제"인지 판정(순수 함수). 낱말만 보면 "설정하고"·"선정기준액"까지 걸린다 — 고르라는 말 앞에 대상 낱말이 있을 때만 참. SELECTION_TRIGGER=legacy로 예전 규칙
+      student-topic.ts           -- 학생이 지침에 적은 주제·대상 찾기 + 말꼬리 떼기(cleanSubjectName)
     links/
       validate-sources.ts       -- 출처 링크 HTTP 상태 검증 (N6)
     admin/
@@ -153,9 +157,15 @@ docs/
   `OPENAI_MODEL_WRITE=gpt-6-luna`(완성 원고 글쓰기만 luna — mini 대비 24.8→20.4초·되풀이 1.3→0쌍, 더 비싼 gpt-6-sol·gpt-5.6-luna는 이 과제에서 더 낫지 않았다), `ESSAY_WRITE_EFFORT=low`(luna는 minimal을 거부),
   `ESSAY_WRITER_KNOWLEDGE=strict`(기본은 교과서 수준 일반 지식 허용 — 금지해 두면 노트 10~14개 사실만으로 글을 채우느라 같은 말이 되풀이됐다),
   `UNVERIFIED_MARK=off`(본문에 "[확인 필요]" 표시), `ESSAY_EVIDENCE_SLOTS=off`, `PLAN_CITATIONS=off`, `ESSAY_STEP_ORDER=on`(순차 생성은 기본 꺼짐 — 효과 미확인·시간 +4초),
-  `ESSAY_MAX_BLANKS`(기본 3), `ESSAY_ITEM_PARALLEL=off`(단계가 하나뿐일 때 항목을 둘로 나눠 동시 쓰기), `ESSAY_TIME_BUDGET_MS`(기본 22000, 0이면 끔 — 넘으면 품질 교정용 추가 호출을 건너뛰되 안내문 요구를 채우는 보완은 +4초까지 허용),
+  `ESSAY_MAX_BLANKS`(기본 4 — 기사 스크랩은 제목·날짜·신문사 세 칸이 정당한 빈칸이라 3이면 매번 걸린다), `ESSAY_ITEM_PARALLEL=off`(단계가 하나뿐일 때 항목을 둘로 나눠 동시 쓰기), `ESSAY_TIME_BUDGET_MS`(기본 22000, 0이면 끔 — 넘으면 품질 교정용 추가 호출을 건너뛰되 안내문 요구를 채우는 보완은 +4초까지 허용),
   `SOURCE_LIMIT`(출처 정리 한도, 기본 5 — 예전 3은 각주 49개·출처 32개를 잘라냈다), `SOURCE_JUDGE=on`(작은 모델 판정으로 각주를 옮기던 경로, 기본 꺼짐).
-- **측정 방법**: 실제 안내문 사진은 `수행평가 안내문/`(gitignore). 생성 품질은 "하나씩 고치기" 대신 **결함 검사기로 전수**로 본다 — 알려진 결함 14종(날조 활동·빈칸 과다·금지 자료·표 누락·계획 문장 각주·기관 첫 화면 출처·무각주 수치·되풀이·빈 항목·중복 각주·범위 밖 각주·소제목 중복·끊긴 문장·외국 문자). 측정 스크립트는 `scripts/measure/`.
+- **안내문을 읽는 규칙은 전부 "낱말이 들어 있나"로 판정한다**(선정 필요·표 요구·자료 제한·개수 조건·직접 기록·구절 인용…).
+  낱말이 무슨 뜻으로 쓰였는지는 보지 않으므로 안내문 문구가 바뀌면 엉뚱하게 걸리고, 걸려도 결과물은 결함 검사를 그대로
+  통과한다(2026-10-31에 찾은 큰 원인 — `PROGRESS.md` 같은 날짜). 그래서 **규칙을 새로 만들거나 고치면 반드시**
+  ① 낱말 경계와 문맥(무엇을 고르는지·어떤 문장 종류인지)을 함께 보고 ② `node --import ./scripts/measure/loader/register.mjs scripts/measure/audit.ts`로
+  저장된 분석 결과 전부에 대한 판정을 전·후 비교한다. 생성 로그의 `[generateEssay] 안내문 규칙:` 한 줄이 실제 실행에서
+  무엇이 걸렸는지 보여 준다.
+- **측정 방법**: 실제 안내문 사진은 `수행평가 안내문/`(gitignore). 생성 품질은 "하나씩 고치기" 대신 **결함 검사기로 전수**로 본다 — 알려진 결함 15종(날조 활동·거절문·빈칸 과다·금지 자료·표 누락·계획 문장 각주·기관 첫 화면 출처·무각주 수치·되풀이·빈 항목·중복 각주·범위 밖 각주·소제목 중복·끊긴 문장·외국 문자). 검사기는 맨 아래 출처 목록을 본문에서 뺀 뒤 센다 — 안 그러면 긴 주소가 "긴 문장", 출처 제목의 연도가 "무각주 수치"로 잡힌다. 측정 스크립트는 `scripts/measure/`.
 - **AI 채팅**(`lib/study/chat.ts`, 프롬프트 조립은 alias 없는 `chat-pure.ts`): 안내문 분석 결과(`StudyContext.assignmentInfo`, 행정정보 제외)를 채팅에만 함께 보여준다(요약·퀴즈 등은 "자료에 있는 내용만" 규칙 때문에 섞지 않음). 값싼 공부 도구용 모델(`OPENAI_MODEL_STUDY`)이 검색 없이 먼저 답하고, 검색이 필요하다고 한 질문만 `OPENAI_MODEL_MAIN`이 검색을 강제해 다시 답한다. `CHAT_ROUTING=off`면 예전처럼 main 한 번. 하루 상한은 `STUDY_LIMIT_CHAT`(기본 20, 2026-10-26 결정; 관리자는 제외).
 - **개수 조건**(2026-10-27): 안내문의 "8장면"·"5문장 이내" 같은 조건은 분석 결과를 바꾸지 않고 생성 시점에만 읽는다(`essay/form-requirements.ts`). 장면 수는 필수 항목 "장면 1…N"으로 펼치고, 문장·줄·문단 상한이 있는 단계는 기본 분량 가이드를 빼며, 생성 뒤 문장·문단 수를 코드로 센다(줄 수는 셀 수 없어 프롬프트로만). 수업 중 직접 쓰는 기록지(청중 기록지 등)와 "대본 없이" 말로 하는 발표는 분석 단계가 만들 결과물에서 뺀다(`dropNonSubmissionActivities`, 뺀 것은 요구사항에 한 줄로 남김). `FORM_REQUIREMENTS=off`로 전부 되돌린다.
 - **AI 튜터**(`/tutor`, `/tutor/[id]`, `components/tutor/TutorApp.tsx`, 서버 `lib/tutor/tutor.ts`·알리아스 없는 `tutor-pure.ts`, API `/api/tutor`·`/api/tutor/conversations`): 수행평가 내용을 글로 설명하거나 사진을 올리면 튜터가 꼭 필요한 것만 한 번에 하나씩 되묻고(최근 대화 기준 3번 상한, 코드가 스키마에서 질문 칸을 빼서 강제) 근거·개요·초안을 채팅으로 직접 쓴다. 값싼 모델(`OPENAI_MODEL_STUDY`)이 먼저 보고 일반 질문·개념 설명·안내문 분석·되묻기는 그대로 답하며, 수행평가 글쓰기(근거·개요·초안·다듬기)는 메인 원고와 같은 `write` 역할 모델(`OPENAI_MODEL_WRITE`, 없으면 MAIN)이 양식·사실·저작권 규칙과 함께 쓰고(`TUTOR_WRITE_ROUTING=off`면 예전처럼 값싼 모델이 씀), 검색이 필요한 질문은 main 모델이 검색을 강제해 답한다(`decideTutorRoute`). 사진은 첫 호출에서만 보내 거기서 옮겨 적은 글(`attachment_text`)만 저장해 다음 턴부터 쓴다. 대화는 `tutor_conversations`·`tutor_messages`(마이그레이션 0019, 본인만 보는 RLS, 메인의 `user_histories`·임베딩과 연결하지 않음)에 저장되고, 서버가 저장된 대화를 직접 읽어 모델에 보낸다(클라이언트가 보낸 대화를 믿지 않음). 사이드바는 `/tutor`에서 작업 목록을 튜터 대화(`SidebarTutorList`)로 바꾸고 "새 창작물"을 "새 대화"로 바꾼다. 대화가 시작되면 오른쪽에 `StudyRail`(`hideChat`)이 붙고, 공부 도구는 `StudyContextRef` kind `tutor`로 대화 내용(`tutorToText`)을 읽는다. 하루 상한 `STUDY_LIMIT_TUTOR`(기본 20, 관리자 제외).
