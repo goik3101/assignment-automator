@@ -51,6 +51,7 @@ import {
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
+import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
@@ -79,6 +80,7 @@ import {
   isSceneLikeElement,
   isSceneListElement,
   requirementsForElement,
+  describeReq,
   sceneBlockInputs,
 } from "@/lib/essay/form-requirements";
 import { formWarningText, repairFormRequirements } from "@/lib/essay/form-repair";
@@ -635,6 +637,17 @@ ${input.previousOutputText}
   // 책 과제인가 / 인상 깊은 구절(원문 인용)을 요구하는가에 따라 검색·인용 규칙의 범위를 정한다(essay/excerpt-need.ts).
   const isBookPrompt = !!input.presetBook || needsBookCandidateSelection(input, elements);
   const wantsExcerpt = needsExcerpt([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...elements.flatMap((e) => [e.label, e.description]), input.instructions ?? ""]);
+  // 안내문을 읽는 규칙이 이번 과제에 무엇으로 걸렸는지 한 줄로 남긴다.
+  // 이 규칙들은 전부 "안내문 문장에 이 낱말이 있나"로 판정하므로 엉뚱하게 걸려도 결과물만 봐서는 알 수 없다 —
+  // 실측(2026-10-31): "설정하고"가 대상 선정을, "그림·그래프·표만 가능"이 표 요구를 켰고 둘 다 글을 망가뜨렸다.
+  console.log(
+    `[generateEssay] 안내문 규칙: 대상=${input.presetSubject ? `"${input.presetSubject.name}"` : "없음"}` +
+      ` 표요구=[${elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((e) => e.label).join(",")}]` +
+      ` 자료제한=허용[${visuals.allowed.join("·")}]` +
+      ` 직접기록=[${elements.filter(isOwnRecordStep).map((e) => e.label).join(",")}]` +
+      ` 구절인용=${wantsExcerpt}` +
+      ` 개수조건=[${elements.map((el) => ({ l: el.label, r: requirementsForElement(el, formCtx.requirements, formCtx.guide, formCtx.labels) })).filter((x) => x.r.length).map((x) => `${x.l}:${x.r.map(describeReq).join("+")}`).join(",")}]`
+  );
   const searchRulesBlock = !isBookPrompt
     ? SEARCH_CALL_RULE_GENERIC
     : [
@@ -736,7 +749,7 @@ ${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBloc
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
-${input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 「${input.presetSubject.name}」${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지${englishNameNote}), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
+${input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 ${input.presetSubject.name}${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이 줄의 괄호 설명과 「」·"" 같은 표시는 이 지시문의 것이니 글에 옮겨 적지 말 것. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지${englishNameNote}), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -1997,9 +2010,18 @@ export async function generateEssay(
     if (activityRewrites.length > 0) {
       console.warn(`[generateEssay] 하지 않은 활동을 썼다고 한 문장 감지: ${JSON.stringify(activityRewrites.map((r) => r.label))}`);
     }
+    // 날조 차단의 반작용 — 자료가 모자라면 단계 전체를 "못 하겠다"는 글로 채우는 일이 있다(refusal.ts).
+    for (const sec of attempt.sections) {
+      const refusals = findRefusalSentences(sec.content);
+      if (refusals.length === 0) continue;
+      console.warn(`[generateEssay] 제출 글에 거절문 감지 label="${sec.label}" ${refusals.length}문장: ${JSON.stringify(refusals[0].slice(0, 60))}`);
+      activityRewrites.push({ label: sec.label, instruction: refusalRepairText(refusals, sec.label) });
+    }
   }
   // 직접 수행 기록 단계의 빈칸이 너무 많으면(본인만 아는 것 외에도 비워 둠) 그 단계만 다시 쓰게 한다 — 학생이 받는 내용이 없어진다.
-  const MAX_BLANKS = Number(process.env.ESSAY_MAX_BLANKS) || 3;
+  // 3 → 4(2026-10-31): 기사 스크랩 단계는 제목·날짜·신문사 세 칸이 모두 학생이 고를 기사의 것이라 정당한 빈칸이다.
+  // 3으로 두면 이 단계가 매번 걸려, 줄이라는 지시가 지어내기로 되돌아갈 위험이 있다(원래 기준은 결과물.2의 빈칸 7개였다).
+  const MAX_BLANKS = Number(process.env.ESSAY_MAX_BLANKS) || 4;
   if (fixes) {
     for (const el of elements) {
       if (!isOwnRecordStep(el)) continue;

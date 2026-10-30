@@ -36,6 +36,7 @@ import { attachFactMarkers, factSheetText, factsFromCitedText, mapFactMarkers } 
 import { stripHeadingDirectives, tabTableToMarkdown, fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripOrdinalEnumerators, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
 import { limitSources, requiredSourceCount } from "@/lib/essay/source-select";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
+import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { bannedVisualRepairText, findBannedVisuals, visualPolicy, visualPolicyInstruction } from "@/lib/essay/data-visual";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
@@ -749,13 +750,15 @@ ${freeText}`,
     const fabricated = findOwnActivitySentences(content);
     const banned = findBannedVisuals(content, policy);
     const blanks = countBlanks(content);
+    const refusals = findRefusalSentences(content);
     const issues = [
       fabricated.length > 0 ? ownActivityRepairText(fabricated) : "",
       banned.length > 0 ? bannedVisualRepairText(targetElement(input)?.label ?? "이 산출물", banned, policy) : "",
       blanks > 3 ? blankOveruseRepairText(3, blanks) : "",
+      refusals.length > 0 ? refusalRepairText(refusals, targetElement(input)?.label ?? "이 산출물") : "",
     ].filter(Boolean);
     if (issues.length > 0) {
-      console.warn(`[generatePlan] 품질 문제 감지(날조 ${fabricated.length}·금지자료 ${banned.length}·빈칸 ${blanks}) — 한 번 보완`);
+      console.warn(`[generatePlan] 품질 문제 감지(날조 ${fabricated.length}·금지자료 ${banned.length}·빈칸 ${blanks}·거절문 ${refusals.length}) — 한 번 보완`);
       const markers = (t: string) => (t.match(/\[\d+\]/g) ?? []).length;
       try {
         const res = await generate({
