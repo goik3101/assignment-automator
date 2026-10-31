@@ -570,8 +570,11 @@ ${input.previousOutputText}
   // 항목 구조를 강제한다 — 항목은 절대 하드코딩이 아니라 안내문에서 동적으로 온다.
   // "sections"(조사·탐구형)는 "### 항목명" 소제목 + 조사 자료 형식, "flowing"(편지·
   // 감상문 등)은 소제목 없이 항목을 빠짐없이 다루라고만 지시한다.
-  const structuredEls = elements.filter(isStructuredElement);
   const newspaperEls = elements.filter((el) => inferDeliverableForm(el) === "newspaper" && (el.required_items?.length ?? 0) >= 1);
+  // 신문 단계는 구조화 블록에서 뺀다 — 두 블록이 정반대를 말한다(실측 2026-11-01 프롬프트 검사):
+  //   신문:   "항목 이름을 그대로 소제목으로 쓰지 말고 기사다운 헤드라인을 붙일 것"
+  //   구조화: "각 항목을 정확히 \"### <항목명>\" 소제목으로, 항목명은 글자 그대로"
+  const structuredEls = elements.filter((el) => isStructuredElement(el) && !newspaperEls.includes(el));
   const flowingEls = elements.filter(
     (el) => el.items_format === "flowing" && (el.required_items?.length ?? 0) >= 2 && !newspaperEls.includes(el)
   );

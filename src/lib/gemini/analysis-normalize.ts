@@ -5,12 +5,21 @@
 const EXTERNAL_PRODUCTION_HINT =
   /PPT|피피티|슬라이드|파워포인트|프레젠테이션 자료|캔바|미리캔버스|망고보드|포스터|현수막|카드뉴스|인포그래픽|영상|동영상|촬영|편집|모형|실물|도화지|그림을? 그|그려|손으로|직접 만들|만들기|제작물|UCC|웹사이트|홈페이지|앱을? (?:개발|제작|구현)|코딩|프로그래밍|3D|도안|디자인 시안|작품 제작|공예/i;
 
+// 과제 제목에는 "신문 만들기", "감상문 만들기"처럼 **만든다는 말**이 흔히 들어간다. 그 말을 외부 제작 신호로 보면
+// 그 과제의 단계가 전부 external_production으로 남아 학생이 글을 받지 못한다.
+// 실측(2026-11-01, 한국사 현대사 신문): topic이 "…현대사 신문 만들기"라서 머리기사가 external_production이 됐고
+// 기사 글이 생성되지 않았다(같은 사진 3회 중 1회). "독서 감상문 만들기"도 같은 모양으로 걸린다.
+// 그래서 **제목에서는 도구·물건 이름만** 본다. "만들기·제작·그려" 같은 일반 동사는 그 단계의 label·description에서만 본다.
+const EXTERNAL_TOOL_ONLY =
+  /PPT|피피티|슬라이드|파워포인트|프레젠테이션 자료|캔바|미리캔버스|망고보드|포스터|현수막|카드뉴스|인포그래픽|영상|동영상|모형|실물|도화지|UCC|웹사이트|홈페이지|3D|공예/i;
+
 export function forceTextSubmissionIfNoExternalHint<T extends { type: string; label: string; description: string }>(
   el: T,
   topic: string
 ): T {
   if (el.type !== "external_production") return el;
-  if (EXTERNAL_PRODUCTION_HINT.test(`${el.label} ${el.description} ${topic}`)) return el;
+  if (EXTERNAL_PRODUCTION_HINT.test(`${el.label} ${el.description}`)) return el;
+  if (EXTERNAL_TOOL_ONLY.test(topic)) return el;
   return { ...el, type: "text_submission" };
 }
 

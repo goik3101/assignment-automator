@@ -62,3 +62,21 @@ test("항목이 하나거나 없으면 건드리지 않는다", () => {
   assert.equal(isInterrogativeItemList(["누가"]), false);
   assert.equal(isInterrogativeItemList(undefined), false);
 });
+
+test("과제 제목의 '만들기'는 외부 제작 신호가 아니다", () => {
+  // 실측(2026-11-01): topic이 "…현대사 신문 만들기"라 머리기사가 external_production으로 남아 기사 글이 생성되지 않았다.
+  const head = { type: "external_production", label: "머리기사", description: "신문 형식에 맞춰 제목과 내용을 작성하고, 사진·그림·지도 중 하나를 준비해 배치한다." };
+  assert.equal(force(head, "광복부터 대한민국 정부 수립까지의 시기를 소재로 현대사 신문 만들기").type, "text_submission");
+  assert.equal(force({ ...head, label: "감상문" }, "독서 감상문 만들기").type, "text_submission");
+});
+
+test("제목에 도구·물건 이름이 있으면 그대로 외부 제작으로 둔다", () => {
+  const el = { type: "external_production", label: "결과물", description: "내용을 정리해 만든다." };
+  for (const topic of ["카드뉴스 만들기", "PPT로 발표 자료 만들기", "홍보 포스터 제작", "UCC 영상 만들기"])
+    assert.equal(force(el, topic).type, "external_production", topic);
+});
+
+test("단계 설명에 외부 제작 신호가 있으면 제목과 무관하게 둔다", () => {
+  const el = { type: "external_production", label: "홍보물", description: "캔바로 포스터를 제작한다." };
+  assert.equal(force(el, "우리 반 캠페인").type, "external_production");
+});
