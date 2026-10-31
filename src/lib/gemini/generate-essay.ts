@@ -2670,8 +2670,11 @@ export async function generateEssay(
   }
 
   // 시험지·안내문의 장면·문장·문단 수 조건: 생성 뒤 코드로 세고, 어긴 단계만 검색 없이 한 번 고친다(form-repair.ts). 못 맞추면 경고로 알린다.
+  // 세는 일(checkFormRequirements)은 코드라서 공짜다 — 예산과 무관하게 항상 하고, 모델을 부르는 보완만 예산에 건다.
+  // 예전에는 블록 전체를 막아서, 예산을 넘기면 "8장면인데 6개"를 알지도 못하고 경고도 없이 나갔다(저장된 로그에서 가장 많이 건너뛴 보완 — 9회).
+  // 등급도 바로잡는다: 안내문이 요구한 개수 조건을 채우는 보완이므로 필수 쪽이다(CLAUDE.md의 설명과 코드가 어긋나 있었다).
   const formWarningByLabel = new Map<string, string>();
-  if (formOn && !overBudget("형식 조건 보완")) {
+  if (formOn) {
     const checked = await Promise.all(
       attempt.sections.map(async (sec) => {
         const el = elements.find((e) => e.label === sec.label);
@@ -2681,6 +2684,11 @@ export async function generateEssay(
         const issues = checkFormRequirements(sec.content, reqs, { skipScene });
         if (issues.length === 0) return sec;
         console.warn(`[generateEssay] 형식 조건 위반 label="${sec.label}": ${JSON.stringify(issues.map((i) => ({ unit: i.req.word, min: i.req.min, max: i.req.max, actual: i.actual })))}`);
+        // 보완을 못 하더라도 위반은 반드시 학생에게 알린다 — 조용히 어긴 채 나가는 것이 가장 나쁘다.
+        if (overBudget(`형식 조건 보완("${sec.label}")`, "required")) {
+          formWarningByLabel.set(sec.label, formWarningText(issues));
+          return sec;
+        }
         const r = await repairFormRequirements({ label: sec.label, content: sec.content, description: el.description, reqs, issues, skipScene });
         console.log(`[generateEssay] 형식 조건 보완 label="${sec.label}" 적용=${r.repaired} 남은 위반=${r.remaining.length}건`);
         if (r.remaining.length > 0) formWarningByLabel.set(sec.label, formWarningText(r.remaining));
