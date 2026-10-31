@@ -14,6 +14,9 @@ export interface OrderElement {
 const DEP_CUE =
   /바탕으로|토대로|기반으로|정리한\s*내용|생성한\s*내용|작성한\s*내용|수집한\s*(?:자료|내용|정보)|조사한\s*(?:자료|내용|정보)|이어받아|앞\s*단계|앞서\s*(?:작성|정리|조사|수집)한|참고(?:하여|해서|해)|활용(?:하여|해서|해)/g;
 
+/** 앞 단계 이름 없이 "앞에서 한 것을 받아"만 말하는 표현. */
+const PRIOR_CUE = /앞서\s*(?:작성|정리|조사|수집|구상|계획)한|앞\s*단계|앞서\s*만든|앞에서\s*(?:정리|조사|작성)한|앞의\s*(?:내용|자료|결과)/;
+
 const norm = (s: string) => s.replace(/[\s()[\]{}<>"'`·・,.:;!?~\-–—/]/g, "").toLowerCase();
 
 /** 글 text에서 needle이 at보다 왼쪽에 나오는 위치 중 at에 가장 가까운 거리(없으면 Infinity). */
@@ -65,6 +68,14 @@ export function stepDependencies(elements: OrderElement[], requirements: string[
     for (const [a, b] of list) if (!edges.some(([x, y]) => x === a && y === b)) edges.push([a, b]);
   };
   for (const el of elements) for (const s of splitSentences(el.description)) add(edgesFromSentence(s, labels, el.label));
+  // "앞서 조사한 자료를 토대로"처럼 **앞 단계 이름을 적지 않고** 순서만 가리키는 말투도 있다 — 바로 앞 단계에 기대는 것으로 본다.
+  for (let i = 1; i < elements.length; i++) {
+    const el = elements[i];
+    if (edges.some(([, b]) => b === el.label)) continue;
+    if (!PRIOR_CUE.test(el.description ?? "")) continue;
+    if (labels.slice(0, i).some((prev) => norm(el.description ?? "").includes(norm(prev)))) continue;
+    add([[elements[i - 1].label, el.label]]);
+  }
   for (const s of [...requirements.flatMap(splitSentences), ...splitSentences(guide ?? "")]) add(edgesFromSentence(s, labels));
   return edges;
 }

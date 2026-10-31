@@ -40,7 +40,8 @@ const EVIDENCE_WORD = /근거|논거|뒷받침/;
 // 예전 규칙은 "뒷받침하는 정보"만 받아 "뒷받침 정보 3가지 이상"을 못 읽고 기본값 2로 떨어졌다(실측 2026-11-01, 8회 중 1회).
 // 안내문이 3가지 이상을 요구하는데 2개만 쓰면 채점 기준을 바로 어긴다. 숫자 바로 앞 낱말만 느슨하게 보되,
 // 뒤에 장면·칸·문단이 오면 다른 개수 조건이므로 받지 않는다.
-const EVIDENCE_COUNT = /(?:근거|논거|뒷받침)(?:하는)?\s*(?:정보|자료|내용)?\s*[)）]?\s*(?:를|을|은|는|로|으로)?\s*(\d{1,2})\s*(?:가지|개|건|편)(?!\s*(?:장면|칸|단계|문단|문장|쪽))/;
+const KO_COUNT: Record<string, number> = { 한: 1, 두: 2, 세: 3, 네: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열: 10 };
+const EVIDENCE_COUNT = /(?:근거|논거|뒷받침)(?:하는)?\s*(?:정보|자료|내용)?\s*[)）]?\s*(?:를|을|은|는|로|으로)?\s*(\d{1,2}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*(?:가지|개|건|편)(?!\s*(?:장면|칸|단계|문단|문장|쪽))/;
 /** 근거를 세는 것이 의미 있는 글인가(주장·설득·찬반). */
 const ARGUMENT_TEXT = /논설|논술|주장|설득|찬반|찬성|반대|토론|논제|쟁점|사설|칼럼|의견/;
 /** 학생이 고른 입장. "반대로"처럼 낱말 속 글자가 걸리지 않게 뒤에 한글이 이어지면 보지 않는다. */
@@ -90,7 +91,9 @@ export function planEvidence(info: EvidenceInfo, instructions?: string): Evidenc
       const m = EVIDENCE_COUNT.exec(text ?? "");
       if (!m) continue;
       const after = (text ?? "").slice(m.index + m[0].length, m.index + m[0].length + 6);
-      found.push({ n: Number(m[1]), atLeast: /이상/.test(after) });
+      const n = /^\d+$/.test(m[1]) ? Number(m[1]) : KO_COUNT[m[1]];
+      if (!n) continue;
+      found.push({ n, atLeast: /이상/.test(after) });
     }
     const atLeast = found.filter((f) => f.atLeast);
     if (atLeast.length > 0) slots = Math.max(...atLeast.map((f) => f.n));

@@ -52,7 +52,10 @@ test("개수 조건: 장면 N, 문장 이내, 줄 안에, 범위, 이상", () =>
   assert.deepEqual(sheet.find((r) => r.unit === "line"), { unit: "line", word: "줄", min: 0, max: 10 });
   assert.deepEqual(extractCountRequirements(["3~5문장으로 쓴다"]), [{ unit: "sentence", word: "문장", min: 3, max: 5 }]);
   assert.deepEqual(extractCountRequirements(["두 문단 이상"]), [{ unit: "paragraph", word: "문단", min: 2, max: 0 }]);
-  assert.deepEqual(extractCountRequirements(["컷 6개 이상"]).length, 0); // 단위가 숫자 뒤에 올 때만
+  // 2026-11-01: 단위가 숫자보다 먼저 오는 말투도 받는다("컷 6개 이상", "장면은 8개가 기본이며").
+  // 예전에는 숫자 뒤에 단위가 올 때만 읽어서 이런 안내문의 개수 조건이 통째로 빠졌다(규칙 전수 검사에서 발견).
+  assert.deepEqual(extractCountRequirements(["컷 6개 이상"]), [{ unit: "scene", word: "컷", min: 6, max: 0 }]);
+  assert.deepEqual(extractCountRequirements(["장면은 8개가 기본이며"]), [{ unit: "scene", word: "장면", min: 8, max: 8 }]);
   assert.deepEqual(extractCountRequirements(["6컷 이상으로"]), [{ unit: "scene", word: "컷", min: 6, max: 0 }]);
 });
 

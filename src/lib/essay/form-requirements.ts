@@ -23,6 +23,9 @@ const NUM = "\\d{1,2}|두|세|네|다섯|여섯|일곱|여덟|아홉|열";
 const RANGE = new RegExp(`(\\d{1,2})\\s*[~∼–-]\\s*(\\d{1,2})\\s*(?:개\\s*(?:의\\s*)?)?(${UNITS})`, "g");
 const SINGLE = new RegExp(`(?<![\\d~∼–-])(${NUM})\\s*(?:개\\s*(?:의\\s*)?)?(${UNITS})\\s*\\)?\\s*(이상|이내|이하|내외|안팎|정도|가량|안에|까지)?`, "g");
 
+// 단위가 숫자보다 먼저 오는 말투도 받는다 — "장면은 8개가 기본이며", "문단은 3개 이상"(실측 2026-11-01 규칙 전수).
+const REVERSED = new RegExp(`(${UNITS})\\s*(?:은|는|이|가)?\\s*(${NUM})\\s*개\\s*(?:가|를|이(?!상|내|하))?\\s*(이상|이내|이하|내외|안팎|정도|가량|안에|까지|기본)?`, "g");
+
 const toNum = (s: string) => (/^\d+$/.test(s) ? Number(s) : KO_NUM[s]);
 
 export interface PositionedReq extends CountReq {
@@ -43,6 +46,14 @@ export function extractPositionedRequirements(text: string): PositionedReq[] {
     const b = Number(m[2]);
     rangeSpans.push([m.index!, m.index! + m[0].length]);
     push({ unit: UNIT_KIND[m[3]], word: m[3], min: Math.min(a, b), max: Math.max(a, b), index: m.index! });
+  }
+  for (const m of text.matchAll(REVERSED)) {
+    if (rangeSpans.some(([s, e]) => m.index! >= s && m.index! < e)) continue;
+    const n = toNum(m[2]);
+    if (!n || n < 1) continue;
+    const tail = m[3];
+    const max = tail === "이내" || tail === "이하" || tail === "까지" ? n : tail === "이상" ? 0 : n;
+    push({ unit: UNIT_KIND[m[1]], word: m[1], min: tail === "이내" || tail === "이하" ? 0 : n, max, index: m.index! });
   }
   for (const m of text.matchAll(SINGLE)) {
     if (rangeSpans.some(([s, e]) => m.index! >= s && m.index! < e)) continue;
@@ -285,7 +296,8 @@ export function buildFormLimitBlock(items: { label: string; reqs: CountReq[] }[]
 // "대본 없이 자연스럽게 발표"가 있는데 장면 8개마다 완성된 발표 대사를 써서, 유일하게 재현되는 안내문 위반이었다.
 const BRIEF_SCENE =
   /(?:스토리보드|콘티|장면|칸)[^.。\n]{0,24}(?:에는|에|은|는)[^.。\n]{0,16}간단히\s*(?:표시|기록|적|작성|쓰)|간단히\s*(?:표시|기록)[^.。\n]{0,12}(?:스토리보드|콘티|장면|칸)/;
-const NO_SCRIPT = /대본\s*(?:은|을)?\s*(?:없이|없어야|쓰지|보지|읽지|금지)|대본\s*없는/;
+const NO_SCRIPT =
+  /(?:대본|원고|스크립트)\s*(?:은|을)?\s*(?:없이|없어야|쓰지|보지|읽지|금지)|(?:대본|원고|스크립트)\s*없는|(?:대본|원고|스크립트)(?:를|을)?\s*보지\s*않/;
 
 export function wantsBriefScenes(texts: (string | undefined)[]): boolean {
   const joined = texts.filter(Boolean).join("\n");

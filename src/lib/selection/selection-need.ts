@@ -20,7 +20,7 @@ const SELECT_VERB =
 const TARGET_WORD =
   /인물|위인|작가|예술가|과학자|발명가|대상|주제|소재|제재|사례|사건|작품|도서|책|기업|회사|국가|나라|지역|도시|정책|제도|쟁점|사회\s*문제|탐구\s*문제|현상|실험|직업|진로|분야|종목|음식|장소|생물|동물|식물|원소|화합물|물질|발명품|유물|문화재|기사|광고|영화|드라마|노래|시|소설|한\s*(?:명|가지|곳|편|개)|하나/;
 /** 대상이 아니라 진행 방식을 정하는 말 — 고르라는 말이 있어도 대상 선정이 아니다. */
-const NOT_TARGET = /순서|차례|순번|제비뽑기|역할|모둠|조원|짝|일정|날짜|기한|분량|시간|매체|형식|도구|프로그램|플랫폼/;
+const NOT_TARGET = /순서|차례|순번|제비뽑기|역할|모둠|조원|짝|일정|날짜|기한|분량|시간|매체|형식|도구|기구|장비|용품|재료|프로그램|플랫폼/;
 /** 대상을 고른 것을 전제로 하는 항목("선정 이유", "선정한 인물") — 이것만으로도 선정 과제다. */
 const SELECTED_FIELD = /(?:선정|선택)\s*(?:한|된)?\s*(?:이유|까닭|배경|과정|동기|인물|대상|주제|작품|사례)/;
 
@@ -32,7 +32,9 @@ function picksATarget(line: string): boolean {
     // 바로 앞 절(쉼표·접속 이후)만 본다 — 한 문장에 여러 지시가 이어 붙는 일이 많다.
     const before = text.slice(0, m.index);
     const clause = before.slice(Math.max(0, before.lastIndexOf(",") + 1)).slice(-40);
-    if (NOT_TARGET.test(clause)) continue;
+    // 진행 방식 낱말은 **고르라는 말 바로 앞**(목적어 자리)에 있을 때만 막는다.
+    // 안 그러면 "모둠별로 탐구 주제를 선택한다"가 '모둠' 때문에 통째로 빠진다(실측 2026-11-01 규칙 전수).
+    if (NOT_TARGET.test(clause.slice(-8))) continue;
     if (TARGET_WORD.test(clause)) return true;
   }
   return false;
