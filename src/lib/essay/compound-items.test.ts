@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { compoundItemBlock, compoundItems, compoundRepairText, missingParts, sectionTextFor, splitCompoundItem } from "./compound-items.ts";
+import { allCompoundItems, compoundItemBlock, compoundItems, compoundItemsFromText, compoundRepairText, missingParts, sectionTextFor, splitCompoundItem } from "./compound-items.ts";
 
 test("나열 기호로 묶인 항목 이름을 쪼갠다", () => {
   assert.deepEqual(splitCompoundItem("글의 목적·주제·예상 독자"), ["글의 목적", "주제", "예상 독자"]);
@@ -64,4 +64,51 @@ test("보완 지시는 빠진 것과 쓸 모양을 함께 말하고 각주는 �
   assert.ok(t.includes("각주"));
   const all = compoundRepairText("글의 목적·주제·예상 독자", ["글의 목적", "주제", "예상 독자"], ["글의 목적", "주제", "예상 독자"]);
   assert.ok(all.includes("한 문단에 뭉쳐"));
+});
+
+test("안내문 문장에서도 나열된 항목을 뽑는다", () => {
+  // 실측: required_items가 비어 있는 실행이 절반이라 거기에만 기대면 이 규칙이 절반만 돈다.
+  const items = compoundItemsFromText([
+    "개요에는 글의 목적, 주제, 예상 독자를 구체적으로 설정하고, 그에 맞게 중심 내용과 세부 내용을 구상한다.",
+  ]);
+  const parts = items.map((i) => i.parts.join("|"));
+  assert.ok(parts.includes("글의 목적|주제|예상 독자"), JSON.stringify(parts));
+  assert.ok(parts.includes("중심 내용|세부 내용"), JSON.stringify(parts));
+});
+
+test("나열이 아닌 문장에서는 아무것도 뽑지 않는다", () => {
+  assert.deepEqual(
+    compoundItemsFromText([
+      "내용을 뒷받침하는 정보를 3가지 이상 수집한다.",
+      "산과 염기의 특징을 설명한다.",
+      "스토리보드를 8개의 장면으로 작성한다.",
+      undefined,
+    ]),
+    []
+  );
+});
+
+test("항목 이름과 안내문 글에서 같은 것이 나오면 한 번만 센다", () => {
+  const both = allCompoundItems(
+    ["글의 목적·주제·예상 독자"],
+    ["개요에는 글의 목적, 주제, 예상 독자를 구체적으로 설정한다."]
+  );
+  assert.equal(both.length, 1);
+  // 항목 이름이 비어 있어도 안내문 글에서 뽑는다.
+  assert.equal(allCompoundItems([], ["글의 목적, 주제, 예상 독자를 구체적으로 설정한다."]).length, 1);
+});
+
+test("문장을 잘못 끊어 조각이 길어지면 믿지 않는다", () => {
+  // 안내문에 없는 이름으로 "빠졌다"고 보완을 부르면 글만 망가진다.
+  assert.deepEqual(
+    compoundItemsFromText(["작년 한 해 동안 학급에서 겪은 여러 가지 어려움과 그것을 이겨 내기 위해 노력한 과정을 정리한다."]),
+    []
+  );
+});
+
+test("자리말이 여러 낱말이어도 뗀다", () => {
+  const items = compoundItemsFromText(["한 경제 문제에 대해 주제와 선정 이유, 원인, 양상, 해결 방안을 작성할 것"]);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].parts[0], "주제와 선정 이유");
+  assert.ok(items[0].parts.includes("해결 방안"));
 });

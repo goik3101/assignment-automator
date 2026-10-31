@@ -104,3 +104,60 @@ export function compoundRepairText(name: string, parts: string[], missing: strin
     `${parts.map((p) => `"${p}: …"`).join(", ")}처럼 줄을 나눠 각각 쓸 것. 내용은 지금 쓴 것을 나눠 담되, 한 줄도 비우지 말고 빠진 것은 채울 것. 각주는 그대로 둘 것.`
   );
 }
+
+// 분석 결과의 required_items는 **절반쯤만 채워진다**(실측 2026-11-01, 같은 사진 11회: 4개로 채워진 실행과
+// 비어 있는 실행이 거의 반반). 거기에만 기대면 이 규칙도 절반만 돈다. 그래서 안내문 문장에서도 같은 것을 뽑는다 —
+// 요구사항·작성 기준 글은 항목 이름보다 훨씬 덜 흔들린다("글의 목적, 주제, 예상 독자를 구체적으로 설정하고").
+// "…를 설정한다" 앞의 덩어리를 먼저 끊고, 그 덩어리의 나열만 떼어 낸다. 한 정규식으로 잡으려다
+// 문장 전체를 집어삼킨 적이 있어(실측) 두 단계로 나눈다.
+const ENUM_CLAUSE =
+  /([^.。\n]{4,60}?)(?:을|를)\s*(?:각각\s*|구체적으로\s*|모두\s*)?(?:설정|구상|작성|기록|제시|정리|밝히|담|쓴다|써야|구분|나누)/g;
+/** 앞에 붙은 자리말("개요에는", "그에 맞게")을 뗀다. */
+const LEAD = /^(?:[가-힣A-Za-z0-9]+(?:\s+[가-힣A-Za-z0-9]+){0,2}\s*(?:에\s*대해|에\s*관해|에\s*대하여|을\s*위해)\s+|[가-힣A-Za-z0-9]+(?:에는|에서는|에게|에|게|서는|서|로는|로|고는|고|며)\s+)/;
+
+function stripLead(part: string): string {
+  let t = TRIM(part);
+  for (let i = 0; i < 3; i++) {
+    const next = TRIM(t.replace(LEAD, ""));
+    if (next === t || next.split(/\s+/).length === 0 || next.length < 2) break;
+    t = next;
+  }
+  return t;
+}
+
+/** 안내문 문장에서 "A·B·C를 …한다" 꼴로 나열된 항목 이름을 찾는다. */
+export function compoundItemsFromText(texts: (string | undefined)[]): CompoundItem[] {
+  const out: CompoundItem[] = [];
+  const seen = new Set<string>();
+  for (const t of texts) {
+    for (const m of (t ?? "").matchAll(ENUM_CLAUSE)) {
+      // 앞 절이 "…설정하고, 그에 맞게 …"처럼 이어지면 연결 꼬리가 첫 조각으로 들어온다 — 떼고 본다.
+      const clause = TRIM(TRIM(m[1]).replace(/^(?:하고|하며|하여|해서|한\s*뒤|한\s*다음|그리고)[,\s]*/, ""));
+      const raw = splitCompoundItem(clause);
+      if (!raw) continue;
+      const parts = [stripLead(raw[0]), ...raw.slice(1).map(TRIM)].filter((p) => p.length >= 2);
+      if (parts.length < 2) continue;
+      const joined = parts.join("|");
+      if (seen.has(joined)) continue;
+      // 쪼갠 결과가 다시 나열로 보이면(조각 안에 또 나열 기호가 있으면) 믿지 않는다.
+      if (parts.some((p) => splitCompoundItem(p))) continue;
+      // 조각이 항목 이름이라기엔 너무 길면 문장을 잘못 끊은 것이다 — 글에서 그 이름을 찾을 수 없어 헛보완만 부른다.
+      if (parts.some((p) => p.length > 24)) continue;
+      seen.add(joined);
+      out.push({ name: parts.join("·"), parts });
+    }
+  }
+  return out;
+}
+
+/** required_items에서 뽑은 것과 안내문 글에서 뽑은 것을 합친다(같은 조각들이면 한 번만). */
+export function allCompoundItems(names: string[], texts: (string | undefined)[]): CompoundItem[] {
+  const out = compoundItems(names);
+  const seen = new Set(out.map((i) => i.parts.join("|")));
+  for (const it of compoundItemsFromText(texts)) {
+    if (seen.has(it.parts.join("|"))) continue;
+    seen.add(it.parts.join("|"));
+    out.push(it);
+  }
+  return out;
+}

@@ -54,7 +54,7 @@ import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRec
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
-import { compoundItemBlock, compoundItems, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
+import { allCompoundItems, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
@@ -650,7 +650,13 @@ ${input.previousOutputText}
       )
     : NO_EVIDENCE_PLAN;
   // 안내문 항목 이름이 여러 가지를 나열한 것이면(“글의 목적·주제·예상 독자”) 채점자가 하나씩 찾는다 — 줄을 나눠 쓰게 한다.
-  const compoundBlock = compoundItemBlock(compoundItems(elements.flatMap((el) => el.required_items ?? [])));
+  // required_items는 같은 사진을 다시 분석해도 절반쯤만 채워진다(실측 2026-11-01, 11회) — 안내문 글에서도 같이 뽑는다.
+  const compoundAll = allCompoundItems(elements.flatMap((el) => el.required_items ?? []), [
+    ...input.coreTaskInfo.requirements,
+    input.coreTaskInfo.writing_guide,
+    ...elements.map((el) => el.description),
+  ]);
+  const compoundBlock = compoundItemBlock(compoundAll);
   const evidenceItemBlock = evidenceWritingBlock(writeEvidence.label, writeEvidence.slots);
   const dataTableBlock = qualityFixesOn()
     ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((el) => el.label))
@@ -2165,10 +2171,15 @@ export async function generateEssay(
       }
     }
     // 나열된 항목이 한 문단에 뭉쳐 채점자가 하나씩 찾을 수 없는 경우(compound-items.ts).
+    const compoundChecks = allCompoundItems(elements.flatMap((el) => el.required_items ?? []), [
+      ...input.coreTaskInfo.requirements,
+      input.coreTaskInfo.writing_guide,
+      ...elements.map((el) => el.description),
+    ]);
     for (const sec of attempt.sections) {
       const el = elements.find((e) => e.label === sec.label);
       if (!el) continue;
-      for (const it of compoundItems(el.required_items ?? [])) {
+      for (const it of compoundChecks) {
         const body = sectionTextFor(sec.content, it.name);
         if (body === null) continue;
         const missing = missingParts(body, it.parts);
