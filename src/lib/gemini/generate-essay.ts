@@ -55,6 +55,7 @@ import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
 import { compoundItemBlock, compoundItems, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
+import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
@@ -2110,6 +2111,12 @@ export async function generateEssay(
           // 근거 자리에 사실이 아니라 "이 자료를 ~에 쓴다"는 쓰임 설명이 들어간 것도 같이 고친다.
           const usePlans = body === null ? [] : findUsePlanSentences(body);
           if (usePlans.length > 0) parts.push(usePlanRepairText(sec.label, usePlans));
+          // 근거가 사실이 아니라 "그 문서가 무슨 말을 했나"로 쓰인 것(source-voice.ts) — 출처 제목과 맞춰 보므로 과제 유형과 무관하다.
+          const voices = body === null ? [] : findSourceVoiceSentences(body, attempt.sources.map((x) => x.title ?? ""), [input.coreTaskInfo.topic, input.subject]);
+          if (voices.length > 0) {
+            console.warn(`[generateEssay] 근거가 출처의 말만 전함 label="${sec.label}" ${voices.length}문장: ${JSON.stringify(voices[0].text.slice(0, 50))}`);
+            parts.push(sourceVoiceRepairText(sec.label, voices));
+          }
         }
         const subjects = findSourceSubjectSentences(sec.content);
         if (subjects.length > 0) parts.push(sourceSubjectRepairText(subjects));
