@@ -84,6 +84,7 @@ import {
   requirementsForElement,
   describeReq,
   sceneBlockInputs,
+  wantsBriefScenes,
 } from "@/lib/essay/form-requirements";
 import { formWarningText, repairFormRequirements } from "@/lib/essay/form-repair";
 import { renderScopedGuide, renderScopedRequirements, scopeStatements, splitStatements } from "@/lib/essay/requirement-scope";
@@ -683,7 +684,7 @@ ${input.previousOutputText}
   const materialEls = structuredEls.filter((el) => !reportEls.includes(el) && !sceneEls.includes(el));
   // 발표 과제면 장면 대사를 높임말로 쓰게 한다(글 종류 판정은 form-rules와 같은 기준).
   const sceneSpeech = sceneEls.some((el) => inferFormKinds(el).includes("speech")) || /발표|말하기|구술/.test([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements].join(" "));
-  const sceneBlock = buildSceneBlock(sceneBlockInputs(sceneEls), sceneSpeech);
+  const sceneBlock = buildSceneBlock(sceneBlockInputs(sceneEls), sceneSpeech, wantsBriefScenes([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, ...sceneEls.map((e) => e.description)]));
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
       `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +

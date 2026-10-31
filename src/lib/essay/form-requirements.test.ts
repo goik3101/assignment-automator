@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyFormRequirements,
   buildFormLimitBlock,
+  wantsBriefScenes,
   buildSceneBlock,
   checkFormRequirements,
   countParagraphs,
@@ -236,4 +237,30 @@ test("재현: '스토리보드는 개요의 내용을 바탕으로 8개의 장�
   const out = applyFormRequirements({ requirements: [], writing_guide: guide, task_elements: [outline, board] });
   assert.equal(out.task_elements[0].required_items, undefined);
   assert.equal(out.task_elements[1].required_items?.length, 8);
+});
+
+test("안내문이 스토리보드를 간단히 표시하라고 했는지 본다", () => {
+  // 실제 안내문 문구(2026-10-31 사진 확인)
+  assert.equal(wantsBriefScenes(["8개가 기본이며 10개까지 가능합니다. 부족 시 감점됩니다. (스토리보드에는 간단히 표시)"]), true);
+  assert.equal(wantsBriefScenes(["대본 없이 자연스럽게 말해야 합니다."]), true);
+  assert.equal(wantsBriefScenes(["장면에는 간단히 기록할 것"]), true);
+});
+
+test("간단히라는 말이 장면 칸을 가리키지 않으면 걸지 않는다", () => {
+  // 이 말들에 걸리면 완성 대사를 써야 하는 과제까지 낱말 메모로 바뀐다.
+  assert.equal(wantsBriefScenes(["선정 이유를 간단히 설명한다."]), false);
+  assert.equal(wantsBriefScenes(["느낀 점을 간단히 쓴다."]), false);
+  assert.equal(wantsBriefScenes(["대본을 바탕으로 영상을 제작한다."]), false);
+  assert.equal(wantsBriefScenes(["장면마다 대사를 적는다."]), false);
+  assert.equal(wantsBriefScenes([undefined, ""]), false);
+});
+
+test("간단히 표시면 완성 대본을 쓰지 말라고 하고, 아니면 예전 규칙 그대로", () => {
+  const items = [{ label: "스토리보드", word: "장면", n: 8, fields: "화면과 대사" }];
+  const brief = buildSceneBlock(items, true, true);
+  assert.ok(brief.includes("완성된 발표 대본이 아니라"));
+  assert.ok(!brief.includes("실제로 말할 문장 그대로"));
+  const full = buildSceneBlock(items, true, false);
+  assert.ok(full.includes("실제로 말할 문장 그대로"));
+  assert.ok(!full.includes("완성된 발표 대본이 아니라"));
 });
