@@ -54,6 +54,7 @@ import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRec
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
+import { compoundItemBlock, compoundItems, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
@@ -101,7 +102,7 @@ import { buildFormRulesBlock, inferFormKinds } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
 import { itemGroups, itemWriteInstruction, mergeItemParts, mergeParallelParts, ownSection, parallelWriteInstruction, parallelWriteOn, previousStepsBlock } from "@/lib/essay/parallel-write";
-import { stepWaves } from "@/lib/essay/step-order";
+import { extraCitationRepairText, extraCitations, stepWaves } from "@/lib/essay/step-order";
 import { acceptKoreanRewrite, flippedToEnglish, koreanGuardOn, koreanLanguageIssue, koreanRewritePrompt } from "@/lib/essay/korean-guard";
 import { currentOutputLang, scaleLengthsForEnglish } from "@/lib/llm/output-lang";
 import {
@@ -647,6 +648,8 @@ ${input.previousOutputText}
         input.instructions
       )
     : NO_EVIDENCE_PLAN;
+  // 안내문 항목 이름이 여러 가지를 나열한 것이면(“글의 목적·주제·예상 독자”) 채점자가 하나씩 찾는다 — 줄을 나눠 쓰게 한다.
+  const compoundBlock = compoundItemBlock(compoundItems(elements.flatMap((el) => el.required_items ?? [])));
   const evidenceItemBlock = evidenceWritingBlock(writeEvidence.label, writeEvidence.slots);
   const dataTableBlock = qualityFixesOn()
     ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((el) => el.label))
@@ -764,7 +767,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -2134,6 +2137,37 @@ export async function generateEssay(
             bad.map((f, i) => `(${i + 1}) "${f.text.slice(0, 60)}" (찾지 못한 값: ${describeToken(f.tokens)})`).join(" ") +
             ` 조사 노트에 있는 값으로 바꾸거나, 수치를 빼고 노트로 확인되는 내용만 쓸 것. 지어낸 숫자를 그대로 두지 말 것. 다른 문장과 각주는 그대로 둘 것.`,
         });
+      }
+    }
+    // 안내문이 "A를 바탕으로 B"라고 한 단계가, A가 쓰지 않은 출처를 새로 들고 왔는지(step-order.ts).
+    // 순차 생성이 앞 단계 글을 보여 주기는 하지만 조사 노트에 남은 다른 사실까지 막지는 못한다 — 번호로 코드가 확인한다.
+    {
+      const waves = stepWaves(elements.map((e) => ({ label: e.label, description: e.description })));
+      for (let w = 1; w < waves.length; w++) {
+        const earlier = waves.slice(0, w).flat();
+        const sources = attempt.sections.filter((s) => earlier.includes(s.label));
+        if (sources.length === 0) continue;
+        for (const label of waves[w]) {
+          const sec = attempt.sections.find((s) => s.label === label);
+          if (!sec) continue;
+          const extra = extraCitations(sec.content, sources.map((s) => s.content));
+          if (extra.length === 0) continue;
+          console.warn(`[generateEssay] 앞 단계에 없는 출처를 쓴 단계 label="${label}" 번호=${JSON.stringify(extra)} 앞단계=${JSON.stringify(earlier)}`);
+          activityRewrites.push({ label, instruction: extraCitationRepairText(earlier, extra) });
+        }
+      }
+    }
+    // 나열된 항목이 한 문단에 뭉쳐 채점자가 하나씩 찾을 수 없는 경우(compound-items.ts).
+    for (const sec of attempt.sections) {
+      const el = elements.find((e) => e.label === sec.label);
+      if (!el) continue;
+      for (const it of compoundItems(el.required_items ?? [])) {
+        const body = sectionTextFor(sec.content, it.name);
+        if (body === null) continue;
+        const missing = missingParts(body, it.parts);
+        if (missing.length === 0) continue;
+        console.warn(`[generateEssay] 나열 항목이 뭉쳐 있음 label="${sec.label}" 항목="${it.name}" 안 보이는 것=${JSON.stringify(missing)}`);
+        activityRewrites.push({ label: sec.label, instruction: compoundRepairText(it.name, it.parts, missing) });
       }
     }
     // 안내문 조건을 어긴 단계(rubric-check.ts) — 결함이 아니라 "하라는 것을 안 했다"는 문제라 다른 검사로는 잡히지 않는다.

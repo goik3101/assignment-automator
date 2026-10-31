@@ -103,6 +103,8 @@ src/
                                      data-visual(안내문이 요구한 표·그래프를 실제로 만들었는지 + 안내문이 금지한 자료(사진·영상)를 썼는지),
                                      uncited-figures(각주 없는 수치 문장을 찾아 노트에 있는 값은 코드가 출처를 붙이고, 노트에 없는 값은 그 단계만 다시 쓰게 함),
                                      form-requirements의 wantsBriefScenes(안내문이 "스토리보드에는 간단히 표시"·"대본 없이"라고 하면 장면의 말할 내용을 완성 대본이 아니라 핵심 낱말 한 줄로),
+                                     compound-items(항목 이름이 "글의 목적·주제·예상 독자"처럼 여러 가지를 나열하면 한 문단에 뭉치지 말고 줄을 나눠 각각 쓰게 함 — 이름이 나열형일 때만 발동하고 "산과 염기의 특징"처럼 끝말이 다른 "과/와"는 쪼개지 않는다),
+                                     step-order의 extraCitations(앞 단계를 바탕으로 쓰는 단계가 앞 단계에 없는 출처를 들고 왔는지 번호로 검사 — 프롬프트 지시만으로는 막히지 않는다),
                                      refusal(제출할 글에 섞인 "자료가 없어 못 쓰겠다·보내 주면 정리해 드리겠다" 같은 거절문을 찾아 그 단계만 다시 쓰게 함 — 날조 차단의 반작용)
     selection/
       selection-need.ts          -- 이 과제가 "학생이 대상을 골라야 하는 과제"인지 판정(순수 함수). 낱말만 보면 "설정하고"·"선정기준액"까지 걸린다 — 고르라는 말 앞에 대상 낱말이 있을 때만 참. SELECTION_TRIGGER=legacy로 예전 규칙
@@ -157,7 +159,7 @@ docs/
 - **글 품질 작업(2026-10-29~30) 스위치** — 전부 기본 켜짐, 괄호 안 값으로 되돌린다. 근거와 측정값은 `PROGRESS.md`의 같은 날짜 항목에 있다.
   `OPENAI_MODEL_WRITE=gpt-6-luna`(완성 원고 글쓰기만 luna — mini 대비 24.8→20.4초·되풀이 1.3→0쌍, 더 비싼 gpt-6-sol·gpt-5.6-luna는 이 과제에서 더 낫지 않았다), `ESSAY_WRITE_EFFORT=low`(luna는 minimal을 거부),
   `ESSAY_WRITER_KNOWLEDGE=strict`(기본은 교과서 수준 일반 지식 허용 — 금지해 두면 노트 10~14개 사실만으로 글을 채우느라 같은 말이 되풀이됐다),
-  `UNVERIFIED_MARK=off`(본문에 "[확인 필요]" 표시), `ESSAY_EVIDENCE_SLOTS=off`, `PLAN_CITATIONS=off`, `ESSAY_STEP_ORDER=on`(순차 생성은 기본 꺼짐 — 효과 미확인·시간 +4초),
+  `UNVERIFIED_MARK=off`(본문에 "[확인 필요]" 표시), `ESSAY_EVIDENCE_SLOTS=off`, `PLAN_CITATIONS=off`, `ESSAY_STEP_ORDER=off`(2026-11-01 기본 켜짐으로 바꿈 — 안내문이 "개요에서 생성한 내용을 바탕으로"를 직접 묻는데 동시 생성이면 뒤 단계가 앞 단계 글을 물리적으로 못 본다. generateEssay 27~34초 유지),
   `ESSAY_MAX_BLANKS`(기본 4 — 기사 스크랩은 제목·날짜·신문사 세 칸이 정당한 빈칸이라 3이면 매번 걸린다), `ESSAY_ITEM_PARALLEL=off`(단계가 하나뿐일 때 항목을 둘로 나눠 동시 쓰기), `ESSAY_TIME_BUDGET_MS`(기본 22000, 0이면 끔 — 넘으면 품질 교정용 추가 호출을 건너뛰되 안내문 요구를 채우는 보완은 +4초까지 허용),
   `SOURCE_LIMIT`(출처 정리 한도, 기본 5 — 예전 3은 각주 49개·출처 32개를 잘라냈다), `SOURCE_JUDGE=on`(작은 모델 판정으로 각주를 옮기던 경로, 기본 꺼짐).
 - **30초로 재야 할 것은 `generateEssay` 단독이다**(실측 21~39초). analyze(12~20초)는 별개 요청이고 그 사이에 사람이

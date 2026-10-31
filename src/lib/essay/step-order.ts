@@ -100,3 +100,24 @@ export function stepWaves(elements: OrderElement[], requirements: string[] = [],
   }
   return waves.filter((w) => w && w.length > 0);
 }
+
+// 안내문이 "A를 바탕으로 B"라고 했는데 B가 A에 없는 출처를 새로 들고 오는 일이 남는다.
+// 앞 단계 글과 "새 사실을 가져오지 말 것"이라는 지시를 함께 줘도 어긴다 — 조사 노트에는 앞 단계가 쓰지 않은 사실이
+// 그대로 남아 있어서 B가 거기서 꺼내 쓴다(실측 2026-11-01, 2회 중 1회: 개요가 [1][2][3]만 쓴 글에서 스토리보드가 [4]를 썼다).
+// 그래서 프롬프트에 기대지 않고 각주 번호를 코드로 맞춰 본다.
+
+/** 뒤 단계가 쓴 각주 중 앞 단계들이 하나도 쓰지 않은 번호. */
+export function extraCitations(dependentContent: string, sourceContents: string[]): number[] {
+  const used = new Set(sourceContents.flatMap((c) => [...c.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]))));
+  const mine = new Set([...dependentContent.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
+  return [...mine].filter((n) => !used.has(n)).sort((a, b) => a - b);
+}
+
+export function extraCitationRepairText(sourceLabels: string[], extra: number[]): string {
+  return (
+    `안내문은 이 단계를 "${sourceLabels.join("·")}에서 쓴 내용을 바탕으로" 쓰라고 했다. ` +
+    `그런데 ${sourceLabels.join("·")}에 없는 출처 ${extra.map((n) => `[${n}]`).join("")}을(를) 새로 가져와 썼다. ` +
+    `그 부분을 ${sourceLabels.join("·")}가 이미 쓴 사실과 출처로 바꿔 다시 쓸 것 — 앞 단계에 없는 새 사실·수치·사례를 넣지 말 것. ` +
+    `나머지 문장과 각주는 그대로 둘 것.`
+  );
+}

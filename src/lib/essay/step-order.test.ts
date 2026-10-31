@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stepDependencies, stepWaves, type OrderElement } from "./step-order.ts";
+import { extraCitationRepairText, extraCitations, stepDependencies, stepWaves, type OrderElement } from "./step-order.ts";
 import { previousStepsBlock } from "./parallel-write.ts";
 
 // 실제 안내문(공통국어2 매체 활용 주제발표)의 문장 — requirement-scope.test.ts와 같은 출처.
@@ -72,4 +72,20 @@ test("앞 단계 전달 블록은 본문과 사실 번호를 그대로 넘긴다
   assert.match(block, /번호를 새로 만들지 말 것/);
   assert.equal(previousStepsBlock([]), "");
   assert.equal(previousStepsBlock([{ label: "개요", content: "   " }]), "");
+});
+
+test("뒤 단계가 앞 단계에 없는 출처를 쓰면 찾아낸다", () => {
+  // 실측(2026-11-01): 개요는 [1][2][3]만 쓰고 스토리보드가 [4]를 새로 꺼냈다.
+  assert.deepEqual(extraCitations("… [1] … [2] … [4] …", ["… [1] … [2] … [3] …"]), [4]);
+  assert.deepEqual(extraCitations("… [2] … [3] …", ["… [1] … [2] … [3] …"]), []);
+  // 앞 단계가 여럿이면 그 전부를 합쳐 본다.
+  assert.deepEqual(extraCitations("[1][5]", ["[1][2]", "[5]"]), []);
+  assert.deepEqual(extraCitations("각주 없는 글", ["[1]"]), []);
+});
+
+test("보완 지시는 앞 단계 이름과 문제의 번호를 말한다", () => {
+  const t = extraCitationRepairText(["개요"], [4, 5]);
+  assert.ok(t.includes("개요"));
+  assert.ok(t.includes("[4][5]"));
+  assert.ok(t.includes("새 사실"));
 });
