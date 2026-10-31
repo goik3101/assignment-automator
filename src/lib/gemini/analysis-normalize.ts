@@ -100,3 +100,26 @@ export function dropNonSubmissionActivities<T extends { label: string; descripti
   if (kept.length === 0) return { kept: els, dropped: [] };
   return { kept, dropped: els.filter(skip) };
 }
+
+// 채점 기준의 "누가·언제·어디서·무엇을·어떻게·왜가 잘 드러나게끔 작성하면 됨"은 **글에 담길 내용의 조건**이지
+// 칸 목록이 아니다. 그런데 분석이 이것을 required_items로 올리면, 생성 단계가 그대로 "### 누가" "### 언제"처럼
+// 소제목 구조로 쓴다.
+// 실측(2026-11-01, 사용자 결과물.10 — 한국사 현대사 신문): 머리기사가 "봉기 주체는 …", "날짜는 1948년 4월 3일",
+// "무대는 제주도"처럼 여섯 토막으로 쪼개져 나왔다. 신문 기사는 흐르는 글이어야 한다.
+const INTERROGATIVE_ITEM =
+  /^(?:누가|누구(?:와|를|에게)?|언제|어디(?:서|에서|에)?|무엇(?:을|이|인지)?|어떻게|왜|어느\s*것|얼마나)[?？]?$/;
+
+/** 5W1H처럼 "글에 드러나야 할 것"을 늘어놓은 목록인가(칸 목록이 아니라). */
+export function isInterrogativeItemList(items: string[] | undefined): boolean {
+  if (!items || items.length < 2) return false;
+  const hits = items.filter((i) => INTERROGATIVE_ITEM.test((i ?? "").replace(/\s+/g, " ").trim())).length;
+  // 절반 이상이 의문사면 그 목록은 칸이 아니라 "담을 내용" 안내다.
+  return hits >= Math.ceil(items.length / 2);
+}
+
+/** 그런 목록이면 통째로 버린다(생성은 자유 서술로 쓰고, 조건 자체는 요구사항·작성 기준 글에 남아 있다). */
+export function dropInterrogativeItems<T extends { label: string; required_items?: string[] }>(el: T): T {
+  if (!isInterrogativeItemList(el.required_items)) return el;
+  const { required_items: _dropped, ...rest } = el;
+  return rest as T;
+}

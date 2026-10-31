@@ -104,6 +104,16 @@ function nearest(text: string, needle: string, at: number): number {
  * 한 문장이 여러 단계 이름을 함께 언급하면("개요에서 생성한 내용을 바탕으로 8개의 장면으로 스토리보드를 작성") 조건 표현에 가장 가까운 이름의 단계 것이다.
  * 단계 설명에 적힌 조건은 항상 이 단계 것이다. labels는 이 과제의 모든 단계 이름.
  */
+// "네 칸을 모두 작성할 것"의 "네 칸"은 **신문 전체의 네 영역**(= 우리가 만드는 네 단계)이지 한 단계 안의 칸이 아니다.
+// 실측(2026-11-01, 사용자 결과물.10): 이 조건이 머리기사 단계에 붙어 머리기사 글에서 "칸"을 세려다 0개가 나왔고,
+// "안내문의 형식 조건을 완전히 맞추지 못했어요 — 칸 조건 4개, 실제 0개"라는 **틀린 경고**가 결과물 맨 앞에 찍혔다.
+// 구획을 가리키는 단위이면서 그 수가 이번에 만드는 단계 수와 같으면, 단계 전체에 대한 조건으로 보고 어느 단계에도 주지 않는다.
+const SECTION_UNIT = /^(?:칸|영역|부분|꼭지|면|코너)$/;
+
+function isStepCountRequirement(r: CountReq, stepCount: number): boolean {
+  return stepCount >= 2 && SECTION_UNIT.test(r.word ?? "") && r.min === stepCount && (r.max ?? r.min) === stepCount;
+}
+
 export function requirementsForElement(el: FormElement, requirements: string[], guide: string | undefined, labels: string[]): CountReq[] {
   const mine = norm(el.label);
   const others = labels.map(norm).filter((l) => l.length >= 2 && l !== mine);
@@ -133,7 +143,7 @@ export function requirementsForElement(el: FormElement, requirements: string[], 
       if (rivals.every((o) => nearest(text, o, at) >= dMine)) addFromSentence(withoutIndex(pr));
     }
   }
-  return out;
+  return out.filter((r) => !isStepCountRequirement(r, labels.length));
 }
 
 /** 문장·줄·문단에 상한이 있는가(있으면 기본 분량 가이드를 주지 않는다 — 충돌). */

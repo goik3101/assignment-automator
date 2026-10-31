@@ -160,10 +160,26 @@ export interface NewspaperBlockInput {
   requiredItems: string[];
   /** 이 과제의 조사 자료 단계 이름들(뒤에서 문장을 그대로 반복하지 않아야 하는 대상). */
   materialLabels: string[];
+  /** 신문의 영역들이 각각 별개 단계로 나뉜 과제인가(그러면 이 단계는 신문 전체가 아니라 칸 하나다). */
+  sectionOfMany?: boolean;
 }
 
 /** 신문 단계에 줄 형식·역할 지시. 항목 이름은 안내문에서 온 것을 그대로 쓰고, 여기서는 "어떻게 쓸지"만 정한다. */
-export function buildNewspaperBlock({ label, requiredItems, materialLabels }: NewspaperBlockInput): string {
+export function buildNewspaperBlock({ label, requiredItems, materialLabels, sectionOfMany }: NewspaperBlockInput): string {
+  // 안내문이 신문의 영역(머리기사·인터뷰·사설·만평)을 **각각 별개 단계**로 두는 경우가 있다. 그때 이 블록이
+  // "이 단계는 신문 그 자체다"라고 말하면 한 단계가 신문 전체를 쓰고 나머지 단계가 또 쓴다 — 통째로 중복된다.
+  // 실측(2026-11-01, 사용자 결과물.10): 머리기사 단계 안에 인터뷰 질문·답변, 사설, 만평이 모두 들어갔고
+  // 그 뒤에 인터뷰·사설·만평 단계가 같은 내용을 다시 썼다.
+  if (sectionOfMany) {
+    const lines = [
+      `【산출물 형식: 신문의 "${label}" 영역 — 반드시 지킬 것】`,
+      `이 단계는 신문 전체가 아니라 신문의 "${label}" 칸 하나다. 그 칸에 들어갈 글만 쓸 것.`,
+      `- 다른 영역(머리기사·인터뷰·사설/칼럼·만평/광고)의 내용을 여기에 쓰지 말 것 — 각 영역은 따로 만든다.`,
+      `- 신문 이름(제호)·날짜·호수·기자 이름을 쓰지 말 것. 다른 영역에서 설명한 배경을 여기서 처음부터 다시 설명하지 말고, 이 영역이 맡은 역할만 할 것.`,
+    ];
+    if (requiredItems.length > 0) lines.push(`- 안내문이 이 칸에 요구한 것: ${requiredItems.join(" / ")}. 이 순서대로 빠짐없이 쓸 것.`);
+    return lines.join("\n");
+  }
   const content = requiredItems.filter((i) => classifyRequiredItem(i) === "content");
   const visual = requiredItems.filter((i) => classifyRequiredItem(i) === "visual");
   const reflection = requiredItems.filter((i) => classifyRequiredItem(i) === "reflection");

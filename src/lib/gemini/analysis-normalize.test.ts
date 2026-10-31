@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { forceTextSubmissionIfNoExternalHint as force, fallbackSubject, isSuspiciousSubject } from "./analysis-normalize.ts";
+import { dropInterrogativeItems, forceTextSubmissionIfNoExternalHint as force, fallbackSubject, isInterrogativeItemList, isSuspiciousSubject } from "./analysis-normalize.ts";
 
 test("외부 제작 표지가 없으면 글 제출로 통일한다(표·그래프 계획, 기획서, 보고서)", () => {
   assert.equal(force({ type: "external_production", label: "표(계획/작성)", description: "주차별 저축액 표를 만든다" }, "실생활 수학 탐구 보고서").type, "text_submission");
@@ -37,4 +37,28 @@ test("모델이 '역사'라고 답하면 그대로 둔다(민주화 운동 카�
 test("과목이 의심스러울 때 '민주화 운동'은 체육이 아니라 역사로 본다", () => {
   assert.equal(fallbackSubject("정보", "민주화 운동 카드 뉴스 만들기"), "정보");
   assert.equal(fallbackSubject("수행평가 안내", "민주화 운동 카드 뉴스 만들기"), "역사");
+});
+
+test("5W1H 안내는 칸 목록이 아니다", () => {
+  // 실측(결과물.10): 채점 기준의 "누가·언제·어디서·무엇을·어떻게·왜"가 머리기사의 소제목 여섯 개가 됐다.
+  assert.equal(isInterrogativeItemList(["누가", "언제", "어디서", "무엇을", "어떻게", "왜"]), true);
+  assert.equal(isInterrogativeItemList(["누가", "언제", "어디서", "사건의 영향"]), true);
+  assert.deepEqual(dropInterrogativeItems({ label: "머리기사", required_items: ["누가", "언제", "어디서", "무엇을"] }), { label: "머리기사" });
+});
+
+test("진짜 칸 목록은 그대로 둔다", () => {
+  for (const items of [
+    ["인터뷰 대상", "질문 1", "답변 1", "질문 2", "답변 2"],
+    ["글의 목적·주제·예상 독자", "중심 내용과 세부 내용", "뒷받침 정보", "출처"],
+    ["산염기의 특징", "실험과정", "혼합 용액의 온도 변화", "지시약의 색 변화"],
+    ["무엇을 배웠는가", "왜 중요한가"],
+  ])
+    assert.equal(isInterrogativeItemList(items), false, JSON.stringify(items));
+  const el = { label: "인터뷰", required_items: ["인터뷰 대상", "질문 1", "답변 1"] };
+  assert.deepEqual(dropInterrogativeItems(el), el);
+});
+
+test("항목이 하나거나 없으면 건드리지 않는다", () => {
+  assert.equal(isInterrogativeItemList(["누가"]), false);
+  assert.equal(isInterrogativeItemList(undefined), false);
 });

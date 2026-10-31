@@ -56,6 +56,7 @@ import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
 import { allCompoundItems, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
+import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
@@ -578,7 +579,7 @@ ${input.previousOutputText}
   const newspaperBlock = newspaperEls.length
     ? "\n" +
       newspaperEls
-        .map((el) => buildNewspaperBlock({ label: el.label, requiredItems: el.required_items ?? [], materialLabels }))
+        .map((el) => buildNewspaperBlock({ label: el.label, requiredItems: el.required_items ?? [], materialLabels, sectionOfMany: newspaperEls.length > 1 }))
         .join("\n\n") +
       "\n"
     : "";
@@ -657,6 +658,15 @@ ${input.previousOutputText}
     ...elements.map((el) => el.description),
   ]);
   const compoundBlock = compoundItemBlock(compoundAll);
+  // 안내문이 다룰 기간을 못 박은 과제(역사 신문 등)는 그 시점에서 쓰는 글이다 — 뒤에 일어난 일을 알 수 없다.
+  const timeRange = findTimeRange([
+    ...input.coreTaskInfo.requirements,
+    input.coreTaskInfo.writing_guide,
+    input.coreTaskInfo.topic,
+    ...input.coreTaskInfo.task_elements.map((e) => e.description),
+  ]);
+  const timeBlock = timeRangeBlock(timeRange);
+  if (timeRange) console.log(`[generateEssay] 다룰 시기: ${timeRange.text} (${timeRange.startYear}~${timeRange.endYear})`);
   const evidenceItemBlock = evidenceWritingBlock(writeEvidence.label, writeEvidence.slots);
   const dataTableBlock = qualityFixesOn()
     ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((el) => el.label))
@@ -786,7 +796,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -2163,6 +2173,22 @@ export async function generateEssay(
             ` 조사 노트에 있는 값으로 바꾸거나, 수치를 빼고 노트로 확인되는 내용만 쓸 것. 지어낸 숫자를 그대로 두지 말 것. 다른 문장과 각주는 그대로 둘 것.`,
         });
       }
+    }
+    // 안내문이 못 박은 기간 밖의 연도를 썼는지(time-range.ts). 기간이 적히지 않은 과제에서는 돌지 않는다.
+    {
+      const range = findTimeRange([
+        ...input.coreTaskInfo.requirements,
+        input.coreTaskInfo.writing_guide,
+        input.coreTaskInfo.topic,
+        ...input.coreTaskInfo.task_elements.map((e) => e.description),
+      ]);
+      if (range)
+        for (const sec of attempt.sections) {
+          const hits = findOutOfRange(sec.content, range);
+          if (hits.length === 0) continue;
+          console.warn(`[generateEssay] 다룰 시기 밖의 연도 label="${sec.label}" ${JSON.stringify(hits.map((h) => h.year))} (범위 ${range.startYear}~${range.endYear})`);
+          activityRewrites.push({ label: sec.label, instruction: outOfRangeRepairText(range, hits) });
+        }
     }
     // 안내문이 "A를 바탕으로 B"라고 한 단계가, A가 쓰지 않은 출처를 새로 들고 왔는지(step-order.ts).
     // 순차 생성이 앞 단계 글을 보여 주기는 하지만 조사 노트에 남은 다른 사실까지 막지는 못한다 — 번호로 코드가 확인한다.

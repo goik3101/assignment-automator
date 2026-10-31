@@ -264,3 +264,26 @@ test("간단히 표시면 완성 대본을 쓰지 말라고 하고, 아니면 �
   assert.ok(full.includes("실제로 말할 문장 그대로"));
   assert.ok(!full.includes("완성된 발표 대본이 아니라"));
 });
+
+test("단계 수와 같은 칸 조건은 한 단계의 조건이 아니다", () => {
+  // 실측(결과물.10): "네 칸"이 머리기사 단계에 붙어 "칸 조건 4개, 실제 0개"라는 틀린 경고가 찍혔다.
+  const labels = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"];
+  const reqs = ["머리기사, 인터뷰, 사설/칼럼, 만평/광고 네 칸을 모두 작성할 것"];
+  for (const label of labels)
+    assert.deepEqual(requirementsForElement({ label, description: `${label}를 쓴다` }, reqs, undefined, labels), [], label);
+});
+
+test("단계 수와 다른 칸 조건은 그대로 둔다", () => {
+  const labels = ["카드뉴스"];
+  const got = requirementsForElement({ label: "카드뉴스", description: "카드뉴스를 6칸으로 만든다" }, [], undefined, labels);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].min, 6);
+});
+
+test("장면·문장 조건은 단계 수와 같아도 그대로 둔다", () => {
+  // 구획을 가리키는 말이 아니므로 섞이면 안 된다.
+  const labels = ["개요", "스토리보드"];
+  const got = requirementsForElement({ label: "스토리보드", description: "스토리보드를 2개의 장면으로 쓴다" }, [], undefined, labels);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].word, "장면");
+});

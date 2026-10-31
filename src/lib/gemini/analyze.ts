@@ -2,7 +2,7 @@ import { Type, type Schema } from "@google/genai";
 import { generate, type LlmPart } from "@/lib/llm";
 import { normalizeSubject } from "./normalize-subject";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
-import { dropNonSubmissionActivities, dropNote, fallbackSubject, forceTextSubmissionIfNoExternalHint } from "./analysis-normalize";
+import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, fallbackSubject, forceTextSubmissionIfNoExternalHint } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import type { AnalyzeResult } from "@/types/task";
@@ -369,7 +369,8 @@ export async function analyzeAssignment(
     };
   });
 
-  const distributed = distributeSharedLength(task_elements_raw).map((e) => forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic));
+  // 채점 기준의 "누가·언제·어디서…"는 칸 목록이 아니라 글에 담길 내용 안내다 — 소제목 구조로 쓰이지 않게 뺀다.
+  const distributed = distributeSharedLength(task_elements_raw).map((e) => dropInterrogativeItems(forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic)));
   // 수업 중 작성하는 기록지는 만들 결과물에서 빼고, 왜 없는지 학생이 볼 수 있게 요구사항에 한 줄 남긴다.
   const { kept: task_elements, dropped: droppedSheets } = formRequirementsOn() ? dropNonSubmissionActivities(distributed, [...parsed.core_task_info.requirements, parsed.core_task_info.writing_guide ?? "", parsed.administrative_info?.other_notes ?? ""]) : { kept: distributed, dropped: [] };
   if (droppedSheets.length > 0) console.warn(`[analyzeAssignment] 수업 중 작성 기록지·대본 없는 발표는 만들 결과물에서 제외: ${droppedSheets.map((d) => d.label).join(", ")}`);
