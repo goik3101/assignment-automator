@@ -48,12 +48,12 @@ import {
   tabTableToMarkdown,
   stripWorkMarkers,
 } from "@/lib/essay/deliverable";
-import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
-import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, sourceSubjectRepairText } from "@/lib/essay/evidence-items";
+import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
@@ -86,13 +86,14 @@ import {
   sceneBlockInputs,
 } from "@/lib/essay/form-requirements";
 import { formWarningText, repairFormRequirements } from "@/lib/essay/form-repair";
-import { renderScopedGuide, renderScopedRequirements } from "@/lib/essay/requirement-scope";
+import { renderScopedGuide, renderScopedRequirements, scopeStatements, splitStatements } from "@/lib/essay/requirement-scope";
+import { buildRubric, rubricMisses, rubricPrompt, rubricRepairText, type RubricMiss, type RubricVerdict } from "@/lib/essay/rubric-check";
 import { BOOK_TITLE_PATTERN, FACTUAL_CLAIM_HINT_PATTERN, QUOTE_PATTERN, hasVerifiableClaimText } from "@/lib/essay/verifiable-claims";
 import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
 import { GRAMMAR_REPAIR_TEXT, missingGrammarForms, requiredGrammarForms } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
-import { checkClaims, describeToken, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
+import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
 import { lengthGuideLines } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock, inferFormKinds } from "@/lib/essay/form-rules";
@@ -1800,6 +1801,51 @@ async function confirmCoverageGaps(sections: RawSection[]): Promise<CoverageGap[
   }
 }
 
+const RUBRIC_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    results: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING, description: "판정한 조건의 id" },
+          ok: { type: Type.BOOLEAN, description: "글이 이 조건을 지켰는가" },
+          fix: { type: Type.STRING, description: "ok가 false일 때만: 지금 글에서 무엇이 빠졌고 어떻게 고치면 되는지 한 문장" },
+        },
+        required: ["id", "ok"],
+      },
+    },
+  },
+  required: ["results"],
+};
+
+/**
+ * 안내문 조건 ↔ 결과물 대조(rubric-check.ts). 걸린 조건은 그 단계의 부분 보완 지시가 된다.
+ * 체크리스트가 안내문에서 나오므로 과제 유형과 무관하게 걸린다 — 이 함수에는 과제별 규칙이 없다.
+ */
+async function judgeRubric(
+  scoped: { shared: string[]; byLabel: Record<string, string[]> },
+  sections: { label: string; content: string }[]
+): Promise<RubricMiss[]> {
+  const items = buildRubric(scoped);
+  if (items.length === 0 || sections.length === 0) return [];
+  try {
+    const res = await generate({
+      label: "generateEssay:rubric",
+      role: "lite",
+      prompt: rubricPrompt(items, sections),
+      schema: RUBRIC_SCHEMA,
+    });
+    const misses = rubricMisses(JSON.parse(res.text ?? "{}") as RubricVerdict, items, sections.map((s) => s.label));
+    console.log(`[generateEssay] 안내문 조건 대조: 조건 ${items.length}개 중 미충족 ${misses.reduce((n, m) => n + m.missing.length, 0)}개`);
+    return misses;
+  } catch (err) {
+    console.warn("[generateEssay] 안내문 조건 대조 실패(미충족 없음으로 처리)", err);
+    return [];
+  }
+}
+
 export async function generateEssay(
   input: GenerateEssayInput
 ): Promise<EssayResult | InsufficientDataResult> {
@@ -1999,7 +2045,22 @@ export async function generateEssay(
     console.warn(`[generateEssay] 필수 항목 누락 감지: ${JSON.stringify(missingItems)}`);
   }
   // 소제목 없이 쓰는 단계(신문·편지 등)의 필수 항목 누락과, 단계·항목 사이에 거의 같은 문장이 되풀이되는지도 본다.
-  const flowingGaps = overBudget("소제목 없는 단계의 항목 확인") ? [] : await confirmCoverageGaps(attempt.sections);
+  // 안내문 조건 대조(rubric-check.ts)도 같은 자리에서 본다 — 두 판정은 서로 독립이라 동시에 호출해 직렬 시간을 늘리지 않는다.
+  const rubricScoped =
+    fixes && rubricCheckOn()
+      ? scopeStatements(
+          splitStatements([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? ""]),
+          input.coreTaskInfo.task_elements,
+          elements.map((e) => e.label)
+        )
+      : null;
+  const [flowingGaps, rubricGaps] = await Promise.all([
+    overBudget("소제목 없는 단계의 항목 확인") ? Promise.resolve([] as CoverageGap[]) : confirmCoverageGaps(attempt.sections),
+    // 안내문 요구 충족 여부라 "필수" 쪽으로 본다 — 결함 교정과 달리 못 지키면 그대로 감점이다.
+    rubricScoped && !overBudget("안내문 조건 대조", "required")
+      ? judgeRubric(rubricScoped, attempt.sections.map((s) => ({ label: s.label, content: s.content })))
+      : Promise.resolve([] as RubricMiss[]),
+  ]);
   if (flowingGaps.length > 0) console.warn(`[generateEssay] 필수 항목 누락 감지(소제목 없는 단계): ${JSON.stringify(flowingGaps)}`);
   // 영어 글쓰기의 필수 어법(수동태·It~that 강조·관계대명사)이 빠졌으면 그 단계만 부분 보완한다(english-grammar.ts — 코드로 판정).
   const grammarGaps: CoverageGap[] = [];
@@ -2042,6 +2103,9 @@ export async function generateEssay(
           const body = evidenceSectionText(sec.content);
           const items = body === null ? -1 : countEvidenceItems(body);
           if (items >= 0 && items < plan.slots) parts.push(evidenceItemsRepairText(sec.label, items, plan.slots));
+          // 근거 자리에 사실이 아니라 "이 자료를 ~에 쓴다"는 쓰임 설명이 들어간 것도 같이 고친다.
+          const usePlans = body === null ? [] : findUsePlanSentences(body);
+          if (usePlans.length > 0) parts.push(usePlanRepairText(sec.label, usePlans));
         }
         const subjects = findSourceSubjectSentences(sec.content);
         if (subjects.length > 0) parts.push(sourceSubjectRepairText(subjects));
@@ -2049,6 +2113,32 @@ export async function generateEssay(
         console.warn(`[generateEssay] 근거 서술 문제 label="${sec.label}": ${parts.length === 2 ? "개수+출처주어" : parts[0].slice(0, 24)}`);
         activityRewrites.push({ label: sec.label, instruction: parts.join(" ") });
       }
+    }
+    // 인용한 출처 페이지에 없는 수치(claim-check.ts) — 지금까지는 글 맨 끝에서야 대조해 각주만 떼고 문장은 그대로 남겼다.
+    // 그러면 각주 없는 수치가 결과물에 남는데, 그걸 잡는 검사(uncited-figures)는 이미 지나가 있어 아무도 고치지 않았다
+    // (실측 2026-10-31, 사용자 결과물.7: "2011년경 약 3,500만 건 … 보도되었다."가 출처 없이 남았다. UNVERIFIED_MARK=off면 표시도 없다).
+    // 보완할 수 있는 이 자리에서 먼저 읽기 전용으로 대조해, 뒷받침되지 않는 수치는 그 단계에서 고치게 한다.
+    {
+      const pages: PageTexts = new Map(attempt.sources.map((src) => [src.n, getCachedPageText(src.url)]));
+      for (const sec of attempt.sections) {
+        const bad = checkClaims(sec.content, pages).findings
+          .filter((f) => f.status === "unsupported" && f.tokens.numbers.length > 0 && !isOpinionOrPlan(f.text))
+          .slice(0, 3);
+        if (bad.length === 0) continue;
+        console.warn(`[generateEssay] 인용 페이지에 없는 수치 label="${sec.label}": ${JSON.stringify(bad.map((f) => describeToken(f.tokens)))}`);
+        activityRewrites.push({
+          label: sec.label,
+          instruction:
+            `아래 문장의 값이 인용한 출처 페이지 본문에 없다 — ` +
+            bad.map((f, i) => `(${i + 1}) "${f.text.slice(0, 60)}" (찾지 못한 값: ${describeToken(f.tokens)})`).join(" ") +
+            ` 조사 노트에 있는 값으로 바꾸거나, 수치를 빼고 노트로 확인되는 내용만 쓸 것. 지어낸 숫자를 그대로 두지 말 것. 다른 문장과 각주는 그대로 둘 것.`,
+        });
+      }
+    }
+    // 안내문 조건을 어긴 단계(rubric-check.ts) — 결함이 아니라 "하라는 것을 안 했다"는 문제라 다른 검사로는 잡히지 않는다.
+    for (const g of rubricGaps) {
+      console.warn(`[generateEssay] 안내문 조건 미충족 label="${g.label}": ${JSON.stringify(g.missing.map((m) => m.slice(0, 50)))}`);
+      activityRewrites.push({ label: g.label, instruction: rubricRepairText(g.missing) });
     }
     // 날조 차단의 반작용 — 자료가 모자라면 단계 전체를 "못 하겠다"는 글로 채우는 일이 있다(refusal.ts).
     for (const sec of attempt.sections) {

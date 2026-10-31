@@ -56,3 +56,18 @@ export function planCitationsOn(): boolean {
 export function unverifiedMarkOn(): boolean {
   return process.env.UNVERIFIED_MARK !== "off";
 }
+
+/**
+ * 안내문 조건을 결과물과 한 문장씩 대조해, 어긴 단계만 보완할지(rubric-check.ts).
+ * 생성 뒤 검사가 전부 "글이 망가졌나"(날조·되풀이·빈 항목…)만 보고 "안내문이 요구한 것을 했나"는
+ * 아무도 보지 않던 빈 칸을 메운다 — 체크리스트를 코드에 적지 않고 안내문에서 그때그때 만들기 때문에
+ * 과제 유형마다 규칙을 새로 쓰지 않아도 걸린다.
+ *
+ * **기본 꺼짐**: 효과를 실측으로 확인하지 못했다. 실제 안내문 6종 측정(2026-10-31)에서 5회 중 1회만 실행됐다 —
+ * 생성(조사+글쓰기)만으로 21~39초가 걸려 시간 예산(22초)을 먼저 넘기고, 그 뒤의 품질 보완 전부가 건너뛰어진다
+ * (건너뛴 보완 12~24개/5회). 즉 지금은 대조를 켜도 대부분 돌지 않는다. 시간 예산을 올리거나 생성을 빠르게 해
+ * 보완 단계가 실제로 도는 상태가 된 뒤 RUBRIC_CHECK=on으로 켜고 효과를 다시 재야 한다.
+ */
+export function rubricCheckOn(): boolean {
+  return process.env.RUBRIC_CHECK === "on";
+}

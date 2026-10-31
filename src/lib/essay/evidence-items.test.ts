@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countEvidenceItems, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, isEvidenceHeading } from "./evidence-items.ts";
+import { countEvidenceItems, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, isEvidenceHeading , findUsePlanSentences, usePlanRepairText } from "./evidence-items.ts";
 
 const 실측 = `## 개요
 
@@ -36,4 +36,39 @@ test("근거 블록은 개수와 항목 이름을 함께 말한다", () => {
   assert.equal(evidenceWritingBlock(null, 3), "");
   assert.equal(evidenceWritingBlock("개요", 1), "");
   assert.match(evidenceWritingBlock("개요", 3), /3개 이상을 각각 한 덩어리로/);
+});
+
+test("근거 항목의 쓰임 설명 꼬리를 찾는다", () => {
+  const found = findUsePlanSentences(
+    [
+      "1) 인터넷 실명제는 2007년 7월 도입되었다.[2] 실명 확인 의무가 처음부터 기본 조건이었던 것은 아니라는 점을 설명할 때 쓴다.",
+      "2) 헌법재판소는 본인확인 의무 조항을 위헌으로 판단했다.[3] 제도가 헌법적 한계를 넘었다는 발표의 근거로 삼는다.",
+      "3) 2018년에는 여론조작 문제가 논의되었다.[4] 적절한 방법인지 따져 보는 데 활용한다.",
+    ].join("\n")
+  );
+  assert.equal(found.length, 3);
+});
+
+test("평범한 사실 서술은 쓰임 설명으로 보지 않는다", () => {
+  assert.deepEqual(
+    findUsePlanSentences(
+      [
+        "헌법재판소는 2012년 8월 23일 제한적 본인확인제를 위헌으로 판단했다.[1]",
+        "2008년 옥션에서 약 1,081만 건의 회원정보가 유출됐다.[2]",
+        "리트머스 종이는 산성 용액에서 붉게 변한다.[3]",
+      ].join("\n")
+    ),
+    []
+  );
+});
+
+test("출처 목록 줄은 보지 않는다", () => {
+  assert.deepEqual(findUsePlanSentences("- 통계로 보는 자료: https://example.com/a-를-근거로-삼는다"), []);
+});
+
+test("쓰임 설명 보완 지시는 사실만 쓰라고 하고 각주는 두라고 한다", () => {
+  const t = usePlanRepairText("개요", ["제도가 한계를 넘었다는 발표의 근거로 삼는다."]);
+  assert.ok(t.includes("개요"));
+  assert.ok(t.includes("각주"));
+  assert.ok(t.includes("사실"));
 });
