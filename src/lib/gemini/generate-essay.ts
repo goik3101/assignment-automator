@@ -694,7 +694,19 @@ ${input.previousOutputText}
   const materialEls = structuredEls.filter((el) => !reportEls.includes(el) && !sceneEls.includes(el));
   // 발표 과제면 장면 대사를 높임말로 쓰게 한다(글 종류 판정은 form-rules와 같은 기준).
   const sceneSpeech = sceneEls.some((el) => inferFormKinds(el).includes("speech")) || /발표|말하기|구술/.test([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements].join(" "));
-  const sceneBlock = buildSceneBlock(sceneBlockInputs(sceneEls), sceneSpeech, wantsBriefScenes([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, ...sceneEls.map((e) => e.description)]));
+  // 안내문 글 전체로 판정한다 — 분석이 단계를 어떻게 쪼개든 같은 답이 나오게(2026-11-01: 19회 중 1회 "발표용 시각 자료"가
+  // 스토리보드와 별개 단계로 갈라졌고, 그 단계에는 장면 규칙이 안 걸려 완성 대본이 다시 나왔다).
+  const briefScenes = wantsBriefScenes([
+    ...input.coreTaskInfo.requirements,
+    input.coreTaskInfo.writing_guide,
+    ...input.coreTaskInfo.task_elements.map((e) => e.description),
+  ]);
+  const sceneBlock = buildSceneBlock(sceneBlockInputs(sceneEls), sceneSpeech, briefScenes);
+  // 장면 단계로 잡히지 않은 단계에도 같은 조건이 걸리게 한 줄 더 준다.
+  const briefBlock =
+    briefScenes && elements.length > sceneEls.length
+      ? '\n【대본 금지 — 반드시 지킬 것】 안내문이 "대본 없이" 발표하고 스토리보드에는 간단히 표시하라고 했다. 어느 단계에서도 발표자가 읽을 완성된 대본·대사를 쓰지 말 것 — 말할 내용은 핵심 낱말 중심의 짧은 메모로 적는다.\n'
+      : "";
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
       `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +
@@ -774,7 +786,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}

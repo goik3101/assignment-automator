@@ -36,7 +36,11 @@ const NUMBERED_EVIDENCE = /^(?:근거|논거|주장)\s*\d{1,2}$/;
 /** 항목·설명이 근거를 가리키는가("근거 정보", "뒷받침하는 자료"). 출처 목록 항목("근거자료 출처")은 호출부에서 뺀다. */
 const EVIDENCE_WORD = /근거|논거|뒷받침/;
 /** "근거를 3가지 이상", "정보(근거)를 3가지", "논거 2개" — 숫자가 붙은 근거 개수 조건. */
-const EVIDENCE_COUNT = /(?:근거|논거|뒷받침하는\s*(?:정보|자료))\s*[)）]?\s*(?:를|을|은|는)?\s*(\d{1,2})\s*(?:가지|개|건|편)/;
+// 분석이 같은 조건을 매번 다르게 적는다 — "뒷받침하는 정보 3가지"/"뒷받침 정보 3가지"/"정보(근거) 3가지".
+// 예전 규칙은 "뒷받침하는 정보"만 받아 "뒷받침 정보 3가지 이상"을 못 읽고 기본값 2로 떨어졌다(실측 2026-11-01, 8회 중 1회).
+// 안내문이 3가지 이상을 요구하는데 2개만 쓰면 채점 기준을 바로 어긴다. 숫자 바로 앞 낱말만 느슨하게 보되,
+// 뒤에 장면·칸·문단이 오면 다른 개수 조건이므로 받지 않는다.
+const EVIDENCE_COUNT = /(?:근거|논거|뒷받침)(?:하는)?\s*(?:정보|자료|내용)?\s*[)）]?\s*(?:를|을|은|는|로|으로)?\s*(\d{1,2})\s*(?:가지|개|건|편)(?!\s*(?:장면|칸|단계|문단|문장|쪽))/;
 /** 근거를 세는 것이 의미 있는 글인가(주장·설득·찬반). */
 const ARGUMENT_TEXT = /논설|논술|주장|설득|찬반|찬성|반대|토론|논제|쟁점|사설|칼럼|의견/;
 /** 학생이 고른 입장. "반대로"처럼 낱말 속 글자가 걸리지 않게 뒤에 한글이 이어지면 보지 않는다. */
@@ -79,14 +83,18 @@ export function planEvidence(info: EvidenceInfo, instructions?: string): Evidenc
     if (numbered >= MIN_SLOTS && numbered > slots) slots = numbered;
   }
   if (slots === 0) {
+    // 한 군데만 보고 멈추지 않는다 — "이상"이 붙은 조건이 있으면 그중 가장 큰 수를 쓴다(안내문은 보통 최소를 적는다).
     const texts = [...info.requirements, info.writing_guide ?? "", ...elements.map((e) => e.description)];
+    const found: { n: number; atLeast: boolean }[] = [];
     for (const text of texts) {
       const m = EVIDENCE_COUNT.exec(text ?? "");
-      if (m) {
-        slots = Number(m[1]);
-        break;
-      }
+      if (!m) continue;
+      const after = (text ?? "").slice(m.index + m[0].length, m.index + m[0].length + 6);
+      found.push({ n: Number(m[1]), atLeast: /이상/.test(after) });
     }
+    const atLeast = found.filter((f) => f.atLeast);
+    if (atLeast.length > 0) slots = Math.max(...atLeast.map((f) => f.n));
+    else if (found.length > 0) slots = found[0].n;
   }
   if (slots === 0 && owner && evidenceItems(owner).length > 0) slots = MIN_SLOTS;
   if (slots === 0) return NO_EVIDENCE_PLAN;

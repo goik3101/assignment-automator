@@ -90,3 +90,24 @@ test("보강 여부는 서로 다른 페이지 수로 판정한다(www·끝 슬�
   assert.equal(needsMoreEvidence(plan, [...urls, "https://c.re.kr/q"]), false);
   assert.equal(needsMoreEvidence({ slots: 0, stance: null, label: null }, []), false);
 });
+
+test("분석이 표현을 바꿔 적어도 근거 개수를 읽는다(실측 2026-11-01)", () => {
+  const base = { topic: "인터넷 실명제 반대 발표", requirements: [] as string[], task_elements: [{ label: "개요", description: "개요를 쓴다", required_items: ["뒷받침 정보", "출처"] }] };
+  for (const req of ["뒷받침 정보 3가지 이상 수집", "뒷받침하는 정보(근거) 3가지 이상", "정보(근거) 3가지 이상", "근거 자료 3가지"])
+    assert.equal(planEvidence({ ...base, requirements: [req] } as never).slots, 3, req);
+});
+
+test("근거가 아닌 개수 조건은 근거 수로 읽지 않는다", () => {
+  const base = { topic: "발표", requirements: ["근거를 들어 8개의 장면으로 스토리보드를 작성한다"], task_elements: [{ label: "개요", description: "개요를 쓴다", required_items: ["뒷받침 정보", "출처"] }] };
+  // 근거 항목은 있으나 개수 조건이 없으므로 최소값 2로 떨어져야 한다(8이 되면 안 된다).
+  assert.equal(planEvidence(base as never).slots, 2);
+});
+
+test("'이상'이 붙은 조건이 여러 개면 가장 큰 수를 쓴다", () => {
+  const info = {
+    topic: "발표",
+    requirements: ["서로 다른 근거 2개 이상", "내용을 뒷받침하는 정보를 3가지 이상 수집하였는가?"],
+    task_elements: [{ label: "개요", description: "개요를 쓴다", required_items: ["뒷받침 정보", "출처"] }],
+  };
+  assert.equal(planEvidence(info as never).slots, 3);
+});
