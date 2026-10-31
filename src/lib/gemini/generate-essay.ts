@@ -53,6 +53,7 @@ import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
+import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, sourceSubjectRepairText } from "@/lib/essay/evidence-items";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
@@ -632,6 +633,19 @@ ${input.previousOutputText}
   const visualBlock = visualPolicyInstruction(visuals, elements.filter((e) => inferDeliverableForm(e) || isSceneLikeElement(e)).map((e) => e.label));
   // 학생이 직접 수행한 것을 적는 단계(자료 수집·조사 기록)는 "지어내지도, 비우지도 않기" 규칙을 따로 준다(own-activity.ts).
   const ownRecordBlock = qualityFixesOn() && elements.some(isOwnRecordStep) ? `\n${OWN_RECORD_RULES}\n` : "";
+  // 안내문이 "근거 N가지 이상"을 요구하면 글도 세어지게 나와야 한다 — 조사에만 전하고 글쓰기에는 안 전하고 있었다(evidence-items.ts).
+  const writeEvidence = evidenceSlotsOn()
+    ? planEvidence(
+        {
+          topic: input.coreTaskInfo.topic,
+          requirements: input.coreTaskInfo.requirements,
+          writing_guide: input.coreTaskInfo.writing_guide,
+          task_elements: elements,
+        },
+        input.instructions
+      )
+    : NO_EVIDENCE_PLAN;
+  const evidenceItemBlock = evidenceWritingBlock(writeEvidence.label, writeEvidence.slots);
   const dataTableBlock = qualityFixesOn()
     ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((el) => el.label))
     : "";
@@ -748,7 +762,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -2012,6 +2026,29 @@ export async function generateEssay(
     }
     if (activityRewrites.length > 0) {
       console.warn(`[generateEssay] 하지 않은 활동을 썼다고 한 문장 감지: ${JSON.stringify(activityRewrites.map((r) => r.label))}`);
+    }
+    // 안내문이 "근거 N가지 이상"을 요구하면 채점자가 세어야 한다 — 한 문단에 녹아 있으면 그 단계만 다시 쓰게 한다.
+    // 문서·매체를 주어로 삼은 문장("결정문은 … 밝혔다")도 같이 고친다 — 같은 사실을 출처만 바꿔 근거 수를 부풀리는 모양이다.
+    {
+      const plan = evidenceSlotsOn()
+        ? planEvidence(
+            { topic: input.coreTaskInfo.topic, requirements: input.coreTaskInfo.requirements, writing_guide: input.coreTaskInfo.writing_guide, task_elements: elements },
+            input.instructions
+          )
+        : NO_EVIDENCE_PLAN;
+      for (const sec of attempt.sections) {
+        const parts: string[] = [];
+        if (plan.slots >= 2 && (!plan.label || plan.label === sec.label)) {
+          const body = evidenceSectionText(sec.content);
+          const items = body === null ? -1 : countEvidenceItems(body);
+          if (items >= 0 && items < plan.slots) parts.push(evidenceItemsRepairText(sec.label, items, plan.slots));
+        }
+        const subjects = findSourceSubjectSentences(sec.content);
+        if (subjects.length > 0) parts.push(sourceSubjectRepairText(subjects));
+        if (parts.length === 0) continue;
+        console.warn(`[generateEssay] 근거 서술 문제 label="${sec.label}": ${parts.length === 2 ? "개수+출처주어" : parts[0].slice(0, 24)}`);
+        activityRewrites.push({ label: sec.label, instruction: parts.join(" ") });
+      }
     }
     // 날조 차단의 반작용 — 자료가 모자라면 단계 전체를 "못 하겠다"는 글로 채우는 일이 있다(refusal.ts).
     for (const sec of attempt.sections) {
