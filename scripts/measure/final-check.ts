@@ -114,6 +114,9 @@ for (const c of CASES) {
       `| ${c.id} | ${elapsed}초 | $${usage.estimatedCostUsd.toFixed(4)} | ${(result.sections ?? []).length}단계 ${md.length}자 | ${result.sources.length}개(첫화면 ${result.sources.filter((s) => isLandingPage(s.url)).length}) | 날조 ${findOwnActivitySentences(md).length} 빈칸 ${countBlanks(md)} | 금지자료 ${banned} 표누락 ${tableMissing} | 조건 ${rubric.total - rubric.miss}/${rubric.total} | 무각주수치 ${uncited} 계획각주 ${planCited} 쓰임설명 ${usePlan} 되풀이 ${findRepeatedStatements((result.sections ?? []).map((s) => ({ label: s.label, content: s.markdown }))).length} 경고 ${warn} |`
     );
     console.log(rows[rows.length - 1]);
+    const bl = Object.entries(usage.byLabel).sort((a, b) => b[1].ms - a[1].ms);
+    console.log(`  [${c.id}] 호출 ${usage.calls}건 경과 ${(usage.wallMs / 1000).toFixed(1)}초 호출시간합 ${(usage.sumCallMs / 1000).toFixed(1)}초`);
+    for (const [label, v] of bl) console.log(`     ${(v.ms / 1000).toFixed(1).padStart(5)}초  ${String(v.calls).padStart(2)}회  ${label}${v.searchCalls ? ` (검색 ${v.searchCalls})` : ""}`);
   } catch (err) {
     rows.push(`| ${c.id} | 실패: ${String(err).slice(0, 60)} | | | | | | | |`);
     console.error(c.id, err);

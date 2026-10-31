@@ -44,3 +44,33 @@ test("말하듯 쓴 주제에서 대화 말꼬리를 뗀다(실측 2026-10-31)",
   assert.equal(cleanSubjectName("4·19 혁명"), "4·19 혁명");
   assert.equal(cleanSubjectName("인터넷 실명제"), "인터넷 실명제");
 });
+
+test("말하듯 쓴 한 문장도 주제로 읽는다", () => {
+  // 실측(2026-10-31): 이 지침을 아무 규칙도 못 읽어 자동 선정이 17.4초를 쓰고 "터키 소셜미디어법"을 골랐다.
+  assert.equal(findStudentTopic("인터넷 실명제 도입에 반대하는 입장으로 발표할게."), "인터넷 실명제 도입에 반대하는 입장");
+  assert.equal(findStudentTopic("주제는 노인 빈곤과 기초연금 문제로 할게."), "노인 빈곤과 기초연금 문제");
+  assert.equal(findStudentTopic("청소년 SNS 사용 시간 제한에 찬성하는 입장으로 쓸게요"), "청소년 SNS 사용 시간 제한에 찬성하는 입장");
+});
+
+test("주제가 아닌 지침은 읽지 않는다", () => {
+  for (const s of [
+    "좀 더 쉽게 써 줘",
+    "분량을 짧게 하고 싶어요",
+    "사진이 흐려서 다시 올릴게요",
+    "그냥 알아서 해 줘",
+    "PPT로 만들게요",
+    "책: 윤태호 작가의 《사일구》(4·19혁명)를 읽었다.",
+  ])
+    assert.equal(findStudentTopic(s), null, s);
+});
+
+test("항목 형식이 있으면 그것을 먼저 쓴다", () => {
+  assert.equal(findStudentTopic("발표 주제: 미세먼지와 건강\n쉽게 써 줘"), "미세먼지와 건강");
+});
+
+test("앞에 붙은 항목 이름은 대상 이름에서 뗀다", () => {
+  assert.equal(cleanSubjectName("주제는 노인 빈곤 문제"), "노인 빈곤 문제");
+  assert.equal(cleanSubjectName("발표 주제: 미세먼지"), "미세먼지");
+  // 본문에 쓸 이름 자체가 "주제"로 시작하지 않으면 건드리지 않는다.
+  assert.equal(cleanSubjectName("주시경"), "주시경");
+});

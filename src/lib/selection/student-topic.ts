@@ -28,16 +28,42 @@ const STANCE_ONLY = /^(?:찬성|반대|중립|찬성\s*측|반대\s*측)$/;
  * 프롬프트의 「…」에 들어갔고, 완성 원고 본문 첫 줄이 "노인 빈곤과 기초연금 문제로 할게. 시장에서…"로 나왔다.
  */
 const TRAILING_TALK =
-  /\s*(?:(?:으?로|을|를|에\s*대해|에\s*관해)?\s*(?:하고\s*싶어요?|하고\s*싶다|할게요?|할래요?|하자|하겠어요?|하겠다|할\s*거(?:야|예요|에요)|쓸게요?|쓰고\s*싶어요?|정했어요?|정할게요?|골랐어요?|고를게요?|해\s*줘|해\s*주세요|으로요?|이에요|예요|입니다|이다))[.!~\s]*$/;
+  /\s*(?:(?:으?로|을|를|에\s*대해|에\s*관해|는|은)?\s*(?:발표|조사|작성|글쓰기|글|제작|정리|탐구|분석)?\s*(?:하고\s*싶어요?|하고\s*싶다|할게요?|할래요?|하자|하겠어요?|하겠다|할\s*거(?:야|예요|에요)|하려고요?|하려\s*한다|쓸게요?|쓰고\s*싶어요?|쓰겠어요?|쓰겠다|다룰게요?|정했어요?|정할게요?|골랐어요?|고를게요?|해\s*줘|해\s*주세요|으로요?|이에요|예요|입니다|이다))[.!~\s]*$/;
+// 앞에 붙는 항목 이름("주제는 …", "발표 주제: …")도 대상 이름이 아니다.
+const LEADING_LABEL = /^(?:발표|탐구|연구|토론|글)?\s*(?:주제|소재|대상)\s*(?:는|은|로|으로|를|을)?\s*[:：]?\s*/;
 
 export function cleanSubjectName(value: string): string {
-  let t = value.trim();
+  let t = value.trim().replace(LEADING_LABEL, "").trim() || value.trim();
   for (let i = 0; i < 3; i++) {
     const next = t.replace(TRAILING_TALK, "").replace(/[\s.·,!~]+$/, "").trim();
     if (next === t || next.length < 2) break;
     t = next;
   }
   return t || value.trim();
+}
+
+// 학생이 항목 형식("주제: …")이 아니라 말하듯 한 문장으로 적은 주제.
+// 실측(2026-10-31): 지침 "인터넷 실명제 도입에 반대하는 입장으로 발표할게."를 아무 규칙도 못 읽어
+// 자동 선정이 돌았고(17.4초), 고른 주제가 "터키 소셜미디어법"이 되어 조사가 그쪽으로 갔다.
+// 판정은 낱말이 아니라 **문장 구조**로 한다: 끝이 "~할게/~하고 싶어" 같은 선언이고, 무엇을 할지 말하는 낱말이 있고,
+// 문체·분량·재생성 요청이 아닐 때만 주제로 본다.
+const DECLARE_TAIL =
+  /(?:하고\s*싶어요?|하고\s*싶다|할게요?|할래요?|하겠어요?|하겠다|하겠습니다|할\s*거(?:야|예요|에요)|하려고요?|쓸게요?|쓰겠어요?|쓰겠다|다룰게요?|정했어요?|정할게요?|골랐어요?|고를게요?)[.!~\s]*$/;
+/** 무엇을 다룰지 말하는 낱말 — 이게 없으면 주제 선언이 아니다. */
+const DECLARE_SUBJECT = /발표|조사|작성|글|쓰|다루|탐구|분석|만들|제작|주제|소재|입장|찬성|반대/;
+/** 주제가 아니라 "이렇게 써 달라"는 요청. */
+const STYLE_REQUEST =
+  /쉽게|짧게|길게|자세히|문체|말투|어조|분량|글자\s*수|빨리|다시|수정|고쳐|바꿔|사진|이미지|흐려|안\s*보여|업로드|다운로드|오류|안\s*돼|느려/;
+
+export function findDeclaredTopic(instructions?: string | null): string | null {
+  for (const raw of (instructions ?? "").split(/[\n]+/)) {
+    const line = raw.trim().replace(/^\s*[-*•]\s*/, "");
+    if (line.length < 6 || line.length > 90) continue;
+    if (!DECLARE_TAIL.test(line) || !DECLARE_SUBJECT.test(line) || STYLE_REQUEST.test(line)) continue;
+    const v = usableAnswer(line);
+    if (v && v.length >= 4) return v;
+  }
+  return null;
 }
 
 function usableAnswer(a: string): string | null {
@@ -68,8 +94,9 @@ export function findStudentTopic(instructions?: string | null): string | null {
     const v = usableAnswer(m[2]);
     if (v) found.push({ value: v, rank: /주제/.test(m[1]) ? 0 : 1 });
   }
-  if (found.length === 0) return null;
-  return found.sort((a, b) => a.rank - b.rank)[0].value;
+  if (found.length > 0) return found.sort((a, b) => a.rank - b.rank)[0].value;
+  // 항목 형식이 없으면 말하듯 쓴 한 문장을 본다.
+  return findDeclaredTopic(instructions);
 }
 
 /** AI가 "학생이 고른 대상"으로 뽑은 값이 매체·형식 이름뿐이면 대상이 아니다. */
