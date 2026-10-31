@@ -52,6 +52,7 @@ import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, s
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
+import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
 import {
   bannedVisualRepairText,
@@ -93,7 +94,7 @@ import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
 import { lengthGuideLines } from "@/lib/essay/length-plan";
-import { buildFormRulesBlock } from "@/lib/essay/form-rules";
+import { buildFormRulesBlock, inferFormKinds } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
 import { itemGroups, itemWriteInstruction, mergeItemParts, mergeParallelParts, ownSection, parallelWriteInstruction, parallelWriteOn, previousStepsBlock } from "@/lib/essay/parallel-write";
@@ -665,7 +666,9 @@ ${input.previousOutputText}
   const sceneEls = formOn ? structuredEls.filter(isSceneListElement) : [];
   const reportEls = fixes ? structuredEls.filter((el) => !isResearchMaterialStep(el) && !sceneEls.includes(el)) : [];
   const materialEls = structuredEls.filter((el) => !reportEls.includes(el) && !sceneEls.includes(el));
-  const sceneBlock = buildSceneBlock(sceneBlockInputs(sceneEls));
+  // 발표 과제면 장면 대사를 높임말로 쓰게 한다(글 종류 판정은 form-rules와 같은 기준).
+  const sceneSpeech = sceneEls.some((el) => inferFormKinds(el).includes("speech")) || /발표|말하기|구술/.test([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements].join(" "));
+  const sceneBlock = buildSceneBlock(sceneBlockInputs(sceneEls), sceneSpeech);
   const structuredBlock = structuredEls.length
     ? `\n【필수 항목 구조 — 반드시 지킬 것】 아래 단계는 안내문이 요구한 필수 항목이 정해져 있다. ` +
       `단계 제목("## 단계 이름") 바로 아래부터, 각 항목을 정확히 "### <항목명>" 소제목(항목명은 아래 ` +
@@ -2820,20 +2823,21 @@ export async function generateEssay(
   // 스토리보드 같은 장면 단계는 대사·화면 설명 때문에 "검증 안 됨" 배너가 불필요하게 뜨지 않게 따로 판정한다(verifiable-claims.ts).
   const sceneListLabels = new Set(formOn ? elements.filter(isSceneLikeElement).map((e) => e.label) : []);
   const researchFacts: NonNullable<EssayResult["researchFacts"]> = [];
+  // 각주 번호는 문서 전체에서 한 번만 매긴다 — 단계마다 1번부터 다시 매기면 같은 [1]이 단계마다 다른 출처가 된다
+  // (실측 2026-10-31, 사용자 결과물.6: "개요"의 [1]=전자신문, "스토리보드"의 [1]=경향신문. 한 장에 같이 제출하는 글이다).
+  const renumbered = renumberAcrossSections(
+    attempt.sections.map((s) => s.content),
+    attempt.sources
+  );
 
   return {
     type: "essay",
     markdown,
-    sections: attempt.sections.map((s) => {
-      // 전체 문서 기준 번호(예: 이 단계가 [4]부터 시작)를 그대로 보여주면
-      // 학생 입장에서 "왜 갑자기 4번부터지?"처럼 혼란스럽다 — 화면에 보여줄
-      // 단계별 markdown/sources만 그 단계 안에서 1번부터 다시 매긴다. 전체
-      // 문서(위 markdown, 재생성 연속성에 쓰이는 단일 진실 소스)는 원래
-      // 번호를 그대로 유지한다 — 여기서 건드리는 건 카드에 보여줄 사본뿐이다.
-      const { content: renumberedContent, sources: renumberedSources } = renumberSectionCitations(
-        s.content,
-        attempt.sources
-      );
+    sections: attempt.sections.map((s, si) => {
+      // 화면에 보여줄 단계별 markdown/sources는 문서 전체에서 한 번 매긴 번호를 그대로 쓴다(renumbered).
+      // 전체 문서(위 markdown, 재생성 연속성에 쓰이는 단일 진실 소스)는 원래 번호를 유지한다.
+      const renumberedContent = dedupeAdjacentMarkers(renumbered.sections[si].content);
+      const renumberedSources = renumbered.sections[si].sources;
       const bookTitle = mentionedBookTitle(s);
       if (s.requiredItems) {
         // 조사 자료를 항목별 구조화 사실로 분해 — 순수 문자열 처리(LLM 재생성 아님).
@@ -3404,28 +3408,6 @@ function sectionHasVerifiableClaim(s: RawSection, sceneList = false): boolean {
   return hasVerifiableClaimText(s.content, { sceneList });
 }
 
-/** 문서 전체에서 공유되는 원래 번호([4]부터 시작하는 식) 대신, 각 섹션이
- * 실제로 인용한 번호만 등장 순서대로 1부터 다시 매긴다 — 학생 입장에서
- * "왜 이 단계는 4번부터 시작하지?"처럼 혼란스러운 걸 막기 위함. */
-function renumberSectionCitations(content: string, allSources: SourceRef[]): { content: string; sources: SourceRef[] } {
-  const sourceByN = new Map(allSources.map((s) => [s.n, s]));
-  const oldToNew = new Map<number, number>();
-  let nextN = 1;
-  const newContent = content.replace(/\[(\d+)\]/g, (match, numStr: string) => {
-    const oldN = Number(numStr);
-    if (!sourceByN.has(oldN)) return ""; // 출처 목록에 없는 번호는 남기지 않는다(눌러 볼 근거가 없는 각주)
-    let newN = oldToNew.get(oldN);
-    if (newN === undefined) {
-      newN = nextN++;
-      oldToNew.set(oldN, newN);
-    }
-    return `[${newN}]`;
-  });
-  const newSources0 = Array.from(oldToNew.entries())
-    .sort((a, b) => a[1] - b[1])
-    .map(([oldN, newN]) => ({ ...sourceByN.get(oldN)!, n: newN }));
-  return { content: dedupeAdjacentMarkers(newContent), sources: newSources0 };
-}
 
 // 분량 준수(예: "800자 내외 ±50자")는 프롬프트 문구를 아무리 강하게 써도
 // 모델이 자기 글자수를 정확히 세지 못한다는 게 실제 테스트로 확인됐다(2회
