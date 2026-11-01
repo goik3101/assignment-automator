@@ -50,6 +50,7 @@ import {
   stripFormLead,
   studentPreparedVisuals,} from "@/lib/essay/deliverable";
 import { stripAsciiArt } from "@/lib/essay/ascii-art";
+import { bookForm, bookFormBlock } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata } from "@/lib/essay/paste-slot";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
@@ -691,6 +692,10 @@ ${input.previousOutputText}
     ...input.coreTaskInfo.task_elements.map((e) => e.description),
   ]);
   const timeBlock = timeRangeBlock(timeRange);
+  // 학생이 읽은 책이 만화·그림책이면 칸의 그림도 그 형태로 그릴 수 있게 알려 준다(book-form.ts).
+  // 사용자 최소 통과 기준: "그림을 너무 복잡하게 안 그리고 책에 맞게 그렸는가". 형태는 조사로 확인된 것만 쓴다.
+  const bookForTone = notes?.book ?? input.presetBook;
+  const bookFormBlockText = bookForTone ? bookFormBlock(bookForm(notes?.facts ?? [], bookForTone.title), bookForTone.title) : "";
   if (timeRange) console.log(`[generateEssay] 다룰 시기: ${timeRange.text} (${timeRange.startYear}~${timeRange.endYear})`);
   const evidenceItemBlock = evidenceWritingBlock(writeEvidence.label, writeEvidence.slots);
   const dataTableBlock = qualityFixesOn()
@@ -821,7 +826,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
