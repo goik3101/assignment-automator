@@ -328,6 +328,9 @@ export async function analyzeAssignment(
   }
 
   const raw = response.text;
+  // 어느 모델이 안내문을 읽었는지 남긴다 — 운영에서 OPENAI_MODEL_ANALYZE가 빠지면 lite(gpt-5-mini)로 조용히 내려가고,
+  // 그러면 안내문 조건을 5개 중 3개만 읽는다(2026-10-31에 기각한 실험). 그런데 그걸 확인할 길이 로그에 없었다.
+  console.log(`[analyzeAssignment] model=${response.provider}/${response.model}`);
   if (!raw) {
     throw new Error("Gemini 분석 응답이 비어 있습니다.");
   }
