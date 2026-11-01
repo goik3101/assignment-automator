@@ -2,6 +2,7 @@
 // 실측(2026-10-27, 합성 안내문 1건): "스토리보드를 8장면으로"가 필수 항목 "화면 설명·대사"로 쪼개져 장면 구조가 사라지고,
 // "발표 대본 5문장 이내·10줄"은 텍스트로만 전달돼 기본 분량(발표 900~1700자)과 부딪혔다. 개수는 모델이 아니라 코드가 센다.
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
+import { cellSubfields, expandCells } from "./cell-subfields.ts";
 
 export type UnitKind = "scene" | "sentence" | "line" | "paragraph";
 
@@ -330,7 +331,15 @@ export function applyFormRequirements<T extends { requirements: string[]; writin
   const labels = info.task_elements.map((e) => e.label);
   return {
     ...info,
-    task_elements: info.task_elements.map((el) => expandSceneUnits(el, requirementsForElement(el, info.requirements, info.writing_guide, labels))),
+    // 번호 칸이 "칸마다 내용 + 들어갈 말"처럼 하위 칸으로 나뉘면 그것까지 펼친다 — 안 펼치면 한쪽(그림)이 통째로 빈다.
+    task_elements: info.task_elements.map((el) => {
+      const expanded = expandSceneUnits(el, requirementsForElement(el, info.requirements, info.writing_guide, labels));
+      // 장면 목록 단계는 장면마다 쓸 칸을 sceneBlockInputs가 따로 전한다 — 여기서 또 펼치면 항목이 두 배가 된다(8→16).
+      if (isSceneListElement(expanded)) return expanded;
+      const subs = cellSubfields([...info.requirements, info.writing_guide, el.description]);
+      const items = expandCells(expanded.required_items, subs);
+      return items === expanded.required_items ? expanded : { ...expanded, required_items: items };
+    }),
   };
 }
 
