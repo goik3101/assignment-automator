@@ -2472,6 +2472,23 @@ export async function generateEssay(
       const residuals = residualsAfterRepair(beforeRepair, attempt.sections.map((s) => ({ label: s.label, content: s.content })), merged);
       if (residuals.length > 0)
         console.warn(`[generateEssay] ⚠ 보완 뒤에도 남음: ${JSON.stringify(residuals.map((r) => ({ 단계: r.label, 안바뀜: r.unchanged, 남은요구: r.stillMissing.map((m) => m.slice(0, 40)) })))}`);
+      // 필수 어법은 낱말 세기로 판단할 수 없다 — "It is also used"의 It/is/that에 걸려 통과해 버린다(실측 2026-11-03).
+      // 0점짜리 조건이므로 진짜 검사기로 다시 보고, 아직 없으면 그 단계만 한 번 더 고친다(최대 1회).
+      if (grammarGaps.length > 0) {
+        const second: CoverageGap[] = [];
+        for (const g of grammarGaps) {
+          const el = elements.find((e) => e.label === g.label);
+          const sec = attempt.sections.find((s) => s.label === g.label);
+          if (!el || !sec) continue;
+          const forms = requiredGrammarForms(`${[...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? ""].join(" ")} ${el.description}`);
+          const still = missingGrammarForms(sec.content, forms);
+          if (still.length > 0) second.push({ label: g.label, missing: still.map((f) => GRAMMAR_REPAIR_TEXT[f]) });
+        }
+        if (second.length > 0) {
+          console.warn(`[generateEssay] ⚠ 보완 뒤에도 필수 어법 없음 — 1회 더 고침: ${JSON.stringify(second.map((s) => s.label))}`);
+          attempt = await repairLocally(attempt, elements, second, [], []);
+        }
+      }
     }
   }
   if (needsFullRetry && !overBudget("전체 재생성")) {
