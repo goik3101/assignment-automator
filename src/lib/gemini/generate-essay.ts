@@ -2904,7 +2904,12 @@ export async function generateEssay(
 
   // 품질 재시도까지 거치고도 분량 범위를 못 맞춘 단계는, 검색 없이 그 단계 글 하나만 한 번 보정한다(전체 재생성은 오히려 분량이 흔들린다 — 실측 1344→1294자).
   {
-    const remaining = overBudget("분량 보정") ? [] : checkLengthCompliance(attempt.sections, elements);
+    // 안내문이 직접 못 박은 분량("5문장 이내", "800자 이내")을 어긴 것은 예산을 보지 않고 고친다 —
+    // 로그 전수(2026-11-03, 실행 56회): 분량 보정은 **건너뜀 56회·적용 0회**로 한 번도 돈 적이 없다.
+    // 생성만으로 예산 22초를 넘기기 때문이다. 우리가 예시에서 유추한 상한(soft_max)만 어긴 경우는 그대로 건너뛴다.
+    const pending = checkLengthCompliance(attempt.sections, elements);
+    const hardMiss = pending.some((i) => !i.softOnly);
+    const remaining = overBudget("분량 보정", hardMiss ? "critical" : "optional") ? [] : pending;
     if (remaining.length > 0) {
       const adjusted = await Promise.all(
         attempt.sections.map(async (sec) => {
