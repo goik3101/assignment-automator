@@ -38,3 +38,13 @@ test("직접 수행 기록 단계를 가려내고 빈칸을 센다", () => {
   assert.equal(countBlanks(t), 3);
   assert.equal(countBlanks("빈칸 없는 글"), 0);
 });
+
+test("각주가 달린 역사 사실은 학생 행동이 아니다", () => {
+  assert.equal(isOwnActivitySentence("유엔 위원단이 북한 지역을 방문하지 못했다.[2]"), false);
+  assert.equal(isOwnActivitySentence("유엔 한국 문제 위원단은 1948년 1월 남한에 도착해 방안을 논의했다.[4]"), false);
+});
+
+test("각주가 없는 날조는 그대로 잡는다", () => {
+  assert.equal(isOwnActivitySentence("신문 기사를 스크랩해서 붙였다."), true);
+  assert.equal(isOwnActivitySentence("직접 촬영했다."), true);
+});

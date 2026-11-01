@@ -18,7 +18,12 @@ const THIRD_PARTY =
  * 촬영한 것은 학생이다. 행동이 들어 있는 절에 기관 주어가 없으면 학생이 한 일로 본다.
  */
 export function isOwnActivitySentence(sentence: string): boolean {
-  const s = sentence.replace(/\[\d+\]/g, "").trim();
+  // 각주가 달린 문장은 **조사로 확인한 사실**이다 — 학생이 한 일에는 출처가 붙지 않는다.
+  // 실측(2026-11-03, 역사 신문): "유엔 위원단이 북한 지역을 방문하지 못하면서…[2]"가 학생 행동으로 잡혔다.
+  // THIRD_PARTY는 손으로 적은 낱말 목록이라 "위원단"·"소총회"처럼 빠진 말이 계속 나온다 —
+  // 낱말을 더 넣는 대신, 우리가 붙인 각주라는 일반 신호를 쓴다. 거짓 경고는 멀쩡한 단계를 다시 쓰게 만든다.
+  if (/\[\d+\]/.test(sentence)) return false;
+  const s = sentence.trim();
   if (!s) return false;
   const clauses = s.split(/,\s*|(?<=[가-힣])고\s+/);
   return clauses.some((c) => OWN_ACTION.test(c) && PAST.test(c) && !THIRD_PARTY.test(c));

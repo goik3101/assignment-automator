@@ -2164,7 +2164,7 @@ export async function generateEssay(
   const [flowingGaps, rubricGaps] = await Promise.all([
     overBudget("소제목 없는 단계의 항목 확인") ? Promise.resolve([] as CoverageGap[]) : confirmCoverageGaps(attempt.sections),
     // 안내문 요구 충족 여부라 "필수" 쪽으로 본다 — 결함 교정과 달리 못 지키면 그대로 감점이다.
-    rubricScoped && !overBudget("안내문 조건 대조", "required")
+    rubricScoped && !overBudget("안내문 조건 대조", "critical")
       ? judgeRubric(rubricScoped, attempt.sections.map((s) => ({ label: s.label, content: s.content })))
       : Promise.resolve([] as RubricMiss[]),
   ]);
