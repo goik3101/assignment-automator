@@ -15,7 +15,9 @@ const VISUAL_NOUNS = ["그림", "그래프", "표", "사진", "영상", "동영�
 /** "A·B만 (사용할 수) 있다 / 가능하다"처럼 종류를 한정한 문장, 또는 "사진은 사용할 수 없다"처럼 금지한 문장. */
 const ONLY_SENTENCE = /만\s*(?:사용|활용|가능|허용|쓸)/;
 const BAN_SENTENCE =
-  /(?:사용|활용)(?:할\s*수)?\s*(?:없|불가|금지|안\s*됨|안\s*된다)|금지|(?:쓰지|붙이지|넣지|싣지|올리지|첨부하지)\s*(?:말|않|마)/;
+  // "쓸 수 없다"·"넣을 수 없다"가 빠져 있었다 — "사진은 쓸 수 없다" 한 문장만 있으면 금지를 아예 못 읽었다
+  // (실측 2026-11-03). 선생님들이 가장 흔히 쓰는 표현 중 하나다.
+  /(?:사용할|활용할|사용|활용|쓸|넣을|붙일|실을|첨부할)\s*수\s*(?:없|불가)|(?:사용|활용)\s*(?:불가|금지|안\s*됨|안\s*된다)|금지|(?:쓰지|붙이지|넣지|싣지|올리지|첨부하지)\s*(?:말|않|마)/;
 
 export interface VisualElement {
   label: string;
@@ -104,20 +106,32 @@ export interface VisualPolicy {
 export function visualPolicy(texts: string[]): VisualPolicy {
   const allowed = new Set<string>();
   const banned = new Set<string>();
+  // 금지와 허용이 **한 문장 안에** 같이 오는 일이 흔하다: "사진은 쓸 수 없고 직접 그린 그림만 가능하다."
+  // 문장째로 보면 "만 가능"이 먼저 걸려 사진까지 허용으로 들어갔다(실측 2026-11-03, 지어낸 포스터 안내문).
+  // 학생에게 안내문이 금지한 자료를 쓰라고 하는 것이라 해가 크다 — 절 단위로 보고, 못 박은 금지가 이긴다.
+  const explicitBan = new Set<string>();
   for (const raw of texts) {
     for (const s of (raw ?? "").split(/(?<=[.。!?])\s+|\n+/)) {
-      const nouns = VISUAL_NOUNS.filter((n) => s.includes(n));
-      if (nouns.length === 0) continue;
-      if (ONLY_SENTENCE.test(s)) {
-        for (const n of nouns) allowed.add(n);
-      } else if (BAN_SENTENCE.test(s)) {
-        for (const n of nouns) banned.add(n);
+      for (const clause of s.split(/,\s*|(?<=[가-힣])고\s+/)) {
+        const nouns = VISUAL_NOUNS.filter((n) => clause.includes(n));
+        if (nouns.length === 0) continue;
+        if (BAN_SENTENCE.test(clause)) {
+          for (const n of nouns) {
+            banned.add(n);
+            explicitBan.add(n);
+          }
+        } else if (ONLY_SENTENCE.test(clause)) {
+          for (const n of nouns) allowed.add(n);
+        }
       }
     }
   }
   // "그림·그래프·표만"이면 나머지는 자동으로 금지다.
   if (allowed.size > 0) for (const n of VISUAL_NOUNS) if (!allowed.has(n)) banned.add(n);
-  for (const n of allowed) banned.delete(n);
+  for (const n of [...allowed]) {
+    if (explicitBan.has(n)) allowed.delete(n); // 안내문이 못 박아 금지한 것은 허용으로 되돌리지 않는다
+    else banned.delete(n);
+  }
   return { allowed: [...allowed], banned: [...banned] };
 }
 

@@ -63,3 +63,15 @@ test("자료 종류 제한 문장을 표 요구로 읽지 않는다(실측 2026-
   // 진짜로 표를 요구하면 여전히 참
   assert.equal(needsDataTable(el, ["개요에는 연도별 수치를 표로 정리한다."], undefined), true);
 });
+
+test("한 문장에 금지와 허용이 같이 와도 금지가 이긴다", () => {
+  const p = visualPolicy(["사진은 쓸 수 없고 직접 그린 그림만 가능하다."]);
+  assert.ok(!p.allowed.includes("사진"), "안내문이 금지한 사진이 허용으로 들어가면 안 된다");
+  assert.ok(p.banned.includes("사진"));
+  assert.ok(p.allowed.includes("그림"));
+});
+
+test("'쓸 수 없다'만으로도 금지를 읽는다", () => {
+  assert.ok(visualPolicy(["사진은 쓸 수 없다."]).banned.includes("사진"));
+  assert.ok(visualPolicy(["영상은 넣을 수 없습니다."]).banned.includes("영상"));
+});
