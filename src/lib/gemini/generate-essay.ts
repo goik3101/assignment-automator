@@ -1914,8 +1914,11 @@ export async function generateEssay(
   // 건너뛴 것은 로그와 화면 경고로 남는다. ESSAY_TIME_BUDGET_MS=0이면 예전처럼 전부 실행.
   const timeBudgetMs = process.env.ESSAY_TIME_BUDGET_MS === undefined ? 22000 : Number(process.env.ESSAY_TIME_BUDGET_MS);
   // 안내문이 요구한 것을 채우는 보완(필수 항목·표·형식 조건·날조 문장 수정)은 예산을 조금 넘겨도 한 번은 한다 — 요구사항 미충족이 더 큰 손해다.
-  const overBudget = (what: string, kind: "optional" | "required" = "optional"): boolean => {
-    if (!timeBudgetMs) return false;
+  // "critical"은 예산을 보지 않는다 — 안 지키면 그 항목이 0점이 되는 조건(지정 언어, 필수 어법·밑줄)이다.
+  // 실측(2026-11-01 전수): 영어 과제가 30.5초라 언어 조건 검사와 어법 보완이 모두 건너뛰어져
+  // 본문에 한글이 남고("발명품은 Rocketbook 재사용 노트이다.") 밑줄이 굵게로 나갔다 — 둘 다 0점 사유다.
+  const overBudget = (what: string, kind: "optional" | "required" | "critical" = "optional"): boolean => {
+    if (!timeBudgetMs || kind === "critical") return false;
     const limit = kind === "required" ? timeBudgetMs + 4000 : timeBudgetMs;
     const spent = Date.now() - start;
     if (spent <= limit) return false;
@@ -2406,8 +2409,10 @@ export async function generateEssay(
       else merged.push({ ...g, missing: [...g.missing] });
     }
     // 안내문이 요구한 항목·표·날조 문장 수정이 섞여 있으면 "필수"로 본다(되풀이 정리만 남았으면 건너뛰어도 된다).
+    // 필수 어법·밑줄은 안 지키면 0점이라 예산을 보지 않는다.
     const requiredRepair = merged.length > 0 || activityRewrites.length > 0;
-    if (!overBudget("단계 부분 보완", requiredRepair ? "required" : "optional"))
+    const criticalRepair = grammarGaps.length > 0;
+    if (!overBudget("단계 부분 보완", criticalRepair ? "critical" : requiredRepair ? "required" : "optional"))
       attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
   }
   if (needsFullRetry && !overBudget("전체 재생성")) {
@@ -2756,7 +2761,9 @@ export async function generateEssay(
   }
 
   // 외국어 단계가 아닌데 영어로 쓰였거나 영어 제목·문장이 섞인 단계는 그 단계만 한국어로 다시 쓴다(분량 보정보다 먼저 — 번역 뒤 분량을 다시 맞춘다).
-  if (koreanGuardOn() && !overBudget("한국어 재작성 검사")) {
+  // 안내문이 영어로 쓰라고 한 단계에 한글이 남으면 그 항목은 0점이다 — 문체 다듬기가 아니라 안내문 요구다.
+  // 실측(2026-11-01 전수): 영어 과제에서 이 검사가 27.5초에 밀려 건너뛰어졌고 "발명품은 Rocketbook 재사용 노트이다."가 그대로 나갔다.
+  if (koreanGuardOn() && !overBudget("언어 조건 검사", "critical")) {
     const targets = attempt.sections.filter((sec) => {
       const el = elements.find((e) => e.label === sec.label);
       return !!el && !detectElementLanguage(input.subject, el) && !!koreanLanguageIssue(sec.content);
