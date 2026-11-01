@@ -144,6 +144,23 @@ export default async function AdminDashboardPage() {
           </p>
         </div>
 
+        {ai.models.length > 0 && (
+          <div className="rounded-2xl border border-border px-5 py-4">
+            <p className="text-sm font-semibold">최근 30일에 실제로 쓴 모델</p>
+            <p className="mt-1 text-xs text-muted">
+              안내문 분석과 글쓰기는 <strong>gpt-6-luna</strong>여야 해요. gpt-5-mini로 보이면 환경변수(OPENAI_MODEL_ANALYZE / OPENAI_MODEL_WRITE)가 빠진 거예요 —
+              분석이 내려가면 안내문 조건을 절반만 읽어요.
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {ai.models.map((m) => (
+                <li key={m.name} className="rounded-full bg-background px-3 py-1 text-xs">
+                  {m.name} <span className="text-faint">{m.requests}건</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {ai.byRoute.length > 0 && (
           <div className="overflow-x-auto rounded-2xl border border-border">
             <table className="w-full text-left text-sm">

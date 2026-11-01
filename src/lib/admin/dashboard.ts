@@ -91,6 +91,9 @@ export interface AiSection {
   budgetUsd: number | null;
   byRoute: RouteRow[];
   recentErrors: { at: string; route: string; status: number; seconds: number }[];
+  /** 최근 요청이 실제로 쓴 모델 이름(많이 쓴 순). 운영 환경변수가 빠지면 여기서 바로 보인다 —
+   * OPENAI_MODEL_ANALYZE가 없으면 분석이 조용히 gpt-5-mini로 내려가고 안내문 조건을 절반만 읽는다. */
+  models: { name: string; requests: number }[];
   truncated: boolean;
 }
 
@@ -134,7 +137,7 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
       supabase.from("study_usage_events").select("created_at, kind").gte("created_at", since).order("created_at", { ascending: false }).range(a, b)
     ),
     fetchAll<{ created_at: string; route: string; status: number; ok: boolean; failed_calls: number; cost_usd: number | string; wall_ms: number }>((a, b) =>
-      supabase.from("ai_usage_log").select("created_at, route, status, ok, failed_calls, cost_usd, wall_ms").gte("created_at", since).order("created_at", { ascending: false }).range(a, b)
+      supabase.from("ai_usage_log").select("created_at, route, status, ok, failed_calls, cost_usd, wall_ms, models").gte("created_at", since).order("created_at", { ascending: false }).range(a, b)
     ),
     supabase.from("admin_login_attempts").select("created_at, ip, success").gte("created_at", since7).order("created_at", { ascending: false }).limit(1000),
   ]);
@@ -226,6 +229,12 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     today: { requests: todayPoint?.values.requests ?? 0, errors: todayPoint?.values.errors ?? 0, cost: todayPoint?.values.cost ?? 0 },
     forecast: forecastMonthCost(aiDays.map((p) => ({ day: p.day, cost: p.values.cost ?? 0 })), now),
     budgetUsd: Number.isFinite(budget) && budget > 0 ? budget : null,
+    models: (() => {
+      const count = new Map<string, number>();
+      for (const r of aiRows.rows as { models?: string | null }[])
+        for (const m of String(r.models ?? "").split(",").map((x) => x.trim()).filter(Boolean)) count.set(m, (count.get(m) ?? 0) + 1);
+      return [...count.entries()].map(([name, requests]) => ({ name, requests })).sort((a, b) => b.requests - a.requests);
+    })(),
     byRoute,
     recentErrors: measured
       ? aiRows.rows
