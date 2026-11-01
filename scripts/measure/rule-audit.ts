@@ -12,6 +12,7 @@ process.loadEnvFile(path.join(REPO, ".env.local"));
 
 const { needsSubjectSelection } = await import("@/lib/selection/selection-need");
 const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual");
+const { isListeningTest } = await import("@/lib/gemini/analysis-normalize");
 const { extractCountRequirements, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
 const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { needsExcerpt } = await import("@/lib/essay/excerpt-need");
@@ -73,8 +74,31 @@ const RULES: Rule[] = [
       [true, "통계를 그래프로 나타낼 것."],
       [true, "비교한 결과를 표에 정리해 넣는다."],
       [true, "연도별 변화를 도표로 제시한다."],
+      // 2026-11-01 실측(통합사회2 인권 저널): "표는"의 조사 '는'이 BARE_TABLE에 없어 안 걸렸다 — 학생이 표 안내를 못 받았다.
+      [true, "그림이나 표는 필수."],
+      [true, "표은 반드시 들어가야 한다."],
+      [true, "그래프나 표도 함께 넣을 것."],
       [false, "그림 자료는 그림·그래프·표만 가능합니다."],
       [false, "표지에 이름을 쓴다."],
+      [false, "발표는 5분 이내로 한다."],
+      [false, "대표는 한 명만 정한다."],
+    ],
+  },
+  {
+    name: "듣기평가",
+    what: "듣고 파악하는 평가(글로 낼 산출물이 아님)를 걸러내는가",
+    run: (t) => isListeningTest({ label: "화법의 원리 파악", description: t }),
+    cases: [
+      [true, "강연 또는 대화를 듣고 맥락을 고려하여 말하기의 내용 파악하기"],
+      [true, "담화를 듣고 화자의 의도를 파악한다."],
+      [true, "듣기 평가로 진행한다."],
+      [false, "강연을 듣고 감상문을 작성한다."],
+      [false, "대화를 듣고 요약문을 쓰시오."],
+      [false, "친구의 발표를 듣고 평가지에 기록한다."],
+      // 신문의 인터뷰 단계 — 규칙을 처음 넣었을 때 이것까지 지웠다(한 영역이 통째로 사라진다).
+      [false, "당시를 겪은 사람의 이야기를 듣고 질문 2개와 답변 2개로 정리한다"],
+      [false, "광복 당시를 겪은 인물과의 대화를 듣고 구성한다"],
+      [false, "강연을 듣고 내용을 파악하여 기사로 구성한다"],
     ],
   },
   {

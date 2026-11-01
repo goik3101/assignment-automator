@@ -21,6 +21,10 @@ function DraftBadge() {
 }
 
 export const MD_COMPONENTS: Components = {
+  // 안내문이 밑줄을 요구한 표현(영어 어법 3종 등). 눈에 확실히 보이게 두껍게 긋는다 — 학생이 그대로 밑줄을 그으면 된다.
+  u({ children }) {
+    return <u className="underline decoration-2 underline-offset-[3px]">{children}</u>;
+  },
   p({ children }) {
     const parts = Children.toArray(children);
     const first = parts[0];

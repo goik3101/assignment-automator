@@ -24,7 +24,8 @@ const DUMMY_IT_ADJ = /\bIt\s+(?:is|was)\s+(?:very\s+|so\s+|really\s+)?(?:importa
 const RELATIVE = /(?:\w|,)\s+(?:which|who|whom|whose)\s+\w+/i;
 
 function has(form: GrammarForm, text: string): boolean {
-  const t = text.replace(/\*\*/g, "").replace(/\[\d+\]/g, "");
+  // 밑줄 표시는 문장 중간을 끊는다("<u>It is the filter that</u> removes") — 태그를 떼고 봐야 어법이 잡힌다.
+  const t = text.replace(/<\/?u>/gi, "").replace(/\*\*/g, "").replace(/\[\d+\]/g, "");
   if (form === "passive") return PASSIVE.test(t);
   if (form === "relative") return RELATIVE.test(t);
   // 가주어 구문만 있고 진짜 강조 구문이 없으면 없는 것
@@ -38,8 +39,66 @@ export function missingGrammarForms(content: string, forms: GrammarForm[]): Gram
 
 /** 부분 보완 지시 문구(잘못 쓰기 쉬운 점까지). */
 export const GRAMMAR_REPAIR_TEXT: Record<GrammarForm, string> = {
-  passive: "수동태(be + p.p.) 문장을 하나 이상 자연스럽게 넣고 그 수동태 부분을 **굵게** 표시",
+  passive: "수동태(be + p.p.) 문장을 하나 이상 자연스럽게 넣고 그 수동태 부분을 <u>…</u>로 감싸 밑줄 표시(굵게로 대신하지 말 것)",
   itThat:
-    'It is/was ~ that 강조 구문을 한 문장 넣고 그 구문 전체를 **굵게** 표시(예: "It is the filter that removes bacteria."). "It is important that …" 같은 가주어-진주어 구문은 강조 구문이 아니니 쓰지 말 것',
-  relative: "관계대명사(which/who/whom/whose/that) 절을 하나 이상 넣고 그 부분을 **굵게** 표시(where/when/why/how 같은 관계부사는 인정되지 않음)",
+    'It is/was ~ that 강조 구문을 한 문장 넣고 그 구문 전체를 <u>…</u>로 감싸 밑줄 표시(예: "<u>It is the filter that</u> removes bacteria."). "It is important that …" 같은 가주어-진주어 구문은 강조 구문이 아니니 쓰지 말 것',
+  relative: "관계대명사(which/who/whom/whose/that) 절을 하나 이상 넣고 그 부분을 <u>…</u>로 감싸 밑줄 표시(굵게로 대신하지 말 것. where/when/why/how 같은 관계부사는 인정되지 않음)",
+};
+
+/** 안내문이 그 표현에 밑줄까지 요구했는가. */
+export function wantsUnderline(text: string): boolean {
+  return /밑줄|underline/i.test(text);
+}
+
+/** <u> 태그를 떼면서, 밑줄 구간이 떼어낸 글에서 어디부터 어디까지였는지 함께 돌려준다. */
+export function stripUnderlineTags(content: string): { text: string; ranges: [number, number][] } {
+  const ranges: [number, number][] = [];
+  let text = "";
+  let open = -1;
+  const re = /<\/?u>/gi;
+  let last = 0;
+  for (const m of content.matchAll(re)) {
+    const at = m.index ?? 0;
+    text += content.slice(last, at);
+    last = at + m[0].length;
+    if (m[0][1] === "/") {
+      if (open >= 0) ranges.push([open, text.length]);
+      open = -1;
+    } else {
+      open = text.length;
+    }
+  }
+  text += content.slice(last);
+  if (open >= 0) ranges.push([open, text.length]);
+  return { text, ranges };
+}
+
+const FORM_RE: Record<GrammarForm, RegExp> = { passive: PASSIVE, itThat: CLEFT, relative: RELATIVE };
+
+/**
+ * 어법은 썼지만 **밑줄을 안 그은** 것들. 표현 전체가 아니라 일부만 겹쳐도 그은 것으로 본다 —
+ * 학생이 관계사절만 밑줄 쳐도 채점자는 인정한다(실측 2026-11-01: 굵게만 나와 3개 항목이 0점이었다).
+ */
+export function missingUnderlinedForms(content: string, forms: GrammarForm[]): GrammarForm[] {
+  const { text, ranges } = stripUnderlineTags(content);
+  const clean = text.replace(/\[\d+\]/g, (m) => " ".repeat(m.length)).replace(/\*\*/g, "  ");
+  return forms.filter((f) => {
+    const re = new RegExp(FORM_RE[f].source, FORM_RE[f].flags.includes("i") ? "gi" : "g");
+    let found = false;
+    for (const m of clean.matchAll(re)) {
+      const s = m.index ?? 0;
+      const e = s + m[0].length;
+      if (f === "itThat" && DUMMY_IT_ADJ.test(m[0])) continue;
+      found = true;
+      if (ranges.some(([a, b]) => s < b && a < e)) return false;
+    }
+    return found; // 아예 안 쓴 것은 missingGrammarForms가 따로 잡는다
+  });
+}
+
+/** 밑줄만 빠졌을 때의 보완 지시(어법 자체는 이미 썼다). */
+export const UNDERLINE_REPAIR_TEXT: Record<GrammarForm, string> = {
+  passive: "이미 쓴 수동태(be + p.p.) 문장에서 그 수동태 부분만 <u>…</u>로 감쌀 것(굵게 **…** 는 밑줄이 아니다 — 채점자는 밑줄을 본다)",
+  itThat: "이미 쓴 It is/was ~ that 강조 구문에서 그 구문 부분을 <u>…</u>로 감쌀 것(굵게 **…** 는 밑줄이 아니다)",
+  relative: "이미 쓴 관계대명사 절 부분을 <u>…</u>로 감쌀 것(굵게 **…** 는 밑줄이 아니다)",
 };

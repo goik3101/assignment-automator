@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { missingGrammarForms, requiredGrammarForms } from "./english-grammar.ts";
+import type { GrammarForm } from "./english-grammar.ts";
+import { missingGrammarForms, requiredGrammarForms , wantsUnderline, stripUnderlineTags, missingUnderlinedForms } from "./english-grammar.ts";
 
 test("안내문에서 요구된 어법을 읽는다", () => {
   assert.deepEqual(requiredGrammarForms("수동태, It~that 강조 용법, 관계대명사를 올바르게 사용"), ["passive", "itThat", "relative"]);
@@ -24,4 +25,30 @@ test("수동태·관계대명사", () => {
   assert.deepEqual(missingGrammarForms("The G-Saver was invented to solve poor heating.", ["passive"]), []);
   assert.deepEqual(missingGrammarForms("It collects heat, which increases heating efficiency.", ["relative"]), []);
   assert.deepEqual(missingGrammarForms("This is the place where people live.", ["relative"]), ["relative"]);
+});
+
+test("밑줄 요구 여부", () => {
+  assert.ok(wantsUnderline("해당 표현에 밑줄을 그을 것"));
+  assert.ok(!wantsUnderline("수동태를 사용할 것"));
+});
+
+test("태그를 떼면서 밑줄 구간 위치를 돌려준다", () => {
+  const r = stripUnderlineTags("ab<u>cd</u>ef");
+  assert.equal(r.text, "abcdef");
+  assert.deepEqual(r.ranges, [[2, 4]]);
+});
+
+test("어법을 썼는데 밑줄이 없으면 잡는다", () => {
+  const forms: GrammarForm[] = ["passive"];
+  assert.deepEqual(missingUnderlinedForms("The bottle **is made** of steel.", forms), ["passive"]);
+  assert.deepEqual(missingUnderlinedForms("The bottle <u>is made</u> of steel.", forms), []);
+});
+
+test("관계사절만 밑줄 쳐도 인정한다", () => {
+  const forms: GrammarForm[] = ["relative"];
+  assert.deepEqual(missingUnderlinedForms("a filter <u>which removes bacteria</u> fast", forms), []);
+});
+
+test("아예 안 쓴 어법은 밑줄 검사가 잡지 않는다(다른 검사가 잡는다)", () => {
+  assert.deepEqual(missingUnderlinedForms("Nothing here at all.", ["passive"] as GrammarForm[]), []);
 });

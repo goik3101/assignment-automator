@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { remarkUnderline } from "@/lib/markdown/underline";
 import { CircleCheck, CircleHelp, CircleX, Link2, MessageSquareQuote, PencilLine, TriangleAlert } from "lucide-react";
 import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
 import { SOURCE_TIER_LABEL } from "@/lib/links/source-quality";
@@ -321,7 +322,7 @@ export function EssayPanel({
       {result.lengthWarning && <LengthWarning message={result.lengthWarning} />}
       {result.structureWarning && <StructureWarning message={result.structureWarning} />}
       <article className={ARTICLE}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkUnderline]} components={MD_COMPONENTS}>
           {result.markdown}
         </ReactMarkdown>
       </article>
@@ -371,7 +372,9 @@ export function PlanPanel({
       {result.structureWarning && <StructureWarning message={result.structureWarning} />}
       {result.factConsistencyWarning && <StructureWarning message={result.factConsistencyWarning} />}
       <article className={ARTICLE}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkUnderline]} components={MD_COMPONENTS}>
+          {result.content}
+        </ReactMarkdown>
       </article>
       <SourceList sources={result.sources} />
       {result.productionSteps.length > 0 && (

@@ -48,6 +48,7 @@ import {
   tabTableToMarkdown,
   stripWorkMarkers,
   stripFormLead,} from "@/lib/essay/deliverable";
+import { stripAsciiArt } from "@/lib/essay/ascii-art";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
@@ -94,7 +95,7 @@ import { renderScopedGuide, renderScopedRequirements, scopeStatements, splitStat
 import { buildRubric, rubricMisses, rubricPrompt, rubricRepairText, type RubricMiss, type RubricVerdict } from "@/lib/essay/rubric-check";
 import { BOOK_TITLE_PATTERN, FACTUAL_CLAIM_HINT_PATTERN, QUOTE_PATTERN, hasVerifiableClaimText } from "@/lib/essay/verifiable-claims";
 import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
-import { GRAMMAR_REPAIR_TEXT, missingGrammarForms, requiredGrammarForms } from "@/lib/essay/english-grammar";
+import { GRAMMAR_REPAIR_TEXT, UNDERLINE_REPAIR_TEXT, missingGrammarForms, missingUnderlinedForms, requiredGrammarForms, wantsUnderline } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
@@ -2133,9 +2134,16 @@ export async function generateEssay(
       const sec = attempt.sections.find((s) => s.label === el.label);
       const forms = requiredGrammarForms(`${reqText} ${el.description} ${(el.required_items ?? []).join(" ")}`);
       const miss = sec ? missingGrammarForms(sec.content, forms) : [];
+      // 어법은 썼지만 밑줄을 안 그은 경우(실측 2026-11-01: 굵게로만 나와 3개 항목이 0점). 안내문이 밑줄을 요구할 때만 본다.
+      const noUnderline =
+        sec && wantsUnderline(`${reqText} ${el.description}`) ? missingUnderlinedForms(sec.content, forms.filter((f) => !miss.includes(f))) : [];
       // 실측(2026-10-24, 4회 중 3회): 영어 본문에 선정 대상의 한글 이름이 섞였다("The product is the 휴대용 태양열 조리기") — 소제목 줄은 빼고 본다.
       const hangulInBody = !!sec && /[가-힣]/.test(sec.content.replace(/^#.*$/gm, ""));
-      const missing = [...miss.map((f) => GRAMMAR_REPAIR_TEXT[f]), ...(hangulInBody ? ["본문 문장에 섞인 한글(이름 포함)을 모두 자연스러운 영어로 바꿀 것 — 소제목 줄은 그대로 둘 것"] : [])];
+      const missing = [
+        ...miss.map((f) => GRAMMAR_REPAIR_TEXT[f]),
+        ...noUnderline.map((f) => UNDERLINE_REPAIR_TEXT[f]),
+        ...(hangulInBody ? ["본문 문장에 섞인 한글(이름 포함)을 모두 자연스러운 영어로 바꿀 것 — 소제목 줄은 그대로 둘 것"] : []),
+      ];
       if (missing.length > 0) grammarGaps.push({ label: el.label, missing });
     }
     if (grammarGaps.length > 0) console.warn(`[generateEssay] 필수 어법 누락 감지: ${JSON.stringify(grammarGaps.map((g) => g.label))}`);
@@ -2931,6 +2939,12 @@ export async function generateEssay(
           console.warn(`[generateEssay] 작업 메모 ${notes.removed}개·본문 주소 ${urls.removed}개 제거, 전달형 꼬리 ${reported.changed}개·제목 조사 ${josa.changed}개 정리 label="${s.label}"`);
         content = ordinals.content;
         if (ordinals.changed > 0) console.warn(`[generateEssay] 서수 나열 표지(첫째·둘째) ${ordinals.changed}개 정리`);
+        // 기호로 그린 그림(아스키 아트)은 제출할 글에 들어갈 것이 아니다 — 학생이 준비할 사진·그림 자리를 대신 차지한다(ascii-art.ts).
+        const art = stripAsciiArt(content);
+        if (art.removed.length > 0) {
+          console.warn(`[generateEssay] 아스키 아트 ${art.removed.length}개 제거 label="${s.label}"`);
+          content = art.content;
+        }
       }
       return { ...s, content };
     }),
@@ -4164,7 +4178,7 @@ async function adjustSectionLengthOnce(
 아래 글의 분량을 ${lengthRangeText(issue)}(${issue.unit === "words" ? "영어 단어 수" : issue.countsSpaces ? "공백 포함" : "공백 제외"}) 범위로 고쳐서 글 전체를 다시 써줘. 지금은 ${issue.actual}${uw}이고 목표는 약 ${goal}${uw}다.
 ${shorten ? "- 핵심 내용과 필수 항목은 남기고 중복·군더더기 표현만 덜어낼 것." : "- 이미 있는 내용을 설명·이유·연결·구체화로 자연스럽게 늘릴 것. 새로운 사실·수치·연도·인물·인용문·출처를 추가하지 말 것(기존에 없는 사실은 쓰지 말 것)."}
 - 기존 문장의 각주 표기([1] 등)와 따옴표로 직접 인용한 문장은 그대로 유지할 것. 각주를 새로 만들거나 번호를 바꾸지 말 것.
-- 굵게(**…**) 표시된 문장·표현(채점 대상 어법 등)은 한 글자도 바꾸지 말고 그대로 남길 것.
+- 굵게(**…**)나 밑줄(<u>…</u>)로 표시된 문장·표현(채점 대상 어법 등)은 표시째로 한 글자도 바꾸지 말고 그대로 남길 것.
 - 글의 언어·문체·형식(소제목 등)은 그대로 유지하고, 분량을 채우려고 같은 말을 반복하지 말 것.
 ${description ? `- 이 글이 다뤄야 할 내용: ${description}\n` : ""}결과는 고친 글 본문만 출력할 것(설명·머리말 없이).
 
@@ -4179,10 +4193,13 @@ ${content}`.trim(),
     console.warn(`[generateEssay] 분량 보정 거부(각주 변경) label="${issue.label}"`);
     return {};
   }
-  // 굵게 표시한 채점 대상 문장(영어 필수 어법 등)이 줄이면서 빠지면 거부한다.
-  const bolds = [...content.matchAll(/\*\*([^*\n]{4,})\*\*/g)].map((m) => m[1].trim());
-  if (bolds.some((b) => !next.includes(b))) {
-    console.warn(`[generateEssay] 분량 보정 거부(굵게 표시한 문장 변경) label="${issue.label}"`);
+  // 굵게·밑줄로 표시한 채점 대상 문장(영어 필수 어법 등)이 줄이면서 빠지면 거부한다.
+  const marked = [
+    ...[...content.matchAll(/\*\*([^*\n]{4,})\*\*/g)].map((m) => m[1].trim()),
+    ...[...content.matchAll(/<u>([\s\S]{4,}?)<\/u>/gi)].map((m) => m[1].trim()),
+  ];
+  if (marked.some((b) => !next.includes(b))) {
+    console.warn(`[generateEssay] 분량 보정 거부(강조·밑줄 표시한 문장 변경) label="${issue.label}"`);
     return {};
   }
   const quotes = [...content.matchAll(/[「『“"]([^」』”"\n]{4,})[」』”"]/g)].map((m) => m[1]);

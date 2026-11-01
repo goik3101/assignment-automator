@@ -415,11 +415,8 @@ export function stripWorkNotes(content: string): { content: string; removed: num
     removed++;
     return "";
   });
-  // 화면(react-markdown)은 HTML 태그를 그리지 않는다 — 밑줄 표시 <u>…</u>는 굵게로 바꾼다(실측: 영어 글에 "<u>It is</u>"가 글자 그대로 남음).
-  out = out.replace(/<u>([\s\S]*?)<\/u>/gi, (_m, inner: string) => {
-    removed++;
-    return `**${inner}**`;
-  });
+  // 밑줄 표시 <u>…</u>는 그대로 남긴다 — 화면이 remarkUnderline으로 실제 밑줄을 그린다(src/lib/markdown/underline.ts).
+  // 예전에는 굵게로 바꿨는데, 안내문이 밑줄을 요구하는 과제(공통영어2 어법 3종)에서 그 항목이 0점이 된다.
   if (removed === 0) return { content, removed };
   return { content: out.replace(/[ \t]+([.,])/g, "$1").replace(/\.\s*\./g, ".").replace(/\n{3,}/g, "\n\n").trim(), removed };
 }

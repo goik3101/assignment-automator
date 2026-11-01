@@ -58,6 +58,10 @@ const CASES: Case[] = [
   { id: "영어(발명품)", images: ["영어-1 - 복사본/KakaoTalk_20261021_232340155_08.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_06.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_07.jpg"] },
   { id: "과학(산·염기)", images: ["KakaoTalk_20260928_165015557_01 - 복사본.jpg"] },
   { id: "사회 평가지", analysisFile: "social-analysis.json", instructions: "주제는 노인 빈곤과 기초연금 문제로 할게." },
+  // 2026-11-01에 처음 넣은 안내문 3종(그동안 한 번도 안 돌려 본 것들).
+  { id: "국어(책처방전)", images: ["KakaoTalk_20260827_155423489_01 - 복사본.jpg"], instructions: "뽑은 친구의 고민은 '성적이 계속 떨어져서 불안하고 자존감이 낮아졌다'였어." },
+  { id: "화작(문제해결)", images: ["KakaoTalk_20260829_112309789 - 복사본.jpg"], instructions: "기사에서 찾은 사회문제는 청년 고립·은둔 문제로 할게." },
+  { id: "사회(인권저널)", images: ["KakaoTalk_20260912_203359067_05 - 복사본.jpg"], instructions: "인권 선구자는 전태일로 정했어." },
 ];
 
 const sentences = (t: string) =>

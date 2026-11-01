@@ -82,6 +82,22 @@ export function isScriptlessSpeech(el: { label: string; description: string }, c
   return ORAL_LABEL.test(el.label) && !WRITTEN_LABEL.test(el.label) && NO_SCRIPT.test(`${el.description} ${context.join(" ")}`);
 }
 
+// 듣고 파악하는 평가(강연·대화를 듣고 내용 파악하기)는 학생이 시험 시간에 하는 것이지 AI가 쓸 글이 아니다.
+// 실측(2026-11-01, 2학기 화작 수행평가): "② 화법의 원리 파악하기 — 강연 또는 대화를 듣고 맥락을 고려하여
+// 말하기의 내용 파악하기"가 글 단계가 되어, 듣지도 않은 강연의 "말하기 상황과 맥락"·"핵심 내용"을 지어냈다.
+// 듣고 **쓰는** 과제(감상문·요약문·기록지)는 글이 맞으므로 빼지 않는다.
+// "듣고"만 보면 신문의 인터뷰 단계("겪은 사람의 이야기를 듣고 질문 2개와 답변 2개로 정리")까지 지워 버린다
+// (실측 2026-11-01, 규칙을 넣자마자 확인). 세 가지가 다 맞을 때만 듣기 평가로 본다:
+//   ① 듣는 상황이고 ② 결과가 "파악·이해"뿐이고 ③ 글로 낼 것을 만들라는 말이 없다.
+const LISTEN = /(?:강연|강의|대화|담화|이야기|방송)[^.\n]{0,20}(?:듣고|들으며|들은|청취)|듣기\s*평가/;
+const COMPREHEND = /파악|이해|듣기\s*평가/;
+const LISTEN_WRITE = /작성|서술|쓴다|쓰시오|쓰기|기록|감상문|요약문|보고서|평가지|글로|정리|구성|구상|만든다|제작|그린다/;
+
+export function isListeningTest(el: { label: string; description: string }): boolean {
+  const text = `${el.label} ${el.description}`;
+  return LISTEN.test(text) && COMPREHEND.test(text) && !LISTEN_WRITE.test(text);
+}
+
 // 학생이 실물을 구해 붙이는 단계(신문 기사 스크랩, 사진 촬영·캡처, 인쇄해 부착)는 AI가 만들 수 있는 글이 아니다 —
 // 그대로 두면 모델이 "스마트폰으로 촬영했다", "캡처해 보관했다"처럼 학생이 하지도 않은 행동을 지어낸다(실측 2026-10-29, 실제 제출 결과물).
 // 쓸 항목(required_items)이 있거나 서술을 요구하면 글이 섞인 단계이므로 빼지 않는다 — 그쪽은 생성 규칙이 행동 날조만 막는다.
@@ -99,12 +115,13 @@ export function isCollectedArtifact(el: { label: string; description: string; re
 export function dropNote(el: { label: string; description: string; required_items?: string[] }): string {
   if (isObservationSheet(el)) return `수업 중 직접 작성: ${el.label} (AI가 만들지 않음)`;
   if (isCollectedArtifact(el)) return `직접 준비: ${el.label} (학생이 실제 자료를 찾아 붙이는 활동 — AI가 만들지 않음)`;
+  if (isListeningTest(el)) return `수업 중 직접 수행: ${el.label} (듣고 파악하는 평가 — AI가 만들지 않음)`;
   return `직접 수행: ${el.label} (대본 없이 말하기 — AI가 만들지 않음)`;
 }
 
 /** 수업 중 작성하는 기록지, 대본 없는 발표, 학생이 실물을 구해 붙이는 단계를 만들 결과물에서 뺀다. 그것밖에 없는 과제면 그대로 둔다. */
 export function dropNonSubmissionActivities<T extends { label: string; description: string; required_items?: string[] }>(els: T[], context: string[] = []): { kept: T[]; dropped: T[] } {
-  const skip = (e: T) => isObservationSheet(e) || isScriptlessSpeech(e, context) || isCollectedArtifact(e);
+  const skip = (e: T) => isObservationSheet(e) || isScriptlessSpeech(e, context) || isCollectedArtifact(e) || isListeningTest(e);
   const kept = els.filter((e) => !skip(e));
   if (kept.length === 0) return { kept: els, dropped: [] };
   return { kept, dropped: els.filter(skip) };

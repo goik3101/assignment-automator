@@ -124,7 +124,9 @@ test("외부 제작 결과의 작업 메모를 지운다(실측 2026-10-22: 현�
     "(위 문장들 중 확인 가능한 사실에는 출처를 달았습니다. 필요하면 문구를 더 다듬어 드립니다.)",
   ].join("\n");
   assert.equal(stripWorkNotes(card).content, "들어갈 말: 고등학생들이 먼저 거리로 나섰다.[2]");
-  assert.equal(stripWorkNotes("The bulb <u>was invented</u> to save energy.").content, "The bulb **was invented** to save energy.");
+  // 2026-11-01: <u>를 굵게로 바꾸던 것을 되돌렸다 — 안내문이 밑줄을 요구하는 과제(공통영어2 어법 3종)에서
+  // 굵게로 나가면 그 항목이 0점이다. 화면은 remarkUnderline이 실제 밑줄로 그린다.
+  assert.equal(stripWorkNotes("The bulb <u>was invented</u> to save energy.").content, "The bulb <u>was invented</u> to save energy.");
   assert.equal(
     stripWorkNotes("들어갈 말: 끝.\n\n(학생 감상 초안 — 본인 생각에 맞게 고쳐 쓰세요)\n### 인상적인 부분\n(학생 감상 초안 — 본인 생각에 맞게 고쳐 쓰세요)\n새롭게 알게 됐다.").content,
     "들어갈 말: 끝.\n\n### 인상적인 부분\n(학생 감상 초안 — 본인 생각에 맞게 고쳐 쓰세요)\n새롭게 알게 됐다."
