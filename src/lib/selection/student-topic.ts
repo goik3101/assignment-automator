@@ -8,6 +8,15 @@ const TOPIC_Q = /주제|인물|대상|소재|사례|사건|작품|기업|국가|
 const MEDIUM_Q = /매체|형식|방식|도구|프로그램|플랫폼|분량|시간|디자인|구성|순서|말투|어조|자료\s*형태|발표\s*방법/;
 /** 책은 책 선정(presetBook)이 따로 맡는다. */
 const BOOK_Q = /책|도서|작가/;
+/**
+ * 결과물의 **한 영역**에만 걸리는 질문 — 그 답은 글 전체의 주제가 아니다.
+ * 실측(2026-11-02, 한국사 신문): 제작 전 질문이 "인터뷰 대상을 누구로 할까요? → 당시 신문기자"였는데
+ * 이 답이 신문 **전체의 대상**으로 잡혀, 광복~정부수립 현대사를 다뤄야 할 신문이 통째로 그 소재로 쏠렸다.
+ * 머리기사는 신문의 중심 기사라 전체 주제와 같으므로 여기 넣지 않는다.
+ */
+const SECTION_Q = /인터뷰|만평|광고|사설|칼럼|표지|장면|카드|컷|슬라이드|삽화|문단|코너/;
+/** 영역 이름이 나와도 "중심·전체"를 묻고 있으면 글 전체의 주제가 맞다. */
+const GLOBAL_CUE = /중심|전체|머리기사|메인|초점/;
 /** 매체·형식 이름 — 값 전체가 이것들로만 이루어진 답은 주제가 아니다("신문 기사 속 혐오 표현"처럼 매체 이름으로 시작하는 주제는 주제다). */
 const MEDIUM_WORD = /^(?:슬라이드|파워포인트|PPT|구글슬라이드|구글|프레젠테이션|키노트|프레지|캔바|영상|동영상|유튜브|포스터|카드뉴스|카드|뉴스|인포그래픽|리플릿|팸플릿|신문|보고서|만화|웹툰|그림|사진|활용|형식|자료|제작|발표)$/i;
 
@@ -87,6 +96,7 @@ export function findStudentTopic(instructions?: string | null): string | null {
   for (const m of instructions.matchAll(/^\s*-\s*질문:\s*(.+)\n\s*답:\s*(.+)$/gm)) {
     const q = m[1];
     if (!TOPIC_Q.test(q) || MEDIUM_Q.test(q) || BOOK_Q.test(q)) continue;
+    if (SECTION_Q.test(q) && !GLOBAL_CUE.test(q)) continue;
     const v = usableAnswer(m[2]);
     if (v) found.push({ value: v, rank: /주제/.test(q) ? 0 : 1 });
   }
