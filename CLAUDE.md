@@ -226,6 +226,12 @@ docs/
   ① 낱말 경계와 문맥(무엇을 고르는지·어떤 문장 종류인지)을 함께 보고 ② `node --import ./scripts/measure/loader/register.mjs scripts/measure/audit.ts`로
   저장된 분석 결과 전부에 대한 판정을 전·후 비교한다. 생성 로그의 `[generateEssay] 안내문 규칙:` 한 줄이 실제 실행에서
   무엇이 걸렸는지 보여 준다.
+- **측정은 실제 학생들의 다양성에 영향을 주지 않는다**(2026-11-02 확인): 쏠림 억제 시스템
+  (`identifyCluster` → `task_embeddings` 저장 → `buildAvoidanceInstruction`)은 전부 **Route Handler**
+  (`api/tasks/generate/essay/route.ts`)에 있고, 측정 스크립트는 `generateEssay()`를 직접 부르므로 그 경로를 아예 타지 않는다.
+  `selection: { history: [] }`(빈 이력)로 호출하니 억제를 읽지도 기록하지도 않는다. `RESEARCH_CACHE`는 기본 꺼짐,
+  `SOURCE_STATS_LOG=off`라 조사 캐시·링크 통계에도 안 남는다. **즉 테스트로 쓴 소재(볼펜·전태일·사일구 등)가
+  실제 학생에게 덜 나오게 되지 않는다.** 단, 웹사이트에서 직접 돌린 것은 정상 사용이라 그대로 기록된다.
 - **측정 방법**: 실제 안내문 사진은 `수행평가 안내문/`(gitignore). 생성 품질은 "하나씩 고치기" 대신 **결함 검사기로 전수**로 본다 — 알려진 결함 15종(날조 활동·거절문·빈칸 과다·금지 자료·표 누락·계획 문장 각주·기관 첫 화면 출처·무각주 수치·되풀이·빈 항목·중복 각주·범위 밖 각주·소제목 중복·끊긴 문장·외국 문자). 검사기는 맨 아래 출처 목록을 본문에서 뺀 뒤 센다 — 안 그러면 긴 주소가 "긴 문장", 출처 제목의 연도가 "무각주 수치"로 잡힌다. 측정 스크립트는 `scripts/measure/`.
 - **AI 채팅**(`lib/study/chat.ts`, 프롬프트 조립은 alias 없는 `chat-pure.ts`): 안내문 분석 결과(`StudyContext.assignmentInfo`, 행정정보 제외)를 채팅에만 함께 보여준다(요약·퀴즈 등은 "자료에 있는 내용만" 규칙 때문에 섞지 않음). 값싼 공부 도구용 모델(`OPENAI_MODEL_STUDY`)이 검색 없이 먼저 답하고, 검색이 필요하다고 한 질문만 `OPENAI_MODEL_MAIN`이 검색을 강제해 다시 답한다. `CHAT_ROUTING=off`면 예전처럼 main 한 번. 하루 상한은 `STUDY_LIMIT_CHAT`(기본 20, 2026-10-26 결정; 관리자는 제외).
 - **개수 조건**(2026-10-27): 안내문의 "8장면"·"5문장 이내" 같은 조건은 분석 결과를 바꾸지 않고 생성 시점에만 읽는다(`essay/form-requirements.ts`). 장면 수는 필수 항목 "장면 1…N"으로 펼치고, 문장·줄·문단 상한이 있는 단계는 기본 분량 가이드를 빼며, 생성 뒤 문장·문단 수를 코드로 센다(줄 수는 셀 수 없어 프롬프트로만). 수업 중 직접 쓰는 기록지(청중 기록지 등)와 "대본 없이" 말로 하는 발표는 분석 단계가 만들 결과물에서 뺀다(`dropNonSubmissionActivities`, 뺀 것은 요구사항에 한 줄로 남김). `FORM_REQUIREMENTS=off`로 전부 되돌린다.
