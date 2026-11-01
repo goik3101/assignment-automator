@@ -243,12 +243,15 @@ function isStructuredElement(el: CoreTaskInfo["task_elements"][number]): boolean
 // "저자", "책 제목", "출판사" 같은 서지 칸은 소제목이 아니라 문장 속("이지성의 『꿈꾸는 다락방』")에 있어도 채운 것이다 —
 // 실측(2026-10-22, 책 처방전): "저자" 소제목이 없다는 이유로 전체 재생성(+16초) 후에도 경고가 남았다.
 const BIBLIO_ITEM = /^\s*(?:책\s*)?(?:제목|저자|지은이|작가|출판사|서지\s*(?:정보)?)\s*$/;
+// 양식지 칸 이름(제목·내용·본문)은 소제목이 없어도 글 안에 있으면 채운 것이다 — 기사 제목을 "### 제목" 대신
+// 바로 쓰는 것이 더 자연스럽다. 항목으로는 남겨 프롬프트가 칸을 알려 주되, 누락 경고는 내지 않는다(analysis-items.ts).
+const FORM_FIELD_ITEM = /^\s*(?:제목|내용|본문|글|작성란|기사\s*(?:제목|내용))\s*$/;
 function detectMissingRequiredItems(sections: RawSection[]): { label: string; missing: string[] }[] {
   const result: { label: string; missing: string[] }[] = [];
   for (const s of sections) {
     if (!s.requiredItems) continue;
     const hasBook = qualityFixesOn() && /[『《][^』》]{1,60}[』》]/.test(s.content);
-    const missing = findMissingItems(s.content, s.requiredItems).filter((m) => !(hasBook && BIBLIO_ITEM.test(m)));
+    const missing = findMissingItems(s.content, s.requiredItems).filter((m) => !(hasBook && BIBLIO_ITEM.test(m)) && !FORM_FIELD_ITEM.test(m));
     if (missing.length > 0) result.push({ label: s.label, missing });
   }
   return result;

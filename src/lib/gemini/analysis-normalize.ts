@@ -126,9 +126,17 @@ export function isInterrogativeItemList(items: string[] | undefined): boolean {
   return hits >= Math.ceil(items.length / 2);
 }
 
-/** 그런 목록이면 통째로 버린다(생성은 자유 서술로 쓰고, 조건 자체는 요구사항·작성 기준 글에 남아 있다). */
+/**
+ * 의문사 항목만 빼고 **진짜 칸은 남긴다**. 남은 것이 2개 미만이면 목록 자체를 버린다.
+ *
+ * 실측(2026-11-01, 역사 신문 양식지): 모델이 머리기사에 ["제목","내용","누가","언제","어디서","무엇을","어떻게","왜"]를
+ * 넣었다 — 앞의 둘은 **양식지의 진짜 칸**이고 뒤의 여섯은 채점 기준 설명이다. 처음엔 절반 이상이 의문사라고 목록을
+ * 통째로 버렸는데, 그 바람에 "제목"·"내용" 칸까지 사라져 머리기사가 칸 없이 생성됐다. 가려서 버려야 한다.
+ */
 export function dropInterrogativeItems<T extends { label: string; required_items?: string[] }>(el: T): T {
   if (!isInterrogativeItemList(el.required_items)) return el;
+  const kept = (el.required_items ?? []).filter((i) => !INTERROGATIVE_ITEM.test((i ?? "").replace(/\s+/g, " ").trim()));
+  if (kept.length >= 2) return { ...el, required_items: kept };
   const { required_items: _dropped, ...rest } = el;
   return rest as T;
 }

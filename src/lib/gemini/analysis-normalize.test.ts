@@ -44,6 +44,13 @@ test("5W1H 안내는 칸 목록이 아니다", () => {
   assert.equal(isInterrogativeItemList(["누가", "언제", "어디서", "무엇을", "어떻게", "왜"]), true);
   assert.equal(isInterrogativeItemList(["누가", "언제", "어디서", "사건의 영향"]), true);
   assert.deepEqual(dropInterrogativeItems({ label: "머리기사", required_items: ["누가", "언제", "어디서", "무엇을"] }), { label: "머리기사" });
+  // 양식지의 진짜 칸이 섞여 있으면 그것만 남긴다(실측: 제목·내용까지 함께 사라져 머리기사가 칸 없이 생성됐다).
+  assert.deepEqual(
+    dropInterrogativeItems({ label: "머리기사", required_items: ["제목", "내용", "누가", "언제", "어디서", "무엇을", "어떻게", "왜"] }),
+    { label: "머리기사", required_items: ["제목", "내용"] }
+  );
+  // 남는 칸이 하나뿐이면 구조화할 것이 없다 — 목록을 버린다.
+  assert.deepEqual(dropInterrogativeItems({ label: "기사", required_items: ["제목", "누가", "언제", "왜"] }), { label: "기사" });
 });
 
 test("진짜 칸 목록은 그대로 둔다", () => {
