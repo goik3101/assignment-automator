@@ -102,3 +102,29 @@ export const UNDERLINE_REPAIR_TEXT: Record<GrammarForm, string> = {
   itThat: "이미 쓴 It is/was ~ that 강조 구문에서 그 구문 부분을 <u>…</u>로 감쌀 것(굵게 **…** 는 밑줄이 아니다)",
   relative: "이미 쓴 관계대명사 절 부분을 <u>…</u>로 감쌀 것(굵게 **…** 는 밑줄이 아니다)",
 };
+
+/**
+ * 안내문이 밑줄을 요구했는데 모델이 안 그었으면 **코드가 직접 긋는다**.
+ *
+ * 실측(2026-11-02, 공통영어2): 누락 감지도 됐고 부분 보완도 돌았는데(1682→1803자) 결과물에 <u>가 0개였다.
+ * 모델에게 "밑줄 쳐 달라"고 한 번 더 부탁하는 대신, 우리가 이미 가진 어법 정규식으로 그 자리를 찾아 감싼다.
+ * 숫자 각주를 코드가 붙이는 것과 같은 방식이다 — 모델의 협조에 기대지 않는다.
+ * 이미 밑줄이 쳐진 어법은 건드리지 않고, 못 찾은 어법은 그대로 둔다(없는 문장을 지어내지 않는다).
+ */
+export function underlineGrammarForms(content: string, forms: GrammarForm[]): { content: string; added: GrammarForm[] } {
+  const added: GrammarForm[] = [];
+  let out = content;
+  for (const f of missingUnderlinedForms(content, forms)) {
+    const re = new RegExp(FORM_RE[f].source, FORM_RE[f].flags.includes("i") ? "i" : "");
+    // 태그 안에 또 태그가 생기지 않게, 이미 밑줄인 구간 밖에서만 찾는다.
+    const { ranges } = stripUnderlineTags(out);
+    const m = re.exec(out.replace(/<\/?u>/gi, (t) => " ".repeat(t.length)));
+    if (!m) continue;
+    const s = m.index;
+    const e = s + m[0].length;
+    if (ranges.some(([a, b]) => s < b && a < e)) continue;
+    out = `${out.slice(0, s)}<u>${out.slice(s, e)}</u>${out.slice(e)}`;
+    added.push(f);
+  }
+  return { content: out, added };
+}

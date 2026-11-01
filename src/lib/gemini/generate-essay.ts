@@ -95,7 +95,7 @@ import { renderScopedGuide, renderScopedRequirements, scopeStatements, splitStat
 import { buildRubric, rubricMisses, rubricPrompt, rubricRepairText, type RubricMiss, type RubricVerdict } from "@/lib/essay/rubric-check";
 import { BOOK_TITLE_PATTERN, FACTUAL_CLAIM_HINT_PATTERN, QUOTE_PATTERN, hasVerifiableClaimText } from "@/lib/essay/verifiable-claims";
 import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
-import { GRAMMAR_REPAIR_TEXT, UNDERLINE_REPAIR_TEXT, missingGrammarForms, missingUnderlinedForms, requiredGrammarForms, wantsUnderline } from "@/lib/essay/english-grammar";
+import { GRAMMAR_REPAIR_TEXT, UNDERLINE_REPAIR_TEXT, missingGrammarForms, missingUnderlinedForms, requiredGrammarForms, underlineGrammarForms, wantsUnderline } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
@@ -2980,6 +2980,19 @@ export async function generateEssay(
           console.warn(`[generateEssay] 작업 메모 ${notes.removed}개·본문 주소 ${urls.removed}개 제거, 전달형 꼬리 ${reported.changed}개·제목 조사 ${josa.changed}개 정리 label="${s.label}"`);
         content = ordinals.content;
         if (ordinals.changed > 0) console.warn(`[generateEssay] 서수 나열 표지(첫째·둘째) ${ordinals.changed}개 정리`);
+        // 안내문이 "그 표현에 밑줄"을 요구했는데 모델이 안 그었으면 코드가 직접 긋는다(english-grammar.ts).
+        // 감지도 되고 보완도 돌았는데 밑줄만 빠지는 일이 반복됐다 — 모델의 협조에 기대지 않는다.
+        {
+          const el = elements.find((e) => e.label === s.label);
+          const reqText = [...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", el?.description ?? ""].join(" ");
+          if (wantsUnderline(reqText) && detectElementLanguage(input.subject, el ?? { label: s.label, description: "" } as never)?.startsWith("English")) {
+            const u = underlineGrammarForms(content, requiredGrammarForms(reqText));
+            if (u.added.length > 0) {
+              console.warn(`[generateEssay] 밑줄을 코드가 직접 그음 ${JSON.stringify(u.added)} label="${s.label}"`);
+              content = u.content;
+            }
+          }
+        }
         // 기호로 그린 그림(아스키 아트)은 제출할 글에 들어갈 것이 아니다 — 학생이 준비할 사진·그림 자리를 대신 차지한다(ascii-art.ts).
         const art = stripAsciiArt(content);
         if (art.removed.length > 0) {

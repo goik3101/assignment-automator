@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GrammarForm } from "./english-grammar.ts";
-import { missingGrammarForms, requiredGrammarForms , wantsUnderline, stripUnderlineTags, missingUnderlinedForms } from "./english-grammar.ts";
+import { missingGrammarForms, requiredGrammarForms, wantsUnderline, stripUnderlineTags, missingUnderlinedForms, underlineGrammarForms } from "./english-grammar.ts";
 
 test("안내문에서 요구된 어법을 읽는다", () => {
   assert.deepEqual(requiredGrammarForms("수동태, It~that 강조 용법, 관계대명사를 올바르게 사용"), ["passive", "itThat", "relative"]);
@@ -51,4 +51,24 @@ test("관계사절만 밑줄 쳐도 인정한다", () => {
 
 test("아예 안 쓴 어법은 밑줄 검사가 잡지 않는다(다른 검사가 잡는다)", () => {
   assert.deepEqual(missingUnderlinedForms("Nothing here at all.", ["passive"] as GrammarForm[]), []);
+});
+
+test("밑줄이 없으면 코드가 직접 긋는다", () => {
+  const t = "The frame is made of steel. It is the motor that drives it. A filter which removes dust helps.";
+  const r = underlineGrammarForms(t, ["passive", "itThat", "relative"] as GrammarForm[]);
+  assert.equal(r.added.length, 3);
+  assert.equal((r.content.match(/<u>/g) ?? []).length, 3);
+  assert.deepEqual(missingUnderlinedForms(r.content, ["passive", "itThat", "relative"] as GrammarForm[]), []);
+});
+
+test("이미 밑줄이면 다시 긋지 않는다", () => {
+  const t = "The frame <u>is made</u> of steel.";
+  const r = underlineGrammarForms(t, ["passive"] as GrammarForm[]);
+  assert.equal(r.added.length, 0);
+  assert.equal(r.content, t);
+});
+
+test("없는 어법은 지어내지 않는다", () => {
+  const r = underlineGrammarForms("Nothing relevant here at all.", ["itThat"] as GrammarForm[]);
+  assert.equal(r.added.length, 0);
 });
