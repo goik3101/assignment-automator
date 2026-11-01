@@ -49,6 +49,7 @@ import {
   stripWorkMarkers,
   stripFormLead,} from "@/lib/essay/deliverable";
 import { stripAsciiArt } from "@/lib/essay/ascii-art";
+import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
@@ -2460,8 +2461,15 @@ export async function generateEssay(
     // 필수 어법·밑줄은 안 지키면 0점이라 예산을 보지 않는다.
     const requiredRepair = merged.length > 0 || activityRewrites.length > 0;
     const criticalRepair = grammarGaps.length > 0;
-    if (!overBudget("단계 부분 보완", criticalRepair ? "critical" : requiredRepair ? "required" : "optional"))
+    if (!overBudget("단계 부분 보완", criticalRepair ? "critical" : requiredRepair ? "required" : "optional")) {
+      const beforeRepair = attempt.sections.map((s) => ({ label: s.label, content: s.content }));
       attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
+      // 보완이 제 일을 했는지 코드로 다시 본다 — 감지하고 보완까지 돌고도 안 고쳐지는 일이 있었다(repair-check.ts).
+      // 모델 호출이 늘지 않는다. 남은 것은 뒤의 코드 강제(밑줄 등)와 측정이 집어간다.
+      const residuals = residualsAfterRepair(beforeRepair, attempt.sections.map((s) => ({ label: s.label, content: s.content })), merged);
+      if (residuals.length > 0)
+        console.warn(`[generateEssay] ⚠ 보완 뒤에도 남음: ${JSON.stringify(residuals.map((r) => ({ 단계: r.label, 안바뀜: r.unchanged, 남은요구: r.stillMissing.map((m) => m.slice(0, 40)) })))}`);
+    }
   }
   if (needsFullRetry && !overBudget("전체 재생성")) {
     console.warn(
