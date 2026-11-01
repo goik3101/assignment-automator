@@ -23,6 +23,39 @@ export function forceTextSubmissionIfNoExternalHint<T extends { type: string; la
   return { ...el, type: "text_submission" };
 }
 
+/**
+ * 채울 칸이 있는 제작물은 "글 + 만들기"가 섞인 단계다 — 칸에 들어갈 말은 학생이 **써야** 한다.
+ *
+ * 우리 스키마가 required_items를 "써야 할 내용 항목"으로 정의한다(analyze.ts의 지시문). 그러니 칸이 있으면
+ * 글 단계다. 산출물 이름이 외부 제작물이라는 이유만으로 external_production에 두면 학생은 아무 글도 못 받는다.
+ *
+ * 실측(2026-11-01, 역사 카드뉴스): 저장된 분석 3회가 **전부** external_production인데 required_items는
+ * ["책 제목","카드 뉴스 제목","전달하고자 하는 메시지","①"…"⑥"] 9개였다. 생성이 글 경로를 타면 8/8,
+ * 안 타면 "글 단계 없음"이 된다 — 같은 안내문인데 실행마다 달랐다.
+ * 칸이 없는 순수 제작물("포스터를 그려 제출")은 그대로 둔다 — 그건 실행 계획 경로가 맞다.
+ */
+export function textWhenBoxesToFill<T extends { type: string; required_items?: string[] }>(el: T): T {
+  if (el.type !== "external_production") return el;
+  if ((el.required_items ?? []).filter((i) => i.trim()).length < 2) return el;
+  return { ...el, type: "text_submission" };
+}
+
+// 칸이 없어도 "무엇을 써라"고 말하는 설명. 칸 목록이 비어 돌아온 실행을 위한 마지막 그물이다.
+const WRITE_CUE = /작성|서술|쓴다|쓰시오|쓰기|적는다|적을|문구|대사|메시지|소개|설명|분석|주장|근거|감상|소감/;
+
+/**
+ * 마지막 안전장치: 글 단계가 하나도 없으면 학생은 빈손으로 받는다.
+ * 쓸 거리가 있는 단계(칸이 있거나 설명이 쓰라고 하는 단계) 중 칸이 가장 많은 하나를 글 단계로 올린다.
+ * 쓸 거리가 전혀 없으면 올리지 않는다 — 그 과제는 실행 계획으로 가는 게 맞다.
+ */
+export function ensureSomeTextStep<T extends { type: string; label: string; description: string; required_items?: string[] }>(els: T[]): T[] {
+  if (els.some((e) => e.type === "text_submission")) return els;
+  const writable = els.filter((e) => (e.required_items ?? []).some((i) => i.trim()) || WRITE_CUE.test(`${e.label} ${e.description}`));
+  if (writable.length === 0) return els;
+  const best = writable.reduce((a, b) => ((b.required_items ?? []).length > (a.required_items ?? []).length ? b : a));
+  return els.map((e) => (e === best ? { ...e, type: "text_submission" } : e));
+}
+
 // "스마트폰을", "'My", "학교" 같은 값은 과목이 아니라 주제 문장의 첫 단어다(안내문에 과목명이 없으면 모델이 이렇게 채운다).
 import { KNOWN_SUBJECTS } from "./normalize-subject.ts";
 

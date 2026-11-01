@@ -18,7 +18,7 @@ import {
   sceneBlockInputs,
 } from "./form-requirements.ts";
 import { lengthGuideLines, planLength } from "./length-plan.ts";
-import { dropNonSubmissionActivities, dropNote, isObservationSheet, isScriptlessSpeech } from "../gemini/analysis-normalize.ts";
+import { dropNonSubmissionActivities, dropNote, ensureSomeTextStep, isObservationSheet, isScriptlessSpeech, textWhenBoxesToFill } from "../gemini/analysis-normalize.ts";
 
 // 합성 안내문(화법과 작문 모둠 영상 발표)을 실제로 분석시킨 결과(2026-10-27, gpt-6-luna, 수정 전, n=1)를 그대로 옮긴 재현 자료.
 // 실제 학교 안내문 원본은 저장소에 없다 — 이 자료는 "분석이 이렇게 돌려줄 때 생성 단계가 어떻게 되는가"를 재현한다.
@@ -289,4 +289,43 @@ test("장면·문장 조건은 단계 수와 같아도 그대로 둔다", () => 
   const got = requirementsForElement({ label: "스토리보드", description: "스토리보드를 2개의 장면으로 쓴다" }, [], undefined, labels);
   assert.equal(got.length, 1);
   assert.equal(got[0].word, "장면");
+});
+
+// --- 칸이 있는 제작물은 글 단계 (2026-11-01) ---
+const CARDNEWS = {
+  type: "external_production",
+  label: "민주화 운동 카드뉴스",
+  description: "책을 읽고 4·19혁명을 주제로 카드뉴스를 만든다",
+  required_items: ["책 제목", "카드 뉴스 제목", "전달하고자 하는 메시지", "①", "②", "③", "④", "⑤", "⑥"],
+};
+const POSTER = { type: "external_production", label: "캠페인 포스터", description: "도화지에 포스터를 그려 제출한다", required_items: [] };
+
+test("채울 칸이 있는 제작물은 글 단계로 올린다", () => {
+  assert.equal(textWhenBoxesToFill(CARDNEWS).type, "text_submission");
+});
+
+test("칸이 없는 순수 제작물은 그대로 둔다(실행 계획 경로가 맞다)", () => {
+  assert.equal(textWhenBoxesToFill(POSTER).type, "external_production");
+  assert.equal(textWhenBoxesToFill({ ...POSTER, required_items: ["제목"] }).type, "external_production");
+});
+
+test("이미 글 단계인 것은 건드리지 않는다", () => {
+  const el = { type: "text_submission", label: "개요", description: "", required_items: ["목적", "주제"] };
+  assert.equal(textWhenBoxesToFill(el), el);
+});
+
+test("글 단계가 하나도 없으면 쓸 거리가 가장 많은 것을 올린다", () => {
+  const out = ensureSomeTextStep([POSTER, CARDNEWS]);
+  assert.equal(out.find((e) => e.label === "민주화 운동 카드뉴스")?.type, "text_submission");
+  assert.equal(out.find((e) => e.label === "캠페인 포스터")?.type, "external_production");
+});
+
+test("쓸 거리가 전혀 없으면 올리지 않는다 — 그 과제는 실행 계획으로 간다", () => {
+  const only = [{ type: "external_production", label: "모형", description: "찰흙으로 모형을 만든다", required_items: [] }];
+  assert.equal(ensureSomeTextStep(only)[0].type, "external_production");
+});
+
+test("글 단계가 이미 있으면 아무것도 바꾸지 않는다", () => {
+  const els = [{ type: "text_submission", label: "개요", description: "쓴다", required_items: [] }, POSTER];
+  assert.equal(ensureSomeTextStep(els), els);
 });

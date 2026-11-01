@@ -2,7 +2,7 @@ import { Type, type Schema } from "@google/genai";
 import { generate, type LlmPart } from "@/lib/llm";
 import { normalizeSubject } from "./normalize-subject";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
-import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, fallbackSubject, forceTextSubmissionIfNoExternalHint } from "./analysis-normalize";
+import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import type { AnalyzeResult } from "@/types/task";
@@ -386,9 +386,17 @@ export async function analyzeAssignment(
   });
 
   // 채점 기준의 "누가·언제·어디서…"는 칸 목록이 아니라 글에 담길 내용 안내다 — 소제목 구조로 쓰이지 않게 뺀다.
-  const distributed = distributeSharedLength(task_elements_raw).map((e) => dropInterrogativeItems(forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic)));
+  // 칸이 있는 제작물(카드뉴스·신문 등)은 글 단계로 올린다 — 칸에 들어갈 말은 학생이 써야 하고,
+  // 산출물 이름만 보고 external_production에 두면 같은 안내문인데 실행마다 글을 받았다 못 받았다 한다.
+  const distributed = distributeSharedLength(task_elements_raw).map((e) =>
+    dropInterrogativeItems(textWhenBoxesToFill(forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic)))
+  );
   // 수업 중 작성하는 기록지는 만들 결과물에서 빼고, 왜 없는지 학생이 볼 수 있게 요구사항에 한 줄 남긴다.
-  const { kept: task_elements, dropped: droppedSheets } = formRequirementsOn() ? dropNonSubmissionActivities(distributed, [...parsed.core_task_info.requirements, parsed.core_task_info.writing_guide ?? "", parsed.administrative_info?.other_notes ?? ""]) : { kept: distributed, dropped: [] };
+  const { kept: keptSteps, dropped: droppedSheets } = formRequirementsOn() ? dropNonSubmissionActivities(distributed, [...parsed.core_task_info.requirements, parsed.core_task_info.writing_guide ?? "", parsed.administrative_info?.other_notes ?? ""]) : { kept: distributed, dropped: [] };
+  // 글 단계가 0개로 끝나면 학생은 아무 글도 못 받는다 — 쓸 거리가 있으면 하나는 글 단계로 올린다.
+  const task_elements = ensureSomeTextStep(keptSteps);
+  if (task_elements.some((e, i) => e.type !== keptSteps[i]?.type))
+    console.warn(`[analyzeAssignment] 글 단계가 하나도 없어 "${task_elements.find((e, i) => e.type !== keptSteps[i]?.type)?.label}"을(를) 글 단계로 올림`);
   if (droppedSheets.length > 0) console.warn(`[analyzeAssignment] 수업 중 작성 기록지·대본 없는 발표는 만들 결과물에서 제외: ${droppedSheets.map((d) => d.label).join(", ")}`);
 
   // 최종 안전장치: 프롬프트로 "빈 문자열 금지"를 지시해도(위 스키마 설명 참고)

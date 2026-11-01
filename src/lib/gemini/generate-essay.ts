@@ -3,7 +3,7 @@ import { generate } from "@/lib/llm";
 import { currentSourceScope } from "@/lib/llm/scope";
 import { isDomesticUrl, keepInScope } from "@/lib/essay/source-scope";
 import { needsFactSearch } from "@/lib/llm/search-policy";
-import { BOOK_TASK_HINT_PATTERN } from "./book-hint";
+import { mentionsBookTask } from "./book-hint";
 import { Type, type Schema } from "@google/genai";
 import {
   ANTI_AI_TONE_RULES,
@@ -886,9 +886,11 @@ ${factSheetText(notes.facts)}` : ""}
 // 않아도 명백한 신호만 잡는 수준으로 충분).
 
 function needsBookCandidateSelection(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): boolean {
-  if (BOOK_TASK_HINT_PATTERN.test(input.coreTaskInfo.topic)) return true;
-  if (input.coreTaskInfo.requirements.some((r) => BOOK_TASK_HINT_PATTERN.test(r))) return true;
-  return elements.some((e) => BOOK_TASK_HINT_PATTERN.test(e.description) || BOOK_TASK_HINT_PATTERN.test(e.label));
+  // mentionsBookTask는 "자료를 어디서 찾아라"를 나열한 문장("인터넷 검색(백과사전, 평전, 책 내용 등)")을 빼고 본다 —
+  // 거기 걸리면 책 후보 검색이 돌다 실패해 출처 0개짜리 글이 나간다(book-hint.ts의 실측 기록).
+  if (mentionsBookTask(input.coreTaskInfo.topic)) return true;
+  if (input.coreTaskInfo.requirements.some((r) => mentionsBookTask(r))) return true;
+  return elements.some((e) => mentionsBookTask(e.description) || mentionsBookTask(e.label));
 }
 
 // 10종 수행평가 교차 테스트(2026-09-13)에서 발견된 심각한 문제: 독서 비평문
