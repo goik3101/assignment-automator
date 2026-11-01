@@ -162,10 +162,28 @@ export interface NewspaperBlockInput {
   materialLabels: string[];
   /** 신문의 영역들이 각각 별개 단계로 나뉜 과제인가(그러면 이 단계는 신문 전체가 아니라 칸 하나다). */
   sectionOfMany?: boolean;
+  /** 이 영역이 배경 설명을 맡는가(신문에서 한 영역만 맡는다 — 보통 머리기사). */
+  isBackgroundOwner?: boolean;
 }
 
 /** 신문 단계에 줄 형식·역할 지시. 항목 이름은 안내문에서 온 것을 그대로 쓰고, 여기서는 "어떻게 쓸지"만 정한다. */
-export function buildNewspaperBlock({ label, requiredItems, materialLabels, sectionOfMany }: NewspaperBlockInput): string {
+// 신문의 네 영역이 **각자 배경부터 다시 설명**해 같은 사실이 세 번 나오는 일이 잦다(실측 2026-11-01:
+// "치안과 공공 행정, 교육과 통신"이 머리기사·인터뷰·사설에 모두 나왔다). 영역들은 동시에 쓰여서 서로의 글을
+// 볼 수 없으므로 **역할을 미리 나눠 주는 수밖에 없다.** 배경 서술은 한 영역(보통 머리기사)만 맡는다.
+export function newspaperSectionRole(label: string, isBackgroundOwner: boolean): string {
+  const l = (label ?? "").replace(/\s/g, "");
+  if (/인터뷰|대담/.test(l))
+    return "이 영역의 역할은 **그 일을 겪은 사람의 말**이다. 사건의 배경을 설명하지 말고(다른 영역이 한다), 그 사람이 직접 보고 겪은 일·그때의 판단·바라는 것을 말하게 할 것. 연표나 제도 설명을 답변에 넣지 말 것.";
+  if (/사설|칼럼|논설/.test(l))
+    return "이 영역의 역할은 **주장**이다. 사실을 다시 늘어놓지 말고(다른 영역이 한다), 그 일이 왜 문제인지·무엇을 해야 하는지를 근거를 들어 밝힐 것. 배경 설명은 한 문장을 넘기지 말 것.";
+  if (/만평|광고|만화|풍자/.test(l))
+    return "이 영역의 역할은 **그림과 짧은 설명**이다. 사건을 설명하는 글을 쓰지 말고, 무엇을 비판(또는 홍보)하는지와 그릴 그림을 간단히 적을 것. 배경 서술과 각주는 넣지 말 것.";
+  if (isBackgroundOwner)
+    return "이 영역의 역할은 **사실 보도**다. 언제·어디서·누가·무엇을 했는지를 객관적으로 쓴다. **이 신문에서 배경 설명은 이 영역만 맡는다** — 다른 영역은 그 사실을 전제로 쓰므로 여기서 충분히 설명할 것.";
+  return "이 영역이 맡은 역할만 하고, 다른 영역이 설명할 배경을 여기서 처음부터 다시 설명하지 말 것.";
+}
+
+export function buildNewspaperBlock({ label, requiredItems, materialLabels, sectionOfMany, isBackgroundOwner = false }: NewspaperBlockInput): string {
   // 안내문이 신문의 영역(머리기사·인터뷰·사설·만평)을 **각각 별개 단계**로 두는 경우가 있다. 그때 이 블록이
   // "이 단계는 신문 그 자체다"라고 말하면 한 단계가 신문 전체를 쓰고 나머지 단계가 또 쓴다 — 통째로 중복된다.
   // 실측(2026-11-01, 사용자 결과물.10): 머리기사 단계 안에 인터뷰 질문·답변, 사설, 만평이 모두 들어갔고
@@ -175,9 +193,13 @@ export function buildNewspaperBlock({ label, requiredItems, materialLabels, sect
       `【산출물 형식: 신문의 "${label}" 영역 — 반드시 지킬 것】`,
       `이 단계는 신문 전체가 아니라 신문의 "${label}" 칸 하나다. 그 칸에 들어갈 글만 쓸 것.`,
       `- 다른 영역(머리기사·인터뷰·사설/칼럼·만평/광고)의 내용을 여기에 쓰지 말 것 — 각 영역은 따로 만든다.`,
-      `- 신문 이름(제호)·날짜·호수·기자 이름을 쓰지 말 것. 다른 영역에서 설명한 배경을 여기서 처음부터 다시 설명하지 말고, 이 영역이 맡은 역할만 할 것.`,
+      `- 신문 이름(제호)·날짜·호수·기자 이름을 쓰지 말 것.`,
+      `- ${newspaperSectionRole(label, isBackgroundOwner)}`,
     ];
-    if (requiredItems.length > 0) lines.push(`- 안내문이 이 칸에 요구한 것: ${requiredItems.join(" / ")}. 이 순서대로 빠짐없이 쓸 것.`);
+    if (requiredItems.length > 0)
+      lines.push(
+        `- 이 칸은 ${requiredItems.map((i) => `"${i}"`).join(" / ")} 순서로 쓴다. 칸 이름을 글에 옮겨 적지 말 것("${requiredItems[0]}:" 같은 머리말 금지) — 그 칸의 내용만 쓴다.`
+      );
     return lines.join("\n");
   }
   const content = requiredItems.filter((i) => classifyRequiredItem(i) === "content");
@@ -233,6 +255,20 @@ const META_NOTE_LINE = new RegExp(
 // 실측(2026-10-30, 실제 제출 결과물): "(근거 표시) 위의 연도별 수치와 국가 수준의 농도 변화는 … 확인한 값이다[1],." —
 // 줄 전체가 괄호가 아니라 머리말만 괄호라 기존 두 패턴에 다 걸리지 않았다.
 const BARE_META_LINE = /^\s*(?:참고\s*근거|근거\s*안내|출처\s*안내|작성\s*참고)\s*[:：].{0,200}$|^\s*(?:위|이)\s*(?:문장|내용|글)[^\n]{0,80}(?:번호|각주|출처)[^\n]{0,80}확인할\s*수\s*있다\.?\s*$|^\s*\(\s*(?:근거|출처)\s*(?:표시|표기|안내)\s*\)[^\n]{0,200}$/;
+// 프롬프트가 알려 준 칸 이름이 글머리에 그대로 붙어 나온다 — "활동지 양식에 인터뷰 대상: …", "신문 양식에 질문과 답변: …"
+// (실측 2026-11-01, 역사 신문 인터뷰). 칸 이름은 소제목이 맡고 본문은 내용만 써야 한다. 줄 전체를 지우지 않고 머리말만 뗀다.
+const FORM_LEAD = /^(?:\s*[-*•]\s*)?(?:활동지|신문|시험지|평가지|답안지|양식지)?\s*양식에\s*(?:있는|적힌)?\s*[^:：\n]{1,24}\s*[:：]\s*/;
+
+export function stripFormLead(content: string): { content: string; removed: number } {
+  let removed = 0;
+  const kept = content.split("\n").map((l) => {
+    if (!FORM_LEAD.test(l)) return l;
+    removed++;
+    return l.replace(FORM_LEAD, "");
+  });
+  return { content: removed ? kept.join("\n") : content, removed };
+}
+
 export function stripMetaNoteLines(content: string): { content: string; removed: number } {
   let removed = 0;
   const bare = process.env.ESSAY_QUALITY_FIXES !== "off";

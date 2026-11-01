@@ -47,7 +47,7 @@ import {
   stripModelReferenceBlock,
   tabTableToMarkdown,
   stripWorkMarkers,
-} from "@/lib/essay/deliverable";
+  stripFormLead,} from "@/lib/essay/deliverable";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
@@ -585,7 +585,16 @@ ${input.previousOutputText}
   const newspaperBlock = newspaperEls.length
     ? "\n" +
       newspaperEls
-        .map((el) => buildNewspaperBlock({ label: el.label, requiredItems: el.required_items ?? [], materialLabels, sectionOfMany: newspaperEls.length > 1 }))
+        .map((el, i) =>
+          buildNewspaperBlock({
+            label: el.label,
+            requiredItems: el.required_items ?? [],
+            materialLabels,
+            sectionOfMany: newspaperEls.length > 1,
+            // 배경 설명은 한 영역만 맡는다 — 기사 쪽이 있으면 그쪽, 없으면 첫 영역.
+            isBackgroundOwner: el.label === (newspaperEls.find((e) => /머리기사|헤드라인|기사/.test(e.label)) ?? newspaperEls[0])?.label && i >= 0,
+          })
+        )
         .join("\n\n") +
       "\n"
     : "";
@@ -2893,7 +2902,9 @@ export async function generateEssay(
         content = table.content;
       }
       if (fixes) {
-        const notes = stripWorkNotes(content);
+        const lead = stripFormLead(content);
+        if (lead.removed > 0) console.warn(`[generateEssay] 양식 안내 머리말 ${lead.removed}개 제거 label="${s.label}"`);
+        const notes = stripWorkNotes(lead.content);
         const urls = stripInlineUrls(notes.content);
         const reported = reduceReportedSpeech(urls.content);
         const josa = fixJosaAfterTitle(reported.content);
