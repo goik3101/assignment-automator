@@ -25,7 +25,23 @@ const sentences = (content: string) =>
 
 /** 제출할 글에 들어가면 안 되는 "못 하겠다" 문장들. */
 export function findRefusalSentences(content: string): string[] {
-  return sentences(content).filter((s) => REFUSE.test(s) || UNMET.test(s) || (NO_MATERIAL.test(s) && /확인할\s*수\s*없|알\s*수\s*없/.test(s)));
+  // 각주가 달린 문장은 조사로 확인한 **사실**이다 — 우리가 못 하겠다고 하는 말에는 출처가 붙지 않는다.
+  // 전수 감사(2026-11-03, 저장된 결과물 173편): 걸린 4건이 전부 거짓이었다.
+  //   "유튜브는 2009년 한국에서 인터넷 실명제를 별도로 도입하지 **않겠다**고 밝혔다.[5]" (제3자의 말)
+  //   "유선 케이블에는 내장 마이크가 포함되지 않아 통화용 마이크를 **쓸 수 없다**.[3]" (제품 한계 서술)
+  // 거짓 거절 하나가 그 단계를 통째로 다시 쓰게 만들어 오히려 품질을 깎는다 — 날조 검사기와 같은 처리.
+  // 거절은 "자료가 없어서 못 쓰겠다"는 **한 쌍**으로 온다. "않겠다"만 보면 제3자의 말과 글쓰기 계획까지 걸린다:
+  //   "유튜브가 한국식 실명제를 도입하지 않겠다고 밝힌 뒤 …"  (제3자가 한 말)
+  //   "한쪽 주장만 나열하지 않으려 한다."                      (어떻게 쓸지 밝히는 계획)
+  // 지어내기를 거부하는 말(지어내지 않겠다·꾸미지 않겠다)만은 그 자체로 거절이다 — 그건 우리가 하는 말이다.
+  const SELF = /만들어\s*내지\s*않|지어내지\s*않|꾸미지\s*않/;
+  return sentences(content).filter((s) => {
+    if (/\[\d+\]/.test(s)) return false; // 각주가 달린 문장은 조사로 확인한 사실이다
+    if (SELF.test(s)) return true;
+    const lacks = NO_MATERIAL.test(s) || UNMET.test(s);
+    if (!lacks) return false;
+    return REFUSE.test(s) || UNMET.test(s) || /확인할\s*수\s*없|알\s*수\s*없/.test(s);
+  });
 }
 
 /** 그 단계만 다시 쓰게 하는 지시. */

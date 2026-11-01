@@ -21,3 +21,22 @@ test("보통 문장은 거절로 보지 않는다", () => {
   ].join("\n");
   assert.deepEqual(findRefusalSentences(ok), []);
 });
+
+test("각주가 달린 사실 서술은 거절문이 아니다", () => {
+  assert.deepEqual(findRefusalSentences("유튜브는 2009년 한국에서 인터넷 실명제를 별도로 도입하지 않겠다고 밝혔다.[5]"), []);
+  assert.deepEqual(findRefusalSentences("유선 케이블에는 마이크가 포함되지 않아 통화용 마이크를 쓸 수 없다.[3]"), []);
+});
+
+test("각주 없는 진짜 거절문은 그대로 잡는다", () => {
+  const t = "신문 기사 원문이 제공되지 않아 기사 내용을 확인할 수 없다. 확인되지 않은 출처를 만들어 제시하지는 않겠다.";
+  assert.ok(findRefusalSentences(t).length >= 1);
+});
+
+test("제3자의 말과 글쓰기 계획은 거절문이 아니다", () => {
+  assert.deepEqual(findRefusalSentences("유튜브가 한국식 실명제를 도입하지 않겠다고 밝힌 뒤 이용자가 옮겨 갔다."), []);
+  assert.deepEqual(findRefusalSentences("한쪽 주장만 나열하지 않으려 한다."), []);
+});
+
+test("지어내기를 거부하는 말은 그대로 잡는다", () => {
+  assert.ok(findRefusalSentences("확인되지 않은 기사 제목을 지어내지 않겠다.").length >= 1);
+});
