@@ -47,9 +47,11 @@ import {
   stripModelReferenceBlock,
   tabTableToMarkdown,
   stripWorkMarkers,
-  stripFormLead,} from "@/lib/essay/deliverable";
+  stripFormLead,
+  studentPreparedVisuals,} from "@/lib/essay/deliverable";
 import { stripAsciiArt } from "@/lib/essay/ascii-art";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
+import { blankPastedMetadata } from "@/lib/essay/paste-slot";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
@@ -600,6 +602,7 @@ ${input.previousOutputText}
             materialLabels,
             sectionOfMany: newspaperEls.length > 1,
             isBackgroundOwner: el.label === backgroundOwnerLabel && i >= 0,
+            studentVisuals: studentPreparedVisuals([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, el.description]),
           })
         )
         .join("\n\n") +
@@ -3001,6 +3004,12 @@ export async function generateEssay(
             }
           }
         }
+        // 학생이 실물을 붙이는 칸의 날짜·신문사를 지어냈으면 빈칸으로 되돌린다 — 그대로 내면 거짓 기록이다(paste-slot.ts).
+        const paste = blankPastedMetadata(content);
+        if (paste.blanked.length > 0) {
+          console.warn(`[generateEssay] 붙이는 칸의 지어낸 서지 ${JSON.stringify(paste.blanked)} 를 빈칸으로 되돌림 label="${s.label}"`);
+          content = paste.content;
+        }
         // 기호로 그린 그림(아스키 아트)은 제출할 글에 들어갈 것이 아니다 — 학생이 준비할 사진·그림 자리를 대신 차지한다(ascii-art.ts).
         const art = stripAsciiArt(content);
         if (art.removed.length > 0) {
@@ -3097,7 +3106,16 @@ export async function generateEssay(
     ...attempt,
     sections: attempt.sections.map((s) => {
       const { body, notes } = splitProductionNotes(s.content);
-      return notes ? { ...s, content: body, productionNotes: notes } : s;
+      const sec = notes ? { ...s, content: body, productionNotes: notes } : s;
+      // 안내문이 "사진·그림·지도는 학생이 준비한다"고 했는데 모델이 안내를 안 남기면 코드가 한 줄 채운다.
+      // 프롬프트로 시켜 봤지만 3회 모두 무시했다(실측 2026-11-03, 역사 신문) — 학생은 무엇을 준비할지 알아야 한다.
+      // 어떤 사진인지는 지어내지 않고, 안내문이 말한 종류와 이 칸의 주제만 말한다.
+      if (sec.productionNotes) return sec;
+      const el = elements.find((e) => e.label === s.label);
+      const vis = studentPreparedVisuals([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, el?.description]);
+      if (vis.length === 0 || !el) return sec;
+      const headline = (s.content.match(/^###\s*(.+)$/m)?.[1] ?? input.coreTaskInfo.topic).replace(/[*_]/g, "").slice(0, 40);
+      return { ...sec, productionNotes: `"${s.label}" 칸 옆에 넣을 ${vis.join("·")} 중 하나를 직접 준비하세요 — "${headline}"의 내용이 드러나는 자료면 됩니다.` };
     }),
   };
 

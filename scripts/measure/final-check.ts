@@ -115,10 +115,14 @@ for (const c of CASES) {
     if (rubric.lines.length) console.log(`  [${c.id}] 안내문 미충족: ${rubric.lines.join(" || ")}`);
     // 화면은 출처 목록을 본문과 따로(SourceList) 보여 준다 — 저장 파일에도 붙여야 채점이 학생이 보는 것과 같아진다.
     // 안 붙이면 "각주 번호만 있고 출처가 없다"고 잘못 깎인다(실측 2026-11-02, 카드뉴스).
+    // "### 제작 참고"(학생이 준비할 사진·그림 안내)는 markdown에서 분리돼 productionNotes로 간다 —
+    // 저장 파일에 안 붙이면 채점 모델이 "안내가 없다"고 잘못 깎는다(실측 2026-11-03, 신문 시각 자료).
+    const notes = [result.productionNotes ?? "", ...(result.sections ?? []).map((s) => s.productionNotes ?? "")].filter((t) => t.trim());
+    const notesBlock = notes.length ? ["", "", "## 제작 참고", ...notes, ""].join("\n") : "";
     const sourceList = result.sources.length
       ? ["", "", "## 출처", ...result.sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`), ""].join("\n")
       : "";
-    fs.writeFileSync(path.join(REPO, "scratchpad", "measure", "out", `fc-${c.id}.md`), md + sourceList, "utf8");
+    fs.writeFileSync(path.join(REPO, "scratchpad", "measure", "out", `fc-${c.id}.md`), md + notesBlock + sourceList, "utf8");
     rows.push(
       `| ${c.id} | ${elapsed}초 | $${usage.estimatedCostUsd.toFixed(4)} | ${(result.sections ?? []).length}단계 ${md.length}자 | ${result.sources.length === 0 ? "**출처 0개**" : `${result.sources.length}개`}(첫화면 ${result.sources.filter((s) => isLandingPage(s.url)).length}) | 날조 ${findOwnActivitySentences(md).length} 빈칸 ${countBlanks(md)} | 금지자료 ${banned} 표누락 ${tableMissing} | 조건 ${rubric.total - rubric.miss}/${rubric.total} | 무각주수치 ${uncited} 계획각주 ${planCited} 쓰임설명 ${usePlan} 되풀이 ${findRepeatedStatements((result.sections ?? []).map((s) => ({ label: s.label, content: s.markdown }))).length} 경고 ${warn} |`
     );

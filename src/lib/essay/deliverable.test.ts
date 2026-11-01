@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, stripFormLead } from "./deliverable.ts";
+import { studentPreparedVisuals, buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, stripFormLead } from "./deliverable.ts";
 
 test("신문 영역이 각각 별개 단계면 그 칸 하나만 쓰게 한다", () => {
   // 실측(결과물.10): "이 단계는 신문 그 자체다"라는 지시 때문에 머리기사 안에 인터뷰·사설·만평이 다 들어갔다.
@@ -71,4 +71,17 @@ test("신문을 자료로 쓰면서 글을 '작성'하는 과제도 영역이 �
     newspaperSectionLabels("시장 경제 체제에서 나타나는 경제 문제를 선정하고, 관련 신문 기사를 바탕으로 원인·양상·영향·해결 방안을 작성", els),
     []
   );
+});
+
+test("안내문이 '준비한다'고 한 시각 자료를 읽는다", () => {
+  assert.deepEqual(studentPreparedVisuals(["사진·그림·지도는 미리 준비할 수 있으며, 직접 그린 그림도 가능하다."]).sort(), ["그림", "사진", "지도"]);
+});
+
+test("금지 문장에는 걸리지 않는다", () => {
+  assert.deepEqual(studentPreparedVisuals(["사진출력 ×, 그림이나 표는 필수"]), []);
+  assert.deepEqual(studentPreparedVisuals(["사진은 사용할 수 없다."]), []);
+});
+
+test("시각 자료 말이 없으면 빈 배열", () => {
+  assert.deepEqual(studentPreparedVisuals(["원인과 해결 방안을 쓴다."]), []);
 });

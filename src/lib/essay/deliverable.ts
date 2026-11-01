@@ -181,6 +181,8 @@ export interface NewspaperBlockInput {
   sectionOfMany?: boolean;
   /** 이 영역이 배경 설명을 맡는가(신문에서 한 영역만 맡는다 — 보통 머리기사). */
   isBackgroundOwner?: boolean;
+  /** 안내문이 "학생이 준비한다"고 말한 시각 자료 이름들(사진·그림·지도 등). 비어 있으면 안내하지 않는다. */
+  studentVisuals?: string[];
 }
 
 /** 신문 단계에 줄 형식·역할 지시. 항목 이름은 안내문에서 온 것을 그대로 쓰고, 여기서는 "어떻게 쓸지"만 정한다. */
@@ -200,7 +202,7 @@ export function newspaperSectionRole(label: string, isBackgroundOwner: boolean):
   return "이 영역이 맡은 역할만 하고, 다른 영역이 설명할 배경을 여기서 처음부터 다시 설명하지 말 것.";
 }
 
-export function buildNewspaperBlock({ label, requiredItems, materialLabels, sectionOfMany, isBackgroundOwner = false }: NewspaperBlockInput): string {
+export function buildNewspaperBlock({ label, requiredItems, materialLabels, sectionOfMany, isBackgroundOwner = false, studentVisuals = [] }: NewspaperBlockInput): string {
   // 안내문이 신문의 영역(머리기사·인터뷰·사설·만평)을 **각각 별개 단계**로 두는 경우가 있다. 그때 이 블록이
   // "이 단계는 신문 그 자체다"라고 말하면 한 단계가 신문 전체를 쓰고 나머지 단계가 또 쓴다 — 통째로 중복된다.
   // 실측(2026-11-01, 사용자 결과물.10): 머리기사 단계 안에 인터뷰 질문·답변, 사설, 만평이 모두 들어갔고
@@ -216,6 +218,13 @@ export function buildNewspaperBlock({ label, requiredItems, materialLabels, sect
     if (requiredItems.length > 0)
       lines.push(
         `- 이 칸은 ${requiredItems.map((i) => `"${i}"`).join(" / ")} 순서로 쓴다. 칸 이름을 글에 옮겨 적지 말 것("${requiredItems[0]}:" 같은 머리말 금지) — 그 칸의 내용만 쓴다.`
+      );
+    // 안내문이 "사진·그림·지도는 준비한다"고 한 과제에서, 학생이 **무엇을** 준비하면 되는지 아무도 알려주지 않았다
+    // (실측 2026-11-03, 역사 신문: 정답 채점에서 매번 이 한 줄이 비었다). 영역이 따로 나뉜 과제는 이 가지로 빠져나가
+    // 아래 시각 자료 안내를 못 받는다.
+    if (studentVisuals.length > 0)
+      lines.push(
+        `- 이 칸에 넣을 ${studentVisuals.join("·")}는 학생이 직접 준비한다. 글 맨 끝에 "### ${PRODUCTION_NOTES_HEADING}" 소제목을 달고 **무엇을 준비하면 되는지 한 줄로만** 적을 것(제출하는 글이 아니다). 이미지 주소나 있지도 않은 사진 설명을 지어내지 말 것.`
       );
     return lines.join("\n");
   }
@@ -510,4 +519,26 @@ export function stripOrdinalEnumerators(content: string): { content: string; cha
     return `${lead}${word} `;
   });
   return { content: out, changed: matches.length };
+}
+
+/**
+ * 안내문이 "학생이 미리 준비한다"고 말한 시각 자료 이름을 읽는다.
+ * 실측(2026-11-03, 역사 신문): "사진·그림·지도는 미리 준비할 수 있으며, 직접 그린 그림도 가능하다",
+ * "사진·그림·지도는 양식에 맞춰 준비한다". 이런 말이 있을 때만 "무엇을 준비하라"는 한 줄을 붙인다.
+ * 금지 문장("사진 출력 ×")에는 걸리지 않게 준비·활용을 말하는 문장만 본다.
+ */
+const VISUAL_NAME = /사진|그림|지도|삽화|도표|그래프|인포그래픽/g;
+const PREPARE = /준비|마련|구해|가져오|붙일|활용할\s*수\s*있/;
+const FORBID = /없|불가|금지|말\s*것|×|x\b/i;
+
+export function studentPreparedVisuals(texts: (string | undefined)[]): string[] {
+  const found = new Set<string>();
+  for (const t of texts) {
+    if (!t) continue;
+    for (const sentence of t.split(/(?<=[.。!?])\s*|\n+/)) {
+      if (!PREPARE.test(sentence) || FORBID.test(sentence)) continue;
+      for (const m of sentence.matchAll(VISUAL_NAME)) found.add(m[0]);
+    }
+  }
+  return [...found];
 }
