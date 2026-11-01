@@ -22,6 +22,9 @@ export interface TaskElement {
     counts_spaces: boolean;
     /** 분량의 단위. 생략하면 글자수("chars"). 영어 과제의 "120~150 words"는 "words". */
     unit?: "chars" | "words";
+    /** max가 안내문이 말한 상한이 아니라 **예시 답안 분량에서 코드가 유추한 목표**일 때 true.
+     * 넘겨도 안내문 위반이 아니므로 학생에게 "분량 기준 미달"로 보여주지 않는다. */
+    soft_max?: boolean;
   };
   /** 안내문이 이 단계에서 "반드시 조사/작성하라"고 명시적으로 나열한 필수 항목
    * (항목명만, 안내문 순서대로). analyze.ts가 안내문에서 동적으로 뽑는다 —

@@ -1529,7 +1529,28 @@ ${parallelWriteInstruction(l, labels, l === labels[0])}${prev ? `\n\n${prev}` : 
       written = rec.text;
       if (rec.attached > 0) console.log(`[generateEssay] 번호가 빠진 수치 문장 ${rec.attached}개에 사실 번호를 붙임(글쓰기가 붙인 것 ${before}개)`);
     }
-    const mapped = mapFactMarkers(written, notes.facts);
+    let mapped = mapFactMarkers(written, notes.facts);
+    // 조사는 됐는데(사실 N개) 글쓰기가 사실 번호를 하나도 안 붙이면 출처 0개짜리 글이 나간다.
+    // 실측(2026-11-02, 공통영어2): 사실 12개를 넘겼는데 본문각주=0·사용한 출처=0이었다 —
+    // 영어로 쓰는 단계에서 [F1] 표기를 통째로 빼먹는다. 번호만 다시 붙이게 글쓰기를 1회만 더 돌린다.
+    if (sourceRetryOn() && mapped.sources.length === 0 && notes.facts.length > 0) {
+      console.warn(`[generateEssay] 글쓰기가 사실 번호를 하나도 안 붙임(사실 ${notes.facts.length}개) — 번호를 붙이게 1회 재시도`);
+      const retry = await generate({
+        label: "generateEssay:write",
+        role: "write",
+        prompt: `${prompt}\n\n【다시 한번 강조 — 반드시 지킬 것】 방금 쓴 글에는 [사실 노트]의 번호(예: [F1])가 하나도 붙지 않았다. 노트의 사실(연도·수치·이름·사건·통계)을 쓴 문장마다 그 사실의 번호를 문장 끝에 반드시 붙일 것. 영어로 쓰는 단계에서도 번호는 그대로 붙인다.`,
+        effort: writeEffort(),
+      });
+      if (retry.text?.trim()) {
+        const retryText = attachFactMarkers(retry.text, notes.facts).text;
+        const retryMapped = mapFactMarkers(retryText, notes.facts);
+        console.warn(`[generateEssay] 재시도 결과: 출처 ${mapped.sources.length}개 → ${retryMapped.sources.length}개`);
+        if (retryMapped.sources.length > mapped.sources.length) {
+          written = retryText;
+          mapped = retryMapped;
+        }
+      }
+    }
     const checked = await prefetch;
     // 책 과제: 서지(제목·저자)가 인용 페이지 본문에 실제로 있으면 코드로 확인 — 별도의 검색 기반 저자 확인(약 10~16초)을 생략한다.
     if (notes.book) {
@@ -1966,7 +1987,10 @@ export async function generateEssay(
       const t = e.target_length;
       if (!fixes || process.env.EXAMPLE_LENGTH_CAP === "off" || !t || !(t.min > 0) || t.max > 0) return e;
       const ex = exampleLength(input.coreTaskInfo.writing_guide, t.unit);
-      return ex && ex >= t.min ? { ...e, target_length: { ...t, max: Math.round(ex * 1.4) } } : e;
+      // softMax: 안내문이 말한 상한이 아니라 **예시 분량에서 우리가 유추한 목표**다.
+      // 학생에게 "기준 미달"이라고 말하면 안 된다 — 안내문에 없는 조건으로 못 지켰다고 하는 셈이다
+      // (실측 2026-11-02, 공통영어2: 안내문은 "120단어 이상"뿐인데 화면에 "목표 120~190단어, 실제 230단어"가 떴다).
+      return ex && ex >= t.min ? { ...e, target_length: { ...t, max: Math.round(ex * 1.4), soft_max: true } } : e;
     });
   if (sourceListItems.length > 0) input = { ...input, sourceListItems };
 
@@ -2878,7 +2902,8 @@ export async function generateEssay(
     console.warn(`[generateEssay] 재시도 후에도 분량 기준 미달(경고 표시): ${JSON.stringify(finalLengthIssues)}`);
   }
   const lengthWarningByLabel = new Map(
-    finalLengthIssues.map((issue) => [
+    // 안내문에 없는 상한(예시에서 유추한 것)만 넘은 경우는 경고하지 않는다 — 학생이 지키지 않은 조건이 아니다.
+    finalLengthIssues.filter((issue) => !issue.softOnly).map((issue) => [
       issue.label,
       `분량 기준을 완전히 맞추지 못했습니다. 목표: ${lengthRangeText(issue)}, 실제 ${issue.unit === "words" ? "단어 수" : "글자수"}: ${issue.actual}${unitWord(issue.unit)}${issue.unit === "words" ? "" : `(${issue.countsSpaces ? "공백 포함" : "공백 제외"})`}.`,
     ])
@@ -3716,6 +3741,8 @@ interface LengthIssue {
   max: number;
   countsSpaces: boolean;
   unit?: "chars" | "words";
+  /** 안내문이 아니라 예시 분량에서 우리가 유추한 상한만 넘은 경우 — 학생에게 "기준 미달"로 보여주지 않는다. */
+  softOnly?: boolean;
 }
 
 function countChars(text: string, countsSpaces: boolean): number {
@@ -3747,7 +3774,9 @@ function checkLengthCompliance(sections: RawSection[], elements: CoreTaskInfo["t
     const belowMin = min > 0 && actual < min;
     const aboveMax = max > 0 && actual > max;
     if (belowMin || aboveMax) {
-      issues.push({ label: el.label, actual, min, max, countsSpaces: counts_spaces, unit });
+      // 하한은 지켰는데 **우리가 유추한** 상한만 넘은 경우는 안내문 위반이 아니다 — 줄이려는 시도는 하되 학생에게 경고하지 않는다.
+      const softOnly = aboveMax && !belowMin && el.target_length.soft_max === true;
+      issues.push({ label: el.label, actual, min, max, countsSpaces: counts_spaces, unit, softOnly });
     }
   }
   return issues;
