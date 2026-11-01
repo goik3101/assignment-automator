@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildNewspaperBlock, newspaperSectionRole, stripFormLead } from "./deliverable.ts";
+import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, stripFormLead } from "./deliverable.ts";
 
 test("신문 영역이 각각 별개 단계면 그 칸 하나만 쓰게 한다", () => {
   // 실측(결과물.10): "이 단계는 신문 그 자체다"라는 지시 때문에 머리기사 안에 인터뷰·사설·만평이 다 들어갔다.
@@ -37,4 +37,38 @@ test("글머리에 붙은 양식 안내를 뗀다", () => {
   assert.ok(r.content.includes("질문1 — …"));
   // 평범한 문장은 건드리지 않는다.
   assert.equal(stripFormLead("양식에 맞춰 쓴 글이다.\n제목: 광복과 건국").removed, 0);
+});
+
+test("신문을 만드는 과제면 단계 전부가 그 신문의 영역이다", () => {
+  // 실측: 단계 이름만 보면 "머리기사"만 잡히고 인터뷰·사설·만평은 놓쳐 영역 분담이 한 번도 돌지 않았다.
+  const els = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"].map((label) => ({ label, description: `${label}를 쓴다` }));
+  assert.deepEqual(
+    newspaperSectionLabels("광복부터 대한민국 정부 수립 사이의 현대사를 주제로 신문 만들기", els),
+    ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"]
+  );
+});
+
+test("신문을 자료로 쓰는 과제는 영역으로 보지 않는다", () => {
+  const els = [
+    { label: "신문 기사 스크랩", description: "기사를 붙인다" },
+    { label: "경제 문제 분석 평가지", description: "원인과 영향을 쓴다" },
+  ];
+  assert.deepEqual(newspaperSectionLabels("시장 경제 문제를 선정하고 관련 신문 기사를 바탕으로 원인·양상을 분석", els), []);
+  assert.deepEqual(newspaperSectionLabels("인터넷 실명제에 반대하는 의견 발표하기", els), []);
+});
+
+test("단계가 하나뿐이면 영역이 아니다", () => {
+  assert.deepEqual(newspaperSectionLabels("현대사 신문 만들기", [{ label: "신문", description: "신문을 만든다" }]), []);
+});
+
+test("신문을 자료로 쓰면서 글을 '작성'하는 과제도 영역이 아니다", () => {
+  // 회귀: 느슨한 판정이 사회 평가지를 신문 영역으로 묶어 순서를 바꿨다.
+  const els = [
+    { label: "신문 기사 스크랩", description: "기사를 붙인다" },
+    { label: "경제 문제 분석 및 소견 평가지", description: "원인과 영향을 쓴다" },
+  ];
+  assert.deepEqual(
+    newspaperSectionLabels("시장 경제 체제에서 나타나는 경제 문제를 선정하고, 관련 신문 기사를 바탕으로 원인·양상·영향·해결 방안을 작성", els),
+    []
+  );
 });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extraCitationRepairText, extraCitations, stepDependencies, stepWaves, type OrderElement } from "./step-order.ts";
+import { extraCitationRepairText, extraCitations, sectionOrderEdges, stepDependencies, stepWaves, type OrderElement } from "./step-order.ts";
 import { previousStepsBlock } from "./parallel-write.ts";
 
 // 실제 안내문(공통국어2 매체 활용 주제발표)의 문장 — requirement-scope.test.ts와 같은 출처.
@@ -88,4 +88,42 @@ test("보완 지시는 앞 단계 이름과 문제의 번호를 말한다", () =
   assert.ok(t.includes("개요"));
   assert.ok(t.includes("[4][5]"));
   assert.ok(t.includes("새 사실"));
+});
+
+test("신문 영역은 배경 담당을 먼저 쓰고 나머지는 동시에 쓴다", () => {
+  // 직렬 글쓰기가 한 번만 늘게 한다 — 나머지끼리는 역할이 달라 서로 볼 필요가 없다.
+  const labels = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"];
+  const edges = sectionOrderEdges(labels, "머리기사");
+  assert.deepEqual(edges, [["머리기사", "인터뷰"], ["머리기사", "사설/칼럼"], ["머리기사", "만평/광고"]]);
+  const els = labels.map((label) => ({ label, description: `${label}를 쓴다` }));
+  assert.deepEqual(stepWaves(els, [], undefined, 2, edges), [["머리기사"], ["인터뷰", "사설/칼럼", "만평/광고"]]);
+});
+
+test("배경 담당이 없거나 단계가 하나면 순서를 만들지 않는다", () => {
+  assert.deepEqual(sectionOrderEdges(["머리기사"], "머리기사"), []);
+  assert.deepEqual(sectionOrderEdges(["머리기사", "인터뷰"], null), []);
+  assert.deepEqual(sectionOrderEdges(["머리기사", "인터뷰"], "없는단계"), []);
+});
+
+test("추가 순서는 다른 과제의 웨이브를 바꾸지 않는다", () => {
+  const els = [
+    { label: "개요", description: "개요를 쓴다" },
+    { label: "스토리보드", description: "개요에서 생성한 내용을 바탕으로 쓴다" },
+  ];
+  assert.deepEqual(stepWaves(els, [], undefined, 2, []), stepWaves(els));
+  const flat = [
+    { label: "산염기 실험", description: "실험 결과를 쓴다" },
+    { label: "탐구 보고서", description: "보고서를 쓴다" },
+  ];
+  assert.deepEqual(stepWaves(flat, [], undefined, 2, []), [["산염기 실험", "탐구 보고서"]]);
+});
+
+test("나눠 맡는 영역에는 되풀이하지 말라고, 받아 쓰는 단계에는 바탕으로 쓰라고 한다", () => {
+  const done = [{ label: "머리기사", content: "1948년 8월 15일 정부 수립 선포식이 열렸다." }];
+  const share = previousStepsBlock(done, "share");
+  assert.ok(share.includes("다시 설명하지 말 것"));
+  assert.ok(share.includes("다른 사실은 조사 노트에서 가져와도 된다"));
+  const build = previousStepsBlock(done);
+  assert.ok(build.includes("바탕으로 쓸 것"));
+  assert.ok(build.includes("새로 가져오지 말 것"));
 });

@@ -573,6 +573,9 @@ ${input.previousOutputText}
   // 항목 구조를 강제한다 — 항목은 절대 하드코딩이 아니라 안내문에서 동적으로 온다.
   // "sections"(조사·탐구형)는 "### 항목명" 소제목 + 조사 자료 형식, "flowing"(편지·
   // 감상문 등)은 소제목 없이 항목을 빠짐없이 다루라고만 지시한다.
+  // 신문 "영역"을 전부 잡는 판정(newspaperSectionLabels)은 만들어 두었지만 쓰지 않는다 — 실측 2026-11-01:
+  // 영역 블록이 처음으로 돌자 분량이 3134자 → 1500자로 줄고 정답 채점이 10/11 → 9/11이 됐다.
+  // 즉 단계 이름으로만 잡히던 때(머리기사 하나)가 결과가 더 좋았다. 분량을 깎지 않는 영역 블록을 만든 뒤 다시 켠다.
   const newspaperEls = elements.filter((el) => inferDeliverableForm(el) === "newspaper" && (el.required_items?.length ?? 0) >= 1);
   // 신문 단계는 구조화 블록에서 뺀다 — 두 블록이 정반대를 말한다(실측 2026-11-01 프롬프트 검사):
   //   신문:   "항목 이름을 그대로 소제목으로 쓰지 말고 기사다운 헤드라인을 붙일 것"
@@ -582,6 +585,9 @@ ${input.previousOutputText}
     (el) => el.items_format === "flowing" && (el.required_items?.length ?? 0) >= 2 && !newspaperEls.includes(el)
   );
   const materialLabels = structuredEls.map((el) => el.label);
+  // 배경 설명을 맡는 영역(기사 쪽이 있으면 그쪽, 없으면 첫 영역) — 프롬프트 블록과 쓰는 순서가 같은 값을 써야 한다.
+  const backgroundOwnerLabel =
+    newspaperEls.length > 1 ? (newspaperEls.find((e) => /머리기사|헤드라인|기사/.test(e.label)) ?? newspaperEls[0]).label : null;
   const newspaperBlock = newspaperEls.length
     ? "\n" +
       newspaperEls
@@ -591,8 +597,7 @@ ${input.previousOutputText}
             requiredItems: el.required_items ?? [],
             materialLabels,
             sectionOfMany: newspaperEls.length > 1,
-            // 배경 설명은 한 영역만 맡는다 — 기사 쪽이 있으면 그쪽, 없으면 첫 영역.
-            isBackgroundOwner: el.label === (newspaperEls.find((e) => /머리기사|헤드라인|기사/.test(e.label)) ?? newspaperEls[0])?.label && i >= 0,
+            isBackgroundOwner: el.label === backgroundOwnerLabel && i >= 0,
           })
         )
         .join("\n\n") +
@@ -1466,11 +1471,17 @@ ${itemWriteInstruction(labels[0], group, all, i === 0)}`,
     } else if (parallelWriteOn(labels.length)) {
       // 안내문이 "A를 바탕으로 B"라고 한 단계는 순서대로 쓰고, 뒤 단계에 앞 단계의 완성된 글(사실 번호 포함)을 넘긴다(step-order.ts).
       // 의존 표현이 없으면 웨이브가 하나라 예전처럼 전부 동시에 쓴다.
+      // 신문처럼 한 소재를 여러 영역이 나눠 맡으면 배경을 맡은 영역을 먼저 쓴다 — 나머지는 그 글을 보고 동시에 쓰므로
+      // 직렬 글쓰기가 한 번만 는다(실측 2026-11-01: 역할 분담을 프롬프트로만 말하면 2/2 되풀이했다).
+      // 신문 영역을 "배경 담당 먼저 → 나머지 동시"로 순서 지어 보았으나 **기각**(실측 2026-11-01, 3회):
+      // 배경 중복은 3/3 그대로였고 분량만 3134자 → 1458~1735자로 줄었으며 인터뷰 칸이 통째로 누락됐다.
+      // 장치(stepWaves의 extraEdges, sectionOrderEdges, previousStepsBlock "share")는 테스트와 함께 남겨 두되 쓰지 않는다.
       const waves = stepOrderOn() ? stepWaves(elements, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide) : [labels];
       if (waves.length > 1) console.log(`[generateEssay] 단계 순서: ${waves.map((w) => w.join("+")).join(" → ")}`);
       const byLabel = new Map<string, Awaited<ReturnType<typeof generate>>>();
       const done: { label: string; content: string }[] = [];
       for (const wave of waves) {
+        // 나눠 맡는 영역은 "되풀이하지 말 것", 받아서 쓰는 단계는 "바탕으로 쓸 것" — 요구가 반대다.
         const prev = previousStepsBlock(done);
         const parts = await Promise.all(
           wave.map((l) =>

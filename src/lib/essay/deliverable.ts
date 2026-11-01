@@ -15,6 +15,23 @@ export function inferDeliverableForm(el: { label: string; description: string })
   return null;
 }
 
+/**
+ * 이 과제가 **신문 한 부를 만드는 것**이고 단계가 여럿이면, 그 단계들은 전부 그 신문의 영역이다.
+ *
+ * 실측(2026-11-01): `inferDeliverableForm`은 단계 이름으로만 판정해서 "머리기사"만 신문으로 보고
+ * "인터뷰"·"사설/칼럼"·"만평/광고"는 놓쳤다. 그래서 영역이 1개로 세어져 영역 블록(sectionOfMany)과
+ * 역할 분담이 **한 번도 돌지 않았다.** 과제 주제를 함께 보면 네 영역이 모두 잡힌다.
+ * "신문 기사를 바탕으로 …"처럼 신문을 **자료로 쓰는** 과제는 걸리지 않는다(NEWSPAPER_DESC가 제작만 본다).
+ */
+export function newspaperSectionLabels(topic: string, els: { label: string; description: string }[]): string[] {
+  // "신문" 옆에 바로 제작 동사가 와야 한다. 느슨하게 보면 "관련 신문 기사를 바탕으로 … 작성"(사회 평가지)까지 걸려
+  // 엉뚱한 과제가 영역 분담으로 묶인다(실측 2026-11-01 회귀 검사에서 잡음).
+  const makesNewspaper = NEWSPAPER_DESC.test(topic ?? "");
+  if (makesNewspaper && els.length > 1) return els.map((e) => e.label);
+  const byLabel = els.filter((e) => inferDeliverableForm(e) === "newspaper");
+  return byLabel.length > 1 ? byLabel.map((e) => e.label) : [];
+}
+
 export type RequiredItemKind = "content" | "visual" | "reflection";
 
 const VISUAL_ITEM = /시각\s*자료|그림|도표|사진|삽화|이미지|그래프|인포그래픽|도식/;

@@ -85,10 +85,22 @@ export function stepDependencies(elements: OrderElement[], requirements: string[
  * 묶음 수는 maxWaves로 제한한다 — 사슬이 길면 전부 직렬이 되어 생성 시간이 그만큼 늘어난다(글쓰기 호출 하나가 실측 6.5~8.5초).
  * 순환이 생기는 간선은 버린다(안내문 문장이 서로를 가리키는 경우).
  */
-export function stepWaves(elements: OrderElement[], requirements: string[] = [], guide?: string, maxWaves = 2): string[][] {
+/**
+ * extraEdges: 안내문 문장이 아니라 **산출물의 성격**에서 오는 순서. 신문처럼 영역이 여러 단계로 나뉘면
+ * 배경을 맡은 영역이 먼저 쓰여야 나머지가 그 배경을 다시 설명하지 않는다(실측 2026-11-01: 역할 분담을
+ * 프롬프트로 말해도 서로의 글을 못 보면 2/2 되풀이했다).
+ */
+export function stepWaves(
+  elements: OrderElement[],
+  requirements: string[] = [],
+  guide?: string,
+  maxWaves = 2,
+  extraEdges: [string, string][] = []
+): string[][] {
   const labels = elements.map((e) => e.label);
   if (labels.length <= 1 || maxWaves <= 1) return [labels];
-  const edges = stepDependencies(elements, requirements, guide);
+  const known = new Set(labels);
+  const edges = [...stepDependencies(elements, requirements, guide), ...extraEdges.filter(([a, b]) => known.has(a) && known.has(b) && a !== b)];
   const deps = new Map<string, string[]>(labels.map((l) => [l, []]));
   for (const [a, b] of edges) if (deps.has(b) && deps.has(a)) deps.get(b)!.push(a);
 
@@ -131,4 +143,14 @@ export function extraCitationRepairText(sourceLabels: string[], extra: number[])
     `그 부분을 ${sourceLabels.join("·")}가 이미 쓴 사실과 출처로 바꿔 다시 쓸 것 — 앞 단계에 없는 새 사실·수치·사례를 넣지 말 것. ` +
     `나머지 문장과 각주는 그대로 둘 것.`
   );
+}
+
+
+/**
+ * 신문처럼 한 소재를 여러 영역이 나눠 맡는 산출물에서, **배경을 맡은 영역 → 나머지 영역** 간선을 만든다.
+ * 나머지끼리는 순서를 두지 않는다(역할이 달라 서로 볼 필요가 없고, 직렬이 늘면 시간만 는다).
+ */
+export function sectionOrderEdges(labels: string[], backgroundOwner: string | null): [string, string][] {
+  if (!backgroundOwner || labels.length <= 1 || !labels.includes(backgroundOwner)) return [];
+  return labels.filter((l) => l !== backgroundOwner).map((l) => [backgroundOwner, l] as [string, string]);
 }
