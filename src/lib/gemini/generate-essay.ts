@@ -49,7 +49,7 @@ import {
   stripWorkMarkers,
   stripFormLead,} from "@/lib/essay/deliverable";
 import { stripAsciiArt } from "@/lib/essay/ascii-art";
-import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
@@ -1432,6 +1432,15 @@ async function generateOnce(
     ]);
     notes = researched && ex && book ? withExcerptFact(researched, ex, book.title) : researched;
     if (ex) console.log(`[generateEssay] 구절 미리 확인(조사와 동시): ${ex.verified ? "확인됨" : "확인 못 함 → 따옴표 없이 소개"}`);
+    // 책 조사가 실패하면(그 책이 실존하지 않는 등) 노트가 비고, 그대로 두면 **출처 0개짜리 글**이 나간다.
+    // 실측(2026-11-01, 통합사회2 인권 저널): 안내문의 자료 출처 나열("…인물 평전, 책 내용 등")이 책 과제 판정을 켜고,
+    // 모델이 "온라인 자료 검색 허가 요청"을 책 제목이라 내놓고, 그 책 조사가 실패해 각주 0개짜리 신문이 나왔다.
+    // 책이 아니어도 이 과제는 조사할 사실이 있다 — 책을 빼고 한 번 더 조사한다.
+    if (!notes && bookResearch && sourceRetryOn()) {
+      console.warn("[generateEssay] 책 조사 실패 → 책을 빼고 일반 조사 1회 재시도(출처 0개 방지)");
+      notes = await researchWithCache({ ...input, presetBook: undefined }, elements);
+      console.warn(`[generateEssay] 일반 조사 재시도 결과: ${notes ? `사실 ${notes.facts.length}개` : "또 실패"}`);
+    }
   }
 
   const prompt = buildPrompt(input, elements, notes);
@@ -1569,7 +1578,12 @@ ${parallelWriteInstruction(l, labels, l === labels[0])}${prev ? `\n\n${prev}` : 
     // — 그래서 stageA 자체에도 같은 안전장치를 적용한다.
     // 검색을 호출하고도 출처 인용이 하나도 안 붙은 경우(chunks=0)도 같은 문제다 — 검색 결과를 쓴 문장에 출처가 없으면 "신뢰할 수 있는 사실" 요구를 확인할 수 없다(실측: 인물 탐구 글이 통째로 무출처).
     const searchedButNoSources = (grounding?.queries?.length ?? 0) > 0 && (grounding?.chunks?.length ?? 0) === 0;
-    if (wantSearch && ((grounding?.queries?.length ?? 0) === 0 || (searchedButNoSources && !researchFailed))) {
+    // 출처 0개로 끝나는 길을 막는다. 예전에는 조사가 이미 실패한 경우(researchFailed) 이 재시도를 건너뛰었는데,
+    // **그때가 바로 출처가 0개일 가능성이 가장 큰 경우**였다 — 제출할 글이 근거 없이 나간다.
+    // 2026-10-24에 비용 때문에 껐던 것인데(재시도로 검색 8~10번), 지금은 researchFailed면 runStageA가 검색을
+    // 2회로 묶으므로 늘어나는 검색은 최대 2회다. SOURCE_RETRY=off로 예전처럼 되돌린다.
+    const skipNoSourceRetry = researchFailed && !sourceRetryOn();
+    if (wantSearch && ((grounding?.queries?.length ?? 0) === 0 || (searchedButNoSources && !skipNoSourceRetry))) {
       console.warn(`[generateEssay] stageA가 ${searchedButNoSources ? "검색은 했지만 출처 인용이 하나도 없음" : "검색 도구를 한 번도 호출하지 않음"} — 강하게 재지시하여 1회 재시도`);
       const forcedPrompt =
         prompt +
@@ -3099,6 +3113,10 @@ export async function generateEssay(
 
   // 스토리보드 같은 장면 단계는 대사·화면 설명 때문에 "검증 안 됨" 배너가 불필요하게 뜨지 않게 따로 판정한다(verifiable-claims.ts).
   const sceneListLabels = new Set(formOn ? elements.filter(isSceneLikeElement).map((e) => e.label) : []);
+  // 출처 0개로 끝났으면 로그에 크게 남긴다 — 이 상태가 조용히 지나가서 제출용 글이 근거 없이 나간 적이 있다
+  // (2026-11-01, 인권 저널: 각주 0개인데 "우리는 기계가 아니다" 인용까지 들어 있었다). 측정도 이 줄로 센다.
+  if (attempt.sources.length === 0 && attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label))))
+    console.error(`[generateEssay] ⚠ 출처 0개로 끝남 — 확인할 사실 주장이 있는데 근거가 하나도 없다 (단계 ${attempt.sections.length}개)`);
   const researchFacts: NonNullable<EssayResult["researchFacts"]> = [];
   // 각주 번호는 문서 전체에서 한 번만 매긴다 — 단계마다 1번부터 다시 매기면 같은 [1]이 단계마다 다른 출처가 된다
   // (실측 2026-10-31, 사용자 결과물.6: "개요"의 [1]=전자신문, "스토리보드"의 [1]=경향신문. 한 장에 같이 제출하는 글이다).

@@ -113,9 +113,14 @@ for (const c of CASES) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1); // 아래 대조 호출은 측정용이라 생성 시간에 넣지 않는다.
     const rubric = await rubricAudit(core, result.sections ?? []);
     if (rubric.lines.length) console.log(`  [${c.id}] 안내문 미충족: ${rubric.lines.join(" || ")}`);
-    fs.writeFileSync(path.join(REPO, "scratchpad", "measure", "out", `fc-${c.id}.md`), md, "utf8");
+    // 화면은 출처 목록을 본문과 따로(SourceList) 보여 준다 — 저장 파일에도 붙여야 채점이 학생이 보는 것과 같아진다.
+    // 안 붙이면 "각주 번호만 있고 출처가 없다"고 잘못 깎인다(실측 2026-11-02, 카드뉴스).
+    const sourceList = result.sources.length
+      ? ["", "", "## 출처", ...result.sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`), ""].join("\n")
+      : "";
+    fs.writeFileSync(path.join(REPO, "scratchpad", "measure", "out", `fc-${c.id}.md`), md + sourceList, "utf8");
     rows.push(
-      `| ${c.id} | ${elapsed}초 | $${usage.estimatedCostUsd.toFixed(4)} | ${(result.sections ?? []).length}단계 ${md.length}자 | ${result.sources.length}개(첫화면 ${result.sources.filter((s) => isLandingPage(s.url)).length}) | 날조 ${findOwnActivitySentences(md).length} 빈칸 ${countBlanks(md)} | 금지자료 ${banned} 표누락 ${tableMissing} | 조건 ${rubric.total - rubric.miss}/${rubric.total} | 무각주수치 ${uncited} 계획각주 ${planCited} 쓰임설명 ${usePlan} 되풀이 ${findRepeatedStatements((result.sections ?? []).map((s) => ({ label: s.label, content: s.markdown }))).length} 경고 ${warn} |`
+      `| ${c.id} | ${elapsed}초 | $${usage.estimatedCostUsd.toFixed(4)} | ${(result.sections ?? []).length}단계 ${md.length}자 | ${result.sources.length === 0 ? "**출처 0개**" : `${result.sources.length}개`}(첫화면 ${result.sources.filter((s) => isLandingPage(s.url)).length}) | 날조 ${findOwnActivitySentences(md).length} 빈칸 ${countBlanks(md)} | 금지자료 ${banned} 표누락 ${tableMissing} | 조건 ${rubric.total - rubric.miss}/${rubric.total} | 무각주수치 ${uncited} 계획각주 ${planCited} 쓰임설명 ${usePlan} 되풀이 ${findRepeatedStatements((result.sections ?? []).map((s) => ({ label: s.label, content: s.markdown }))).length} 경고 ${warn} |`
     );
     console.log(rows[rows.length - 1]);
     const bl = Object.entries(usage.byLabel).sort((a, b) => b[1].ms - a[1].ms);

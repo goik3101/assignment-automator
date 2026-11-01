@@ -76,3 +76,19 @@ export function unverifiedMarkOn(): boolean {
 export function rubricCheckOn(): boolean {
   return process.env.RUBRIC_CHECK === "on";
 }
+
+/**
+ * 제출할 글이 **출처 0개**로 나가는 길을 막을지.
+ *
+ * 두 가지를 켠다.
+ *  ① 책 조사가 실패하면 책을 빼고 일반 조사를 1회 더 한다 — 책이 아니어도 조사할 사실은 있다.
+ *  ② "검색은 했는데 인용이 0개"일 때의 재시도를, **조사가 이미 실패한 경우에도** 돌린다.
+ *
+ * ②는 2026-10-24에 비용 때문에 껐던 것이다(조사 실패 → 대체 경로 → 재시도로 검색 8~10번, 1회 $0.15~0.22).
+ * 그런데 **그때가 바로 출처가 0개일 가능성이 가장 큰 경우**다. 실측(2026-11-01, 인권 저널): 각주 0개·출처 0개짜리
+ * 신문이 "우리는 기계가 아니다" 같은 인용까지 달고 그대로 나왔다. 수행평가에서 근거 없는 글은 치명적이다.
+ * 지금은 researchFailed면 검색 상한이 2회라 늘어나는 검색은 최대 2회다 — 그래서 다시 켠다.
+ */
+export function sourceRetryOn(): boolean {
+  return process.env.SOURCE_RETRY !== "off";
+}
