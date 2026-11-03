@@ -1,5 +1,5 @@
 import { createHmac } from "crypto";
-import { kstDayKey, type DayPoint } from "./dashboard-pure.ts";
+import { kstDayKey, hourlyByDay, type DayPoint } from "./dashboard-pure.ts";
 
 // 웹사이트 방문 집계용 순수 함수(alias import 없음). 시각은 한국 시간(KST) 기준.
 const HOUR_MS = 60 * 60 * 1000;
@@ -39,6 +39,23 @@ export function kstMonthRange(month: string): { start: string; end: string } {
 export function daysInMonth(month: string): number {
   const [y, m] = month.split("-").map(Number);
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+export interface DayVisits {
+  day: string;
+  /** "00"~"23"시별 방문자 수. */
+  hours: DayPoint[];
+  total: number;
+  peak: { hour: number; count: number } | null;
+}
+
+/** 하루(KST)의 시간대별 방문자. 한 줄이 "방문자 1명의 한 시간"이므로 시간대별 줄 수가 그 시간의 방문자 수다. */
+export function summarizeVisitDay(rows: { visitor: string; hour_bucket: string }[], day: string): DayVisits {
+  const hours = hourlyByDay(rows, day, (r) => r.hour_bucket, (): Record<string, number> => ({ visitors: 1 }));
+  const counts = hours.map((p) => p.values.visitors ?? 0);
+  const peakCount = Math.max(...counts, 0);
+  const total = new Set(rows.filter((r) => kstDayKey(r.hour_bucket) === day).map((r) => r.visitor)).size;
+  return { day, hours, total, peak: peakCount > 0 ? { hour: counts.indexOf(peakCount), count: peakCount } : null };
 }
 
 export interface VisitSummary {

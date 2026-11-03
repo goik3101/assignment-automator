@@ -5,7 +5,6 @@ import { getDashboardData } from "@/lib/admin/dashboard";
 import StackedBars from "@/components/admin/StackedBars";
 import HourlyGenerations from "@/components/admin/HourlyGenerations";
 import VisitsPanel from "@/components/admin/VisitsPanel";
-import { kstMonthKey } from "@/lib/admin/visits-pure";
 import { kstDayKey } from "@/lib/admin/dashboard-pure";
 import AdminLogoutButton from "./AdminLogoutButton";
 
@@ -249,7 +248,7 @@ export default async function AdminDashboardPage() {
       {/* ── 웹사이트 방문 ── */}
       <section className="space-y-4">
         <h2 className="text-sm font-medium text-muted">웹사이트 방문</h2>
-        <VisitsPanel thisMonth={kstMonthKey(d.generatedAt)} minMonth="2025-01" />
+        <VisitsPanel today={kstDayKey(d.generatedAt)} minDay="2025-01-01" />
       </section>
 
       {/* ── 공부 도구 ── */}
