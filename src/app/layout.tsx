@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import Footer from "@/components/Footer";
 import { LangProvider } from "@/lib/i18n";
 import { getLang } from "@/lib/i18n/server";
+import VisitBeacon from "@/components/VisitBeacon";
 import { SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_URL, jsonLdString } from "@/lib/seo/site";
 
 // 검색엔진·AI 검색이 사이트가 무엇인지 확실히 알도록 사이트와 운영 주체를 알린다.
@@ -60,6 +61,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="min-h-full bg-background text-foreground md:flex">
         <LangProvider initial={lang}>
+          <VisitBeacon />
           <Sidebar />
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">
             <main className="flex-1">{children}</main>
