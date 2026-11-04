@@ -16,9 +16,12 @@ export interface CountReq {
   max: number;
 }
 
-const UNIT_KIND: Record<string, UnitKind> = { 장면: "scene", 컷: "scene", 칸: "scene", 씬: "scene", 문장: "sentence", 줄: "line", 문단: "paragraph" };
+// 문제·문항·연도 **번호를 붙여 반복하는 칸**이다 — 지어낸 안내문 20종 감사(2026-11-04)에서
+// "수학 문제 5개를 만들고", "설문 문항 10개", "4연 이상"이 전부 안 읽혔다.
+// 개수를 못 읽으면 학생이 3개짜리 글을 받고도 아무 경고가 안 뜬다.
+const UNIT_KIND: Record<string, UnitKind> = { 장면: "scene", 컷: "scene", 칸: "scene", 씬: "scene", 문제: "scene", 문항: "scene", 연: "scene", 문장: "sentence", 줄: "line", 문단: "paragraph" };
 const KO_NUM: Record<string, number> = { 두: 2, 세: 3, 네: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열: 10 };
-const UNITS = "장면|컷|칸|씬|문장|줄|문단";
+const UNITS = "장면|컷|칸|씬|문제|문항|연|문장|줄|문단";
 const NUM = "\\d{1,2}|두|세|네|다섯|여섯|일곱|여덟|아홉|열";
 // "한 문장으로 요약"처럼 일부 안의 소규모 지시를 조건으로 오인하지 않게 "한"은 뺀다.
 const RANGE = new RegExp(`(\\d{1,2})\\s*[~∼–-]\\s*(\\d{1,2})\\s*(?:개\\s*(?:의\\s*)?)?(${UNITS})`, "g");
@@ -206,13 +209,16 @@ export function expandSceneUnits<T extends FormElement>(el: T, reqs: CountReq[])
 const stripMarks = (s: string) => s.replace(/\[(?:\d+|F\d+)\]/g, "");
 
 /** 본문에서 장면 번호 표지("### 장면 3", "컷 2:", "③", 표의 "| 4 |")를 찾아 서로 다른 번호의 개수를 센다. */
-export function countScenes(content: string): number {
+/** word를 주면 그 단위를 센다("문제 1"…). 안 주면 예전대로 장면·컷·칸·씬만 —
+ * 단위를 늘리고 세는 쪽을 그대로 두면 0개로 세어 **거짓 보완**을 부른다. */
+export function countScenes(content: string, word?: string): number {
+  const unit = word && !/^(?:장면|컷|칸|씬)$/.test(word) ? word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "장면|컷|칸|씬|Scene|scene|S#|#";
   const nums = new Set<number>();
   for (const line of stripMarks(content).split("\n")) {
     const t = line.trim().replace(/^[#>*\-\s]+/, "").replace(/^\*\*/, "");
-    let m = /^(?:장면|컷|칸|씬|Scene|scene|S#|#)\s*(\d{1,2})\b/.exec(t);
+    let m = new RegExp(`^(?:${unit})\\s*(\\d{1,2})\\b`).exec(t);
     if (m) nums.add(Number(m[1]));
-    m = /^(\d{1,2})\s*(?:번\s*)?(?:장면|컷|칸|씬)\b/.exec(t);
+    m = new RegExp(`^(\\d{1,2})\\s*(?:번\\s*)?(?:${unit})\\b`).exec(t);
     if (m) nums.add(Number(m[1]));
     m = /^([①-⑳])/.exec(t);
     if (m) nums.add(m[1].charCodeAt(0) - 0x2460 + 1);
@@ -257,7 +263,7 @@ export function checkFormRequirements(content: string, reqs: CountReq[], opts: {
   for (const req of reqs) {
     if (req.unit === "line") continue;
     if (req.unit === "scene" && opts.skipScene) continue;
-    const actual = req.unit === "scene" ? countScenes(content) : req.unit === "sentence" ? countSentences(content) : countParagraphs(content);
+    const actual = req.unit === "scene" ? countScenes(content, req.word) : req.unit === "sentence" ? countSentences(content) : countParagraphs(content);
     if (req.min > 0 && actual < req.min) issues.push({ req, actual, problem: "below" });
     else if (req.max > 0 && actual > req.max) issues.push({ req, actual, problem: "above" });
   }
