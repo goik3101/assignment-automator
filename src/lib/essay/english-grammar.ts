@@ -128,3 +128,33 @@ export function underlineGrammarForms(content: string, forms: GrammarForm[]): { 
   }
   return { content: out, added };
 }
+
+/** 안내문이 "관계부사는 인정되지 않는다"고 못 박았는가. */
+export function forbidsRelativeAdverb(text: string): boolean {
+  return /관계\s*부사/.test(text) && /인정(?:되지|하지)?\s*않|0\s*점|점수를?\s*(?:부여하지|주지)\s*않|쓰지\s*말|안\s*됨|제외/.test(text);
+}
+
+const REL_ADVERB = /\b(?:where|when|why|how)\b/i;
+
+/**
+ * 밑줄 친 관계사절 안에 관계부사가 섞였는가.
+ * 실측(2026-11-04, 공통영어2): `<u>which makes it useful where access to electricity is limited</u>` —
+ * 관계대명사 which는 맞게 썼지만 같은 밑줄 안에 where가 있어 채점자가 관계부사로 볼 수 있다.
+ * 안내문이 "관계부사를 쓰면 점수를 주지 않는다"고 한 과제라 0점 위험이다 — 밑줄 안은 깨끗해야 한다.
+ */
+export function relativeAdverbInUnderline(content: string): string[] {
+  const out: string[] = [];
+  for (const m of content.matchAll(/<u>([\s\S]*?)<\/u>/gi)) {
+    const span = m[1];
+    if (/\b(?:which|who|whom|whose|that)\b/i.test(span) && REL_ADVERB.test(span)) out.push(span.trim().slice(0, 80));
+  }
+  return out;
+}
+
+export function relativeAdverbRepairText(spans: string[]): string {
+  return (
+    `밑줄 친 관계대명사 절 안에 관계부사(where/when/why/how)가 섞여 있다: ${spans.map((s) => `"${s}"`).join(" / ")}. ` +
+    `안내문은 관계부사를 인정하지 않으므로, 그 문장을 관계대명사만 쓰는 문장으로 고쳐 쓰고 밑줄은 관계대명사 절에만 칠 것 ` +
+    `(where/when/why/how를 다른 표현으로 바꾸거나 문장을 나눌 것).`
+  );
+}

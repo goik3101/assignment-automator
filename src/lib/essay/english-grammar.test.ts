@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GrammarForm } from "./english-grammar.ts";
-import { missingGrammarForms, requiredGrammarForms, wantsUnderline, stripUnderlineTags, missingUnderlinedForms, underlineGrammarForms } from "./english-grammar.ts";
+import { missingGrammarForms, requiredGrammarForms, wantsUnderline, stripUnderlineTags, missingUnderlinedForms, underlineGrammarForms, forbidsRelativeAdverb, relativeAdverbInUnderline } from "./english-grammar.ts";
 
 test("안내문에서 요구된 어법을 읽는다", () => {
   assert.deepEqual(requiredGrammarForms("수동태, It~that 강조 용법, 관계대명사를 올바르게 사용"), ["passive", "itThat", "relative"]);
@@ -71,4 +71,16 @@ test("이미 밑줄이면 다시 긋지 않는다", () => {
 test("없는 어법은 지어내지 않는다", () => {
   const r = underlineGrammarForms("Nothing relevant here at all.", ["itThat"] as GrammarForm[]);
   assert.equal(r.added.length, 0);
+});
+
+test("안내문이 관계부사를 막는지 읽는다", () => {
+  assert.ok(forbidsRelativeAdverb("관계부사(where/when/why/how)를 쓰면 점수를 부여하지 않음"));
+  assert.ok(forbidsRelativeAdverb("관계부사는 인정되지 않는다."));
+  assert.ok(!forbidsRelativeAdverb("관계부사를 배운다."));
+});
+
+test("밑줄 안에 섞인 관계부사를 잡는다", () => {
+  assert.equal(relativeAdverbInUnderline("<u>which makes it useful where access is limited</u>").length, 1);
+  assert.equal(relativeAdverbInUnderline("<u>which removes dust</u>").length, 0);
+  assert.equal(relativeAdverbInUnderline("a place <u>where he lived</u>").length, 0, "관계대명사가 없는 밑줄은 이 검사 대상이 아니다");
 });

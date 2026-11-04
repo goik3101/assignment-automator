@@ -38,3 +38,38 @@ export function stripAsciiArt(content: string): { content: string; removed: ArtH
   if (removed.length === 0) return { content, removed };
   return { content: out.replace(/\n{3,}/g, "\n\n").trim(), removed };
 }
+
+// 모델이 이미지를 끼워 넣으려 한 흔적("![설명](주소)", "!GravityLight product photograph")은 제출할 글에 남으면 안 된다.
+// 실측(2026-11-04, 공통영어2): 본문 한가운데 "!GravityLight product photograph" 한 줄이 그대로 있었고,
+// 저장된 결과물 173편 중 5편에 같은 것이 있었다. 학생은 그 줄을 글자 그대로 옮겨 적게 된다.
+// 지우기만 하면 "무슨 사진을 준비해야 하는지"도 같이 사라지므로, 설명은 꺼내서 제작 참고로 넘긴다.
+const MD_IMAGE = /!\[([^\]]*)\]\([^)\s]*\)/g;
+const BARE_IMAGE_LINE = /^\s*!\s*([^\s!][^\n]{2,80})\s*$/;
+
+export interface ImageHint {
+  caption: string;
+}
+
+/** 이미지 문법을 본문에서 빼고, 거기 적힌 설명을 돌려준다(제작 참고로 옮기기 위해). */
+export function stripImageMarkup(content: string): { content: string; hints: ImageHint[] } {
+  const hints: ImageHint[] = [];
+  let out = content.replace(MD_IMAGE, (_m, alt: string) => {
+    const caption = String(alt).trim();
+    if (caption) hints.push({ caption });
+    return "";
+  });
+  out = out
+    .split("\n")
+    .filter((line) => {
+      const m = BARE_IMAGE_LINE.exec(line);
+      if (!m) return true;
+      // "!!" 강조나 "!중요" 같은 한 낱말은 이미지가 아니다 — 두 낱말 이상의 설명일 때만 이미지로 본다.
+      const caption = m[1].trim();
+      if (caption.split(/\s+/).length < 2) return true;
+      hints.push({ caption });
+      return false;
+    })
+    .join("\n");
+  if (hints.length === 0) return { content, hints };
+  return { content: out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), hints };
+}

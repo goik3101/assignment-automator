@@ -117,7 +117,12 @@ for (const c of CASES) {
     // 안 붙이면 "각주 번호만 있고 출처가 없다"고 잘못 깎인다(실측 2026-11-02, 카드뉴스).
     // "### 제작 참고"(학생이 준비할 사진·그림 안내)는 markdown에서 분리돼 productionNotes로 간다 —
     // 저장 파일에 안 붙이면 채점 모델이 "안내가 없다"고 잘못 깎는다(실측 2026-11-03, 신문 시각 자료).
-    const notes = [result.productionNotes ?? "", ...(result.sections ?? []).map((s) => s.productionNotes ?? "")].filter((t) => t.trim());
+    // 화면(ProductionNotes)은 단계 이름을 함께 보여 준다 — 이름 없이 합쳐 저장하면 채점이 "어느 칸의 안내인지" 못 본다
+    // (실측 2026-11-04, 신문: 머리기사 안내가 있는데도 없다고 깎였다).
+    const notes = [
+      ...(result.productionNotes ? [result.productionNotes] : []),
+      ...(result.sections ?? []).filter((s) => s.productionNotes?.trim()).map((s) => `**${s.label}**: ${s.productionNotes}`),
+    ].filter((t) => t.trim());
     const notesBlock = notes.length ? ["", "", "## 제작 참고", ...notes, ""].join("\n") : "";
     const sourceList = result.sources.length
       ? ["", "", "## 출처", ...result.sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`), ""].join("\n")

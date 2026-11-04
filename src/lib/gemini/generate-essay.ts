@@ -49,7 +49,7 @@ import {
   stripWorkMarkers,
   stripFormLead,
   studentPreparedVisuals,} from "@/lib/essay/deliverable";
-import { stripAsciiArt } from "@/lib/essay/ascii-art";
+import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { bookForm, bookFormBlock } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata } from "@/lib/essay/paste-slot";
@@ -99,7 +99,7 @@ import { renderScopedGuide, renderScopedRequirements, scopeStatements, splitStat
 import { buildRubric, rubricMisses, rubricPrompt, rubricRepairText, type RubricMiss, type RubricVerdict } from "@/lib/essay/rubric-check";
 import { BOOK_TITLE_PATTERN, FACTUAL_CLAIM_HINT_PATTERN, QUOTE_PATTERN, hasVerifiableClaimText } from "@/lib/essay/verifiable-claims";
 import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
-import { GRAMMAR_REPAIR_TEXT, UNDERLINE_REPAIR_TEXT, missingGrammarForms, missingUnderlinedForms, requiredGrammarForms, underlineGrammarForms, wantsUnderline } from "@/lib/essay/english-grammar";
+import { GRAMMAR_REPAIR_TEXT, UNDERLINE_REPAIR_TEXT, missingGrammarForms, missingUnderlinedForms, requiredGrammarForms, underlineGrammarForms, wantsUnderline, forbidsRelativeAdverb, relativeAdverbInUnderline, relativeAdverbRepairText } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
@@ -2188,9 +2188,12 @@ export async function generateEssay(
         sec && wantsUnderline(`${reqText} ${el.description}`) ? missingUnderlinedForms(sec.content, forms.filter((f) => !miss.includes(f))) : [];
       // 실측(2026-10-24, 4회 중 3회): 영어 본문에 선정 대상의 한글 이름이 섞였다("The product is the 휴대용 태양열 조리기") — 소제목 줄은 빼고 본다.
       const hangulInBody = !!sec && /[가-힣]/.test(sec.content.replace(/^#.*$/gm, ""));
+      // 안내문이 관계부사를 인정하지 않는 과제에서, 밑줄 친 관계사절 안에 where/when/why/how가 섞이면 0점 위험이다.
+      const relAdverb = sec && forbidsRelativeAdverb(`${reqText} ${el.description}`) ? relativeAdverbInUnderline(sec.content) : [];
       const missing = [
         ...miss.map((f) => GRAMMAR_REPAIR_TEXT[f]),
         ...noUnderline.map((f) => UNDERLINE_REPAIR_TEXT[f]),
+        ...(relAdverb.length ? [relativeAdverbRepairText(relAdverb)] : []),
         ...(hangulInBody ? ["본문 문장에 섞인 한글(이름 포함)을 모두 자연스러운 영어로 바꿀 것 — 소제목 줄은 그대로 둘 것"] : []),
       ];
       if (missing.length > 0) grammarGaps.push({ label: el.label, missing });
@@ -3042,6 +3045,13 @@ export async function generateEssay(
         if (art.removed.length > 0) {
           console.warn(`[generateEssay] 아스키 아트 ${art.removed.length}개 제거 label="${s.label}"`);
           content = art.content;
+        }
+        // 모델이 끼워 넣으려 한 이미지("!제품 사진", "![설명](주소)")는 학생이 글자 그대로 옮겨 적게 된다.
+        // 설명은 버리지 않고 "### 제작 참고"로 옮겨 무엇을 준비할지 알려 준다(ascii-art.ts).
+        const img = stripImageMarkup(content);
+        if (img.hints.length > 0) {
+          console.warn(`[generateEssay] 본문의 이미지 표시 ${img.hints.length}개를 제작 참고로 옮김 label="${s.label}"`);
+          content = `${img.content}\n\n### 제작 참고\n${img.hints.map((h) => `준비할 자료: ${h.caption}`).join("\n")}`;
         }
       }
       return { ...s, content };
