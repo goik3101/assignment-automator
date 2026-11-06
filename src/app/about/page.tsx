@@ -1,18 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_URL, jsonLdString } from "@/lib/seo/site";
+import { SITE_ALT_NAMES, SITE_DESCRIPTION, SITE_NAME, SITE_URL, jsonLdString } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
-  title: "서비스 소개와 자주 묻는 질문",
-  description: "STUDED AI가 무엇이고 어떻게 쓰는지, 출처·다른 학생과 겹치는 문제·개인정보에 대한 질문에 답해요.",
+  title: "수행평가 AI 서비스 소개와 자주 묻는 질문",
+  description: "수행평가 AI 도우미 STUDED AI가 무엇이고 어떻게 쓰는지, 출처·다른 학생과 겹치는 문제·개인정보에 대한 질문에 답해요.",
   alternates: { canonical: "/about" },
 };
 
 // 화면에 보이는 문장과 FAQPage 구조화 데이터가 같은 배열에서 나오게 해서 둘이 어긋나지 않게 한다.
 const FAQ: { q: string; a: string }[] = [
   {
-    q: "STUDED AI는 무엇인가요?",
-    a: "수행평가 안내문 사진이나 텍스트를 올리면 AI가 안내문을 분석해서, 글로 제출하는 과제는 완성 원고를, 외부 도구로 만들어야 하는 과제(PPT 등)는 실행 계획을 만들어 주는 서비스예요. 만든 결과물을 바탕으로 요약, 플래시카드, 퀴즈, 가상 시험, AI 채팅 같은 공부 도구도 쓸 수 있어요.",
+    q: "STUDED AI(studed ai, 스터디드)는 무엇인가요?",
+    a: "고등학생용 수행평가 AI 서비스예요. 수행평가 안내문 사진이나 텍스트를 올리면 AI가 안내문을 분석해서, 글로 제출하는 과제는 완성 원고를, 외부 도구로 만들어야 하는 과제(PPT 등)는 실행 계획을 만들어 주는 서비스예요. 만든 결과물을 바탕으로 요약, 플래시카드, 퀴즈, 가상 시험, AI 채팅 같은 공부 도구도 쓸 수 있어요.",
   },
   {
     q: "어떤 수행평가에 쓸 수 있나요?",
@@ -45,6 +45,7 @@ const jsonLd = [
     "@context": "https://schema.org",
     "@type": "WebApplication",
     name: SITE_NAME,
+    alternateName: SITE_ALT_NAMES,
     url: SITE_URL,
     description: SITE_DESCRIPTION,
     applicationCategory: "EducationalApplication",
@@ -74,7 +75,7 @@ export default function AboutPage() {
         <Link href="/terms" className="hover:text-foreground">이용약관</Link>
         <Link href="/privacy" className="hover:text-foreground">개인정보처리방침</Link>
       </nav>
-      <h1 className="text-[24px] font-bold tracking-tight">STUDED AI 소개</h1>
+      <h1 className="text-[24px] font-bold tracking-tight">STUDED AI(스터디드) — 수행평가 AI 도우미</h1>
       <p className="mt-3 text-muted">{SITE_DESCRIPTION}</p>
 
       <section className="mt-10 space-y-2">

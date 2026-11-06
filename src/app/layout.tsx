@@ -5,18 +5,19 @@ import Footer from "@/components/Footer";
 import { LangProvider } from "@/lib/i18n";
 import { getLang } from "@/lib/i18n/server";
 import VisitBeacon from "@/components/VisitBeacon";
-import { SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_URL, jsonLdString } from "@/lib/seo/site";
+import { SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_ALT_NAMES, SITE_URL, jsonLdString } from "@/lib/seo/site";
 
 // 검색엔진·AI 검색이 사이트가 무엇인지 확실히 알도록 사이트와 운영 주체를 알린다.
 const SITE_JSON_LD = [
-  { "@context": "https://schema.org", "@type": "WebSite", name: SITE_TITLE, url: SITE_URL, inLanguage: "ko", description: SITE_DESCRIPTION },
+  { "@context": "https://schema.org", "@type": "WebSite", name: SITE_TITLE, alternateName: SITE_ALT_NAMES, url: SITE_URL, inLanguage: "ko", description: SITE_DESCRIPTION },
   { "@context": "https://schema.org", "@type": "Organization", name: SITE_TITLE, url: SITE_URL, logo: `${SITE_URL}/icon.png` },
 ];
 
 export const metadata: Metadata = {
   // 링크 미리보기 이미지 주소가 이 도메인 기준으로 만들어진다. 비우면 Vercel 배포 주소로 떨어진다.
   metadataBase: process.env.NEXT_PUBLIC_SITE_URL ? new URL(process.env.NEXT_PUBLIC_SITE_URL) : undefined,
-  title: { default: SITE_TITLE, template: "%s | STUDED AI" },
+  title: { default: `${SITE_TITLE} - 수행평가 AI`, template: "%s | STUDED AI" },
+  keywords: ["STUDED AI", "studed ai", "studedai", "스터디드", "수행평가 AI", "수행평가 도우미", "수행평가 자동화", "고등학생 수행평가"],
   description: SITE_DESCRIPTION,
   openGraph: {
     type: "website",

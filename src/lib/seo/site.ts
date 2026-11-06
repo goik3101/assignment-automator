@@ -3,6 +3,9 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://assignment
 
 export const SITE_NAME = "STUDED AI";
 
+// 띄어쓰기·표기가 달라도 같은 서비스로 알아보게 하는 이름들(검색어 "studed ai" / "studedai" / "스터디드").
+export const SITE_ALT_NAMES = ["studed ai", "studedai", "STUDED", "스터디드", "스터디드 AI", "수행평가 AI"];
+
 export const SITE_DESCRIPTION =
   "수행평가 안내문 사진만 올리면 AI가 원고나 실행 계획을 만들어 줘요. 실제 검색 출처를 달고, 다른 학생과 겹치지 않게 써 주고, 요약·퀴즈·플래시카드로 공부까지 이어가요.";
 
