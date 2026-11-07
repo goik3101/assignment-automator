@@ -7,6 +7,7 @@ import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, length
 import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 import { isDrawingBox } from "./box-lines.ts";
+import { lengthFromAnalyzeOn, type LengthEstimate } from "./length-estimate.ts";
 
 export type LengthRole =
   | "material" // 항목별 조사 자료(소제목 구조)
@@ -147,9 +148,37 @@ const TOLERANCE = 0.2;
  * **점수가 분량을 따라갔다**(떨어진 항목은 "책 내용을 다룬다"·"그림 묘사" — 둘 다 자리가 필요한 것이다).
  * 항목이 많다는 것은 쓸 것이 많다는 뜻이므로, 항목이 정한 바닥이 역할 상한보다 크면 바닥을 따른다.
  */
+/**
+ * 항목(칸) 하나당 바닥 분량. **150자로 되돌렸다**(2026-11-08, 카드뉴스 생성 3회로 재 봄).
+ *
+ * 200자로 올려 봤다 — 근거는 정답 채점 만점 결과물의 밀도(194~226자/항목, `scripts/measure/length-truth.ts`)였다.
+ * 결과는 **역효과**였다: 카드뉴스 목표가 2,050자가 되고 글이 1,789자로 나오자 안내문의 반대쪽 조건
+ * ("칸에 들어갈 말은 한두 문장")을 깨서 채점이 **7/9로 내려갔고**, 생성이 39.9초로 30초를 넘겼다.
+ *
+ * 그때 같이 배운 것(이전 기록을 고침): "점수가 분량을 따라간다"는 3개 표본의 과잉 해석이었다.
+ * 같은 안내문 6개 표본은 660→6/9, 965→7/9, 1,064→6/9, 1,496→8/9, 1,750→9/9, 1,789→7/9로
+ * **단조롭지 않다.** 채점표에는 "내용을 충분히"와 "칸마다 한두 문장"처럼 서로 반대인 조건이 함께 있어
+ * 적당한 지점은 가운데(약 1,500자)이고, 길게 쓰는 쪽으로 밀면 반대쪽 조건이 깨진다.
+ */
 const PER_ITEM_FLOOR = 150;
 
-export function narrowTarget(el: PlanElement): { target: number; min: number; max: number; basis: string } {
+export function narrowTarget(el: PlanElement & { length_estimate?: LengthEstimate }): {
+  target: number;
+  min: number;
+  max: number;
+  basis: string;
+} {
+  // 분석이 사진(칸 크기·줄 수·배점·예시 글)을 보고 정한 분량이 있으면 그것을 쓴다 — 역할 표는 사진을 못 본다.
+  // 채점된 결과물 7편에서 항목당 글자 수가 72~465자로 흩어져(length-truth.ts) 역할·항목 수로는 정할 수 없음이 확인됐다.
+  const est = lengthFromAnalyzeOn() ? el.length_estimate : undefined;
+  if (est) {
+    return {
+      target: est.chars,
+      min: Math.round(est.chars * (1 - TOLERANCE)),
+      max: Math.round(est.chars * (1 + TOLERANCE)),
+      basis: `안내문 사진 기준 ${est.basis}`,
+    };
+  }
   const p = planLength(el);
   const items = el.required_items?.length ?? 0;
   const floor = items >= 3 ? items * PER_ITEM_FLOOR : 0;
@@ -157,20 +186,40 @@ export function narrowTarget(el: PlanElement): { target: number; min: number; ma
   return { target, min: Math.round(target * (1 - TOLERANCE)), max: Math.round(target * (1 + TOLERANCE)), basis: p.basis };
 }
 
+export type GuideElement = PlanElement & { target_length?: unknown; length_estimate?: LengthEstimate };
+export type GuideCtx = { requirements: string[]; guide?: string; labels: string[] };
+
+/** 이 단계에 분량 가이드를 줄 수 있는가(= lengthGuideLines가 이 단계를 다루는가). */
+function guided(e: GuideElement, ctx?: GuideCtx): boolean {
+  if (e.target_length) return false;
+  if (lengthTargetOn() && isDrawingBox(e.label)) return false;
+  if (ctx && formRequirementsOn() && hasSizeLimit(requirementsForElement(e, ctx.requirements, ctx.guide, ctx.labels))) return false;
+  return true;
+}
+
+/**
+ * 프롬프트가 이 단계에 말한 **목표 글자 수**(없으면 null). 가이드 줄을 만드는 데 쓰고,
+ * 한 단계를 항목별로 나눠 쓸 때 **각 호출의 몫**을 계산하는 데도 쓴다(parallel-write.ts의 myShareLine).
+ * 가이드 줄과 같은 사다리를 타야 한다 — 프롬프트에 적힌 숫자와 나눠 주는 숫자가 다르면 안 된다.
+ */
+export function effectiveTarget(el: GuideElement, ctx?: GuideCtx): number | null {
+  if (!guided(el, ctx)) return null;
+  const pg = lineLengthOn() && ctx ? pageLengthForElement(el, ctx.requirements, ctx.guide, ctx.labels) : null;
+  if (pg) return Math.round((pg.min + pg.max) / 2);
+  if (lengthTargetOn()) return narrowTarget(el).target;
+  const p = planLength(el);
+  return Math.round((p.min + p.max) / 2);
+}
+
 /**
  * 프롬프트에 넣을 분량 가이드 줄(안내문에 분량이 없는 단계만). ctx를 주면 안내문이 문장·줄·문단 상한을 정한 단계는 뺀다 —
  * 기본 범위(예: 발표 900~1700자)가 "5문장 이내"와 부딪혀 모델이 숫자 큰 쪽을 따랐다(form-requirements.ts).
  */
-export function lengthGuideLines(
-  elements: (PlanElement & { target_length?: unknown })[],
-  ctx?: { requirements: string[]; guide?: string; labels: string[] }
-): string[] {
+export function lengthGuideLines(elements: GuideElement[], ctx?: GuideCtx): string[] {
   return elements
-    .filter((e) => !e.target_length)
     // 그림을 그리는 칸(만평·삽화·컷)에는 글자 수를 주지 않는다 — 실측(2026-11-08): 만평 칸이 분량 가이드를
     // 받아 483자짜리 산문이 됐고, 그림 칸의 각주를 떼는 규칙과 정반대를 말하고 있었다.
-    .filter((e) => !(lengthTargetOn() && isDrawingBox(e.label)))
-    .filter((e) => !(ctx && formRequirementsOn() && hasSizeLimit(requirementsForElement(e, ctx.requirements, ctx.guide, ctx.labels))))
+    .filter((e) => guided(e, ctx))
     .map((e) => {
       // 안내문이 "A4 1장 이내"·"원고지 5매"처럼 쪽·매로 분량을 정했으면 그 환산 범위가 역할별 기본 범위를 대신한다(page-length.ts).
       const pg = lineLengthOn() && ctx ? pageLengthForElement(e, ctx.requirements, ctx.guide, ctx.labels) : null;

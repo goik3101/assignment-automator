@@ -107,7 +107,7 @@ import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
-import { lengthGuideLines } from "@/lib/essay/length-plan";
+import { effectiveTarget, lengthGuideLines } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock, inferFormKinds } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
@@ -654,6 +654,8 @@ ${input.previousOutputText}
     elements.filter((e) => !boxLabels.has(e.label)),
     formOn ? formCtx : undefined
   );
+  // 분량이 어디서 나왔는지 한 줄로 남긴다 — 틀린 결과물을 봤을 때 "역할 표가 틀렸나, 분석이 틀렸나"를 바로 가른다.
+  if (guideLines.length > 0) console.log(`[generateEssay] 분량 가이드:\n${guideLines.join("\n")}`);
   // 요구사항·작성 기준은 문장마다 적용 단계를 나눠 준다 — 발표 시간·대본 금지처럼 만들지 않는 결과물의 조건이 개요에 섞이지 않게(requirement-scope.ts).
   // 조사 프롬프트는 이 범위 나누기의 대상이 아니다(조사 단계는 이번 변경에서 건드리지 않는다).
   const scopeAll = input.coreTaskInfo.task_elements;
@@ -1487,6 +1489,12 @@ async function generateOnce(
     if (soloItemGroups.length > 1) {
       const all = soloItemGroups.flat();
       console.log(`[generateEssay] 항목 나눠 쓰기: ${soloItemGroups.map((g) => g.join("+")).join(" / ")}`);
+      // 프롬프트의 분량은 "이 단계 전체"를 말한다 — 나눠 쓰는 호출에 자기 몫을 알려 주지 않으면
+      // 목표의 0.5~1.1배로 갈린다(실측 2026-11-08, 카드뉴스 2회: 목표 2,050 → 1,064자 / 목표 1,350 → 1,507자).
+      const stepTarget =
+        effectiveTarget(elements[0], formRequirementsOn()
+          ? { requirements: input.coreTaskInfo.requirements, guide: input.coreTaskInfo.writing_guide, labels: input.coreTaskInfo.task_elements.map((e) => e.label) }
+          : undefined) ?? undefined;
       const parts = await Promise.all(
         soloItemGroups.map((group, i) =>
           generate({
@@ -1494,7 +1502,7 @@ async function generateOnce(
             role: "write",
             prompt: `${prompt}
 
-${itemWriteInstruction(labels[0], group, all, i === 0)}`,
+${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
             effort: writeEffort(),
           })
         )

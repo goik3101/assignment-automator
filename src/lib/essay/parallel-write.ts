@@ -66,14 +66,38 @@ export function itemGroups(items: string[] | undefined, min = 4): string[][] {
   return [list.slice(0, half), list.slice(half)];
 }
 
-export function itemWriteInstruction(label: string, mine: string[], all: string[], withSummary: boolean): string {
+export function itemWriteInstruction(
+  label: string,
+  mine: string[],
+  all: string[],
+  withSummary: boolean,
+  stepTarget?: number
+): string {
   const others = all.filter((i) => !mine.includes(i));
   return `
 【이번 호출에서 쓸 항목 — 반드시 지킬 것】
 "## ${label}" 단계의 항목은 여러 사람이 나눠서 동시에 쓴다. 너는 ${mine.map((i) => `"${i}"`).join(", ")} 항목만 쓴다.
 ${others.length ? `${others.map((i) => `"${i}"`).join(", ")} 항목은 쓰지 말 것(다른 사람이 쓴다 — 그 항목 내용을 여기서 미리 설명하지도 말 것). ` : ""}사실·수치·각주 번호는 위 [사실 노트]에 있는 것만 쓴다.
-${withSummary ? `맨 위에 과제 전체를 요약한 불릿 3줄을 먼저 쓰고, 이어서 "## ${label}" 제목 줄을 쓴 다음` : `"## ${label}" 제목 줄 없이 곧바로`} 네 항목의 "### 항목이름" 소제목부터 쓴다.
+${myShareLine(label, mine, all, stepTarget)}${withSummary ? `맨 위에 과제 전체를 요약한 불릿 3줄을 먼저 쓰고, 이어서 "## ${label}" 제목 줄을 쓴 다음` : `"## ${label}" 제목 줄 없이 곧바로`} 네 항목의 "### 항목이름" 소제목부터 쓴다.
 `.trim();
+}
+
+/**
+ * **이 호출이 쓸 분량**을 알려 주는 줄. 없으면 호출마다 제멋대로가 된다.
+ *
+ * 왜(실측 2026-11-08, 카드뉴스 2회): 분량 가이드는 "이 단계 약 N자"라고 **단계 전체**를 말하는데,
+ * 항목을 나눠 쓰는 호출은 그 중 일부만 쓴다. 자기 몫이 얼마인지 모르니 목표의 0.52배(목표 2,050 → 1,064자)와
+ * 1.12배(목표 1,350 → 1,507자) 사이에서 갈렸고, 같은 안내문 채점이 6/9와 8/9로 갈렸다.
+ * 단계별 동시 쓰기(parallelWriteInstruction)는 프롬프트에 단계 이름마다 숫자가 적혀 있어 이 문제가 없다.
+ *
+ * 몫은 **항목 수 비율**로 나눈다 — 항목의 무게가 서로 다를 수 있지만, 아무 숫자도 주지 않는 것보다 낫다.
+ */
+function myShareLine(label: string, mine: string[], all: string[], stepTarget?: number): string {
+  if (!stepTarget || !Number.isFinite(stepTarget) || all.length === 0 || mine.length === 0) return "";
+  const share = Math.round((stepTarget * mine.length) / all.length / 50) * 50;
+  if (share < 100) return "";
+  return `분량: "${label}" 단계 전체가 약 ${stepTarget}자이고 너는 항목 ${all.length}개 중 ${mine.length}개를 맡았으니, **네가 쓸 분량은 공백 포함 약 ${share}자**다(±20%). 다른 항목 몫까지 쓰지 말고, 네 항목을 그 분량만큼 채울 것.
+`;
 }
 
 /** 항목 묶음별 출력에서 "### 항목" 부분만 모아 한 단계 본문으로 잇는다. */

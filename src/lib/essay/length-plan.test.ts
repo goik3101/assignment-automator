@@ -35,7 +35,7 @@ test("목표는 역할 하한보다 작지 않다(상한은 항목이 많으면 
     const p = planLength(el);
     const t = narrowTarget(el);
     assert.ok(t.target >= p.min, `${label}: ${t.target}이 하한 ${p.min}보다 작다`);
-    // 항목 4개 바닥은 600자다 — 그보다 상한이 낮은 역할(표어)에서만 상한을 넘는다.
+    // 항목 4개 바닥은 600자다(항목당 150자) — 그보다 상한이 낮은 역할에서만 상한을 넘는다.
     if (t.target > p.max) assert.ok(4 * 150 > p.max, `${label}: 항목 바닥 없이 상한 ${p.max}을 넘었다`);
   }
 });

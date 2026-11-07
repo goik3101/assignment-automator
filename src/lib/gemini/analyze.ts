@@ -5,6 +5,7 @@ import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
 import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
+import { lengthFromAnalyzeOn, sanitizeLengthEstimate } from "@/lib/essay/length-estimate";
 import type { AnalyzeResult } from "@/types/task";
 
 // 기획서 6-0 1단계: 안내문에서 administrative_info(제출기한 등)와
@@ -80,6 +81,25 @@ export const ANALYZE_SCHEMA: Schema = {
               target_length_counts_spaces: {
                 type: Type.BOOLEAN,
                 description: "분량 기준이 공백 포함인지 여부. 안내문에 명시가 없으면 true(공백 포함)로 할 것.",
+              },
+              // target_length_text(안내문에 **적힌** 분량)와 절대 섞지 말 것 — 이쪽은 **네 판단**이다.
+              // 앞은 어기면 감점인 조건이고, 뒤는 참고용 목표다(경고·미달 판정에 쓰지 않는다).
+              estimated_chars: {
+                type: Type.INTEGER,
+                description:
+                  "분량이 안내문에 적혀 있지 않을 때, 이 단계를 **학생이 실제로 제출할 때 알맞은 분량**을 공백 포함 " +
+                  "글자 수로 네가 판단해 적을 것. 판단 근거로 반드시 사진에서 보이는 것을 쓴다: ① 학생이 채울 " +
+                  "양식 칸의 크기와 줄 수(칸이 보이면 **그 칸에 손글씨로 들어갈 수 있는 양**을 넘기지 말 것, " +
+                  "손글씨 한 줄 ≈ 25~35자) ② 그 단계가 다뤄야 하는 항목 수와 각 항목의 무게 ③ 배점 " +
+                  "④ 안내문에 실린 예시 글의 길이. 칸도 예시도 없으면 항목마다 두세 문장(항목당 150~250자)을 " +
+                  "기준으로 삼는다. 글이 아니라 **그림을 그리는 칸**(만평·삽화·컷)이나 자료를 붙이는 칸이면 0. " +
+                  "분량이 안내문에 명시된 단계도 0(그때는 target_length_text가 기준이다). 모르겠으면 0.",
+              },
+              estimated_chars_basis: {
+                type: Type.STRING,
+                description:
+                  "estimated_chars를 그렇게 정한 근거를 한 구절로(예: '내용 칸 5줄 × 30자', '항목 6개 × 두세 문장', " +
+                  "'예시 글 약 400자'). estimated_chars가 0이면 빈 문자열.",
               },
               required_items: {
                 type: Type.ARRAY,
@@ -342,6 +362,8 @@ export async function analyzeAssignment(
     description: string;
     target_length_text?: string;
     target_length_counts_spaces?: boolean;
+    estimated_chars?: number;
+    estimated_chars_basis?: string;
     required_items?: string[];
     items_format?: "sections" | "flowing";
   }
@@ -359,7 +381,7 @@ export async function analyzeAssignment(
   const fixes = qualityFixesOn();
   const guideExtras: string[] = [];
   const task_elements_raw = parsed.core_task_info.task_elements.map((e) => {
-    const { target_length_text, target_length_counts_spaces, required_items, items_format, ...rest } = e;
+    const { target_length_text, target_length_counts_spaces, estimated_chars, estimated_chars_basis, required_items, items_format, ...rest } = e;
     const speech = !fixes || SPEECH_LABEL.test(`${e.label} ${e.description} ${target_length_text ?? ""}`);
     const range = target_length_text ? parseLengthConstraint(target_length_text, { english: /영어|English/i.test(`${parsed.subject} ${e.label}`), minutesAllowed: speech }) : null;
     // 채점 조건(분량·어법·밑줄·사진 부착)은 써야 할 내용 항목이 아니다 — writing_guide로 옮긴다(analysis-items.ts).
@@ -378,6 +400,8 @@ export async function analyzeAssignment(
     return {
       ...rest,
       target_length: range ? { ...range, counts_spaces: target_length_counts_spaces ?? true } : undefined,
+      // 분석이 사진을 보고 정한 분량(추정). 안내문에 분량이 적힌 단계면 버린다 — 기준이 둘이 되면 안 된다.
+      length_estimate: lengthFromAnalyzeOn() ? sanitizeLengthEstimate(estimated_chars, estimated_chars_basis, !!range) : undefined,
       _lengthText: target_length_text || undefined,
       required_items: items,
       items_format: items

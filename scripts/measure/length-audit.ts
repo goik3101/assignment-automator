@@ -1,5 +1,5 @@
 // 분량 기준이 단계마다 어느 단에서 나오는지 전수로 본다(모델 호출 0).
-// 단: ①안내문 명시(target_length) ②양식 칸 줄 수(box-lines) ③쪽·매(page-length) ④유형 추론/역할 기본값(length-plan)
+// 단: ①안내문 명시(target_length) ②양식 칸 줄 수(box-lines) ③쪽·매(page-length) ④분석이 사진을 보고 정한 추정(length-estimate) ⑤유형 추론/역할 기본값(length-plan)
 import fs from "node:fs";
 import path from "node:path";
 import type { CoreTaskInfo } from "@/types/task";
@@ -16,7 +16,7 @@ const FILES = [
   "scratchpad/measure/korean1-analysis.json",
 ];
 
-const tally: Record<string, number> = { 명시: 0, 칸줄수: 0, 쪽매: 0, 추론: 0, 그림칸: 0 };
+const tally: Record<string, number> = { 명시: 0, 칸줄수: 0, 쪽매: 0, 분석추정: 0, 추론: 0, 그림칸: 0 };
 for (const f of FILES) {
   if (!fs.existsSync(f)) continue;
   const raw = JSON.parse(fs.readFileSync(f, "utf8"));
@@ -36,6 +36,7 @@ for (const f of FILES) {
     else if (el.target_length) { rung = "명시"; detail = `${el.target_length.min}~${el.target_length.max}${el.target_length.unit ?? ""}`; }
     else if (box) { rung = "칸줄수"; detail = `${box.lines}줄→${box.min}~${box.max}자`; }
     else if (pg) { rung = "쪽매"; detail = `"${pg.text}"→${pg.min}~${pg.max}자`; }
+    else if (el.length_estimate) { rung = "분석추정"; detail = `${el.length_estimate.chars}자(${el.length_estimate.basis}) → ${t.min}~${t.max}`; }
     tally[rung]++;
     console.log(`  ${rung.padEnd(4)} | ${String(el.label).slice(0, 22).padEnd(24)} | ${detail}`);
   }
