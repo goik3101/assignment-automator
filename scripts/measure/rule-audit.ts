@@ -10,7 +10,7 @@ import path from "node:path";
 const REPO = process.cwd();
 process.loadEnvFile(path.join(REPO, ".env.local"));
 
-const { needsSubjectSelection } = await import("@/lib/selection/selection-need");
+const { needsSubjectSelection, selectionTargetWord, shouldAskSubject } = await import("@/lib/selection/selection-need");
 const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual");
 const { isListeningTest } = await import("@/lib/gemini/analysis-normalize");
 const { extractCountRequirements, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
@@ -50,6 +50,37 @@ const RULES: Rule[] = [
       [false, "글의 목적과 예상 독자를 구체적으로 설정하고 쓴다."],
       [false, "기초연금 선정기준액을 조사한다."],
       [false, "실험 기구를 선택해 사용한다."],
+      // 생성 경로의 게이트는 의도적으로 좁다 — 여기가 켜지면 자동 선정 11~13초가 붙는다(30초 기준).
+      [false, "주요 사건을 소재로 삼고 인터뷰를 작성한다."],
+    ],
+  },
+  {
+    name: "주제질문",
+    what: "제작 전에 '무엇을 다룰지'를 물어야 하는 과제인가(질문 경로 전용, 더 넓음)",
+    run: (t) => shouldAskSubject({ topic: "", requirements: [t], task_elements: [] } as never),
+    cases: [
+      // 고르라는 말이 없이 고르게 하는 문구 — 2026-11-02 신문 사고의 원문이 이것이었다.
+      [true, "인터뷰는 1945~1948년 사이의 주요 사건을 소재로 삼고 작성한다."],
+      [true, "관심 있는 인물을 대상으로 삼아 조사한다."],
+      [true, "다룰 작품을 제재로 삼아 비평문을 쓴다."],
+      [true, "탐구할 인물 한 명을 선정하여 조사한다."],
+      [true, "관심 있는 사회 문제를 하나 골라 보고서를 쓴다."],
+      [false, "안전을 최우선으로 삼고 실험에 임한다."],
+      [false, "모둠 역할을 정하고 활동을 시작한다."],
+      [false, "글의 목적과 예상 독자를 구체적으로 설정하고 쓴다."],
+      [false, "발표 순서를 제비뽑기로 정한다."],
+      [false, "실험 도구는 교사가 정해 준다."],
+    ],
+  },
+  {
+    name: "대상낱말_시",
+    what: "'시(詩)'를 대상으로 읽는가 — 낱말 경계가 없으면 '시장'이 '시'가 된다",
+    run: (t) => selectionTargetWord({ topic: "", requirements: [t], task_elements: [] } as never, true) === "시",
+    cases: [
+      [true, "마음에 드는 시 한 편을 골라 감상문을 쓴다."],
+      [false, "시장 경제 체제에서 나타나는 경제 문제를 선정하고 분석한다."],
+      [false, "시사 쟁점 하나를 골라 칼럼을 쓴다."],
+      [false, "우리 지역의 문화재를 선정하여 소개한다."],
     ],
   },
   {

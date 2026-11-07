@@ -1,7 +1,17 @@
 import { Type, type Schema } from "@google/genai";
 import { generateJson } from "@/lib/llm";
 import type { CoreTaskInfo } from "@/types/task";
-import { QUESTION_CAP, sanitizeQuestion, type AiMode, type PreAnswer, type PreQuestion } from "./questions-pure";
+import { selectionTargetWord } from "@/lib/selection/selection-need";
+import { isTopicQuestion } from "@/lib/selection/student-topic";
+import {
+  buildTopicQuestion,
+  QUESTION_CAP,
+  sanitizeQuestion,
+  topicStillOpen,
+  type AiMode,
+  type PreAnswer,
+  type PreQuestion,
+} from "./questions-pure";
 
 // 수행평가를 만들기 전에 학생에게 물어볼 "다음 질문 하나"를 정한다. 목표는 불필요한 질문을 줄이고,
 // 결과물의 품질과 학생의 선택에 실제로 영향을 주는 정보만 모으는 것 — 질문이 필요 없으면 아무것도 묻지 않는다.
@@ -95,15 +105,29 @@ export async function nextQuestion(params: {
         .join("\n")
     : "(아직 없음)";
 
+  // 대상·주제가 미정인 선정 과제면 **이 질문은 그것부터**다. 모델에게 맡기면 영역 세부(만평/광고)를 먼저 물었다.
+  const topicOpen = topicStillOpen({ info: params.info, instructions: params.instructions, answers: params.answers });
+  const word = topicOpen ? (selectionTargetWord(params.info, true) ?? "주제") : "";
+  const force = topicOpen
+    ? `\n\n[이번 질문은 반드시 이것 — 다른 질문을 만들지 말 것]\n이 과제는 학생이 다룰 ${word}을(를) 직접 골라야 하는 과제인데 아직 정해지지 않았다.\n이번 질문은 **결과물 전체에서 무엇을 다룰지**(그 ${word})를 묻고, 안내문 조건에 맞는 서로 다른 후보 2~5개를 보기로 제시해라.\n한 영역의 세부 선택(인터뷰 대상, 만평이냐 광고냐, 장면 구성, 매체·형식 등)은 **지금 묻지 않는다** — 전체 주제가 정해진 다음 일이다.\ndecision_key는 task_subject로 한다.`
+    : "";
+
   const { data } = await generateJson<{ needed: boolean; reason: string; question?: unknown }>({
     label: "questions:next",
     role: "lite",
     schema: SCHEMA,
     effort: "low",
-    prompt: `${RULES}\n\n이번 모드의 질문 한도는 최대 ${cap}개이고, 지금까지 ${params.answers.length}개를 물었다(남은 한도 ${left}개).\n다음에 물어볼 질문이 정말 필요한지 판단하고, 필요하면 질문 하나만 만들어줘.\n\n${describeTask(params.subject, params.info, params.instructions)}\n\n[이전 질문과 답변]\n${answered}`,
+    prompt: `${RULES}\n\n이번 모드의 질문 한도는 최대 ${cap}개이고, 지금까지 ${params.answers.length}개를 물었다(남은 한도 ${left}개).\n다음에 물어볼 질문이 정말 필요한지 판단하고, 필요하면 질문 하나만 만들어줘.\n\n${describeTask(params.subject, params.info, params.instructions)}\n\n[이전 질문과 답변]\n${answered}${force}`,
   });
 
-  if (!data.needed) return { question: null, remaining: left };
-  const question = sanitizeQuestion(data.question, params.answers);
+  if (!data.needed && !topicOpen) return { question: null, remaining: left };
+  const question = data.needed ? sanitizeQuestion(data.question, params.answers) : null;
+
+  // 주제가 미정이면 모델이 무슨 질문을 내놨든 **주제 질문이어야** 한다. 아니면 코드가 만든 질문으로 바꾼다(추가 호출 없음).
+  if (topicOpen && (!question || !isTopicQuestion(question.text))) {
+    const forced = buildTopicQuestion(params.info, params.answers);
+    console.log(`[questions] 주제 미정 → 주제 질문으로 교체: "${question?.text ?? "(모델이 질문 없음)"}" → "${forced.text}"`);
+    return { question: forced, remaining: left - 1 };
+  }
   return { question, remaining: question ? left - 1 : left };
 }

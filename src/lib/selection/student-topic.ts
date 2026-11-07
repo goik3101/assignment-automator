@@ -41,6 +41,17 @@ const TRAILING_TALK =
 // 앞에 붙는 항목 이름("주제는 …", "발표 주제: …")도 대상 이름이 아니다.
 const LEADING_LABEL = /^(?:발표|탐구|연구|토론|글)?\s*(?:주제|소재|대상)\s*(?:는|은|로|으로|를|을)?\s*[:：]?\s*/;
 
+/**
+ * 이 질문의 답이 **글 전체의 주제·대상**으로 읽히는가. findStudentTopic이 답을 읽는 조건과 **같은 함수**여야 한다 —
+ * 질문을 만들 때와 답을 읽을 때의 기준이 어긋나면, 물어 놓고 그 답을 무시하는 일이 생긴다.
+ * 책은 책 선정 경로가 따로 맡으므로 여기서는 주제 질문으로 보지 않는다.
+ */
+export function isTopicQuestion(question: string): boolean {
+  if (!TOPIC_Q.test(question) || MEDIUM_Q.test(question) || BOOK_Q.test(question)) return false;
+  if (SECTION_Q.test(question) && !GLOBAL_CUE.test(question)) return false;
+  return true;
+}
+
 export function cleanSubjectName(value: string): string {
   let t = value.trim().replace(LEADING_LABEL, "").trim() || value.trim();
   for (let i = 0; i < 3; i++) {
@@ -95,8 +106,7 @@ export function findStudentTopic(instructions?: string | null): string | null {
 
   for (const m of instructions.matchAll(/^\s*-\s*질문:\s*(.+)\n\s*답:\s*(.+)$/gm)) {
     const q = m[1];
-    if (!TOPIC_Q.test(q) || MEDIUM_Q.test(q) || BOOK_Q.test(q)) continue;
-    if (SECTION_Q.test(q) && !GLOBAL_CUE.test(q)) continue;
+    if (!isTopicQuestion(q)) continue;
     const v = usableAnswer(m[2]);
     if (v) found.push({ value: v, rank: /주제/.test(q) ? 0 : 1 });
   }
