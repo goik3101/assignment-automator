@@ -6,6 +6,7 @@ import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
 import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn } from "./quality-flags.ts";
 import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
+import { isDrawingBox } from "./box-lines.ts";
 
 export type LengthRole =
   | "material" // 항목별 조사 자료(소제목 구조)
@@ -136,9 +137,15 @@ const TOLERANCE = 0.2;
  * 따라 커진다(보고서 항목당 230자 — 정답 채점 만점을 받은 결과물의 실측 180~237자/항목과 맞는다).
  * 하한은 여전히 강제하지 않는다(짧은지는 글자 수가 아니라 필수 항목 충족으로 본다).
  *
- * 다만 중앙값만 쓰면 **항목이 많은 개요**가 너무 얇아진다 — `plan` 역할은 하한이 400자라 항목 7개짜리 개요의
+ * 다만 중앙값만 쓰면 **항목이 많은 단계**가 너무 얇아진다 — `plan` 역할은 하한이 400자라 항목 7개짜리 개요의
  * 중앙값이 790자(항목당 113자)가 되는데, 정답 채점 12/12를 받은 실제 개요는 1,282~1,649자였다.
- * 그래서 항목이 3개 이상이면 **항목당 150자를 바닥으로** 두고, 역할이 정한 상한은 넘지 않는다.
+ * 그래서 항목이 3개 이상이면 **항목당 150자를 바닥으로** 둔다.
+ *
+ * 그 바닥을 **역할 상한으로 깎지 않는다**(2026-11-08 실측에서 고침): 카드뉴스는 한 단계에 칸이 열 개가 넘는데
+ * 역할이 `general`(상한 1,100자)로 잡혀 목표가 800자로 깎였고, 그 실행이 안내문 채점 **7/9**로 내려갔다.
+ * 같은 안내문·같은 체크리스트로 분량만 다른 세 실행을 비교하면 1,775자 → **9/9**, 990자 → 7/9, 686자 → 6/9로
+ * **점수가 분량을 따라갔다**(떨어진 항목은 "책 내용을 다룬다"·"그림 묘사" — 둘 다 자리가 필요한 것이다).
+ * 항목이 많다는 것은 쓸 것이 많다는 뜻이므로, 항목이 정한 바닥이 역할 상한보다 크면 바닥을 따른다.
  */
 const PER_ITEM_FLOOR = 150;
 
@@ -146,7 +153,7 @@ export function narrowTarget(el: PlanElement): { target: number; min: number; ma
   const p = planLength(el);
   const items = el.required_items?.length ?? 0;
   const floor = items >= 3 ? items * PER_ITEM_FLOOR : 0;
-  const target = Math.round(Math.min(Math.max((p.min + p.max) / 2, floor), p.max));
+  const target = Math.round(Math.max((p.min + p.max) / 2, floor));
   return { target, min: Math.round(target * (1 - TOLERANCE)), max: Math.round(target * (1 + TOLERANCE)), basis: p.basis };
 }
 
@@ -160,6 +167,9 @@ export function lengthGuideLines(
 ): string[] {
   return elements
     .filter((e) => !e.target_length)
+    // 그림을 그리는 칸(만평·삽화·컷)에는 글자 수를 주지 않는다 — 실측(2026-11-08): 만평 칸이 분량 가이드를
+    // 받아 483자짜리 산문이 됐고, 그림 칸의 각주를 떼는 규칙과 정반대를 말하고 있었다.
+    .filter((e) => !(lengthTargetOn() && isDrawingBox(e.label)))
     .filter((e) => !(ctx && formRequirementsOn() && hasSizeLimit(requirementsForElement(e, ctx.requirements, ctx.guide, ctx.labels))))
     .map((e) => {
       // 안내문이 "A4 1장 이내"·"원고지 5매"처럼 쪽·매로 분량을 정했으면 그 환산 범위가 역할별 기본 범위를 대신한다(page-length.ts).

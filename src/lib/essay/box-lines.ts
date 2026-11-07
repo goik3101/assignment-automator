@@ -45,23 +45,64 @@ export function linesInChunk(chunk: string): number {
   return total;
 }
 
+/** 한 칸에 이보다 많은 줄이 잡히면 읽기가 틀린 것으로 본다(양식 칸 하나가 12줄을 넘는 일은 드물다). */
+const MAX_PLAUSIBLE_LINES = 12;
+
+/**
+ * 단계 이름을 작성 기준 글에서 찾는다. 이름을 **정확히** 맞추려 하면 안 된다 — 분석이 만든 단계 이름은
+ * 실행마다 흔들리고(CLAUDE.md: 같은 사진 11회에 이름이 11가지), 안내문은 "사설/칼럼"을 그냥 "사설"로 적는다.
+ * 그래서 전체 이름 → 구분 기호로 쪼갠 조각 순서로 느슨하게 본다.
+ */
+function findLabel(guide: string, label: string): number {
+  const parts = [label, ...label.split(/[/·,|]/)].map((p) => p.trim()).filter((p) => p.length >= 2);
+  for (const p of parts) {
+    const withColon = guide.indexOf(`${p}:`);
+    if (withColon >= 0) return withColon;
+  }
+  for (const p of parts) {
+    const at = guide.indexOf(p);
+    if (at >= 0) return at;
+  }
+  return -1;
+}
+
+/** 글을 쓰는 칸이 아니라 **그림을 그리는 칸**(만평·삽화·컷)인 단계 이름. 글자 수 목표를 주면 안 된다. */
+const DRAWING_BOX = /만평|만화|삽화|그림\s*칸|컷\s*그림|캐리커처|포스터\s*그림/;
+
+/** 글이 아니라 그림이 들어가는 칸인지. 분량 가이드를 주면 안 되는 단계다(그림 칸 규칙과 정면으로 부딪힌다). */
+export function isDrawingBox(label: string): boolean {
+  return DRAWING_BOX.test((label ?? "").replace(/\s/g, ""));
+}
+
 /**
  * writing_guide를 단계 이름으로 나눠 칸별 줄 수를 읽는다.
  * 단계 이름이 "레이블:" 꼴로 나오는 안내문에서만 걸린다 — 못 찾으면 그 단계는 빠진다(추측하지 않는다).
+ *
+ * 실측으로 막은 두 가지(2026-11-08, 신문 1회):
+ *  ① **그림 칸에 글자 수 목표가 붙었다** — "만평/광고 16줄→360~624자"가 나가서, 그림 칸의 각주를 떼는 규칙과
+ *     정반대로 **483자짜리 산문을 써도 된다고 허락**해 버렸다. 그림 칸은 아예 제외한다.
+ *  ② **이름을 못 찾은 칸의 줄 수가 앞 칸으로 쏠렸다** — 레이블 세 개가 안 걸린 실행에서 마지막 레이블의 구간이
+ *     뒤에 남은 "N줄"을 전부 합쳐 16줄이 됐다. 구간을 레이블이 들어 있는 **문장까지**로 끊고, 줄 수가
+ *     터무니없이 크면 버린다. 분석이 만든 단계 이름은 실행마다 흔들리므로(CLAUDE.md) 이 방어가 필요하다.
  */
 export function boxLengths(labels: string[], guide: string | undefined): BoxLength[] {
   if (!guide?.trim() || labels.length === 0) return [];
   // 각 레이블이 나오는 위치를 찾아 그 다음 레이블 전까지를 그 칸의 설명으로 본다.
   const marks = labels
-    .map((label) => ({ label, at: guide.indexOf(`${label}:`) >= 0 ? guide.indexOf(`${label}:`) : guide.indexOf(label) }))
+    .filter((label) => !isDrawingBox(label))
+    .map((label) => ({ label, at: findLabel(guide, label) }))
     .filter((m) => m.at >= 0)
     .sort((a, b) => a.at - b.at);
   if (marks.length === 0) return [];
   const out: BoxLength[] = [];
   for (let i = 0; i < marks.length; i++) {
-    const chunk = guide.slice(marks[i].at, i + 1 < marks.length ? marks[i + 1].at : undefined);
+    const until = i + 1 < marks.length ? marks[i + 1].at : guide.length;
+    // 레이블이 들어 있는 문장까지만 본다 — 뒤 칸의 줄 수를 끌어오지 않게.
+    const rest = guide.slice(marks[i].at, until);
+    const stop = rest.search(/[.。](?:\s|$)/);
+    const chunk = stop >= 0 ? rest.slice(0, stop + 1) : rest;
     const lines = linesInChunk(chunk);
-    if (lines <= 0) continue;
+    if (lines <= 0 || lines > MAX_PLAUSIBLE_LINES) continue;
     const target = lines * CHARS_PER_LINE;
     out.push({ label: marks[i].label, lines, min: Math.round(target * 0.75), max: Math.round(target * 1.3) });
   }

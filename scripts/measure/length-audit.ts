@@ -6,6 +6,7 @@ import type { CoreTaskInfo } from "@/types/task";
 import { boxLengths } from "@/lib/essay/box-lines";
 import { pageLengthForElement } from "@/lib/essay/page-length";
 import { planLength, narrowTarget } from "@/lib/essay/length-plan";
+import { isDrawingBox } from "@/lib/essay/box-lines";
 
 const OUT = "scratchpad/measure/out";
 const FILES = [
@@ -15,7 +16,7 @@ const FILES = [
   "scratchpad/measure/korean1-analysis.json",
 ];
 
-const tally: Record<string, number> = { 명시: 0, 칸줄수: 0, 쪽매: 0, 추론: 0 };
+const tally: Record<string, number> = { 명시: 0, 칸줄수: 0, 쪽매: 0, 추론: 0, 그림칸: 0 };
 for (const f of FILES) {
   if (!fs.existsSync(f)) continue;
   const raw = JSON.parse(fs.readFileSync(f, "utf8"));
@@ -31,7 +32,8 @@ for (const f of FILES) {
     const p = planLength(el);
     const t = narrowTarget(el);
     let rung = "추론", detail = `${p.role} 예전 ${Math.round(p.min)}~${Math.round(p.max)}자(${(p.max / Math.max(1, p.min)).toFixed(1)}배) → 약 ${t.target}자(${t.min}~${t.max})`;
-    if (el.target_length) { rung = "명시"; detail = `${el.target_length.min}~${el.target_length.max}${el.target_length.unit ?? ""}`; }
+    if (isDrawingBox(el.label)) { rung = "그림칸"; detail = "분량 목표 없음(그림 칸)"; }
+    else if (el.target_length) { rung = "명시"; detail = `${el.target_length.min}~${el.target_length.max}${el.target_length.unit ?? ""}`; }
     else if (box) { rung = "칸줄수"; detail = `${box.lines}줄→${box.min}~${box.max}자`; }
     else if (pg) { rung = "쪽매"; detail = `"${pg.text}"→${pg.min}~${pg.max}자`; }
     tally[rung]++;

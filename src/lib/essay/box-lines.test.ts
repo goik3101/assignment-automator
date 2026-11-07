@@ -78,3 +78,42 @@ test("줄일 지시에 목표 글자 수와 금지 사항이 들어간다", () =
   assert.ok(t.includes("881") && t.includes("234") && t.includes("6줄"));
   assert.ok(t.includes("새로운 사실"));
 });
+
+// ── 2026-11-08 실측에서 나온 두 가지 오발동 ───────────────
+test("그림 칸(만평·만화·삽화)에는 글자 수 목표를 주지 않는다", () => {
+  const guide = "만평/광고: 양식 칸은 '제목' 약 1줄, '그림 설명' 약 5줄.";
+  assert.deepEqual(boxLengths(["만평/광고"], guide), []);
+  assert.deepEqual(boxLengths(["네 컷 만화", "삽화", "그림 칸"], guide.replace("만평/광고", "삽화")), []);
+});
+
+test("이름을 못 찾은 칸의 줄 수가 앞 칸으로 쏠리지 않는다", () => {
+  // 머리기사만 레이블로 걸리고 뒤 문장들은 안 걸리는 상황(실측: 마지막 레이블이 16줄을 삼켰다).
+  const guide = "머리기사: 양식 칸은 '제목' 약 1줄, '내용' 약 5줄. 둘째 칸은 약 4줄. 셋째 칸은 약 6줄.";
+  const boxes = boxLengths(["머리기사", "인터뷰", "사설/칼럼"], guide);
+  assert.deepEqual(boxes.map((b) => [b.label, b.lines]), [["머리기사", 6]]);
+});
+
+test("한 칸에 터무니없이 많은 줄이 잡히면 버린다", () => {
+  const guide = "자료 정리 칸은 약 9줄, 그리고 약 9줄 더.";
+  assert.deepEqual(boxLengths(["자료 정리"], guide), []);
+});
+
+test("정상 안내문은 그대로 읽는다(기존 동작 유지)", () => {
+  const boxes = boxLengths(LABELS, GUIDE);
+  assert.deepEqual(
+    boxes.map((b) => [b.label, b.lines]),
+    [["머리기사", 6], ["인터뷰", 9], ["사설/칼럼", 6]]
+  );
+});
+
+test("단계 이름을 느슨하게 찾는다(안내문은 '사설/칼럼'을 '사설'로 적는다)", () => {
+  const guide = "머리기사: '제목' 약 1줄, '내용' 약 5줄. 사설: '제목' 약 1줄, '내용' 약 4줄.";
+  assert.deepEqual(
+    boxLengths(["머리기사", "사설/칼럼"], guide).map((b) => [b.label, b.lines]),
+    [["머리기사", 6], ["사설/칼럼", 5]]
+  );
+});
+
+test("한 글자 조각으로는 찾지 않는다(아무 데나 걸리면 안 된다)", () => {
+  assert.deepEqual(boxLengths(["글/말"], "그 글은 약 3줄로 쓴다."), []);
+});
