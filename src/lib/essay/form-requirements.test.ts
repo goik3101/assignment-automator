@@ -114,7 +114,8 @@ test("장면 블록은 번호 소제목과 장면마다 쓸 칸을 지시한다"
 // ── 기본 분량 충돌 ─────────────────────────────────────────
 test("재현: 5문장 이내 조건이 있어도 기본 분량 가이드가 발표 900~1700자를 요구하던 것을 뺀다", () => {
   const before = lengthGuideLines([SCRIPT]); // ctx 없이 = 수정 전 동작
-  assert.match(before[0], /발표 대본.*900~1[78]\d\d자|발표 대본.*공백 포함 9\d\d~1\d{3}자/);
+  // LENGTH_TARGET 이후에는 범위가 아니라 목표 하나(±20%)로 나온다 — 어느 쪽이든 발표 분량이 네 자리라는 점이 요지다.
+  assert.match(before[0], /공백 포함 (\*\*약 )?1[,.]?\d{3}자/);
   const ctx = { requirements: REQUIREMENTS, guide: GUIDE, labels: labels3 };
   assert.deepEqual(lengthGuideLines([SCRIPT], ctx), []);
 });

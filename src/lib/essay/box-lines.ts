@@ -80,3 +80,45 @@ export function boxLengthBlock(boxes: BoxLength[]): string {
     `칸에 맞추려고 필수 항목을 빼지는 말 것 — 항목은 모두 다루되 한 항목을 한두 문장으로 압축한다.\n`
   );
 }
+
+/** 칸 크기를 크게 벗어난 단계. 넘침만 본다 — 짧은 것은 필수 항목 충족으로 판단한다(글자 수로 "미달"이라 하지 않는다). */
+export interface BoxOverflow {
+  label: string;
+  actual: number;
+  max: number;
+  lines: number;
+}
+
+/** 이 배율을 넘으면 학생이 칸에 옮겨 적을 수 없다고 본다. 조금 넘는 것(1.0~1.7배)은 손글씨 크기 차이로 들어간다. */
+export const OVERFLOW_RATIO = 1.7;
+
+/**
+ * 칸 크기를 읽은 단계 중 크게 넘친 것을 찾는다.
+ *
+ * 왜 사후 검사가 필요한가(실측 2026-11-07, 같은 안내문·같은 설정 3회): 칸 크기를 글자 수로 전하면
+ * 2회는 범위에 들어왔는데(머리기사 272자·313자, 목표 135~234) 1회는 881자로 3.8배가 나왔다.
+ * 즉 전달은 되지만 **실행마다 지켜지지 않는다**. 프롬프트로 더 세게 말하는 대신 코드로 세어 그 단계만 고친다.
+ */
+export function boxOverflows(
+  sections: { label: string; content: string }[],
+  boxes: BoxLength[]
+): BoxOverflow[] {
+  const out: BoxOverflow[] = [];
+  for (const box of boxes) {
+    const sec = sections.find((s) => s.label === box.label);
+    if (!sec) continue;
+    const actual = sec.content.trim().length;
+    if (actual > box.max * OVERFLOW_RATIO) out.push({ label: box.label, actual, max: box.max, lines: box.lines });
+  }
+  return out;
+}
+
+/** 넘친 단계 하나를 줄이라는 지시. 항목을 빼지 말고 문장을 줄이게 한다. */
+export function boxOverflowRepairText(o: BoxOverflow): string {
+  return (
+    `[양식 칸 넘침 — "${o.label}" 단계] 안내문의 이 칸은 약 ${o.lines}줄이라 공백 포함 ${o.max}자 안에 들어와야 하는데 ` +
+    `지금 ${o.actual}자다. 학생이 칸에 옮겨 적을 수 없다. 다루는 항목·사실·각주는 그대로 두고 문장을 줄여 ` +
+    `${Math.round(o.max * 0.8)}~${o.max}자로 다시 써라. 설명을 덧붙이거나 같은 말을 되풀이한 문장을 먼저 지우고, ` +
+    `한 항목은 한두 문장으로 압축한다. 새로운 사실·수치·출처를 추가하지 말 것.`
+  );
+}

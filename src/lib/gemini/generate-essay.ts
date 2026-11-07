@@ -50,7 +50,7 @@ import {
   stripFormLead,
   studentPreparedVisuals,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
-import { boxLengthBlock, boxLengths } from "@/lib/essay/box-lines";
+import { boxLengthBlock, boxLengths, boxOverflowRepairText, boxOverflows } from "@/lib/essay/box-lines";
 import { bookForm, bookFormBlock } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata } from "@/lib/essay/paste-slot";
@@ -2481,7 +2481,19 @@ export async function generateEssay(
   const corruptionGaps: CoverageGap[] = fixes && !needsFullRetry
     ? corruptedSections.filter((l) => attempt.sections.some((s) => s.label === l)).map((label) => ({ label, missing: ["글 속에 섞인 한국어가 아닌 글자(한자·다른 나라 문자)를 뜻에 맞는 한국어 낱말로 바꿀 것 — 다른 문장은 그대로"] }))
     : [];
-  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue || grammarGaps.length > 0 || itemGaps.length > 0 || corruptionGaps.length > 0 || activityRewrites.length > 0)) {
+  // 안내문이 칸의 줄 수를 알려 준 단계가 그 칸을 크게 넘쳤으면 그 단계만 줄인다(box-lines.ts).
+  // 실측(2026-11-07, 같은 안내문·같은 설정 3회): 2회는 목표 범위에 들었는데(272자·313자, 목표 135~234) 1회가 881자로 3.8배였다.
+  // 즉 칸 크기는 전달되지만 **실행마다 지켜지지 않는다** — 프롬프트를 더 세게 쓰는 대신 코드로 세어 그 단계만 고친다.
+  // 이미 도는 부분 보완에 얹으므로 다른 보완이 함께 발동한 경우에는 모델 호출이 늘지 않는다. 각주·사실은 그대로 둔다(출처 품질 유지).
+  const boxRewrites = boxLengthOn()
+    ? boxOverflows(attempt.sections, boxLengths(elements.map((e) => e.label), input.coreTaskInfo.writing_guide)).map((o) => ({
+        label: o.label,
+        instruction: boxOverflowRepairText(o),
+      }))
+    : [];
+  if (boxRewrites.length > 0)
+    console.warn(`[generateEssay] 양식 칸 넘침: ${boxRewrites.map((r) => r.label).join(", ")}`);
+  if (!needsFullRetry && (flowingGaps.length > 0 || repetitionIssue || grammarGaps.length > 0 || itemGaps.length > 0 || corruptionGaps.length > 0 || activityRewrites.length > 0 || boxRewrites.length > 0)) {
     const merged: CoverageGap[] = [];
     for (const g of [...flowingGaps, ...itemGaps, ...grammarGaps, ...corruptionGaps]) {
       const same = merged.find((m) => m.label === g.label);
@@ -2490,11 +2502,12 @@ export async function generateEssay(
     }
     // 안내문이 요구한 항목·표·날조 문장 수정이 섞여 있으면 "필수"로 본다(되풀이 정리만 남았으면 건너뛰어도 된다).
     // 필수 어법·밑줄은 안 지키면 0점이라 예산을 보지 않는다.
-    const requiredRepair = merged.length > 0 || activityRewrites.length > 0;
+    // 칸 넘침은 안내문이 적어 둔 칸 크기를 어긴 것이라 "필수" 쪽이다(학생이 칸에 옮겨 적을 수 없다).
+    const requiredRepair = merged.length > 0 || activityRewrites.length > 0 || boxRewrites.length > 0;
     const criticalRepair = grammarGaps.length > 0;
     if (!overBudget("단계 부분 보완", criticalRepair ? "critical" : requiredRepair ? "required" : "optional")) {
       const beforeRepair = attempt.sections.map((s) => ({ label: s.label, content: s.content }));
-      attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], activityRewrites);
+      attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], [...activityRewrites, ...boxRewrites]);
       // 보완이 제 일을 했는지 코드로 다시 본다 — 감지하고 보완까지 돌고도 안 고쳐지는 일이 있었다(repair-check.ts).
       // 모델 호출이 늘지 않는다. 남은 것은 뒤의 코드 강제(밑줄 등)와 측정이 집어간다.
       const residuals = residualsAfterRepair(beforeRepair, attempt.sections.map((s) => ({ label: s.label, content: s.content })), merged);

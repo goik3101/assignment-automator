@@ -3,7 +3,8 @@
 // 이 값은 생성 지시용 가이드일 뿐 강제 기준이 아니다(강제는 안내문이 명시한 분량만 — 부족 여부는 필수 항목 충족으로 본다).
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
 import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
-import { qualityFixesOn, formRequirementsOn } from "./quality-flags.ts";
+import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn } from "./quality-flags.ts";
+import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 
 export type LengthRole =
@@ -15,6 +16,11 @@ export type LengthRole =
   | "slogan" // 문구·슬로건·캐치프레이즈
   | "script" // 발표문·대본·연설
   | "report" // 보고서·논설문·감상문·에세이·비평
+  | "short_answer" // 짧은 서술형 답변 (LENGTH_INFER)
+  | "opinion" // 일반적인 의견 작성 (LENGTH_INFER)
+  | "argument" // 주장하는 글·논설문 (LENGTH_INFER)
+  | "inquiry" // 탐구·조사 보고서 (LENGTH_INFER)
+  | "deep_analysis" // 심층 분석 보고서 (LENGTH_INFER)
   | "plan" // 계획·개요·설계
   | "scenes" // 장면 번호 소제목(스토리보드·컷)으로 쓰는 단계 — 장면마다 화면·대사 한두 문장
   | "general";
@@ -47,6 +53,14 @@ export function lengthRoleOf(el: PlanElement): LengthRole {
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
   if (/문구|슬로건|캐치|표어|제목\s*짓/.test(label)) return "slogan";
   if (/발표|대본|스피치|연설|speech/i.test(text)) return "script";
+  // 과제 유형 추론(분량 기준 문서 3순위) — 낱말로 정한 아래 규칙보다 먼저, 더 구체적인 유형부터 본다.
+  if (lengthInferOn()) {
+    if (/심층|종합\s*분석|비교\s*분석/.test(text) && /보고서/.test(text)) return "deep_analysis";
+    if (/(탐구|조사|연구|실험)\s*(결과\s*)?보고서/.test(text)) return "inquiry";
+    if (/논설|논술|주장하는\s*글|설득/.test(text)) return "argument";
+    if (/서술형|한\s*문단|간단히\s*(쓰|서술|작성)|짧게\s*(쓰|서술|작성)|한두\s*문장/.test(text)) return "short_answer";
+    if (/의견|견해|입장|제언|생각을?\s*(쓰|서술|작성)/.test(text) && !/보고서/.test(label)) return "opinion";
+  }
   if (/보고서|논설|논술|에세이|소논문|비평|감상문|독후감|칼럼/.test(text)) return "report";
   if (/계획|개요|설계|구상|기획/.test(label)) return "plan";
   return "general";
@@ -55,11 +69,23 @@ export function lengthRoleOf(el: PlanElement): LengthRole {
 /** 항목 수가 많을수록 늘어나는 폭(항목당 가산). */
 const PER_ITEM = 140;
 
+// 평가 기준 개수로 상한을 줄이는 규칙은 넣지 않는다(2026-11-06 시도 후 제거): 기준 개수를 문장 매칭으로 세면 부정확해서
+// 8장면 스토리보드가 "500~500자"가 됐다. 짧게 나오는 문제를 키우므로 기준 수 → 분량 규칙은 만들지 않는다.
 export function planLength(el: PlanElement): LengthPlan {
   const role = lengthRoleOf(el);
   const items = el.required_items?.length ?? 0;
   const itemBoost = Math.max(0, items - 2) * PER_ITEM;
   switch (role) {
+    case "short_answer":
+      return { role, min: 300, max: 500, basis: "짧은 서술형 답변" };
+    case "opinion":
+      return { role, min: 500, max: 800, basis: "근거를 갖춘 일반적인 의견" };
+    case "argument":
+      return { role, min: 800, max: 1200, basis: "주장·근거·반론·결론을 갖춘 글" };
+    case "inquiry":
+      return { role, min: 1200, max: 2000, basis: "탐구·조사 보고서" };
+    case "deep_analysis":
+      return { role, min: 2000, max: 2800, basis: "심층 분석 보고서" };
     case "material": {
       const n = Math.max(items, 2);
       return { role, min: n * 160, max: n * 380, basis: `조사 항목 ${n}개 × 항목당 사실 2~4문장` };
@@ -95,6 +121,35 @@ export function planLength(el: PlanElement): LengthPlan {
 
 const round50 = (n: number) => Math.round(n / 50) * 50;
 
+/** 목표 하나에 허용할 오차. */
+const TOLERANCE = 0.2;
+
+/**
+ * 역할별 범위를 **목표 하나 + ±20%**로 좁힌다.
+ *
+ * 왜(실측 2026-11-08, 비용 0): 저장된 결과물 26편을 단계별로 세어 보니 **우리가 준 범위가 넓은 단계일수록 결과도 더
+ * 퍼졌다.** 항목 목록이 구조를 묶어 주는 단계(보고서·개요, 범위 1.9배)는 실행 간 1.3배로 안정적인데,
+ * 범위가 2.2배인 general 단계(카드뉴스·스토리보드)는 588~2302자로 갈렸다. "500자도 맞고 1100자도 맞다"고
+ * 말해 놓고 적당한 길이를 기대한 것이 원인이다 — 범위를 주면 모델은 그 안에서 아무 데나 쓴다.
+ *
+ * 새 숫자를 지어내지 않고 **기존 역할 범위의 중앙값**을 목표로 쓴다. 항목 수로 커지는 역할은 중앙값도 항목 수에
+ * 따라 커진다(보고서 항목당 230자 — 정답 채점 만점을 받은 결과물의 실측 180~237자/항목과 맞는다).
+ * 하한은 여전히 강제하지 않는다(짧은지는 글자 수가 아니라 필수 항목 충족으로 본다).
+ *
+ * 다만 중앙값만 쓰면 **항목이 많은 개요**가 너무 얇아진다 — `plan` 역할은 하한이 400자라 항목 7개짜리 개요의
+ * 중앙값이 790자(항목당 113자)가 되는데, 정답 채점 12/12를 받은 실제 개요는 1,282~1,649자였다.
+ * 그래서 항목이 3개 이상이면 **항목당 150자를 바닥으로** 두고, 역할이 정한 상한은 넘지 않는다.
+ */
+const PER_ITEM_FLOOR = 150;
+
+export function narrowTarget(el: PlanElement): { target: number; min: number; max: number; basis: string } {
+  const p = planLength(el);
+  const items = el.required_items?.length ?? 0;
+  const floor = items >= 3 ? items * PER_ITEM_FLOOR : 0;
+  const target = Math.round(Math.min(Math.max((p.min + p.max) / 2, floor), p.max));
+  return { target, min: Math.round(target * (1 - TOLERANCE)), max: Math.round(target * (1 + TOLERANCE)), basis: p.basis };
+}
+
 /**
  * 프롬프트에 넣을 분량 가이드 줄(안내문에 분량이 없는 단계만). ctx를 주면 안내문이 문장·줄·문단 상한을 정한 단계는 뺀다 —
  * 기본 범위(예: 발표 900~1700자)가 "5문장 이내"와 부딪혀 모델이 숫자 큰 쪽을 따랐다(form-requirements.ts).
@@ -107,6 +162,13 @@ export function lengthGuideLines(
     .filter((e) => !e.target_length)
     .filter((e) => !(ctx && formRequirementsOn() && hasSizeLimit(requirementsForElement(e, ctx.requirements, ctx.guide, ctx.labels))))
     .map((e) => {
+      // 안내문이 "A4 1장 이내"·"원고지 5매"처럼 쪽·매로 분량을 정했으면 그 환산 범위가 역할별 기본 범위를 대신한다(page-length.ts).
+      const pg = lineLengthOn() && ctx ? pageLengthForElement(e, ctx.requirements, ctx.guide, ctx.labels) : null;
+      if (pg) return `- "${e.label}" 단계: 공백 포함 ${round50(pg.min)}~${round50(pg.max)}자 안팎(안내문이 정한 분량 "${pg.text}"을 ${pg.unit === "page" ? "A4 한 쪽 약 1,000자" : "원고지 한 매 200자"}로 환산한 값 — 이 범위를 넘지 말고, 다만 필수 항목을 빠뜨릴 만큼 줄이지도 말 것).`;
+      if (lengthTargetOn()) {
+        const t = narrowTarget(e);
+        return `- "${e.label}" 단계: 공백 포함 **약 ${round50(t.target)}자**(${round50(t.min)}~${round50(t.max)}자 안에 들어오게 — ${t.basis}).`;
+      }
       const p = planLength(e);
       return `- "${e.label}" 단계: 공백 포함 ${round50(p.min)}~${round50(p.max)}자 안팎(${p.basis}).`;
     });

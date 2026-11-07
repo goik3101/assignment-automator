@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { linesInChunk, boxLengths, boxLengthBlock, CHARS_PER_LINE } from "./box-lines.ts";
+import { linesInChunk, boxLengths, boxLengthBlock, boxOverflows, boxOverflowRepairText, CHARS_PER_LINE } from "./box-lines.ts";
 
 const GUIDE =
   "머리기사: 양식 칸은 ‘제목’ 약 1줄, ‘내용’ 약 5줄. 기사에 누가·언제·어디서가 드러나게 할 것. " +
@@ -41,4 +41,40 @@ test("블록에 칸마다 글자 범위가 들어간다", () => {
   assert.ok(b.includes("머리기사"));
   assert.ok(/\d+~\d+자/.test(b));
   assert.ok(b.includes("필수 항목을 빼지는 말 것"));
+});
+
+test("칸 크기를 크게 넘친 단계만 잡는다", () => {
+  const boxes = boxLengths(LABELS, GUIDE);
+  const over = boxOverflows(
+    [
+      { label: "머리기사", content: "가".repeat(881) },
+      { label: "인터뷰", content: "가".repeat(313) },
+      { label: "사설/칼럼", content: "가".repeat(276) },
+    ],
+    boxes
+  );
+  assert.deepEqual(over.map((o) => o.label), ["머리기사"]);
+  assert.equal(over[0].actual, 881);
+});
+
+test("조금 넘는 것은 잡지 않는다(손글씨 차이)", () => {
+  const boxes = boxLengths(LABELS, GUIDE);
+  const head = boxes.find((b) => b.label === "머리기사")!;
+  assert.equal(boxOverflows([{ label: "머리기사", content: "가".repeat(Math.round(head.max * 1.6)) }], boxes).length, 0);
+  assert.equal(boxOverflows([{ label: "머리기사", content: "가".repeat(Math.round(head.max * 1.8)) }], boxes).length, 1);
+});
+
+test("짧은 것은 넘침으로 보지 않는다", () => {
+  const boxes = boxLengths(LABELS, GUIDE);
+  assert.equal(boxOverflows([{ label: "머리기사", content: "짧다." }], boxes).length, 0);
+});
+
+test("칸 크기를 읽지 못한 단계는 검사하지 않는다", () => {
+  assert.equal(boxOverflows([{ label: "만평/광고", content: "가".repeat(5000) }], boxLengths(LABELS, GUIDE)).length, 0);
+});
+
+test("줄일 지시에 목표 글자 수와 금지 사항이 들어간다", () => {
+  const t = boxOverflowRepairText({ label: "머리기사", actual: 881, max: 234, lines: 6 });
+  assert.ok(t.includes("881") && t.includes("234") && t.includes("6줄"));
+  assert.ok(t.includes("새로운 사실"));
 });

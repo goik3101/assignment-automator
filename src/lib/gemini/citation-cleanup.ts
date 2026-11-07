@@ -30,3 +30,63 @@ export function mergeAdjacentMarkers(text: string): string {
     return `[${ns.join(",")}]`;
   });
 }
+
+/**
+ * 문장마다 붙은 각주를 **문단(또는 목록 항목) 끝에 한 번**으로 모은다. **화면 표시 전용**이다.
+ *
+ * 왜(2026-11-08, 사용자): "출처를 빼라는 게 아니라 글 한가운데 [1],[2]가 들어가는 게 읽기 나쁘다."
+ * 대표 출처 하나만 남기는 방식은 쓰지 않았다 — 우리는 문장별로 출처 페이지와 대조해 틀린 사실을 걸러내므로
+ * (claim-check) 문단↔출처 연결이 끊기면 그 검사의 근거가 사라진다. 문단 단위로 모으면 각주 개수가
+ * 3~5분의 1로 줄고 추적은 남는다. 안내문이 "근거마다 출처"를 요구하는 과제는 근거가 목록 항목이라
+ * 항목마다 하나가 남아 그대로 충족된다.
+ *
+ * **저장된 원문은 바꾸지 않는다** — 재생성의 기준이고, 결함 검사 여러 개가 문장별 각주를 센다.
+ * 건드리지 않는 줄: 소제목, 표(|), 코드 블록, 맨 아래 출처 목록.
+ */
+export function collapseMarkersToBlockEnd(markdown: string): string {
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  let inCode = false;
+  // 문단은 빈 줄로 끊긴다. 목록 항목·소제목은 그 줄 하나가 한 묶음이다.
+  let buf: string[] = [];
+
+  const flush = () => {
+    if (buf.length === 0) return;
+    const text = buf.join("\n");
+    const ns = [...new Set((text.match(/\[(\d+(?:,\d+)*)\]/g) ?? []).flatMap((m) => m.slice(1, -1).split(",").map(Number)))].sort((a, b) => a - b);
+    if (ns.length === 0) {
+      out.push(...buf);
+    } else {
+      const stripped = text.replace(/\s*\[\d+(?:,\d+)*\]/g, "");
+      // 각주는 마지막 문장 부호 뒤가 아니라 문단 맨 끝에 붙인다 — 문장 중간에서 흐름을 끊지 않는다.
+      out.push(...`${stripped.replace(/\s+$/, "")} [${ns.join(",")}]`.split("\n"));
+    }
+    buf = [];
+  };
+
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      flush();
+      inCode = !inCode;
+      out.push(line);
+      continue;
+    }
+    // 소제목·표·빈 줄·목록 항목은 묶음 경계다.
+    const isBoundary = inCode || /^\s*$/.test(line) || /^\s*#{1,6}\s/.test(line) || line.includes("|");
+    const isListItem = /^\s*(?:[-*+]|\d+[.)])\s/.test(line);
+    if (isBoundary) {
+      flush();
+      out.push(line);
+      continue;
+    }
+    if (isListItem) flush();
+    buf.push(line);
+  }
+  flush();
+  return out.join("\n");
+}
+
+/** 화면에 그릴 때만 거치는 각주 정리: 문단 끝으로 모으고, 소제목·표에 남은 묶음은 하나로 합친다. */
+export function markersForDisplay(markdown: string): string {
+  return mergeAdjacentMarkers(collapseMarkersToBlockEnd(markdown));
+}
