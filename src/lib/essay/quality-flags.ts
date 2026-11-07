@@ -110,3 +110,16 @@ export function rubricCheckOn(): boolean {
 export function sourceRetryOn(): boolean {
   return process.env.SOURCE_RETRY !== "off";
 }
+
+/**
+ * 안내문이 알려 준 **양식 칸의 줄 수**를 글자 수 목표로 바꿔 프롬프트에 전할지(box-lines.ts).
+ *
+ * 실측(2026-11-07, 역사 신문): 안내문이 "내용 약 5줄"이라고 적어 두었는데 우리는 1102자·949자를 썼다.
+ * 줄 수는 "프롬프트로만 전한다"고 해 두었지만 그 전달이 문장 그대로여서 모델이 글자 수로 환산하지 못했다.
+ * 숫자로 바꿔 주면 분량이 절반 가까이 내려간다(3회: 머리기사 1776·512·625자) — 다만 실행 편차가 커서
+ * **목표 범위(135~234자)에는 아직 못 든다.** 정답 채점은 11/11·10/11·11/11로 유지됐다.
+ * 칸에 맞추는 것은 "바로 제출 가능한가"의 핵심이라 켜 두되, BOX_LENGTH=off로 되돌린다.
+ */
+export function boxLengthOn(): boolean {
+  return process.env.BOX_LENGTH !== "off";
+}

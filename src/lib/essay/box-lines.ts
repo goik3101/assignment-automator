@@ -1,0 +1,82 @@
+// 양식지 칸의 **줄 수**를 글자 수 목표로 바꾼다. alias import 없음(node:test에서 바로 불러옴).
+//
+// 왜(실측 2026-11-07): 안내문이 칸 크기를 또박또박 알려 주는데 우리가 무시하고 있었다.
+//   writing_guide: "머리기사: 양식 칸은 '제목' 약 1줄, '내용' 약 5줄. … 사설/칼럼: '제목' 약 1줄, '내용' 약 5줄."
+//   실제 결과물: 머리기사 1102자·949자, 사설 308자·2286자 (5줄 칸은 150자 남짓이다)
+// 칸의 2~15배를 쓰고 실행마다 7배씩 차이가 났다. 학생은 받은 글을 그대로 칸에 옮길 수가 없다.
+// CLAUDE.md에 "줄 수는 셀 수 없어 프롬프트로만 전한다"고 적혀 있었는데, 그 '프롬프트로만'이 문장 그대로
+// "약 5줄"을 넘기는 것이어서 모델이 글자 수로 환산하지 못했다. 숫자로 바꿔 주면 따른다.
+//
+// 환산값은 **추정**이다(손글씨 칸 한 줄 ≈ 공백 포함 30자). 그래서 경고·미달 판정에는 쓰지 않고
+// 생성 가이드로만 쓴다 — 안내문에 없는 기준으로 학생에게 "못 지켰다"고 하면 안 된다(2026-11-03 190단어 사건).
+
+/** 양식지 손글씨 한 줄에 들어가는 글자 수(공백 포함) 추정. */
+export const CHARS_PER_LINE = 30;
+
+export interface BoxLength {
+  label: string;
+  lines: number;
+  min: number;
+  max: number;
+}
+
+const LINE_NUM = /(\d{1,2})\s*줄/g;
+/** "질문1·답변1·질문2·답변2는 각각 약 2줄" — 각각 앞의 나열 개수만큼 곱한다. */
+const EACH = /각각/;
+
+/** 한 칸 설명에서 줄 수를 더한다. "각각 N줄"은 바로 앞 나열의 항목 수만큼 곱한다. */
+export function linesInChunk(chunk: string): number {
+  let total = 0;
+  for (const m of chunk.matchAll(LINE_NUM)) {
+    const n = Number(m[1]);
+    if (!Number.isFinite(n) || n <= 0 || n > 60) continue;
+    const before = chunk.slice(0, m.index ?? 0);
+    if (EACH.test(before.slice(-30))) {
+      // "각각" 앞의 가장 가까운 나열(A·B·C 또는 A, B, C)의 항목 수
+      const list = before.replace(/\s*각각.*$/, "").trim();
+      // 쉼표까지 끊어야 한다 — 안 그러면 앞 칸("'인터뷰 대상' 약 1줄,")까지 나열로 세어 개수가 부푼다.
+      const tail = list.split(/[.。:：,，]/).pop() ?? "";
+      const count = tail.split(/[·,]/).filter((x) => x.trim()).length;
+      total += n * Math.max(1, count);
+    } else {
+      total += n;
+    }
+  }
+  return total;
+}
+
+/**
+ * writing_guide를 단계 이름으로 나눠 칸별 줄 수를 읽는다.
+ * 단계 이름이 "레이블:" 꼴로 나오는 안내문에서만 걸린다 — 못 찾으면 그 단계는 빠진다(추측하지 않는다).
+ */
+export function boxLengths(labels: string[], guide: string | undefined): BoxLength[] {
+  if (!guide?.trim() || labels.length === 0) return [];
+  // 각 레이블이 나오는 위치를 찾아 그 다음 레이블 전까지를 그 칸의 설명으로 본다.
+  const marks = labels
+    .map((label) => ({ label, at: guide.indexOf(`${label}:`) >= 0 ? guide.indexOf(`${label}:`) : guide.indexOf(label) }))
+    .filter((m) => m.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  if (marks.length === 0) return [];
+  const out: BoxLength[] = [];
+  for (let i = 0; i < marks.length; i++) {
+    const chunk = guide.slice(marks[i].at, i + 1 < marks.length ? marks[i + 1].at : undefined);
+    const lines = linesInChunk(chunk);
+    if (lines <= 0) continue;
+    const target = lines * CHARS_PER_LINE;
+    out.push({ label: marks[i].label, lines, min: Math.round(target * 0.75), max: Math.round(target * 1.3) });
+  }
+  return out;
+}
+
+/** 생성 프롬프트에 넣을 블록. 칸 크기를 읽은 단계가 없으면 빈 문자열. */
+export function boxLengthBlock(boxes: BoxLength[]): string {
+  if (boxes.length === 0) return "";
+  const lines = boxes.map(
+    (b) => `- "${b.label}": 양식 칸이 약 ${b.lines}줄 → 공백 포함 **${b.min}~${b.max}자**로 쓸 것(제목 줄은 빼고 센다).`
+  );
+  return (
+    `\n【양식 칸 크기 — 반드시 지킬 것】 학생은 이 글을 **안내문 양식의 칸에 그대로 옮겨 적는다**. 칸을 넘치면 쓸 수가 없다.\n` +
+    `${lines.join("\n")}\n` +
+    `칸에 맞추려고 필수 항목을 빼지는 말 것 — 항목은 모두 다루되 한 항목을 한두 문장으로 압축한다.\n`
+  );
+}

@@ -50,11 +50,12 @@ import {
   stripFormLead,
   studentPreparedVisuals,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
+import { boxLengthBlock, boxLengths } from "@/lib/essay/box-lines";
 import { bookForm, bookFormBlock } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata } from "@/lib/essay/paste-slot";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
-import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
@@ -642,7 +643,17 @@ ${input.previousOutputText}
   // 안내문에 분량이 없는 단계는 역할·항목 수로 정한 권장 범위를 준다(length-plan.ts) — 모든 단계에 같은 글자 수를 주지 않고, 부족 여부는 글자 수가 아니라 필수 항목 충족으로 본다.
   const formOn = formRequirementsOn();
   const formCtx = { requirements: input.coreTaskInfo.requirements, guide: input.coreTaskInfo.writing_guide, labels: input.coreTaskInfo.task_elements.map((e) => e.label) };
-  const guideLines = lengthGuideLines(elements, formOn ? formCtx : undefined);
+  // 안내문이 칸의 줄 수를 알려 준 단계는 그 칸 크기가 기준이다 — 학생은 이 글을 그 칸에 옮겨 적는다(box-lines.ts).
+  // 실측(2026-11-07, 역사 신문): "내용 약 5줄" 칸에 1102자·949자를 썼고 사설은 308자와 2286자로 7배 갈렸다.
+  const boxes = boxLengthOn() ? boxLengths(elements.map((e) => e.label), input.coreTaskInfo.writing_guide) : [];
+  const boxLabels = new Set(boxes.map((b) => b.label));
+  const boxBlock = boxLengthBlock(boxes);
+  if (boxes.length > 0) console.log(`[generateEssay] 양식 칸 크기: ${boxes.map((b) => `${b.label} ${b.lines}줄→${b.min}~${b.max}자`).join(" / ")}`);
+  // 칸 크기를 읽은 단계에는 역할별 권장 범위를 주지 않는다 — 숫자가 둘이면 모델이 큰 쪽을 고른다(prompt-audit의 충돌 짝).
+  const guideLines = lengthGuideLines(
+    elements.filter((e) => !boxLabels.has(e.label)),
+    formOn ? formCtx : undefined
+  );
   // 요구사항·작성 기준은 문장마다 적용 단계를 나눠 준다 — 발표 시간·대본 금지처럼 만들지 않는 결과물의 조건이 개요에 섞이지 않게(requirement-scope.ts).
   // 조사 프롬프트는 이 범위 나누기의 대상이 아니다(조사 단계는 이번 변경에서 건드리지 않는다).
   const scopeAll = input.coreTaskInfo.task_elements;
@@ -828,7 +839,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
