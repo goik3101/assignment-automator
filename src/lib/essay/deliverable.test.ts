@@ -18,7 +18,10 @@ test("신문 영역마다 역할을 나눠 준다", () => {
   assert.ok(newspaperSectionRole("인터뷰", false).includes("겪은 사람의 말"));
   assert.ok(newspaperSectionRole("인터뷰", false).includes("배경을 설명하지 말고"));
   assert.ok(newspaperSectionRole("사설/칼럼", false).includes("주장"));
-  assert.ok(newspaperSectionRole("만평/광고", false).includes("그림과 짧은 설명"));
+  // 2026-11-07: "그림과 짧은 설명"이라고만 하니 두 문단짜리 역사 설명이 나왔다 — 세 줄 형식을 못 박았다.
+  assert.ok(newspaperSectionRole("만평/광고", false).includes("그림 칸"));
+  assert.ok(newspaperSectionRole("만평/광고", false).includes("그릴 그림:"));
+  assert.ok(newspaperSectionRole("만평/광고", false).includes("각주도 달지 말 것"));
   // 배경을 맡지 않은 기사면 일반 지시.
   assert.ok(newspaperSectionRole("지역 소식", false).includes("다시 설명하지 말 것"));
 });

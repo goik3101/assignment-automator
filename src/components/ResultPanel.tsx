@@ -4,6 +4,9 @@ import { useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { remarkUnderline } from "@/lib/markdown/underline";
+// 화면에서만 "[1][2]"를 "[1,2]"로 합친다 — 저장된 markdown은 재생성의 단일 진실 소스라 그대로 둔다
+// (본문의 [n]을 세는 검사기가 여럿이다).
+import { mergeAdjacentMarkers } from "@/lib/gemini/citation-cleanup";
 import { CircleCheck, CircleHelp, CircleX, Link2, MessageSquareQuote, PencilLine, TriangleAlert } from "lucide-react";
 import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
 import { SOURCE_TIER_LABEL } from "@/lib/links/source-quality";
@@ -323,7 +326,7 @@ export function EssayPanel({
       {result.structureWarning && <StructureWarning message={result.structureWarning} />}
       <article className={ARTICLE}>
         <ReactMarkdown remarkPlugins={[remarkGfm, remarkUnderline]} components={MD_COMPONENTS}>
-          {result.markdown}
+          {mergeAdjacentMarkers(result.markdown)}
         </ReactMarkdown>
       </article>
       <ProductionNotes

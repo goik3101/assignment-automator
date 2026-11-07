@@ -1,4 +1,4 @@
-import { dedupeAdjacentMarkers, cleanMarkers } from "./citation-cleanup";
+import { dedupeAdjacentMarkers, mergeAdjacentMarkers, cleanMarkers } from "./citation-cleanup";
 import { generate } from "@/lib/llm";
 import { currentSourceScope } from "@/lib/llm/scope";
 import { isDomesticUrl, keepInScope } from "@/lib/essay/source-scope";
@@ -53,6 +53,7 @@ import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { bookForm, bookFormBlock } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata } from "@/lib/essay/paste-slot";
+import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
@@ -85,6 +86,7 @@ import {
 import {
   applyFormRequirements,
   buildFormLimitBlock,
+  buildTitleFieldBlock,
   buildSceneBlock,
   checkFormRequirements,
   isSceneLikeElement,
@@ -826,7 +828,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -2315,6 +2317,13 @@ export async function generateEssay(
         activityRewrites.push({ label: sec.label, instruction: compoundRepairText(it.name, it.parts, missing) });
       }
     }
+    // 그림으로 내는 칸이 설명문이 되어 버린 경우(실측 2026-11-07, 만평이 두 문단짜리 역사 설명이었다).
+    // 안내문은 그 칸을 "그림을 구성하는 빈 칸"이라 했고 채점은 비판 대상·주제·특성을 본다 — 긴 글은 채점에 쓸모가 없다.
+    for (const sec of attempt.sections) {
+      if (!isPicturePanel(sec.label) || !isTooWordy(sec.content)) continue;
+      console.warn(`[generateEssay] 그림 칸이 설명문이 됨 label="${sec.label}" — 그릴 수 있는 계획으로 다시 쓰게 함`);
+      activityRewrites.push({ label: sec.label, instruction: panelRepairText(sec.label) });
+    }
     // 안내문 조건을 어긴 단계(rubric-check.ts) — 결함이 아니라 "하라는 것을 안 했다"는 문제라 다른 검사로는 잡히지 않는다.
     for (const g of rubricGaps) {
       console.warn(`[generateEssay] 안내문 조건 미충족 label="${g.label}": ${JSON.stringify(g.missing.map((m) => m.slice(0, 50)))}`);
@@ -3035,6 +3044,15 @@ export async function generateEssay(
           }
         }
         // 학생이 실물을 붙이는 칸의 날짜·신문사를 지어냈으면 빈칸으로 되돌린다 — 그대로 내면 거짓 기록이다(paste-slot.ts).
+        // 그림으로 내는 칸(만평·광고·삽화)에는 각주를 달 수 없다 — 그림에 출처를 붙일 수는 없고,
+        // 각주가 붙으면 "조사한 글"처럼 보인다. 역할 지시에 이미 적혀 있지만 모델이 지키지 않는다(picture-panel.ts).
+        if (isPicturePanel(s.label)) {
+          const panel = stripPanelCitations(content);
+          if (panel.removed > 0) {
+            console.warn(`[generateEssay] 그림 칸의 각주 ${panel.removed}개 제거 label="${s.label}"`);
+            content = panel.content;
+          }
+        }
         const paste = blankPastedMetadata(content);
         if (paste.blanked.length > 0) {
           console.warn(`[generateEssay] 붙이는 칸의 지어낸 서지 ${JSON.stringify(paste.blanked)} 를 빈칸으로 되돌림 label="${s.label}"`);
@@ -3232,7 +3250,8 @@ export async function generateEssay(
     sections: attempt.sections.map((s, si) => {
       // 화면에 보여줄 단계별 markdown/sources는 문서 전체에서 한 번 매긴 번호를 그대로 쓴다(renumbered).
       // 전체 문서(위 markdown, 재생성 연속성에 쓰이는 단일 진실 소스)는 원래 번호를 유지한다.
-      const renumberedContent = dedupeAdjacentMarkers(renumbered.sections[si].content);
+      // 붙어 있는 각주는 "[1][2]"가 아니라 "[1,2]" 하나로 보여 준다 — 출처는 빼지 않되 괄호가 글을 덜 끊게.
+      const renumberedContent = mergeAdjacentMarkers(dedupeAdjacentMarkers(renumbered.sections[si].content));
       const renumberedSources = renumbered.sections[si].sources;
       const bookTitle = mentionedBookTitle(s);
       if (s.requiredItems) {
