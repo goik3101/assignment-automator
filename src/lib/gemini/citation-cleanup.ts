@@ -53,11 +53,12 @@ export function collapseMarkersToBlockEnd(markdown: string): string {
   const flush = () => {
     if (buf.length === 0) return;
     const text = buf.join("\n");
-    const ns = [...new Set((text.match(/\[(\d+(?:,\d+)*)\]/g) ?? []).flatMap((m) => m.slice(1, -1).split(",").map(Number)))].sort((a, b) => a - b);
+    const ns = [...new Set((text.match(/\[\d+(?:,\d+)*\](?!\()/g) ?? []).flatMap((m) => m.slice(1, -1).split(",").map(Number)))].sort((a, b) => a - b);
     if (ns.length === 0) {
       out.push(...buf);
     } else {
-      const stripped = text.replace(/\s*\[\d+(?:,\d+)*\]/g, "");
+      // "[1](주소)"는 각주가 아니라 마크다운 링크다 — 뒤에 "("가 오면 떼지 않는다.
+      const stripped = text.replace(/\s*\[\d+(?:,\d+)*\](?!\()/g, "");
       // 각주는 마지막 문장 부호 뒤가 아니라 문단 맨 끝에 붙인다 — 문장 중간에서 흐름을 끊지 않는다.
       out.push(...`${stripped.replace(/\s+$/, "")} [${ns.join(",")}]`.split("\n"));
     }

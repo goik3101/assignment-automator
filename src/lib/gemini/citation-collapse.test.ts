@@ -38,3 +38,8 @@ test("여러 줄 문단도 한 묶음으로 본다", () => {
   const src = "첫 줄이다.[1]\n같은 문단 둘째 줄이다.[2]";
   assert.equal(collapseMarkersToBlockEnd(src), "첫 줄이다.\n같은 문단 둘째 줄이다. [1,2]");
 });
+
+test("번호가 이름인 마크다운 링크는 각주로 보지 않는다", () => {
+  const src = "자세한 내용은 [1](https://example.com/a)에 있다.[2]";
+  assert.equal(collapseMarkersToBlockEnd(src), "자세한 내용은 [1](https://example.com/a)에 있다. [2]");
+});
