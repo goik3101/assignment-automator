@@ -13,6 +13,7 @@ export default async function Footer() {
           <span>{t("베타 버전이에요. 이상한 결과를 발견하면 알려 주세요.")}</span>
         </OpenSettingsButton>
         <span className="flex items-center gap-3">
+          <Link href="/guide" className="hover:text-foreground">수행평가 가이드</Link>
           <Link href="/terms" className="hover:text-foreground">이용약관</Link>
           <Link href="/privacy" className="hover:text-foreground">개인정보처리방침</Link>
           <span>studed</span>

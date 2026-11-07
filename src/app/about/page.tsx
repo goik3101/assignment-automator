@@ -72,6 +72,7 @@ export default function AboutPage() {
       ))}
       <nav className="mb-6 flex gap-4 text-xs text-faint">
         <Link href="/" className="hover:text-foreground">홈</Link>
+        <Link href="/guide" className="hover:text-foreground">수행평가 가이드</Link>
         <Link href="/terms" className="hover:text-foreground">이용약관</Link>
         <Link href="/privacy" className="hover:text-foreground">개인정보처리방침</Link>
       </nav>
