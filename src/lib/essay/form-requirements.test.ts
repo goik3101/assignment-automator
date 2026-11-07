@@ -329,3 +329,44 @@ test("글 단계가 이미 있으면 아무것도 바꾸지 않는다", () => {
   const els = [{ type: "text_submission", label: "개요", description: "쓴다", required_items: [] }, POSTER];
   assert.equal(ensureSomeTextStep(els), els);
 });
+
+// ── 줄 수 표현("약 5줄", "3줄 분량") — LINE_LENGTH=on일 때만 읽는다(기본 꺼짐) ─────────────
+test("LINE_LENGTH 꺼짐: 약 5줄·3줄 분량은 예전처럼 안 읽는다(기본 동작 유지)", () => {
+  delete process.env.LINE_LENGTH;
+  assert.deepEqual(extractCountRequirements(["내용 약 5줄", "3줄 분량", "5줄로 작성"]), []);
+});
+
+test("LINE_LENGTH 켜짐: 약 N줄·N줄 분량·N줄로를 줄 수 조건으로 읽고, 한 줄 요약 같은 소규모 지시는 안 읽는다", () => {
+  process.env.LINE_LENGTH = "on";
+  try {
+    const one = (s: string) => extractCountRequirements([s]).filter((r) => r.unit === "line");
+    assert.deepEqual(one("내용 약 5줄").map((r) => [r.min, r.max]), [[4, 6]]);
+    assert.deepEqual(one("3줄 분량").map((r) => [r.min, r.max]), [[2, 4]]);
+    assert.deepEqual(one("5줄로 작성").map((r) => [r.min, r.max]), [[4, 6]]);
+    assert.deepEqual(one("2~3줄").map((r) => [r.min, r.max]), [[2, 3]]); // 범위는 그대로
+    assert.deepEqual(one("한 줄로 요약한다"), []);
+    assert.deepEqual(one("줄을 바꿔 쓴다"), []);
+    const block = buildFormLimitBlock([{ label: "머리기사", reqs: one("내용 약 5줄") }]);
+    assert.match(block, /한 줄을 공백 포함 약 30자/);
+    assert.equal(hasSizeLimit(one("내용 약 5줄")), true); // 기본 분량 가이드(900~1500자)를 빼게 한다
+  } finally {
+    delete process.env.LINE_LENGTH;
+  }
+});
+
+test("제목 칸: LINE_LENGTH 켜짐일 때만, 제목·이름 기입란만 한 줄 칸으로 잡는다", async () => {
+  const { titleFieldItems, buildTitleFieldBlock } = await import("./form-requirements.ts");
+  const el = { label: "카드뉴스", required_items: ["책 제목", "카드 뉴스 제목", "전달하고자 하는 메시지", "인터뷰 대상", "제목 및 내용"] };
+  assert.deepEqual(titleFieldItems(el), ["책 제목", "카드 뉴스 제목"]);
+  delete process.env.LINE_LENGTH;
+  assert.equal(buildTitleFieldBlock([el]), ""); // 기본 꺼짐 — 프롬프트가 바뀌지 않는다
+  process.env.LINE_LENGTH = "on";
+  try {
+    const b = buildTitleFieldBlock([el]);
+    assert.match(b, /한 줄로/);
+    assert.match(b, /"책 제목", "카드 뉴스 제목"/);
+    assert.equal(buildTitleFieldBlock([{ label: "x", required_items: ["주제", "근거"] }]), "");
+  } finally {
+    delete process.env.LINE_LENGTH;
+  }
+});

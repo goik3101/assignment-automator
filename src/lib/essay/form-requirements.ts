@@ -3,6 +3,7 @@
 // "발표 대본 5문장 이내·10줄"은 텍스트로만 전달돼 기본 분량(발표 900~1700자)과 부딪혔다. 개수는 모델이 아니라 코드가 센다.
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
 import { cellSubfields, expandCells } from "./cell-subfields.ts";
+import { lineLengthOn } from "./quality-flags.ts";
 
 export type UnitKind = "scene" | "sentence" | "line" | "paragraph";
 
@@ -29,6 +30,8 @@ const SINGLE = new RegExp(`(?<![\\d~∼–-])(${NUM})\\s*(?:개\\s*(?:의\\s*)?)
 
 // 단위가 숫자보다 먼저 오는 말투도 받는다 — "장면은 8개가 기본이며", "문단은 3개 이상"(실측 2026-11-01 규칙 전수).
 const REVERSED = new RegExp(`(${UNITS})\\s*(?:은|는|이|가)?\\s*(${NUM})\\s*개\\s*(?:가|를|이(?!상|내|하))?\\s*(이상|이내|이하|내외|안팎|정도|가량|안에|까지|기본)?`, "g");
+
+const LOOSE_LINE = new RegExp(`(?<![\\d~∼–-])(약\\s*)?(${NUM})\\s*줄\\s*(분량|으로|로|씩|짜리)?`, "g");
 
 const toNum = (s: string) => (/^\d+$/.test(s) ? Number(s) : KO_NUM[s]);
 
@@ -71,6 +74,17 @@ export function extractPositionedRequirements(text: string): PositionedReq[] {
     else if (suffix === "이내" || suffix === "이하" || suffix === "안에" || suffix === "까지") push({ unit, word: m[2], min: 0, max: n, index: at });
     else if (suffix) push({ unit, word: m[2], min: Math.max(1, n - 1), max: n + 1, index: at });
     else push({ unit, word: m[2], min: n, max: n, index: at });
+  }
+  // 양식 칸에 가장 흔한 줄 수 표현 — "약 5줄", "3줄 분량", "5줄로 작성". 위 규칙은 이런 말을 안 읽어서(한정어가 없다고 보고) 5줄 칸이 조건 없는 단계가 됐다.
+  // "약"이나 분량·으로 같은 말이 붙은 줄 수만 받는다("한 줄로 요약" 같은 소규모 지시는 NUM에 "한"이 없어 그대로 제외).
+  if (lineLengthOn()) {
+    for (const m of text.matchAll(LOOSE_LINE)) {
+      if (rangeSpans.some(([s, e]) => m.index! >= s && m.index! < e)) continue;
+      if (!m[1] && !m[3]) continue;
+      const n = toNum(m[2]);
+      if (!n || n < 1) continue;
+      push({ unit: "line", word: "줄", min: Math.max(1, n - 1), max: n + 1, index: m.index! });
+    }
   }
   return out;
 }
@@ -279,6 +293,25 @@ export function describeFormIssue(i: FormIssue): string {
     : `안내문의 조건은 ${want}인데 현재 ${i.actual}${noun}뿐이다 — ${i.req.min}${noun} 이상이 되게 내용을 보충할 것`;
 }
 
+// 제목·이름을 적는 기입란은 안내문에 줄 수가 없어도 한 줄 칸이다 — 양식의 상식. 실측(2026-11-06, 카드뉴스): "책 제목" 칸에 네 문장짜리 소개가 들어갔다.
+const TITLE_FIELD = /(?:^|\s)(?:제목|표제|이름|저자|작가)\s*[:：]?$/;
+
+/** 제목 칸 항목 이름들 — 단계마다. LINE_LENGTH가 켜졌을 때만 쓴다. */
+export function titleFieldItems(el: { required_items?: string[] }): string[] {
+  return (el.required_items ?? []).map((i) => i.trim()).filter((i) => TITLE_FIELD.test(i));
+}
+
+/** 제목 칸을 한 줄로 쓰게 하는 블록. 해당 단계가 없거나 스위치가 꺼져 있으면 빈 문자열. */
+export function buildTitleFieldBlock(elements: { label: string; required_items?: string[] }[]): string {
+  if (!lineLengthOn()) return "";
+  const lines = elements.flatMap((el) => {
+    const t = titleFieldItems(el);
+    return t.length ? [`- "${el.label}" 단계: ${t.map((x) => `"${x}"`).join(", ")}`] : [];
+  });
+  if (lines.length === 0) return "";
+  return `\n【제목 칸 — 한 줄로】 아래 항목은 제목·이름을 적는 한 줄짜리 기입란이다. 설명 문장·배경·디자인 안내를 붙이지 말고, 이름 자체를 공백 포함 30자 안팎의 한 줄로만 쓸 것(출처가 필요하면 각주만 붙인다).\n${lines.join("\n")}\n`;
+}
+
 /** 생성 프롬프트에 넣을 형식 조건 블록(문장·줄·문단 조건이 있는 단계만). 없으면 빈 문자열. */
 export function buildFormLimitBlock(items: { label: string; reqs: CountReq[] }[]): string {
   const lines = items
@@ -288,7 +321,12 @@ export function buildFormLimitBlock(items: { label: string; reqs: CountReq[] }[]
     })
     .filter(Boolean);
   if (lines.length === 0) return "";
-  return `\n【형식 조건 — 반드시 지킬 것】 시험지·안내문이 정한 조건이다. 아래 단계는 이 조건이 다른 모든 분량 지시보다 우선한다. 조건 안에서 필요한 내용만 짧게 쓰고, 줄 수 조건은 한 문장을 한 줄 안에 읽히게 짧게 써서 지킬 것.\n${lines.join("\n")}\n`;
+  // 모델은 "줄"을 세지 못해 5줄 칸에 열 줄 넘게 쓴다 — 글자 수로 바꿔 줘야 지킨다. 칸마다 다르니 한 줄의 기준만 주고 곱셈은 모델이 한다.
+  const lineHint =
+    lineLengthOn() && items.some((i) => i.reqs.some((r) => r.unit === "line"))
+      ? " 줄 수는 한 줄을 공백 포함 약 30자(25~35자)로 보고 환산해, 칸 하나가 'N줄'이면 약 N×30자를 넘지 않게 쓸 것(제목 칸과 내용 칸이 따로 있으면 칸마다 따로)."
+      : "";
+  return `\n【형식 조건 — 반드시 지킬 것】 시험지·안내문이 정한 조건이다. 아래 단계는 이 조건이 다른 모든 분량 지시보다 우선한다. 조건 안에서 필요한 내용만 짧게 쓰고, 줄 수 조건은 한 문장을 한 줄 안에 읽히게 짧게 써서 지킬 것.${lineHint}\n${lines.join("\n")}\n`;
 }
 
 /**
