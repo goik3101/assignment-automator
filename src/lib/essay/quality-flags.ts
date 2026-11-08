@@ -137,3 +137,12 @@ export function boxLengthOn(): boolean {
 export function lengthTargetOn(): boolean {
   return process.env.LENGTH_TARGET !== "off";
 }
+
+/**
+ * 영역 사이 되풀이 문장과 안내문 정의 새어 나옴을 **코드로** 지운다(dedupe.ts). 기본 켜짐.
+ * 모델 호출이 없어 시간 예산이 건너뛸 수 없다 — 실측(사용자 결과물20)에서 검사기는 4쌍을 잡고도
+ * 보완이 예산에 밀려 안 돌아 그대로 나갔다. ESSAY_DEDUPE=off로 되돌린다.
+ */
+export function dedupeOn(): boolean {
+  return process.env.ESSAY_DEDUPE !== "off";
+}

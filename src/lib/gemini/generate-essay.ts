@@ -48,14 +48,15 @@ import {
   tabTableToMarkdown,
   stripWorkMarkers,
   stripFormLead,
-  studentPreparedVisuals,} from "@/lib/essay/deliverable";
+  studentPreparedVisuals,
+  newspaperSectionLabels,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { boxLengthBlock, boxLengths, boxOverflowRepairText, boxOverflows } from "@/lib/essay/box-lines";
 import { bookForm, bookFormBlock } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata } from "@/lib/essay/paste-slot";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
-import { evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { dedupeOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
@@ -105,6 +106,7 @@ import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
 import { GRAMMAR_REPAIR_TEXT, UNDERLINE_REPAIR_TEXT, missingGrammarForms, missingUnderlinedForms, requiredGrammarForms, underlineGrammarForms, wantsUnderline, forbidsRelativeAdverb, relativeAdverbInUnderline, relativeAdverbRepairText } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
+import { dropRepeatedSentences, stripDefinitionPrefix } from "@/lib/essay/dedupe";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
 import { effectiveTarget, lengthGuideLines } from "@/lib/essay/length-plan";
@@ -1286,6 +1288,7 @@ ${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 
 - 사실 문장은 사실 자체를 평서문으로 쓴다("1769년 제임스 와트가 증기기관을 개량했다."). "이 글은 ~라고 지적한다", "해당 기사에서 인용되었다", "~라고 보고하고 있다"처럼 출처를 주어로 쓰지 말고, 괄호 속 해석·평가를 덧붙이지 말 것.`
       : ""
   }
+- **검색어는 그 주제를 다루는 자료가 실제로 쓰인 언어로 쓴다.** 한국의 역사·사회·인물·제도·지역을 다루는 과제면 **한국어로 검색**하고 우리나라 기관·교과 자료(국사편찬위원회·국가기록원·우리역사넷·공공 통계 등)를 먼저 찾는다. 영어로 검색하면 한국사 사실이 거의 안 걸리고(실측 2026-11-09: 한국사 신문에서 영어 검색만 해 사실 4개·출처 1개로 끝났다) 학생이 확인하기 어려운 외국 자료가 출처가 된다. 과제를 영어로 써야 하거나 대상이 외국 제품·인물·기관이면 그 언어로 검색한다.
 - 같은 사실을 중복하지 말고, 서로 다른 신뢰도 높은 페이지(공식 기관·원문·신뢰 매체 우선)에서 고른다. 위키형·블로그·동영상은 다른 근거가 없을 때만.
 - 기관·포털의 첫 화면 주소(예: https://www.me.go.kr/ , .../main.do)는 근거가 될 수 없다. 그 사실이 실제로 적힌 보도자료·통계표·기사 페이지의 주소를 쓸 것.
 - url은 검색 중 실제로 열어 본 페이지 주소여야 하고, title은 그 페이지 제목이다.${grouped ? " 같은 페이지에서 나온 사실은 한 항목의 facts에 모아 url과 title을 한 번만 쓴다." : ""}
@@ -2479,6 +2482,32 @@ export async function generateEssay(
       console.warn(`[generateEssay] 표·그래프를 글에 만들지 않음 label="${el.label}"`);
       activityRewrites.push({ label: el.label, instruction: dataTableRepairText(el.label) });
     }
+  }
+  // 영역 사이에 거의 같은 문장이 되풀이되면 **코드가 뒤쪽 것을 지운다**(dedupe.ts — 모델 호출 0).
+  // 실측(사용자 결과물20, 한국사 신문): 같은 한 문장이 네 영역에 모두 들어갔고, 검사기는 4쌍을 잡았는데
+  // 고치는 쪽이 모델 보완이라 시간 예산에 밀려 돌지 않아 그대로 나갔다. 호출이 없으면 예산이 못 건너뛴다.
+  if (dedupeOn()) {
+    // 한 지면을 나눠 맡은 영역끼리만 지운다 — 따로 제출하는 글(처방전·편지)은 저마다 말이 돼야 한다.
+    const sharedPage = newspaperSectionLabels(input.coreTaskInfo.topic, elements.map((e) => ({ label: e.label, description: e.description })));
+    const { sections: deduped, removed } = dropRepeatedSentences(
+      attempt.sections.map((s) => ({ label: s.label, content: s.content })),
+      sharedPage
+    );
+    if (removed.length > 0) {
+      console.log(`[generateEssay] 되풀이 문장 ${removed.length}개를 코드로 지움: ${JSON.stringify(removed.map((r) => `${r.label}: ${r.text.slice(0, 30)}…`))}`);
+      attempt = { ...attempt, sections: attempt.sections.map((s) => ({ ...s, content: deduped.find((d) => d.label === s.label)?.content ?? s.content })) };
+    }
+    // 안내문의 정의 문장을 라벨처럼 앞에 붙여 쓴 줄에서 그 앞부분을 뗀다("사설은 신문사의 주장에 해당하고: …").
+    const strippedAll: string[] = [];
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((s) => {
+        const { content, stripped } = stripDefinitionPrefix(s.content);
+        strippedAll.push(...stripped);
+        return stripped.length > 0 ? { ...s, content } : s;
+      }),
+    };
+    if (strippedAll.length > 0) console.log(`[generateEssay] 안내문 정의가 본문에 새어 나와 뗌: ${JSON.stringify(strippedAll)}`);
   }
   const repeatedPairs = findRepeatedStatements(attempt.sections.map((s) => ({ label: s.label, content: s.content })));
   // 한두 건은 자연스러운 겹침(핵심 연도 문장 등)일 수 있어 3건 이상일 때만 되풀이로 본다.
