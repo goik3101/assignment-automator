@@ -108,16 +108,27 @@ test("소수점을 문장 끝으로 보지 않는다(각주가 숫자 중간에 
   assert.match(r.text, /85\.49%이다\.\[F1\]/);
 });
 
-test("본문 근거로 약한 주소는 뒤로 미룬다 — 첫 화면·내려받기 파일·목록 페이지", () => {
-  // 실측에서 나온 주소들(2026-11-08, 저장된 결과물 106개 출처 전수)
-  assert.equal(isSecondChoicePage("https://www.mirae-n.com/UPLOAD/202203210522047hnmvkmtr8.pdf"), true);
-  assert.equal(isSecondChoicePage("https://contents2.kocw.or.kr/KOCW/data/document/2019/cup/x/5.pdf"), true);
-  assert.equal(isSecondChoicePage("https://humanrights.go.kr/site/program/board/basicboard/view?boardid=566776"), true);
+test("본문 근거로 약한 주소는 뒤로 미룬다 — 검색·목록 페이지", () => {
+  // 내용이 계속 바뀌는 목록·검색 페이지와, 누구나 올리는 문서 공유 사이트를 뒤로 미룬다
+  assert.equal(isSecondChoicePage("https://example.go.kr/bbs/list"), true);
+  assert.equal(isSecondChoicePage("https://www.scribd.com/document/921980641/x"), true);
+  assert.equal(isSecondChoicePage("https://blog.naver.com/someone/22334455"), true);
   assert.equal(isSecondChoicePage("https://example.go.kr/search?q=%EB%AC%B8%EC%84%9C"), true);
   // 본문 페이지는 그대로 1순위
   assert.equal(isSecondChoicePage("https://contents.history.go.kr/front/hm/view.do?levelId=hm_145_0120"), false);
   assert.equal(isSecondChoicePage("https://theme.archives.go.kr/next/unKorea/establishment.do"), false);
   assert.equal(isSecondChoicePage("https://www.yna.co.kr/view/AKR20260716109800004"), false);
-  // 주소 안에 pdf라는 낱말이 있어도 파일이 아니면 1순위다
+  // 내려받기 파일은 **1순위로 되돌렸다**(2026-11-08 실측: 빼 봤더니 Scribd 업로드가 그 자리를 채우고 출처가 2개로 줄었다)
+  assert.equal(isSecondChoicePage("https://www.mirae-n.com/UPLOAD/202203210522047hnmvkmtr8.pdf"), false);
+  assert.equal(isSecondChoicePage("https://contents2.kocw.or.kr/KOCW/data/document/2019/cup/x/5.pdf"), false);
   assert.equal(isSecondChoicePage("https://www.kipo.go.kr/pdf/guide/view"), false);
+});
+
+test("목록 낱말이 있어도 낱낱의 문서 페이지는 1순위다", () => {
+  // 실측에서 잘못 걸렸던 주소들(2026-11-08, 저장된 출처 112개)
+  assert.equal(isSecondChoicePage("https://library.nihc.go.kr/search/detail/CATCAZ000000027529?briefLink=%2FsearchA"), false);
+  assert.equal(isSecondChoicePage("https://humanrights.go.kr/site/program/board/basicboard/view?boardid=566776"), false);
+  // 진짜 목록·내려받기 엔드포인트는 그대로 뒤로
+  assert.equal(isSecondChoicePage("https://example.go.kr/board/list?page=2"), true);
+  assert.equal(isSecondChoicePage("https://sciencecube.kr/exec/front/Board/download/?filename=x.pdf"), true);
 });

@@ -51,21 +51,34 @@ export function isLandingPage(url: string): boolean {
   }
 }
 
-/** 내려받는 파일 주소(.pdf·.hwp·.docx…). 학생이 눌러도 글이 아니라 파일이 떨어진다. */
-const DOWNLOAD_FILE = /\.(?:pdf|hwpx?|docx?|xlsx?|pptx?|zip|csv)$/i;
-/** 검색 결과·게시판 목록 주소. 그 페이지의 내용은 계속 바뀌므로 어떤 사실의 근거도 못 된다. */
-const LIST_PATH = /(?:^|\/)(?:search|list|board|bbs|category|tag|archive)(?:$|\/)/i;
-
 /**
- * 첫 화면만큼은 아니지만 **본문 근거로는 뒤로 미룰** 주소인가.
- * 실측(2026-11-08, 저장된 결과물 31편의 출처 106개 전수): 내려받기 파일 13개·검색·목록 페이지 6개로
- * **18%**가 여기에 해당했고, 과학 과제가 특히 심했다(교과서 출판사 CDN의 .pdf 다섯 개).
- * 버리지는 않는다 — 다 버리면 사실이 부족해 느린 폴백으로 떨어지고 최악에는 출처 0개가 된다(2026-11-02).
+ * 검색 결과·게시판 목록 주소. 그 페이지의 내용은 계속 바뀌므로 어떤 사실의 근거도 못 된다.
+ *
+ * 내려받기 파일(.pdf·.hwp)은 **여기서 뺐다**(2026-11-08, 과학 과제 1회로 확인):
+ * 저장된 출처 106개 중 13개가 .pdf였고 "학생이 눌러도 글이 아니라 파일이 떨어진다"고 보고 뒤로 미뤘더니,
+ * .pdf는 0개가 됐지만 그 자리를 **Scribd 업로드 문서**가 차지했다(등급은 똑같이 general) 출처는 4~6개 → **2개**로 줄었다.
+ * 교과서 출판사·기관의 .pdf는 내용이 고정된 **실제 문서**라 근거로 못 쓸 이유가 없었다 — 전제가 틀렸다.
+ * 채점은 11/11로 같았으니 품질이 깨진 것은 아니지만, **좋아진 것도 없어 되돌렸다.**
  */
+const LIST_PATH = /(?:^|\/)(?:search|list|board|bbs|category|tag|archive)(?:$|\/)/i;
+/**
+ * 목록 낱말이 들어 있어도 **낱낱의 문서**를 가리키는 주소다. 실측(2026-11-08, 저장된 출처 112개):
+ * `library.nihc.go.kr/search/detail/CATCAZ…`(도서관 서지 상세), `humanrights.go.kr/…/board/basicboard/view?boardid=…`
+ * (게시물 본문)이 목록으로 잡혔다. 둘 다 내용이 고정된 페이지라 근거로 쓸 수 있다.
+ */
+const DETAIL_PATH = /(?:^|\/)(?:detail|view|read|article|post|show|item|content)s?(?:[/.?]|$)/i;
+/**
+ * 누구나 올리는 문서 공유·블로그. 학교 과제 출처로 부적절하고, 올린 사람이 내리면 사라진다.
+ * 실측(2026-11-08): 교과서 .pdf를 뒤로 미뤘더니 그 자리를 **Scribd 업로드 문서**가 1번 출처로 차지했다.
+ */
+const UPLOAD_SITE = /(?:^|\.)(?:scribd|slideshare|studocu|coursehero|docsity|blog\.naver|tistory|wordpress|velog|brunch\.co)\./i;
+
 export function isSecondChoicePage(url: string): boolean {
   try {
     const u = new URL(url);
-    return DOWNLOAD_FILE.test(u.pathname) || LIST_PATH.test(u.pathname);
+    if (UPLOAD_SITE.test(u.hostname)) return true;
+    const where = u.pathname + (u.search ? "?" : "");
+    return LIST_PATH.test(u.pathname) && !DETAIL_PATH.test(where);
   } catch {
     return false;
   }

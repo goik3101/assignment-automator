@@ -11,6 +11,8 @@ const OUT = path.join(REPO, "scratchpad/measure/out");
 
 const { lengthRoleOf, planLength, narrowTarget } = await import("@/lib/essay/length-plan");
 const { classifySourceTier } = await import("@/lib/links/source-quality");
+// 감사가 규칙을 베껴 쓰면 코드와 어긋난다 — 실제로 도는 판정을 그대로 불러 쓴다.
+const { isLandingPage, isSecondChoicePage } = await import("@/lib/essay/research-notes");
 
 /* ───────── 1. 단계 역할 분류 vs 채점된 결과물의 실제 분량 ───────── */
 // 정답 채점이 있는 결과물의 단계별 글자 수(scripts/measure/length-truth.ts의 표). 사람이 옮겨 적은 값.
@@ -69,9 +71,12 @@ const TIER_ORDER = ["official", "reliable", "reference", "general", "weak"] as c
 const tally: Record<string, number> = {};
 const badUrls: { file: string; url: string; why: string }[] = [];
 let total = 0;
-// 본문 근거로 쓰기 어려운 주소 — 첫 화면(경로 없음)·내려받기 파일·검색/목록 페이지
+// 본문 근거로 쓰기 어려운 주소 — 첫 화면(경로 없음)·검색/목록 페이지·누구나 올리는 문서 공유 사이트.
+// 내려받기 파일(.pdf)은 **문제로 세지 않는다**(2026-11-08 실측: 빼 봤더니 Scribd 업로드가 그 자리를
+// 채우고 출처가 2개로 줄었다 — 출판사·기관의 .pdf는 내용이 고정된 실제 문서다). 참고로만 센다.
 const DOWNLOAD = /\.(pdf|hwp|hwpx|docx?|xlsx?|pptx?|zip)(\?|$)/i;
 const LISTY = /(?:search|list|board|bbs|category|tag|archive)(?:[/?.]|$)/i;
+const UPLOAD_SITE = /(?:scribd|slideshare|studocu|coursehero|docslide|blog\.naver|tistory|wordpress|velog|brunch)\./i;
 for (const file of fs.readdirSync(OUT).filter((f) => f.startsWith("fc-") && f.endsWith(".md"))) {
   const md = fs.readFileSync(path.join(OUT, file), "utf8");
   for (const m of md.matchAll(/^\[(\d+)\]\s*(.*?)\s*—\s*(https?:\/\/\S+)\s*$/gm)) {
@@ -82,9 +87,11 @@ for (const file of fs.readdirSync(OUT).filter((f) => f.startsWith("fc-") && f.en
     let why = "";
     try {
       const u = new URL(url);
-      if (DOWNLOAD.test(u.pathname)) why = "내려받기 파일";
-      else if (u.pathname === "/" || u.pathname === "") why = "기관 첫 화면";
-      else if (LISTY.test(u.pathname + u.search)) why = "검색·목록 페이지";
+      if (UPLOAD_SITE.test(u.hostname)) why = "누구나 올리는 문서·블로그";
+      else if (isLandingPage(url)) why = "기관 첫 화면";
+      else if (isSecondChoicePage(url)) why = "검색·목록 페이지";
+      else if (DOWNLOAD.test(u.pathname)) why = "(참고) 내려받기 파일";
+      else if (LISTY.test(u.pathname + u.search)) why = "(참고) 목록 낱말이 있으나 문서 페이지";
     } catch {
       why = "주소 형식 오류";
     }
@@ -96,8 +103,9 @@ const weakShare = ((tally.general ?? 0) + (tally.weak ?? 0)) / Math.max(1, total
 console.log(`  → general+weak 비율 ${(weakShare * 100).toFixed(0)}%`);
 const byWhy: Record<string, number> = {};
 for (const b of badUrls) byWhy[b.why] = (byWhy[b.why] ?? 0) + 1;
-console.log(`  본문 근거로 쓰기 어려운 주소 ${badUrls.length}개: ${Object.entries(byWhy).map(([k, v]) => `${k} ${v}`).join(", ") || "없음"}`);
-for (const b of badUrls.slice(0, 8)) console.log(`     [${b.why}] ${b.url.slice(0, 95)}  (${b.file})`);
+const realBad = badUrls.filter((b) => !b.why.startsWith("(참고)"));
+console.log(`  본문 근거로 쓰기 어려운 주소 ${realBad.length}개: ${Object.entries(byWhy).map(([k, v]) => `${k} ${v}`).join(", ") || "없음"}`);
+for (const b of realBad.slice(0, 8)) console.log(`     [${b.why}] ${b.url.slice(0, 95)}  (${b.file})`);
 
 /* ───────── 3. 시간 — 어떤 보완이 예산에 밀리는가 ───────── */
 console.log("\n## 3. 시간 — 저장된 로그 전수에서 건너뛴 보완\n");
