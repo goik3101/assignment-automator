@@ -642,7 +642,14 @@ ${input.previousOutputText}
   const lengthTargetBlock = lengthTargetLines.length ? `\n【분량 — 반드시 지킬 것】\n${lengthTargetLines.join("\n")}\n` : "";
   // 안내문에 분량이 없는 단계는 역할·항목 수로 정한 권장 범위를 준다(length-plan.ts) — 모든 단계에 같은 글자 수를 주지 않고, 부족 여부는 글자 수가 아니라 필수 항목 충족으로 본다.
   const formOn = formRequirementsOn();
-  const formCtx = { requirements: input.coreTaskInfo.requirements, guide: input.coreTaskInfo.writing_guide, labels: input.coreTaskInfo.task_elements.map((e) => e.label) };
+  const formCtx = {
+    requirements: input.coreTaskInfo.requirements,
+    guide: input.coreTaskInfo.writing_guide,
+    labels: input.coreTaskInfo.task_elements.map((e) => e.label),
+    // 역할 분류가 "이 단계가 한 지면의 칸인지"를 알려면 과제 주제와 형제 단계를 봐야 한다(length-plan.ts의 RoleCtx).
+    topic: input.coreTaskInfo.topic,
+    siblings: input.coreTaskInfo.task_elements.map((e) => ({ label: e.label, description: e.description })),
+  };
   // 안내문이 칸의 줄 수를 알려 준 단계는 그 칸 크기가 기준이다 — 학생은 이 글을 그 칸에 옮겨 적는다(box-lines.ts).
   // 실측(2026-11-07, 역사 신문): "내용 약 5줄" 칸에 1102자·949자를 썼고 사설은 308자와 2286자로 7배 갈렸다.
   const boxes = boxLengthOn() ? boxLengths(elements.map((e) => e.label), input.coreTaskInfo.writing_guide) : [];

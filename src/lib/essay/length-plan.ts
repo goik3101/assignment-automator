@@ -8,11 +8,14 @@ import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 import { isDrawingBox } from "./box-lines.ts";
 import { lengthFromAnalyzeOn, type LengthEstimate } from "./length-estimate.ts";
+import { newspaperSectionLabels } from "./deliverable.ts";
 
 export type LengthRole =
   | "material" // 항목별 조사 자료(소제목 구조)
   | "report_sections" // 항목 소제목이 있는 제출용 보고서(항목마다 문단)
   | "newspaper"
+  | "form_box" // 신문·양식의 **영역 한 칸**(머리기사·인터뷰·사설처럼 한 지면을 나눠 맡은 칸)
+  | "attachment" // 자료를 붙이고 설명만 적는 칸(기사 스크랩 등)
   | "reflection" // 소감·느낀 점·후기·성찰
   | "reason" // 선정 이유·동기
   | "slogan" // 문구·슬로건·캐치프레이즈
@@ -42,9 +45,37 @@ export interface LengthPlan {
   basis: string;
 }
 
-export function lengthRoleOf(el: PlanElement): LengthRole {
+/**
+ * 역할을 정할 때 함께 봐야 하는 과제 전체 정보. 단계 이름만 보면 **같은 지면의 칸들이 서로 다른 역할**이 된다 —
+ * 실측(2026-11-08, 채점된 결과물 9개 전수): 한 신문에서 머리기사→newspaper(목표 1,200자),
+ * 인터뷰→report_sections(1,380자), 사설/칼럼→**report(2,025자)**로 갈렸는데 만점 결과물의 실제 분량은
+ * 930·687·**362자**였다(사설은 5.6배 어긋남). 칸 세 개가 역할 세 개를 받은 것이다.
+ */
+export interface RoleCtx {
+  topic?: string;
+  siblings?: { label: string; description: string }[];
+}
+
+/**
+ * 자료를 **붙이는** 것이 본체인 단계인가(기사 스크랩 등). 글은 제목·출처와 짧은 설명뿐이다.
+ * **단계 이름만 본다** — 설명에는 "사진·그림은 미리 준비하여 붙인다"처럼 붙이는 말이 딴 칸(머리기사)에도
+ * 섞여 있다. 그리고 `isOwnRecordStep`(빈칸 규칙용)을 재사용하면 "자료 수집"처럼 글이 본체인 조사 단계까지
+ * 걸린다(실측: 자료 수집 단계는 만점 결과물이 1,095자다).
+ */
+export function isAttachmentStep(el: { label: string }): boolean {
+  return /스크랩|오려\s*붙|붙이기|부착/.test(el.label);
+}
+
+export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
   const label = el.label;
   const text = `${el.label} ${el.description}`;
+  // 한 지면을 나눠 맡은 칸이면 칸 하나의 분량이다(newspaperSectionLabels는 이미 네 영역을 다 잡아 준다).
+  if (ctx?.siblings && ctx.siblings.length > 1) {
+    const sections = newspaperSectionLabels(ctx.topic ?? "", ctx.siblings);
+    if (sections.includes(el.label)) return "form_box";
+  }
+  // 자료를 붙이고 설명만 적는 칸 — 본체가 글이 아니다. 만점 결과물 실측 170·202자인데 역할 표는 1,200자를 줬다(5.9배).
+  if (isAttachmentStep(el)) return "attachment";
   if (inferDeliverableForm(el) === "newspaper") return "newspaper";
   if (formRequirementsOn() && isSceneListElement(el)) return "scenes";
   // 개요·계획은 항목이 여럿이어도 보고서가 아니다 — 항목 수로만 정하면 "개요"에 보고서 분량(항목 7개 × 250~450 = 1,750~3,150자)이 붙어
@@ -73,8 +104,8 @@ const PER_ITEM = 140;
 
 // 평가 기준 개수로 상한을 줄이는 규칙은 넣지 않는다(2026-11-06 시도 후 제거): 기준 개수를 문장 매칭으로 세면 부정확해서
 // 8장면 스토리보드가 "500~500자"가 됐다. 짧게 나오는 문제를 키우므로 기준 수 → 분량 규칙은 만들지 않는다.
-export function planLength(el: PlanElement): LengthPlan {
-  const role = lengthRoleOf(el);
+export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
+  const role = lengthRoleOf(el, ctx);
   const items = el.required_items?.length ?? 0;
   const itemBoost = Math.max(0, items - 2) * PER_ITEM;
   switch (role) {
@@ -104,6 +135,14 @@ export function planLength(el: PlanElement): LengthPlan {
     }
     case "newspaper":
       return { role, min: 900 + itemBoost / 2, max: 1500 + itemBoost, basis: "신문 한 면에 들어갈 기사·표·후기" };
+    case "form_box":
+      // 범위를 지어내지 않고 **채점된 만점 결과물의 칸 분량**에 맞춘다: 머리기사 930 / 인터뷰 687 / 사설 362자.
+      // 목표 600자면 세 칸 모두 0.65~1.66배 안에 들어온다(예전 역할 표는 1.29·2.01·5.59배였다).
+      // 안내문이 칸 줄 수를 알려 주면 그쪽(box-lines)이 먼저다 — 이건 줄 수가 없을 때의 기준이다.
+      return { role, min: 300, max: 900, basis: "한 지면을 나눠 맡은 칸 하나" };
+    case "attachment":
+      // 만점 결과물 실측 170·202자(붙일 자료가 본체이고 글은 제목·날짜·출처와 짧은 설명이다).
+      return { role, min: 100, max: 300, basis: "붙일 자료의 제목·출처와 짧은 설명" };
     case "reflection":
       return { role, min: 250, max: 600, basis: "본인 경험·생각 중심의 짧은 글" };
     case "reason":
@@ -162,12 +201,10 @@ const TOLERANCE = 0.2;
  */
 const PER_ITEM_FLOOR = 150;
 
-export function narrowTarget(el: PlanElement & { length_estimate?: LengthEstimate }): {
-  target: number;
-  min: number;
-  max: number;
-  basis: string;
-} {
+export function narrowTarget(
+  el: PlanElement & { length_estimate?: LengthEstimate },
+  ctx?: RoleCtx
+): { target: number; min: number; max: number; basis: string } {
   // 분석이 사진(칸 크기·줄 수·배점·예시 글)을 보고 정한 분량이 있으면 그것을 쓴다 — 역할 표는 사진을 못 본다.
   // 채점된 결과물 7편에서 항목당 글자 수가 72~465자로 흩어져(length-truth.ts) 역할·항목 수로는 정할 수 없음이 확인됐다.
   const est = lengthFromAnalyzeOn() ? el.length_estimate : undefined;
@@ -179,15 +216,26 @@ export function narrowTarget(el: PlanElement & { length_estimate?: LengthEstimat
       basis: `안내문 사진 기준 ${est.basis}`,
     };
   }
-  const p = planLength(el);
+  const p = planLength(el, ctx);
   const items = el.required_items?.length ?? 0;
-  const floor = items >= 3 ? items * PER_ITEM_FLOOR : 0;
+  // 칸 하나·붙임 자료 칸은 항목이 많아도 칸 크기가 한계다 — 바닥값으로 부풀리지 않는다.
+  const floor = items >= 3 && p.role !== "form_box" && p.role !== "attachment" ? items * PER_ITEM_FLOOR : 0;
   const target = Math.round(Math.max((p.min + p.max) / 2, floor));
   return { target, min: Math.round(target * (1 - TOLERANCE)), max: Math.round(target * (1 + TOLERANCE)), basis: p.basis };
 }
 
 export type GuideElement = PlanElement & { target_length?: unknown; length_estimate?: LengthEstimate };
-export type GuideCtx = { requirements: string[]; guide?: string; labels: string[] };
+export type GuideCtx = {
+  requirements: string[];
+  guide?: string;
+  labels: string[];
+  /** 역할 분류에 필요한 과제 전체 정보(한 지면을 나눠 맡은 칸인지 알려면 형제 단계를 봐야 한다). */
+  topic?: string;
+  siblings?: { label: string; description: string }[];
+};
+
+const roleCtx = (ctx?: GuideCtx): RoleCtx | undefined =>
+  ctx ? { topic: ctx.topic, siblings: ctx.siblings } : undefined;
 
 /** 이 단계에 분량 가이드를 줄 수 있는가(= lengthGuideLines가 이 단계를 다루는가). */
 function guided(e: GuideElement, ctx?: GuideCtx): boolean {
@@ -206,8 +254,8 @@ export function effectiveTarget(el: GuideElement, ctx?: GuideCtx): number | null
   if (!guided(el, ctx)) return null;
   const pg = lineLengthOn() && ctx ? pageLengthForElement(el, ctx.requirements, ctx.guide, ctx.labels) : null;
   if (pg) return Math.round((pg.min + pg.max) / 2);
-  if (lengthTargetOn()) return narrowTarget(el).target;
-  const p = planLength(el);
+  if (lengthTargetOn()) return narrowTarget(el, roleCtx(ctx)).target;
+  const p = planLength(el, roleCtx(ctx));
   return Math.round((p.min + p.max) / 2);
 }
 
@@ -225,10 +273,10 @@ export function lengthGuideLines(elements: GuideElement[], ctx?: GuideCtx): stri
       const pg = lineLengthOn() && ctx ? pageLengthForElement(e, ctx.requirements, ctx.guide, ctx.labels) : null;
       if (pg) return `- "${e.label}" 단계: 공백 포함 ${round50(pg.min)}~${round50(pg.max)}자 안팎(안내문이 정한 분량 "${pg.text}"을 ${pg.unit === "page" ? "A4 한 쪽 약 1,000자" : "원고지 한 매 200자"}로 환산한 값 — 이 범위를 넘지 말고, 다만 필수 항목을 빠뜨릴 만큼 줄이지도 말 것).`;
       if (lengthTargetOn()) {
-        const t = narrowTarget(e);
+        const t = narrowTarget(e, roleCtx(ctx));
         return `- "${e.label}" 단계: 공백 포함 **약 ${round50(t.target)}자**(${round50(t.min)}~${round50(t.max)}자 안에 들어오게 — ${t.basis}).`;
       }
-      const p = planLength(e);
+      const p = planLength(e, roleCtx(ctx));
       return `- "${e.label}" 단계: 공백 포함 ${round50(p.min)}~${round50(p.max)}자 안팎(${p.basis}).`;
     });
 }

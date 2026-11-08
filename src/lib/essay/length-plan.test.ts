@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { narrowTarget, planLength, lengthGuideLines } from "./length-plan.ts";
+import { narrowTarget, planLength, lengthGuideLines, lengthRoleOf } from "./length-plan.ts";
 
 // ── 목표 하나로 좁히기 (LENGTH_TARGET) ─────────────────────
 test("범위 대신 목표 하나 ±20%로 좁힌다", () => {
@@ -45,4 +45,31 @@ test("그림 칸에는 분량 가이드를 주지 않는다", () => {
   const lines = lengthGuideLines(els);
   assert.equal(lines.length, 1);
   assert.ok(lines[0].includes("사설"));
+});
+
+test("한 지면을 나눠 맡은 칸은 칸 하나 분량이다 (채점된 실제 분량에 맞춘 역할)", () => {
+  const sibs = [
+    { label: "머리기사", description: "신문 양식의 머리기사 칸에 제목과 내용을 작성한다." },
+    { label: "인터뷰", description: "신문 양식의 인터뷰 칸에 질문과 답변을 작성한다." },
+    { label: "사설/칼럼", description: "신문 양식의 사설/칼럼 칸에 제목과 내용을 작성한다." },
+  ];
+  const ctx = { topic: "광복부터 정부 수립 사이의 현대사를 주제로 신문 만들기", siblings: sibs };
+  for (const el of sibs) {
+    assert.equal(lengthRoleOf({ ...el, required_items: ["제목", "내용"] }, ctx), "form_box", el.label);
+    const t = narrowTarget({ ...el, required_items: ["제목", "내용"] }, ctx);
+    // 만점 결과물 실측 930·687·362자가 모두 0.5~2배 안에 들어오는 목표
+    for (const real of [930, 687, 362]) {
+      const ratio = t.target / real;
+      assert.ok(ratio > 0.5 && ratio < 2, `${el.label}: 목표 ${t.target} / 실제 ${real} = ${ratio.toFixed(2)}배`);
+    }
+  }
+  // 형제 정보가 없으면 예전 분류 그대로(측정 스크립트·기존 호출부가 깨지지 않게)
+  assert.notEqual(lengthRoleOf({ label: "사설/칼럼", description: "사설을 쓴다" }), "form_box");
+});
+
+test("자료를 붙이고 설명만 적는 칸은 붙임 분량이다", () => {
+  const el = { label: "신문 기사 스크랩", description: "관련 신문 기사를 찾아 스크랩해 수행평가지에 붙인다. 제목·날짜·출처가 보이도록 출력한다." };
+  assert.equal(lengthRoleOf(el), "attachment");
+  const t = narrowTarget(el);
+  assert.ok(t.target >= 150 && t.target <= 260, `만점 실측 170~202자에 맞아야 하는데 ${t.target}`);
 });

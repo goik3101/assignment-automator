@@ -40,10 +40,12 @@ test("추정이 없으면 예전 그대로(역할 표 + 항목 바닥값)", () =
 
 test("기본(꺼짐)에서는 추정을 무시하고 역할 표로 돌아간다 — 실측에서 0.14~0.88배로 짧았다", () => {
   try {
-    const el = { label: "신문 기사 스크랩", description: "스크랩", length_estimate: { chars: 200, basis: "두세 문장" } };
+    // 역할 표가 우연히 같은 숫자를 주지 않는 단계로 본다("스크랩"은 붙임 칸이라 200자가 역할 표의 값이다).
+    const el = { label: "탐구 보고서", description: "보고서", length_estimate: { chars: 200, basis: "두세 문장" } };
     // 스위치는 "저장할지"(analyze.ts)와 "쓸지"(narrowTarget) 두 곳에서 본다.
     // sanitize 자체는 값만 검사한다 — 순수 함수로 두는 쪽이 테스트가 쉽다.
     assert.notEqual(narrowTarget(el as never).target, 200);
+    assert.doesNotMatch(narrowTarget(el as never).basis, /사진/);
   } finally {
     delete process.env.LENGTH_FROM_ANALYZE;
   }

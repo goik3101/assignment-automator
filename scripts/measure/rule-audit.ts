@@ -14,6 +14,7 @@ const { needsSubjectSelection, selectionTargetWord, shouldAskSubject } = await i
 const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual");
 const { isListeningTest } = await import("@/lib/gemini/analysis-normalize");
 const { extractCountRequirements, hasSizeLimit, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
+const { isAttachmentStep, lengthRoleOf } = await import("@/lib/essay/length-plan");
 const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { needsExcerpt } = await import("@/lib/essay/excerpt-need");
 const { findTimeRange } = await import("@/lib/essay/time-range");
@@ -130,6 +131,43 @@ const RULES: Rule[] = [
       [false, "당시를 겪은 사람의 이야기를 듣고 질문 2개와 답변 2개로 정리한다"],
       [false, "광복 당시를 겪은 인물과의 대화를 듣고 구성한다"],
       [false, "강연을 듣고 내용을 파악하여 기사로 구성한다"],
+    ],
+  },
+  {
+    name: "붙임칸",
+    what: "자료를 붙이는 것이 본체인 단계인가(글은 제목·출처와 짧은 설명뿐)",
+    run: (t) => isAttachmentStep({ label: t }),
+    cases: [
+      [true, "신문 기사 스크랩"],
+      [true, "기사 오려 붙이기"],
+      [true, "사진 부착"],
+      // 글이 본체인 단계가 걸리면 분량이 200자로 깎인다 — 실측: 자료 수집 단계 만점 결과물이 1,095자다
+      [false, "자료 수집"],
+      [false, "탐구 보고서"],
+      [false, "신문 기사 분석 및 소견"],
+      [false, "경제 문제 분석 및 소견 평가지"],
+      [false, "개요"],
+    ],
+  },
+  {
+    name: "지면칸",
+    what: "한 지면을 나눠 맡은 칸인가(신문 영역 — 칸 하나 분량)",
+    run: (t) =>
+      lengthRoleOf(
+        { label: t, description: `신문 양식의 ${t} 칸을 작성한다.` } as never,
+        {
+          topic: "광복부터 정부 수립 사이의 현대사를 주제로 신문 만들기",
+          siblings: ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"].map((l) => ({ label: l, description: `신문 양식의 ${l} 칸` })),
+        } as never
+      ) === "form_box",
+    cases: [
+      [true, "머리기사"],
+      [true, "인터뷰"],
+      [true, "사설/칼럼"],
+      [true, "만평/광고"],
+      // 그 신문의 영역이 아닌 이름은 걸리지 않는다(형제 목록에 없다)
+      [false, "탐구 보고서"],
+      [false, "개요"],
     ],
   },
   {

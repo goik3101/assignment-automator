@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildFacts, extractSummaryLines, factSheetText, mapFactMarkers, normalizeUrl, parseFactJson } from "./research-notes.ts";
+import { buildFacts, extractSummaryLines, factSheetText, mapFactMarkers, normalizeUrl, parseFactJson, isSecondChoicePage } from "./research-notes.ts";
 
 test("주소 정규화: 추적 쿼리·www·끝 슬래시는 같은 주소로 본다", () => {
   assert.equal(normalizeUrl("https://www.Example.org/a/?utm_source=openai"), normalizeUrl("https://example.org/a"));
@@ -106,4 +106,18 @@ test("소수점을 문장 끝으로 보지 않는다(각주가 숫자 중간에 
   const r = attachFactMarkers("2023년 한국의 폐기물 재활용률은 85.49%이다.", facts);
   assert.ok(!/85\.\[F1\]49/.test(r.text), `각주가 숫자 중간에 들어감: ${r.text}`);
   assert.match(r.text, /85\.49%이다\.\[F1\]/);
+});
+
+test("본문 근거로 약한 주소는 뒤로 미룬다 — 첫 화면·내려받기 파일·목록 페이지", () => {
+  // 실측에서 나온 주소들(2026-11-08, 저장된 결과물 106개 출처 전수)
+  assert.equal(isSecondChoicePage("https://www.mirae-n.com/UPLOAD/202203210522047hnmvkmtr8.pdf"), true);
+  assert.equal(isSecondChoicePage("https://contents2.kocw.or.kr/KOCW/data/document/2019/cup/x/5.pdf"), true);
+  assert.equal(isSecondChoicePage("https://humanrights.go.kr/site/program/board/basicboard/view?boardid=566776"), true);
+  assert.equal(isSecondChoicePage("https://example.go.kr/search?q=%EB%AC%B8%EC%84%9C"), true);
+  // 본문 페이지는 그대로 1순위
+  assert.equal(isSecondChoicePage("https://contents.history.go.kr/front/hm/view.do?levelId=hm_145_0120"), false);
+  assert.equal(isSecondChoicePage("https://theme.archives.go.kr/next/unKorea/establishment.do"), false);
+  assert.equal(isSecondChoicePage("https://www.yna.co.kr/view/AKR20260716109800004"), false);
+  // 주소 안에 pdf라는 낱말이 있어도 파일이 아니면 1순위다
+  assert.equal(isSecondChoicePage("https://www.kipo.go.kr/pdf/guide/view"), false);
 });

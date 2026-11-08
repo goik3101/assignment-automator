@@ -51,6 +51,26 @@ export function isLandingPage(url: string): boolean {
   }
 }
 
+/** 내려받는 파일 주소(.pdf·.hwp·.docx…). 학생이 눌러도 글이 아니라 파일이 떨어진다. */
+const DOWNLOAD_FILE = /\.(?:pdf|hwpx?|docx?|xlsx?|pptx?|zip|csv)$/i;
+/** 검색 결과·게시판 목록 주소. 그 페이지의 내용은 계속 바뀌므로 어떤 사실의 근거도 못 된다. */
+const LIST_PATH = /(?:^|\/)(?:search|list|board|bbs|category|tag|archive)(?:$|\/)/i;
+
+/**
+ * 첫 화면만큼은 아니지만 **본문 근거로는 뒤로 미룰** 주소인가.
+ * 실측(2026-11-08, 저장된 결과물 31편의 출처 106개 전수): 내려받기 파일 13개·검색·목록 페이지 6개로
+ * **18%**가 여기에 해당했고, 과학 과제가 특히 심했다(교과서 출판사 CDN의 .pdf 다섯 개).
+ * 버리지는 않는다 — 다 버리면 사실이 부족해 느린 폴백으로 떨어지고 최악에는 출처 0개가 된다(2026-11-02).
+ */
+export function isSecondChoicePage(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return DOWNLOAD_FILE.test(u.pathname) || LIST_PATH.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function cleanFacts(arr: unknown[]): RawFact[] {
   return arr
     .map((x) => x as { fact?: unknown; url?: unknown; title?: unknown; printed_title?: unknown; printed_author?: unknown })
@@ -179,8 +199,9 @@ export function buildFacts(raw: RawFact[], consulted: string[] | undefined, max 
     const key = r.fact.replace(/\s+/g, "");
     if (seen.has(key)) continue;
     seen.add(key);
-    // 기관 첫 화면 주소는 근거가 못 된다 — 다만 이것까지 버리면 사실이 너무 적어 폴백(느린 경로)으로 떨어지므로 뒤로 미뤄 둔다.
-    (isLandingPage(r.url) ? landing : eligible).push(r);
+    // 기관 첫 화면·내려받기 파일·목록 페이지는 근거로 약하다 — 다만 이것까지 버리면 사실이 너무 적어
+    // 폴백(느린 경로)으로 떨어지므로 뒤로 미뤄 두고, 본문 페이지가 모자랄 때만 채운다.
+    (isLandingPage(r.url) || isSecondChoicePage(r.url) ? landing : eligible).push(r);
   }
   if (eligible.length < 4 && landing.length > 0) eligible.push(...landing.slice(0, 4 - eligible.length));
   // 출처별로 묶어 쓴 응답은 앞쪽 출처의 사실이 몰려 있어, 앞에서부터 자르면 뒤 항목(예: 전개 과정)의 사실이 통째로 빠진다 — 넘칠 때는 출처를 돌아가며 고른다(순서는 원래대로).
