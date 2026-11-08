@@ -16,6 +16,7 @@ const { isListeningTest } = await import("@/lib/gemini/analysis-normalize");
 const { extractCountRequirements, hasSizeLimit, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
 const { isAttachmentStep, lengthRoleOf } = await import("@/lib/essay/length-plan");
 const { noLengthLimit } = await import("@/lib/essay/box-lines");
+const { cellSubfields } = await import("@/lib/essay/cell-subfields");
 const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { needsExcerpt } = await import("@/lib/essay/excerpt-need");
 const { findTimeRange } = await import("@/lib/essay/time-range");
@@ -132,6 +133,24 @@ const RULES: Rule[] = [
       [false, "당시를 겪은 사람의 이야기를 듣고 질문 2개와 답변 2개로 정리한다"],
       [false, "광복 당시를 겪은 인물과의 대화를 듣고 구성한다"],
       [false, "강연을 듣고 내용을 파악하여 기사로 구성한다"],
+    ],
+  },
+  {
+    name: "칸하위칸",
+    what: "번호 칸이 **칸마다 같은 하위 칸**으로 나뉘는가(내용 + 들어갈 말)",
+    run: (t) => cellSubfields([t]).length === 2,
+    cases: [
+      // 같은 사진을 세 번 분석하면 같은 말을 세 가지로 적는다(실측 2026-11-09)
+      [true, "각 번호 칸은 내용과 그 아래 ‘들어갈 말’로 구성됩니다."],
+      [true, "각 칸에 내용과 그 아래 ‘들어갈 말’을 작성한다."],
+      [true, "각 칸은 내용 영역과 ‘들어갈 말’ 영역으로 구성됨."],
+      [true, "카드뉴스 6칸을 구성하고 각 칸에 내용과 들어갈 말을 작성"],
+      [true, "장면마다 화면 설명과 대사를 적는다."],
+      // 걸리면 안 되는 것 — 칸을 나누는 말이 아니다
+      [false, "카드뉴스는 주요 쟁점을 그림이나 사진 등의 시각 자료와 간략한 글로 제시한다."],
+      [false, "각 칸에 들어갈 말을 적는다."],
+      [false, "6칸으로 구성한다."],
+      [false, "표에는 제목과 내용을 적는다."],
     ],
   },
   {

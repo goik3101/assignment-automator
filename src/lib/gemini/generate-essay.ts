@@ -52,7 +52,7 @@ import {
   newspaperSectionLabels,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { boxLengthBlock, boxLengths, boxOverflowRepairText, boxOverflows } from "@/lib/essay/box-lines";
-import { bookForm, bookFormBlock } from "@/lib/essay/book-form";
+import { bookForm, bookFormBlock, bookThreadBlock, isReadingActivity } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata } from "@/lib/essay/paste-slot";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
@@ -723,6 +723,21 @@ ${input.previousOutputText}
   // 사용자 최소 통과 기준: "그림을 너무 복잡하게 안 그리고 책에 맞게 그렸는가". 형태는 조사로 확인된 것만 쓴다.
   const bookForTone = notes?.book ?? input.presetBook;
   const bookFormBlockText = bookForTone ? bookFormBlock(bookForm(notes?.facts ?? [], bookForTone.title), bookForTone.title) : "";
+  // 독후 활동인데 결과물이 일반 역사 서술로만 채워지면 "그 책을 읽었다"는 증거가 사라진다(book-form.ts).
+  // 실측(카드뉴스 채점 5편): 책 언급 7회 → 9/9·8/9, 3~5회 → 6~7/9. 떨어진 항목이 바로 "그 책의 내용을 다룬다"였다.
+  const readingActivity = isReadingActivity([
+    input.coreTaskInfo.topic,
+    ...input.coreTaskInfo.requirements,
+    input.coreTaskInfo.writing_guide,
+    ...elements.map((e) => e.description),
+    // 학생이 "책: …《사일구》를 읽었다"라고 적는 자리가 여기다 — 분석 주제에는 안 들어가는 실행이 있다.
+    input.instructions,
+  ]);
+  const bookThreadText =
+    bookForTone && readingActivity
+      ? bookThreadBlock(bookForTone.title, Math.max(...elements.map((e) => e.required_items?.length ?? 1), 1))
+      : "";
+  if (bookForTone) console.log(`[generateEssay] 읽은 책: "${bookForTone.title}" 독후활동=${readingActivity} 블록=${bookThreadText ? "붙임" : "없음"}`);
   if (timeRange) console.log(`[generateEssay] 다룰 시기: ${timeRange.text} (${timeRange.startYear}~${timeRange.endYear})`);
   const evidenceItemBlock = evidenceWritingBlock(writeEvidence.label, writeEvidence.slots);
   const dataTableBlock = qualityFixesOn()
@@ -853,7 +868,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${bookThreadText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
