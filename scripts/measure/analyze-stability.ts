@@ -13,12 +13,16 @@ const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual")
 const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { compoundItems } = await import("@/lib/essay/compound-items");
 const { stepWaves } = await import("@/lib/essay/step-order");
+const { lengthGuideLines } = await import("@/lib/essay/length-plan");
+const { hasSizeLimit } = await import("@/lib/essay/form-requirements");
 
 const IMG = path.join(REPO, "수행평가 안내문");
 const CASES: Record<string, string[]> = {
   "국어(발표)": ["국어 -1/KakaoTalk_20260526_213359166.jpg"],
   "신문(역사)": ["역사-1 - 복사본/KakaoTalk_20261021_232340155_02.jpg", "역사-1 - 복사본/KakaoTalk_20261021_232340155_01.jpg"],
   "과학(산·염기)": ["KakaoTalk_20260928_165015557_01 - 복사본.jpg"],
+  "카드뉴스(역사)": ["역사-2/photo_2026-10-21_01-03-10 - 복사본.jpg"],
+  "영어(발명품)": ["영어-1 - 복사본/KakaoTalk_20261021_232340155_08.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_06.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_07.jpg"],
 };
 const id = process.argv[2] ?? "국어(발표)";
 const n = Number(process.argv[3] ?? 6);
@@ -51,6 +55,13 @@ for (let i = 0; i < n; i++) {
     "필수항목": els.map((e: any) => (e.required_items ?? []).length).join("+") || "-",
     "항목이름": els.flatMap((e: any) => e.required_items ?? []).slice(0, 4).join("|") || "-",
     "나열항목": String(compoundItems(els.flatMap((el: any) => el.required_items ?? [])).length),
+    // 분량 가이드가 실제로 나가는가 — "1~2줄"을 단계 상한으로 읽으면 가이드가 통째로 사라진다(2026-11-08).
+    "분량가이드": lengthGuideLines(els, { requirements: c.requirements, guide: c.writing_guide, labels: els.map((e: any) => e.label) })
+      .map((l: string) => (l.match(/약 ([\d,]+)자/) ?? l.match(/([\d,]+)~([\d,]+)자/) ?? ["?"])[0])
+      .join(",") || "**없음**",
+    "분량상한": els
+      .map((el: any) => (hasSizeLimit(requirementsForElement(el, c.requirements, c.writing_guide, els.map((x: any) => x.label))) ? "O" : "X"))
+      .join("") || "-",
     "단계순서": stepWaves(els.map((e: any) => ({ label: e.label, description: e.description }))).map((w: string[]) => w.join("+")).join("→"),
   });
   console.log(`${i + 1}회 ${JSON.stringify(rows[rows.length - 1])}`);

@@ -15,6 +15,13 @@ export interface CountReq {
   min: number;
   /** 0이면 상한 없음 */
   max: number;
+  /**
+   * 이 조건이 **칸(항목)마다** 걸리는가("칸마다 1~2줄", "각 칸에 2문장 이내").
+   * 단계 전체에 걸리는 조건("5문장 이내")과 섞으면 안 된다 — 실측(2026-11-08, 카드뉴스 생성 1회):
+   * 칸 열 개짜리 단계에서 "칸마다 1~2줄"이 **단계 상한**으로 읽혀 그 단계의 분량 목표가 통째로 사라지고
+   * 871자가 나왔다(채점 7/9). 단계 전체로 세면 "40문장인데 상한 2문장"이 되어 멀쩡한 글을 고치려 든다.
+   */
+  perItem?: boolean;
 }
 
 // 문제·문항·연도 **번호를 붙여 반복하는 칸**이다 — 지어낸 안내문 20종 감사(2026-11-04)에서
@@ -35,6 +42,17 @@ const LOOSE_LINE = new RegExp(`(?<![\\d~∼–-])(약\\s*)?(${NUM})\\s*줄\\s*(�
 
 const toNum = (s: string) => (/^\d+$/.test(s) ? Number(s) : KO_NUM[s]);
 
+/** "칸마다"·"각 칸에"·"장면별"처럼 **항목 하나하나**에 걸리는 조건임을 알리는 말. */
+const PER_ITEM_CUE =
+  /(?:칸|장면|컷|카드|항목|문항|슬라이드|코너|칸씩)\s*(?:마다|별로|별|당|씩)|각\s*(?:칸|장면|컷|카드|항목|슬라이드)|매\s*(?:칸|장면|컷)|한\s*(?:칸|장면|컷|카드)\s*(?:에|당|마다)|각각/;
+
+/** 조건 표현 바로 앞(같은 절)에 항목 단서가 있으면 칸마다 걸리는 조건으로 본다. */
+function isPerItem(text: string, at: number): boolean {
+  const before = text.slice(0, at);
+  const clause = before.slice(Math.max(0, Math.max(before.lastIndexOf("."), before.lastIndexOf(",")) + 1));
+  return PER_ITEM_CUE.test(clause.slice(-30));
+}
+
 export interface PositionedReq extends CountReq {
   /** 글 안에서 조건 표현이 시작하는 위치 */
   index: number;
@@ -45,6 +63,8 @@ export function extractPositionedRequirements(text: string): PositionedReq[] {
   const out: PositionedReq[] = [];
   const push = (r: PositionedReq) => {
     if (r.min > 50 || r.max > 50) return;
+    // perItem이 거짓이면 키를 아예 두지 않는다 — 조건 모양을 비교하는 기존 코드·테스트가 그대로 돌게.
+    if (!r.perItem) delete r.perItem;
     if (!out.some((o) => o.unit === r.unit && o.min === r.min && o.max === r.max)) out.push(r);
   };
   const rangeSpans: [number, number][] = [];
@@ -52,7 +72,7 @@ export function extractPositionedRequirements(text: string): PositionedReq[] {
     const a = Number(m[1]);
     const b = Number(m[2]);
     rangeSpans.push([m.index!, m.index! + m[0].length]);
-    push({ unit: UNIT_KIND[m[3]], word: m[3], min: Math.min(a, b), max: Math.max(a, b), index: m.index! });
+    push({ unit: UNIT_KIND[m[3]], word: m[3], min: Math.min(a, b), max: Math.max(a, b), index: m.index!, perItem: isPerItem(text, m.index!) });
   }
   for (const m of text.matchAll(REVERSED)) {
     if (rangeSpans.some(([s, e]) => m.index! >= s && m.index! < e)) continue;
@@ -60,7 +80,7 @@ export function extractPositionedRequirements(text: string): PositionedReq[] {
     if (!n || n < 1) continue;
     const tail = m[3];
     const max = tail === "이내" || tail === "이하" || tail === "까지" ? n : tail === "이상" ? 0 : n;
-    push({ unit: UNIT_KIND[m[1]], word: m[1], min: tail === "이내" || tail === "이하" ? 0 : n, max, index: m.index! });
+    push({ unit: UNIT_KIND[m[1]], word: m[1], min: tail === "이내" || tail === "이하" ? 0 : n, max, index: m.index!, perItem: isPerItem(text, m.index!) });
   }
   for (const m of text.matchAll(SINGLE)) {
     if (rangeSpans.some(([s, e]) => m.index! >= s && m.index! < e)) continue;
@@ -70,10 +90,11 @@ export function extractPositionedRequirements(text: string): PositionedReq[] {
     const suffix = m[3];
     if (!suffix && unit !== "scene") continue;
     const at = m.index!;
-    if (suffix === "이상") push({ unit, word: m[2], min: n, max: 0, index: at });
-    else if (suffix === "이내" || suffix === "이하" || suffix === "안에" || suffix === "까지") push({ unit, word: m[2], min: 0, max: n, index: at });
-    else if (suffix) push({ unit, word: m[2], min: Math.max(1, n - 1), max: n + 1, index: at });
-    else push({ unit, word: m[2], min: n, max: n, index: at });
+    const per = isPerItem(text, at);
+    if (suffix === "이상") push({ unit, word: m[2], min: n, max: 0, index: at, perItem: per });
+    else if (suffix === "이내" || suffix === "이하" || suffix === "안에" || suffix === "까지") push({ unit, word: m[2], min: 0, max: n, index: at, perItem: per });
+    else if (suffix) push({ unit, word: m[2], min: Math.max(1, n - 1), max: n + 1, index: at, perItem: per });
+    else push({ unit, word: m[2], min: n, max: n, index: at, perItem: per });
   }
   // 양식 칸에 가장 흔한 줄 수 표현 — "약 5줄", "3줄 분량", "5줄로 작성". 위 규칙은 이런 말을 안 읽어서(한정어가 없다고 보고) 5줄 칸이 조건 없는 단계가 됐다.
   // "약"이나 분량·으로 같은 말이 붙은 줄 수만 받는다("한 줄로 요약" 같은 소규모 지시는 NUM에 "한"이 없어 그대로 제외).
@@ -176,15 +197,21 @@ export function requirementsForElement(el: FormElement, requirements: string[], 
 }
 
 /** 문장·줄·문단에 상한이 있는가(있으면 기본 분량 가이드를 주지 않는다 — 충돌). */
+/**
+ * 이 단계에 **단계 전체의** 분량 상한이 걸렸는가(걸렸으면 기본 분량 가이드를 빼고 안내문 조건을 따른다).
+ * "칸마다 1~2줄"처럼 항목마다 걸리는 조건은 **포함하지 않는다** — 칸이 열 개면 단계 전체는 그 열 배다.
+ */
 export function hasSizeLimit(reqs: CountReq[]): boolean {
-  return reqs.some((r) => r.unit !== "scene" && r.max > 0);
+  return reqs.some((r) => r.unit !== "scene" && r.max > 0 && !r.perItem);
 }
 
 export function describeReq(r: CountReq): string {
   const w = r.word;
-  if (r.min > 0 && r.max > 0) return r.min === r.max ? `${r.min}${w}` : `${r.min}~${r.max}${w}`;
-  if (r.min > 0) return `${r.min}${w} 이상`;
-  return `${r.max}${w} 이내`;
+  // 칸마다 걸리는 조건은 그 말을 남겨야 모델이 단계 전체에 적용하지 않는다.
+  const per = r.perItem ? "칸마다 " : "";
+  if (r.min > 0 && r.max > 0) return r.min === r.max ? `${per}${r.min}${w}` : `${per}${r.min}~${r.max}${w}`;
+  if (r.min > 0) return `${per}${r.min}${w} 이상`;
+  return `${per}${r.max}${w} 이내`;
 }
 
 // ── 장면(스토리보드·카드뉴스·만화) 목록 ─────────────────────────────
@@ -276,6 +303,8 @@ export function checkFormRequirements(content: string, reqs: CountReq[], opts: {
   const issues: FormIssue[] = [];
   for (const req of reqs) {
     if (req.unit === "line") continue;
+    // 칸마다 걸리는 조건을 단계 전체로 세면 "40문장인데 상한 2문장"이 되어 멀쩡한 글을 고치려 든다.
+    if (req.perItem) continue;
     if (req.unit === "scene" && opts.skipScene) continue;
     const actual = req.unit === "scene" ? countScenes(content, req.word) : req.unit === "sentence" ? countSentences(content) : countParagraphs(content);
     if (req.min > 0 && actual < req.min) issues.push({ req, actual, problem: "below" });

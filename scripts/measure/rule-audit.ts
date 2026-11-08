@@ -13,7 +13,7 @@ process.loadEnvFile(path.join(REPO, ".env.local"));
 const { needsSubjectSelection, selectionTargetWord, shouldAskSubject } = await import("@/lib/selection/selection-need");
 const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual");
 const { isListeningTest } = await import("@/lib/gemini/analysis-normalize");
-const { extractCountRequirements, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
+const { extractCountRequirements, hasSizeLimit, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
 const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { needsExcerpt } = await import("@/lib/essay/excerpt-need");
 const { findTimeRange } = await import("@/lib/essay/time-range");
@@ -130,6 +130,26 @@ const RULES: Rule[] = [
       [false, "당시를 겪은 사람의 이야기를 듣고 질문 2개와 답변 2개로 정리한다"],
       [false, "광복 당시를 겪은 인물과의 대화를 듣고 구성한다"],
       [false, "강연을 듣고 내용을 파악하여 기사로 구성한다"],
+    ],
+  },
+  {
+    name: "단계상한",
+    what: "**단계 전체**의 분량 상한인가 — 칸마다 걸리는 조건은 아니어야 한다",
+    run: (t) => hasSizeLimit(extractCountRequirements([t])),
+    cases: [
+      // 단계 전체에 걸리는 상한 — 걸려야 기본 분량 가이드를 빼고 안내문을 따른다
+      [true, "발표 대본은 5문장 이내로 작성한다."],
+      [true, "소감은 3문단 이내로 쓸 것."],
+      [true, "10줄 내외로 작성하시오."],
+      // 칸마다 걸리는 조건 — 걸리면 그 단계의 분량 목표가 통째로 사라진다(2026-11-08 실측, 871자·7/9)
+      [false, "칸마다 1~2줄로 간단히 적는다."],
+      [false, "각 칸에 2문장 이내로 쓴다."],
+      [false, "장면별로 3줄 이내로 정리한다."],
+      [false, "질문1·답변1·질문2·답변2는 각각 2줄 이내로 적는다."],
+      [false, "한 칸에 두 문장 이내로 쓸 것."],
+      // 장면 개수는 상한이 아니라 구조다(예전부터 제외)
+      [false, "8개의 장면으로 스토리보드를 작성한다."],
+      [false, "구체적으로 작성한다."],
     ],
   },
   {
