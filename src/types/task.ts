@@ -67,6 +67,10 @@ export interface CoreTaskInfo {
 
 export interface AnalyzeResult {
   subject: string;
+  /** 사진에 적힌 글을 그대로 옮긴 것(OCR처럼). 안내문을 읽는 규칙들이 **모델의 요약이 아니라 원문**을
+   * 읽을 수 있게 둔다 — 요약은 실행마다 갈린다(2026-11-08 실측: 요구사항이 2·3·5개).
+   * `core_task_info`와 섞지 않고, 과제 임베딩(core-task-text.ts)에도 넣지 않는다. */
+  notice_text?: string;
   administrative_info: AdministrativeInfo;
   core_task_info: CoreTaskInfo;
   /** 사진이 흐릿하거나 정보가 부족해 신뢰할 수 있는 분석이 어려운 경우 true (F13) */

@@ -14,7 +14,7 @@ const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { compoundItems } = await import("@/lib/essay/compound-items");
 const { stepWaves } = await import("@/lib/essay/step-order");
 const { lengthGuideLines } = await import("@/lib/essay/length-plan");
-const { hasSizeLimit } = await import("@/lib/essay/form-requirements");
+const { hasSizeLimit, extractCountRequirements } = await import("@/lib/essay/form-requirements");
 
 const IMG = path.join(REPO, "수행평가 안내문");
 const CASES: Record<string, string[]> = {
@@ -49,6 +49,9 @@ for (let i = 0; i < n; i++) {
     "간단히표시": String(wantsBriefScenes(texts)),
     "대상선정": String(needsSubjectSelection(c)),
     "개수조건": counts.join(",") || "-",
+    // 안내문 원문에서 바로 읽은 개수 조건 — 요약(requirements)이 갈려도 원문은 하나여야 한다.
+    "원문길이": String((a as any).notice_text?.length ?? 0),
+    "원문개수조건": extractCountRequirements([(a as any).notice_text ?? ""]).map((r: any) => `${r.min}~${r.max}${r.word}${r.perItem ? "(칸마다)" : ""}`).join(",") || "-",
     "허용자료": (pol.allowed ?? []).join(",") || "-",
     "표요구": String(els.some((el: any) => needsDataTable(el, c.requirements, c.writing_guide, els.length === 1))),
     "근거개수": String(planEvidence(c, undefined).slots),
