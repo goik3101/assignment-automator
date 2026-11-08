@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { linesInChunk, boxLengths, boxLengthBlock, boxOverflows, boxOverflowRepairText, CHARS_PER_LINE } from "./box-lines.ts";
+import { linesInChunk, boxLengths, boxLengthBlock, boxOverflows, boxOverflowRepairText, CHARS_PER_LINE, noLengthLimit } from "./box-lines.ts";
 
 const GUIDE =
   "머리기사: 양식 칸은 ‘제목’ 약 1줄, ‘내용’ 약 5줄. 기사에 누가·언제·어디서가 드러나게 할 것. " +
@@ -116,4 +116,17 @@ test("단계 이름을 느슨하게 찾는다(안내문은 '사설/칼럼'을 '�
 
 test("한 글자 조각으로는 찾지 않는다(아무 데나 걸리면 안 된다)", () => {
   assert.deepEqual(boxLengths(["글/말"], "그 글은 약 3줄로 쓴다."), []);
+});
+
+test("안내문이 분량 제한 없다고 하면 칸 줄 수로 묶지 않는다 (손글씨가 인쇄를 덮어쓴다)", () => {
+  const guide = "머리기사: 양식 칸은 '제목' 약 1줄, '내용' 약 6줄.";
+  assert.equal(boxLengths(["머리기사"], guide).length, 1); // 평소에는 칸 크기를 읽는다
+  // 실측 문구(2026-11-09 한국사 신문 손글씨)
+  assert.equal(boxLengths(["머리기사"], guide, ["분량 제한 없음(손글씨 안내)"]).length, 0);
+  assert.equal(boxLengths(["머리기사"], guide, ["5반: 평가지 B4용지 분량제한 X"]).length, 0);
+  assert.equal(noLengthLimit(["분량 제한은 없습니다."]), true);
+  // 제한이 **있는** 문장은 걸리면 안 된다
+  assert.equal(noLengthLimit(["분량 제한: 800자 이내"]), false);
+  assert.equal(noLengthLimit(["분량은 800자 내외로 작성한다."]), false);
+  assert.equal(noLengthLimit(["제한 시간 없이 작성한다."]), false);
 });

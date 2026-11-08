@@ -654,7 +654,10 @@ ${input.previousOutputText}
   };
   // 안내문이 칸의 줄 수를 알려 준 단계는 그 칸 크기가 기준이다 — 학생은 이 글을 그 칸에 옮겨 적는다(box-lines.ts).
   // 실측(2026-11-07, 역사 신문): "내용 약 5줄" 칸에 1102자·949자를 썼고 사설은 308자와 2286자로 7배 갈렸다.
-  const boxes = boxLengthOn() ? boxLengths(elements.map((e) => e.label), input.coreTaskInfo.writing_guide) : [];
+  // 안내문이 "분량 제한 없음"이라고 했으면(손글씨 포함) 칸 줄 수로 묶지 않는다 — 둘이 반대를 말하면 그쪽이 맞다.
+  const boxes = boxLengthOn()
+    ? boxLengths(elements.map((e) => e.label), input.coreTaskInfo.writing_guide, input.coreTaskInfo.requirements)
+    : [];
   const boxLabels = new Set(boxes.map((b) => b.label));
   const boxBlock = boxLengthBlock(boxes);
   if (boxes.length > 0) console.log(`[generateEssay] 양식 칸 크기: ${boxes.map((b) => `${b.label} ${b.lines}줄→${b.min}~${b.max}자`).join(" / ")}`);

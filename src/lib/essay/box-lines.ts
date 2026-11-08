@@ -85,7 +85,22 @@ export function isDrawingBox(label: string): boolean {
  *     뒤에 남은 "N줄"을 전부 합쳐 16줄이 됐다. 구간을 레이블이 들어 있는 **문장까지**로 끊고, 줄 수가
  *     터무니없이 크면 버린다. 분석이 만든 단계 이름은 실행마다 흔들리므로(CLAUDE.md) 이 방어가 필요하다.
  */
-export function boxLengths(labels: string[], guide: string | undefined): BoxLength[] {
+/**
+ * 안내문이 **분량 제한이 없다고 못 박았는가**. 그러면 칸 줄 수로 분량을 묶지 않는다.
+ *
+ * 실측(2026-11-09, 한국사 신문): 채점 기준표 아래 빨간 손글씨로 "5반: 평가지 B4용지 **분량제한 X**"가
+ * 적혀 있다 — 선생님이 인쇄된 칸 크기를 손으로 덮어쓴 것이다. 그런데 작성 기준에는 여전히
+ * "머리기사 제목 약 1줄·내용 약 6줄"이 남아 있어, 그대로 두면 칸 규칙이 234자로 묶어 버린다.
+ * 두 조건이 반대를 말할 때는 **나중에 손으로 적은 쪽**이 맞다.
+ */
+const NO_LENGTH_LIMIT = /분량\s*(?:제한|제약)\s*(?:은|는)?\s*(?:없|무|X|x|✕|△)|분량\s*(?:제한|제약)\s*[:：]?\s*(?:없음|무제한)/;
+
+export function noLengthLimit(texts: (string | undefined)[]): boolean {
+  return texts.some((t) => t && NO_LENGTH_LIMIT.test(t.replace(/\s+/g, " ")));
+}
+
+export function boxLengths(labels: string[], guide: string | undefined, texts: (string | undefined)[] = []): BoxLength[] {
+  if (noLengthLimit([guide, ...texts])) return [];
   if (!guide?.trim() || labels.length === 0) return [];
   // 각 레이블이 나오는 위치를 찾아 그 다음 레이블 전까지를 그 칸의 설명으로 본다.
   const marks = labels

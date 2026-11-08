@@ -15,6 +15,7 @@ const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual")
 const { isListeningTest } = await import("@/lib/gemini/analysis-normalize");
 const { extractCountRequirements, hasSizeLimit, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
 const { isAttachmentStep, lengthRoleOf } = await import("@/lib/essay/length-plan");
+const { noLengthLimit } = await import("@/lib/essay/box-lines");
 const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { needsExcerpt } = await import("@/lib/essay/excerpt-need");
 const { findTimeRange } = await import("@/lib/essay/time-range");
@@ -131,6 +132,21 @@ const RULES: Rule[] = [
       [false, "당시를 겪은 사람의 이야기를 듣고 질문 2개와 답변 2개로 정리한다"],
       [false, "광복 당시를 겪은 인물과의 대화를 듣고 구성한다"],
       [false, "강연을 듣고 내용을 파악하여 기사로 구성한다"],
+    ],
+  },
+  {
+    name: "분량제한없음",
+    what: "안내문이 분량 제한이 없다고 못 박았는가(손글씨 포함 — 칸 줄 수보다 우선한다)",
+    run: (t) => noLengthLimit([t]),
+    cases: [
+      [true, "5반: 11월 2일 평가지 B4용지 분량제한 X"],
+      [true, "분량 제한 없음(손글씨 안내)"],
+      [true, "분량 제한은 없습니다."],
+      [true, "분량 제약 없이 자유롭게 쓰세요."],
+      [false, "분량 제한: 800자 이내"],
+      [false, "분량은 800자 내외로 작성한다."],
+      [false, "제한 시간 없이 작성한다."],
+      [false, "띄어쓰기 제한 없음"],
     ],
   },
   {
