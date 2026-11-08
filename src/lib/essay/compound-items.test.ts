@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allCompoundItems, compoundItemBlock, compoundItems, compoundItemsFromText, compoundRepairText, missingParts, sectionTextFor, splitCompoundItem } from "./compound-items.ts";
+import { allCompoundItems, allCompoundItemsByStep, compoundItemBlock, compoundItems, compoundItemsFromText, compoundRepairText, missingParts, sectionTextFor, splitCompoundItem } from "./compound-items.ts";
 
 test("나열 기호로 묶인 항목 이름을 쪼갠다", () => {
   assert.deepEqual(splitCompoundItem("글의 목적·주제·예상 독자"), ["글의 목적", "주제", "예상 독자"]);
@@ -111,4 +111,29 @@ test("자리말이 여러 낱말이어도 뗀다", () => {
   assert.equal(items.length, 1);
   assert.equal(items[0].parts[0], "주제와 선정 이유");
   assert.ok(items[0].parts.includes("해결 방안"));
+});
+
+test("항목에 주인 단계를 적어 다른 칸이 가져가지 않게 한다 (역사 신문 실측)", () => {
+  const elements = [
+    { label: "머리기사", required_items: ["제목", "내용"] },
+    { label: "인터뷰", required_items: ["인터뷰 대상과 질문·답변 두 쌍"] },
+    { label: "사설/칼럼", required_items: ["제목"] },
+  ];
+  const items = allCompoundItemsByStep(elements, []);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].owner, "인터뷰");
+  const block = compoundItemBlock(items, true);
+  assert.ok(block.includes('("인터뷰" 단계에서만)'));
+  assert.ok(block.includes("다른 단계 칸에 그 내용을 옮겨 적지 말 것"));
+  // 단계가 하나면 주인을 적지 않는다(군더더기)
+  assert.ok(!compoundItemBlock(items, false).includes("단계에서만"));
+});
+
+test("안내문 글에서 뽑은 항목은 주인이 없어 전 단계에 그대로 전한다", () => {
+  const items = allCompoundItemsByStep([{ label: "보고서", required_items: [] }], [
+    "글의 목적·주제·예상 독자를 구체적으로 설정하고 쓴다.",
+  ]);
+  assert.ok(items.length >= 1);
+  assert.equal(items[0].owner, undefined);
+  assert.ok(!compoundItemBlock(items, true).includes("단계에서만"));
 });

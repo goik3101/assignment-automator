@@ -14,6 +14,7 @@ const { summarizeTrace } = await import("@/lib/llm/usage");
 const { findOwnActivitySentences, countBlanks } = await import("@/lib/essay/own-activity");
 const { visualPolicy, findBannedVisuals, hasDataTable, needsDataTable } = await import("@/lib/essay/data-visual");
 const { isLandingPage } = await import("@/lib/essay/research-notes");
+const { isDrawingBox } = await import("@/lib/essay/box-lines");
 const { findRepeatedStatements } = await import("@/lib/essay/repetition");
 const { isPlanSentence } = await import("@/lib/essay/plan-citations");
 const { findUsePlanSentences, evidenceSectionText } = await import("@/lib/essay/evidence-items");
@@ -61,6 +62,9 @@ const CASES: Case[] = [
   // 2026-11-01에 처음 넣은 안내문 3종(그동안 한 번도 안 돌려 본 것들).
   { id: "국어(책처방전)", images: ["KakaoTalk_20260827_155423489_01 - 복사본.jpg"], instructions: "뽑은 친구의 고민은 '성적이 계속 떨어져서 불안하고 자존감이 낮아졌다'였어." },
   { id: "화작(문제해결)", images: ["KakaoTalk_20260829_112309789 - 복사본.jpg"], instructions: "기사에서 찾은 사회문제는 청년 고립·은둔 문제로 할게." },
+  // 2026-11-06: 쪽·매 분량 읽기 검증용(저장된 분석/안내문에 분량 문장만 더한다).
+  { id: "사회 평가지(A4 1장)", analysisFile: "social-analysis.json", instructions: "주제는 노인 빈곤과 기초연금 문제로 할게.", extraRequirements: ["경제 문제 분석 및 소견 평가지는 A4 1장 이내로 작성한다."] },
+  { id: "화작(원고지 8매)", images: ["KakaoTalk_20260829_112309789 - 복사본.jpg"], instructions: "기사에서 찾은 사회문제는 청년 고립·은둔 문제로 할게.", extraRequirements: ["원고지 8매 내외로 작성한다."] },
   { id: "사회(인권저널)", images: ["KakaoTalk_20260912_203359067_05 - 복사본.jpg"], instructions: "인권 선구자는 전태일로 정했어." },
 ];
 
@@ -106,7 +110,19 @@ for (const c of CASES) {
     const banned = (result.sections ?? []).reduce((n, s) => n + findBannedVisuals(s.markdown, policy).length, 0);
     const tableNeeded = core.task_elements.filter((e) => e.type === "text_submission" && needsDataTable(e, core.requirements, core.writing_guide, core.task_elements.filter((x) => x.type === "text_submission").length === 1));
     const tableMissing = tableNeeded.filter((e) => !hasDataTable((result.sections ?? []).find((s) => s.label === e.label)?.markdown ?? "")).length;
-    const uncited = sentences(md).filter((s) => /\d{3,4}년|\d+(?:\.\d+)?\s*%|\d+\s*[㎍μu]g?|\d{1,3},\d{3}/.test(s) && !/\[\d+\]/.test(s) && !/https?:/.test(s)).length;
+    // 무각주 수치를 셀 때 **우리가 일부러 각주를 뗀 그림 칸**만 뺀다(만평·광고 — picture-panel.ts가 각주를 떼므로
+    // 거기서 각주가 없는 것은 결함이 아니다).
+    //
+    // 기입란 줄("날짜: 2024년 9월 23일")은 **빼지 않는다.** 한 번 뺐다가 되돌렸다 —
+    // 실측(2026-11-09, 사회 평가지): 그 줄이 바로 **학생이 붙일 기사의 날짜를 지어낸 것**이었고(정답 채점 5/6),
+    // 빈칸으로 둬야 하는 자리였다. 기입란이라는 이유로 숨기면 날조를 못 본다.
+    const uncitedBody = (result.sections ?? [])
+      .filter((sec) => !isDrawingBox(sec.label))
+      .map((sec) => sec.markdown)
+      .join("\n");
+    const uncited = sentences(uncitedBody).filter(
+      (s) => /\d{3,4}년|\d+(?:\.\d+)?\s*%|\d+\s*[㎍μu]g?|\d{1,3},\d{3}/.test(s) && !/\[\d+\]/.test(s) && !/https?:/.test(s)
+    ).length;
     const planCited = sentences(md).filter((s) => /\[\d+\]/.test(s) && isPlanSentence(s.replace(/\[\d+\]\s*$/, ""))).length;
     const warn = (result.sections ?? []).filter((s) => s.noSourcesWarning || s.structureWarning || s.lengthWarning).length;
     const usePlan = (result.sections ?? []).reduce((n, sec) => n + findUsePlanSentences(evidenceSectionText(sec.markdown) ?? "").length, 0);
@@ -127,7 +143,8 @@ for (const c of CASES) {
     const sourceList = result.sources.length
       ? ["", "", "## 출처", ...result.sources.map((s) => `[${s.n}] ${s.title} — ${s.url}`), ""].join("\n")
       : "";
-    fs.writeFileSync(path.join(REPO, "scratchpad", "measure", "out", `fc-${c.id}.md`), md + notesBlock + sourceList, "utf8");
+    fs.writeFileSync(path.join(REPO, "scratchpad", "measure", "out", `fc-${c.id}${process.env.FC_TAG ?? ""}.md`), md + notesBlock + sourceList, "utf8");
+    console.log(`  [${c.id}] 단계별 글자수: ${(result.sections ?? []).map((s) => `${s.label}=${s.markdown.length}`).join(", ")}`);
     rows.push(
       `| ${c.id} | ${elapsed}초 | $${usage.estimatedCostUsd.toFixed(4)} | ${(result.sections ?? []).length}단계 ${md.length}자 | ${result.sources.length === 0 ? "**출처 0개**" : `${result.sources.length}개`}(첫화면 ${result.sources.filter((s) => isLandingPage(s.url)).length}) | 날조 ${findOwnActivitySentences(md).length} 빈칸 ${countBlanks(md)} | 금지자료 ${banned} 표누락 ${tableMissing} | 조건 ${rubric.total - rubric.miss}/${rubric.total} | 무각주수치 ${uncited} 계획각주 ${planCited} 쓰임설명 ${usePlan} 되풀이 ${findRepeatedStatements((result.sections ?? []).map((s) => ({ label: s.label, content: s.markdown }))).length} 경고 ${warn} |`
     );

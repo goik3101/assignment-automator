@@ -4,6 +4,9 @@ import { analyzeAssignment } from "@/lib/gemini/analyze";
 import { validateAnalyzeInput } from "@/lib/api/validate";
 import { runStudyRoute, StudyInputError } from "@/lib/study/route";
 
+// 사진이 여러 장이면 분석이 길어진다(같은 사진 1장 12.7초, 4장 20.9초 — 2026-11-04 실측). 다른 AI 경로처럼 실행 시간 상한을 명시해 플랫폼 기본값에 기대지 않는다.
+export const maxDuration = 60;
+
 // 이미지 분석이라 호출 비용이 큰 경로 — 로그인/게스트 확인과 하루 횟수 제한(+비로그인은 IP 상한)을 거친다.
 // 본문 상한은 사진 최대 4장(validate.ts의 LIMITS.imageBase64 × 4)이 들어가던 기존 한도와 같게 둔다.
 export const POST = routeUsage("analyze", async function POST(req: NextRequest) {

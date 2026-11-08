@@ -48,3 +48,45 @@ test("각주가 없는 날조는 그대로 잡는다", () => {
   assert.equal(isOwnActivitySentence("신문 기사를 스크랩해서 붙였다."), true);
   assert.equal(isOwnActivitySentence("직접 촬영했다."), true);
 });
+
+test("지어낸 것임을 글이 밝힌 문장은 거짓 기록이 아니다 (역사 신문 가상 인터뷰 — 13회 내내 거짓 경고였다)", () => {
+  // 걸리면 안 되는 것
+  assert.equal(
+    isOwnActivitySentence("인터뷰 대상: 해방 뒤 남한에서 새 정부의 출범을 지켜본 시민을 가상 인물로 설정했다."),
+    false
+  );
+  assert.equal(isOwnActivitySentence("당시를 겪은 시민을 가상으로 설정해 인터뷰를 구성했다."), false);
+  assert.equal(isOwnActivitySentence("상상 인터뷰 형식으로 질문과 답변을 적었다."), false);
+  assert.equal(isOwnActivitySentence("전태일이 살아 있다고 가정하고 인터뷰를 썼다."), false);
+  assert.equal(isOwnActivitySentence("예시로 든 설문 문항을 아래에 붙였다."), false);
+  // 여전히 걸려야 하는 것 — "가상"이라는 말이 없으면 그대로 거짓 기록이다
+  assert.equal(isOwnActivitySentence("우리 반 학생 30명을 인터뷰했다."), true);
+  assert.equal(isOwnActivitySentence("시청을 방문해 담당자와 인터뷰했다."), true);
+  assert.equal(isOwnActivitySentence("설문지를 인쇄해 교실에 붙였다."), true);
+});
+
+test("각주를 어떻게 붙였는지 말하는 작업 메모는 날조가 아니다 (235편 중 8건이 이 오탐이었다)", () => {
+  assert.equal(isOwnActivitySentence("각 주장에는 해당 사실의 근거 번호를 붙여 발표 자료와 스토리보드에서 참고할 수 있게 정리했다."), false);
+  assert.equal(isOwnActivitySentence("위의 근거들은 본문에서 해당 문장 끝에 괄호 대신 각주 형태로 번호를 붙여 나타내었다."), false);
+  assert.equal(isOwnActivitySentence("(근거 번호는 본문 문장 끝에 표기된 대로 첨부했다.)"), false);
+});
+
+test("인용한 설문·조사와 방문자 수는 학생이 한 일이 아니다", () => {
+  assert.equal(
+    isOwnActivitySentence("한국리서치의 2020년 11월 설문에서 응답자의 약 80%가 악성 댓글 방지를 위해 인터넷 실명제 도입에 찬성했다."),
+    false
+  );
+  assert.equal(isOwnActivitySentence("일평균 방문자 기준이 낮아진 점 등을 제시해 제도적 확장이 문제였음을 보여주었다."), false);
+  // 학생이 직접 한 설문은 그대로 잡는다("에서"로 인용한 게 아니다)
+  assert.equal(isOwnActivitySentence("같은 반 학생들에게 설문을 실시했다."), true);
+  // 알려진 구멍: 과거 어미가 "했/였/었/았/뒀"로 끝나지 않으면("설문을 돌렸다") 아직 못 잡는다.
+  // 어미 목록을 늘리면 "낮아졌다"처럼 사실 서술까지 걸릴 위험이 있어 실측 없이 넓히지 않는다.
+  assert.equal(isOwnActivitySentence("같은 반 학생들에게 설문을 돌렸다."), false);
+});
+
+test("원래 잡던 날조는 그대로 잡는다 (2026-10-29 실제 결과물)", () => {
+  assert.equal(isOwnActivitySentence("오늘 수업 시간 중 스마트폰으로 기상청 화면을 촬영했다."), true);
+  assert.equal(isOwnActivitySentence("OECD 비교 통계를 캡처해 보관했다."), true);
+  assert.equal(isOwnActivitySentence("수행평가지에 각 사진 아래에 출처를 오려 붙였다."), true);
+  assert.equal(isOwnActivitySentence("시청 민원실을 방문해 자료를 받았다."), true);
+});

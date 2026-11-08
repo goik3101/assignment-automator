@@ -80,3 +80,15 @@ test("한 지면을 나눠 맡은 영역이 아니면 지우지 않는다 (따�
   // 한 지면이라고 알려 주면 그때만 지운다
   assert.equal(dropRepeatedSentences(sections, sections.map((s) => s.label)).removed.length, 1);
 });
+
+test("한 단계를 나눠 쓴 두 몫 사이의 되풀이도 지운다 (국어 발표 실측: 되풀이 5쌍)", () => {
+  // 단계가 하나뿐이라 항목을 둘로 나눠 동시에 쓴 경우. 두 호출은 서로의 글을 못 보므로 같은 사실을 둘 다 쓴다.
+  const halves = [
+    { label: "몫1", content: `헌법재판소는 2012년 8월 23일 인터넷 실명제가 표현의 자유를 과도하게 제한한다고 판단했다.[1]\n그래서 이 제도는 폐지됐다.[1]\n발표는 이 결정을 먼저 소개한다.[2]` },
+    { label: "몫2", content: `헌법재판소는 2012년 8월 23일 인터넷 실명제가 표현의 자유를 과도하게 제한한다고 판단했다.[1]\n실명제는 악성 댓글을 의미 있게 줄이지 못했다.[2]\n대안으로 자율규제를 제시한다.[2]` },
+  ];
+  const r = dropRepeatedSentences(halves, halves.map((h) => h.label));
+  assert.equal(r.removed.length, 1);
+  assert.equal(r.removed[0].label, "몫2"); // 앞 몫이 그 사실의 주인
+  assert.equal(findRepeatedStatements(r.sections).length, 0);
+});

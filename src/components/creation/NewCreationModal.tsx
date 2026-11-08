@@ -25,7 +25,7 @@ import Turnstile from "@/components/Turnstile";
 import { learningApi } from "@/components/learning/api";
 import { useT } from "@/lib/i18n";
 import { MAX_GUIDE_IMAGES, mergeImagePicks } from "@/lib/ui/image-picks";
-import { imageFileToUploadBase64 } from "@/lib/ui/downscale-image";
+import { imagesToUploadBase64 } from "@/lib/ui/downscale-image";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
@@ -148,7 +148,7 @@ export default function NewCreationModal({
       let extraImages: { base64: string; mimeType: string }[] | undefined;
       if (kind === "image" && imageFiles.length > 0) {
         // 보내기 전에 줄인다(요청 본문 한도) — 첫 장은 imageBase64, 나머지는 extraImages.
-        const encoded = await Promise.all(imageFiles.map((f) => imageFileToUploadBase64(f)));
+        const encoded = await imagesToUploadBase64(imageFiles); // 합계를 요청 한도 안으로 맞춘다
         imageBase64 = encoded[0].data;
         imageMimeType = encoded[0].mimeType;
         if (encoded.length > 1) extraImages = encoded.slice(1).map((e) => ({ base64: e.data, mimeType: e.mimeType }));
@@ -159,7 +159,16 @@ export default function NewCreationModal({
         body: JSON.stringify({ imageBase64, imageMimeType, extraImages, topicText: kind === "text" ? topicText : "", instructions }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? t("분석에 실패했어요."));
+      if (!res.ok) {
+        // 서버 코드가 돌기 전에 플랫폼이 거절하면(요청이 너무 크거나 시간 초과) JSON 오류가 없다 — 원인을 알아볼 수 있게 상태로 가른다.
+        const fallback =
+          res.status === 413
+            ? t("사진 용량이 너무 커요. 사진 수를 줄이거나 더 작은 사진으로 다시 올려 주세요.")
+            : res.status === 504 || res.status === 408
+              ? t("분석이 오래 걸려 중단됐어요. 잠시 후 다시 시도해 주세요.")
+              : t("분석에 실패했어요.");
+        throw new Error((data as { error?: string }).error ?? fallback);
+      }
       const result = data as AnalyzeResult;
       if (result.insufficient_data) {
         throw new Error(

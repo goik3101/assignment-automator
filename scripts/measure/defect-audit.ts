@@ -66,6 +66,6 @@ for (const k of names) {
   const fileCount = new Set(list.map((h) => h.file)).size;
   console.log(`## ${k} — ${list.length}건 / ${fileCount}편`);
   for (const h of list.slice(0, 3)) console.log(`   · ${h.text}`);
-  if (list.length > 3) console.log(`   … 외 ${list.length - 3}건`);
+  if (list.length > 3) { if (process.env.DA_ALL === "on") for (const x of list.slice(3)) console.log("   ·", typeof x === "string" ? x : JSON.stringify(x)); else console.log(`   … 외 ${list.length - 3}건`); }
 }
 if (names.length === 0) console.log("걸린 것 없음");

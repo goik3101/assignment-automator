@@ -74,6 +74,8 @@ export const home: Record<string, string> = {
   // 새 창작물 모달
   "이미지 파일(JPG, PNG 등)만 올릴 수 있어요.": "Only image files (JPG, PNG, etc.) can be uploaded.",
   "분석에 실패했어요.": "Analysis failed.",
+  "사진 용량이 너무 커요. 사진 수를 줄이거나 더 작은 사진으로 다시 올려 주세요.": "The photos are too large. Use fewer photos or smaller ones and try again.",
+  "분석이 오래 걸려 중단됐어요. 잠시 후 다시 시도해 주세요.": "The analysis took too long and was stopped. Please try again in a moment.",
   "안내문에서 충분한 정보를 읽지 못했어요. 사진을 더 선명하게 찍거나 주제를 직접 적어 주세요.":
     "Couldn't read enough from the brief. Take a clearer photo or type the topic yourself.",
   "분석 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.": "Something went wrong during analysis. Please try again in a moment.",

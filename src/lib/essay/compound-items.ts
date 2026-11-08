@@ -47,6 +47,16 @@ export function splitCompoundItem(name: string): string[] | null {
 export interface CompoundItem {
   name: string;
   parts: string[];
+  /**
+   * 이 항목이 **어느 단계 것인지**. 단계가 둘 이상인 과제에서 이걸 안 알려 주면 규칙이 결과를 망친다.
+   *
+   * 실측(2026-11-09, 역사 신문 1회): 분석이 "인터뷰" 단계의 필수 항목으로 "인터뷰 대상과 질문·답변 두 쌍"을
+   * 잡았는데, 이 블록은 **모든 단계가 공유하는 프롬프트**에 들어갔다. 그래서 "머리기사"를 쓰는 호출도
+   * "인터뷰 대상과 질문 / 답변 두 쌍을 줄 나눠 각각 써라"를 읽고 **머리기사 칸 안에 인터뷰를 통째로** 썼다
+   * (사설까지 따라 들어가 머리기사가 944자, 만평 칸은 한 줄로 남았다).
+   * 안내문 글에서 뽑은 항목은 주인을 알 수 없어 `owner`가 비어 있고, 그때는 예전처럼 전 단계에 전한다.
+   */
+  owner?: string;
 }
 
 export function compoundItems(names: string[]): CompoundItem[] {
@@ -58,12 +68,26 @@ export function compoundItems(names: string[]): CompoundItem[] {
   return out;
 }
 
-export function compoundItemBlock(items: CompoundItem[]): string {
+/**
+ * `multiStep`이 참이면 주인이 있는 항목에 **그 단계 이름을 적어** 다른 단계가 가져가지 않게 한다.
+ * 단계가 하나면 적을 필요가 없다(그 단계 것이 분명하다).
+ */
+export function compoundItemBlock(items: CompoundItem[], multiStep = false): string {
   if (items.length === 0) return "";
+  const owned = multiStep && items.some((it) => it.owner);
   return (
     `\n【나열된 항목 — 반드시 지킬 것】 채점자는 아래 항목 안에서 나열된 것을 **하나씩** 찾는다. ` +
-    `한 문단에 녹여 쓰지 말고, 나열된 것마다 줄을 나눠 "이름: 내용" 꼴로 각각 쓸 것.\n` +
-    items.map((it) => `- "${it.name}" → ${it.parts.map((p) => `"${p}: …"`).join(", ")} 줄을 각각 쓴다.`).join("\n") +
+    `한 문단에 녹여 쓰지 말고, 나열된 것마다 줄을 나눠 "이름: 내용" 꼴로 각각 쓸 것.` +
+    (owned ? ` **단계 이름이 적힌 항목은 그 단계에만 쓴다 — 다른 단계 칸에 그 내용을 옮겨 적지 말 것.**` : "") +
+    `\n` +
+    items
+      .map(
+        (it) =>
+          `- ${multiStep && it.owner ? `("${it.owner}" 단계에서만) ` : ""}"${it.name}" → ${it.parts
+            .map((p) => `"${p}: …"`)
+            .join(", ")} 줄을 각각 쓴다.`
+      )
+      .join("\n") +
     `\n각 줄의 내용은 한 문장으로 끝내지 말고 과제에 맞게 구체적으로 쓴다(이름만 적고 비워 두지 말 것).\n`
   );
 }
@@ -151,6 +175,33 @@ export function compoundItemsFromText(texts: (string | undefined)[]): CompoundIt
 }
 
 /** required_items에서 뽑은 것과 안내문 글에서 뽑은 것을 합친다(같은 조각들이면 한 번만). */
+/**
+ * 단계마다 그 단계의 필수 항목에서 뽑아 **주인을 적어** 돌려준다. 안내문 글에서 뽑은 항목은 주인을 알 수 없어
+ * 그대로(주인 없이) 뒤에 붙는다 — 단계가 하나뿐인 과제에서는 어차피 그 단계 것이다.
+ */
+export function allCompoundItemsByStep(
+  elements: { label: string; required_items?: string[] }[],
+  texts: (string | undefined)[]
+): CompoundItem[] {
+  const out: CompoundItem[] = [];
+  const seen = new Set<string>();
+  for (const el of elements ?? []) {
+    for (const it of compoundItems(el.required_items ?? [])) {
+      const key = it.parts.join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ ...it, owner: el.label });
+    }
+  }
+  for (const it of compoundItemsFromText(texts)) {
+    const key = it.parts.join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
+}
+
 export function allCompoundItems(names: string[], texts: (string | undefined)[]): CompoundItem[] {
   const out = compoundItems(names);
   const seen = new Set(out.map((i) => i.parts.join("|")));

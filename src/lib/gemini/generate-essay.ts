@@ -54,7 +54,7 @@ import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { boxLengthBlock, boxLengths, boxOverflowRepairText, boxOverflows } from "@/lib/essay/box-lines";
 import { bookForm, bookFormBlock, bookThreadBlock, isReadingActivity } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
-import { blankPastedMetadata } from "@/lib/essay/paste-slot";
+import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-slot";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { dedupeOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
@@ -62,10 +62,11 @@ import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRec
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
-import { allCompoundItems, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
+import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
+import { GRACE_MS, describeMust, mustRepairs, onlyMustAffordable, type Rewrite } from "@/lib/essay/repair-priority";
 import {
   bannedVisualRepairText,
   dataTableInstruction,
@@ -109,7 +110,7 @@ import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { dropRepeatedSentences, stripDefinitionPrefix } from "@/lib/essay/dedupe";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
-import { effectiveTarget, lengthGuideLines } from "@/lib/essay/length-plan";
+import { effectiveTarget, isAttachmentStep, lengthGuideLines } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock, inferFormKinds } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
@@ -705,12 +706,13 @@ ${input.previousOutputText}
     : NO_EVIDENCE_PLAN;
   // 안내문 항목 이름이 여러 가지를 나열한 것이면(“글의 목적·주제·예상 독자”) 채점자가 하나씩 찾는다 — 줄을 나눠 쓰게 한다.
   // required_items는 같은 사진을 다시 분석해도 절반쯤만 채워진다(실측 2026-11-01, 11회) — 안내문 글에서도 같이 뽑는다.
-  const compoundAll = allCompoundItems(elements.flatMap((el) => el.required_items ?? []), [
+  // 항목에 **주인 단계**를 적는다 — 공유 프롬프트라 적지 않으면 머리기사가 인터뷰 항목까지 자기 칸에 쓴다(compound-items.ts).
+  const compoundAll = allCompoundItemsByStep(elements, [
     ...input.coreTaskInfo.requirements,
     input.coreTaskInfo.writing_guide,
     ...elements.map((el) => el.description),
   ]);
-  const compoundBlock = compoundItemBlock(compoundAll);
+  const compoundBlock = compoundItemBlock(compoundAll, elements.length > 1);
   // 안내문이 다룰 기간을 못 박은 과제(역사 신문 등)는 그 시점에서 쓰는 글이다 — 뒤에 일어난 일을 알 수 없다.
   const timeRange = findTimeRange([
     ...input.coreTaskInfo.requirements,
@@ -1536,8 +1538,21 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
         )
       );
       if (parts.some((p) => !p.text)) throw new Error("AI가 빈 응답을 반환했습니다.");
+      // 나눠 쓴 두 몫은 **서로의 글을 물리적으로 못 본다** — 같은 사실을 둘 다 쓴다.
+      // 실측(2026-11-09, 국어 발표 1회): 단계가 하나로 잡혀 항목을 둘로 나눈 실행에서 되풀이가 **5쌍**이었다.
+      // 단계 사이 되풀이와 달리 이쪽은 **한 단계 안**이라 dedupe의 기본 규칙(같은 영역은 건드리지 않음)에 걸려 안 지워졌다.
+      // 두 몫은 한 지면을 나눠 맡은 칸들과 같은 관계이므로, 합치기 **전에** 몫끼리만 지운다(모델 호출 0).
+      let partTexts = parts.map((p) => p.text);
+      if (dedupeOn() && partTexts.length > 1) {
+        const pseudo = partTexts.map((text, i) => ({ label: `몫${i + 1}`, content: text }));
+        const dd = dropRepeatedSentences(pseudo, pseudo.map((x) => x.label));
+        if (dd.removed.length > 0) {
+          console.log(`[generateEssay] 나눠 쓴 몫 사이 되풀이 ${dd.removed.length}문장 제거함`);
+          partTexts = dd.sections.map((x) => x.content);
+        }
+      }
       // 합친 글 하나로 돌려준다 — 아래 mergeParallelParts(단계별 합치기)가 다시 돌면 안 된다. 호출별 토큰·비용은 trace가 따로 센다.
-      writes = [{ ...parts[0], text: mergeItemParts(parts.map((p) => p.text), labels[0]) }];
+      writes = [{ ...parts[0], text: mergeItemParts(partTexts, labels[0]) }];
     } else if (parallelWriteOn(labels.length)) {
       // 안내문이 "A를 바탕으로 B"라고 한 단계는 순서대로 쓰고, 뒤 단계에 앞 단계의 완성된 글(사실 번호 포함)을 넘긴다(step-order.ts).
       // 의존 표현이 없으면 웨이브가 하나라 예전처럼 전부 동시에 쓴다.
@@ -2037,8 +2052,8 @@ export async function generateEssay(
    * optional은 한 번 더 들어올 자리를 남긴다(필수 보완이 뒤에 올 수 있다).
    */
   /** 남은 시간 안에 끝나지 않으면 버린다(원문 유지). 호출 자체를 멈출 수는 없어 요금은 나가지만, 30초는 지킨다. */
-  const withDeadline = async <T>(what: string, p: Promise<T>, fallback: T): Promise<T> => {
-    const room = totalBudgetMs - (Date.now() - start);
+  const withDeadline = async <T>(what: string, p: Promise<T>, fallback: T, extraMs = 0): Promise<T> => {
+    const room = totalBudgetMs + extraMs - (Date.now() - start);
     if (room <= 0) return fallback;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<T>((resolve) => {
@@ -2301,11 +2316,11 @@ export async function generateEssay(
     if (grammarGaps.length > 0) console.warn(`[generateEssay] 필수 어법 누락 감지: ${JSON.stringify(grammarGaps.map((g) => g.label))}`);
   }
   // 학생이 하지 않은 행동을 "했다"고 쓴 문장(사진 촬영·스크랩·부착 등) — 제출하면 거짓 기록이라 그 단계만 다시 쓰게 한다(own-activity.ts).
-  const activityRewrites: { label: string; instruction: string }[] = [];
+  const activityRewrites: Rewrite[] = [];
   if (fixes) {
     for (const sec of attempt.sections) {
       const hits = findOwnActivitySentences(sec.content);
-      if (hits.length > 0) activityRewrites.push({ label: sec.label, instruction: ownActivityRepairText(hits) });
+      if (hits.length > 0) activityRewrites.push({ label: sec.label, instruction: ownActivityRepairText(hits), must: "honesty" });
     }
     if (activityRewrites.length > 0) {
       console.warn(`[generateEssay] 하지 않은 활동을 썼다고 한 문장 감지: ${JSON.stringify(activityRewrites.map((r) => r.label))}`);
@@ -2339,7 +2354,7 @@ export async function generateEssay(
         if (subjects.length > 0) parts.push(sourceSubjectRepairText(subjects));
         if (parts.length === 0) continue;
         console.warn(`[generateEssay] 근거 서술 문제 label="${sec.label}": ${parts.length === 2 ? "개수+출처주어" : parts[0].slice(0, 24)}`);
-        activityRewrites.push({ label: sec.label, instruction: parts.join(" ") });
+        activityRewrites.push({ label: sec.label, instruction: parts.join(" "), must: "notice" });
       }
     }
     // 인용한 출처 페이지에 없는 수치(claim-check.ts) — 지금까지는 글 맨 끝에서야 대조해 각주만 떼고 문장은 그대로 남겼다.
@@ -2360,6 +2375,7 @@ export async function generateEssay(
             `아래 문장의 값이 인용한 출처 페이지 본문에 없다 — ` +
             bad.map((f, i) => `(${i + 1}) "${f.text.slice(0, 60)}" (찾지 못한 값: ${describeToken(f.tokens)})`).join(" ") +
             ` 조사 노트에 있는 값으로 바꾸거나, 수치를 빼고 노트로 확인되는 내용만 쓸 것. 지어낸 숫자를 그대로 두지 말 것. 다른 문장과 각주는 그대로 둘 것.`,
+          must: "honesty",
         });
       }
     }
@@ -2376,7 +2392,7 @@ export async function generateEssay(
           const hits = findOutOfRange(sec.content, range);
           if (hits.length === 0) continue;
           console.warn(`[generateEssay] 다룰 시기 밖의 연도 label="${sec.label}" ${JSON.stringify(hits.map((h) => h.year))} (범위 ${range.startYear}~${range.endYear})`);
-          activityRewrites.push({ label: sec.label, instruction: outOfRangeRepairText(range, hits) });
+          activityRewrites.push({ label: sec.label, instruction: outOfRangeRepairText(range, hits), must: "notice" });
         }
     }
     // 안내문이 "A를 바탕으로 B"라고 한 단계가, A가 쓰지 않은 출처를 새로 들고 왔는지(step-order.ts).
@@ -2393,12 +2409,12 @@ export async function generateEssay(
           const extra = extraCitations(sec.content, sources.map((s) => s.content));
           if (extra.length === 0) continue;
           console.warn(`[generateEssay] 앞 단계에 없는 출처를 쓴 단계 label="${label}" 번호=${JSON.stringify(extra)} 앞단계=${JSON.stringify(earlier)}`);
-          activityRewrites.push({ label, instruction: extraCitationRepairText(earlier, extra) });
+          activityRewrites.push({ label, instruction: extraCitationRepairText(earlier, extra), must: "notice" });
         }
       }
     }
     // 나열된 항목이 한 문단에 뭉쳐 채점자가 하나씩 찾을 수 없는 경우(compound-items.ts).
-    const compoundChecks = allCompoundItems(elements.flatMap((el) => el.required_items ?? []), [
+    const compoundChecks = allCompoundItemsByStep(elements, [
       ...input.coreTaskInfo.requirements,
       input.coreTaskInfo.writing_guide,
       ...elements.map((el) => el.description),
@@ -2407,6 +2423,8 @@ export async function generateEssay(
       const el = elements.find((e) => e.label === sec.label);
       if (!el) continue;
       for (const it of compoundChecks) {
+        // 다른 단계 것인 항목은 이 단계에서 보지 않는다 — 머리기사 칸에 끼어든 인터뷰를 "고쳐 쓰라"고 하면 그 칸을 더 키운다.
+        if (it.owner && it.owner !== sec.label) continue;
         const body = sectionTextFor(sec.content, it.name);
         if (body === null) continue;
         const missing = missingParts(body, it.parts);
@@ -2425,14 +2443,14 @@ export async function generateEssay(
     // 안내문 조건을 어긴 단계(rubric-check.ts) — 결함이 아니라 "하라는 것을 안 했다"는 문제라 다른 검사로는 잡히지 않는다.
     for (const g of rubricGaps) {
       console.warn(`[generateEssay] 안내문 조건 미충족 label="${g.label}": ${JSON.stringify(g.missing.map((m) => m.slice(0, 50)))}`);
-      activityRewrites.push({ label: g.label, instruction: rubricRepairText(g.missing) });
+      activityRewrites.push({ label: g.label, instruction: rubricRepairText(g.missing), must: "notice" });
     }
     // 날조 차단의 반작용 — 자료가 모자라면 단계 전체를 "못 하겠다"는 글로 채우는 일이 있다(refusal.ts).
     for (const sec of attempt.sections) {
       const refusals = findRefusalSentences(sec.content);
       if (refusals.length === 0) continue;
       console.warn(`[generateEssay] 제출 글에 거절문 감지 label="${sec.label}" ${refusals.length}문장: ${JSON.stringify(refusals[0].slice(0, 60))}`);
-      activityRewrites.push({ label: sec.label, instruction: refusalRepairText(refusals, sec.label) });
+      activityRewrites.push({ label: sec.label, instruction: refusalRepairText(refusals, sec.label), must: "honesty" });
     }
   }
   // 직접 수행 기록 단계의 빈칸이 너무 많으면(본인만 아는 것 외에도 비워 둠) 그 단계만 다시 쓰게 한다 — 학생이 받는 내용이 없어진다.
@@ -2474,7 +2492,7 @@ export async function generateEssay(
       const left = findUncitedFigures(s.content, factTexts).filter((f) => !f.inNotes);
       if (left.length === 0) continue;
       console.warn(`[generateEssay] 조사 자료에 없는 수치 ${left.length}개 label="${s.label}": ${JSON.stringify(left.slice(0, 2).map((x) => x.values))}`);
-      activityRewrites.push({ label: s.label, instruction: uncitedFigureRepairText(left) });
+      activityRewrites.push({ label: s.label, instruction: uncitedFigureRepairText(left), must: "honesty" });
     }
   }
 
@@ -2486,7 +2504,7 @@ export async function generateEssay(
         const lines = findBannedVisuals(sec.content, policy);
         if (lines.length === 0) continue;
         console.warn(`[generateEssay] 허용되지 않은 자료 언급 label="${sec.label}": ${JSON.stringify(lines.slice(0, 2))}`);
-        activityRewrites.push({ label: sec.label, instruction: bannedVisualRepairText(sec.label, lines, policy) });
+        activityRewrites.push({ label: sec.label, instruction: bannedVisualRepairText(sec.label, lines, policy), must: "notice" });
       }
     }
   }
@@ -2498,7 +2516,7 @@ export async function generateEssay(
       const sec = attempt.sections.find((s) => s.label === el.label);
       if (!sec || hasDataTable(sec.content)) continue;
       console.warn(`[generateEssay] 표·그래프를 글에 만들지 않음 label="${el.label}"`);
-      activityRewrites.push({ label: el.label, instruction: dataTableRepairText(el.label) });
+      activityRewrites.push({ label: el.label, instruction: dataTableRepairText(el.label), must: "notice" });
     }
   }
   // 영역 사이에 거의 같은 문장이 되풀이되면 **코드가 뒤쪽 것을 지운다**(dedupe.ts — 모델 호출 0).
@@ -2617,17 +2635,30 @@ export async function generateEssay(
     // 필수 어법·밑줄은 안 지키면 0점이라 예산을 보지 않는다.
     // 칸 넘침은 안내문이 적어 둔 칸 크기를 어긴 것이라 "필수" 쪽이다(학생이 칸에 옮겨 적을 수 없다).
     const requiredRepair = merged.length > 0 || activityRewrites.length > 0 || boxRewrites.length > 0;
-    const criticalRepair = grammarGaps.length > 0;
+    // 정직성 결함(안 한 활동·없는 수치·거절문)은 예산을 보지 않는다 — 고치지 않으면 결과물이 "덜 좋은" 게 아니라 거짓이 된다.
+    // 실측(로그 31건 전수): 보완이 17건에서 건너뛰어졌고 그중 10건이 이 결함을 안고 나갔다(repair-priority.ts).
+    const must = mustRepairs(activityRewrites);
+    const criticalRepair = grammarGaps.length > 0 || must.length > 0;
     if (!overBudget("단계 부분 보완", criticalRepair ? "critical" : requiredRepair ? "required" : "optional")) {
+      // 예산이 이미 없으면 **정직성 결함과 0점 조건만** 고친다. 전부 고치려 하면 단계마다 호출이 붙어 30초를 크게 넘긴다.
+      const room = totalBudgetMs - (Date.now() - start);
+      const tight = criticalRepair && onlyMustAffordable(room, MIN_ROOM_MS);
+      const useGaps = tight ? merged.filter((g) => grammarGaps.some((x) => x.label === g.label)) : merged;
+      const useRewrites = tight ? must : [...activityRewrites, ...boxRewrites];
+      if (tight)
+        console.warn(
+          `[generateEssay] 남은 ${(room / 1000).toFixed(1)}초 — 반드시 고칠 것만 고침(${describeMust(must)}), 형식·분량 보완은 건너뜀`
+        );
       const beforeRepair = attempt.sections.map((s) => ({ label: s.label, content: s.content }));
       attempt = await withDeadline(
         "단계 부분 보완",
-        repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], [...activityRewrites, ...boxRewrites]),
-        attempt
+        repairLocally(attempt, elements, useGaps, tight || !repetitionIssue ? [] : repeatedPairs, useRewrites),
+        attempt,
+        criticalRepair ? GRACE_MS : 0
       );
       // 보완이 제 일을 했는지 코드로 다시 본다 — 감지하고 보완까지 돌고도 안 고쳐지는 일이 있었다(repair-check.ts).
       // 모델 호출이 늘지 않는다. 남은 것은 뒤의 코드 강제(밑줄 등)와 측정이 집어간다.
-      const residuals = residualsAfterRepair(beforeRepair, attempt.sections.map((s) => ({ label: s.label, content: s.content })), merged);
+      const residuals = residualsAfterRepair(beforeRepair, attempt.sections.map((s) => ({ label: s.label, content: s.content })), useGaps);
       if (residuals.length > 0)
         console.warn(`[generateEssay] ⚠ 보완 뒤에도 남음: ${JSON.stringify(residuals.map((r) => ({ 단계: r.label, 안바뀜: r.unchanged, 남은요구: r.stillMissing.map((m) => m.slice(0, 40)) })))}`);
       // 필수 어법은 낱말 세기로 판단할 수 없다 — "It is also used"의 It/is/that에 걸려 통과해 버린다(실측 2026-11-03).
@@ -3194,10 +3225,20 @@ export async function generateEssay(
             content = panel.content;
           }
         }
-        const paste = blankPastedMetadata(content);
-        if (paste.blanked.length > 0) {
-          console.warn(`[generateEssay] 붙이는 칸의 지어낸 서지 ${JSON.stringify(paste.blanked)} 를 빈칸으로 되돌림 label="${s.label}"`);
-          content = paste.content;
+        // 스크랩·부착 단계는 **표시가 사라져도** 코드가 바로잡는다 — 보완이 그 칸을 거절문으로 바꿔 놓은 실측이 있다.
+        if (isAttachmentStep({ label: s.label })) {
+          const slot = normalizeAttachmentSlot(content, findRefusalSentences);
+          if (slot.blanked.length > 0 || slot.droppedRefusals.length > 0)
+            console.warn(
+              `[generateEssay] 붙이는 칸 정리 label="${s.label}" 빈칸=${JSON.stringify(slot.blanked)} 거절문=${slot.droppedRefusals.length}건`
+            );
+          content = slot.content;
+        } else {
+          const paste = blankPastedMetadata(content);
+          if (paste.blanked.length > 0) {
+            console.warn(`[generateEssay] 붙이는 칸의 지어낸 서지 ${JSON.stringify(paste.blanked)} 를 빈칸으로 되돌림 label="${s.label}"`);
+            content = paste.content;
+          }
         }
         // 기호로 그린 그림(아스키 아트)은 제출할 글에 들어갈 것이 아니다 — 학생이 준비할 사진·그림 자리를 대신 차지한다(ascii-art.ts).
         const art = stripAsciiArt(content);
