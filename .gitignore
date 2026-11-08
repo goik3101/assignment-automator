@@ -52,3 +52,4 @@ next-env.d.ts
 
 # 측정 산출물(실제 안내문 기반 결과물·분석 JSON이 들어간다)
 scratchpad/
+__live*.ts
