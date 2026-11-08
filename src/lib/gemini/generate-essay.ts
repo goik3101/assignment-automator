@@ -1992,12 +1992,63 @@ export async function generateEssay(
   // "critical"은 예산을 보지 않는다 — 안 지키면 그 항목이 0점이 되는 조건(지정 언어, 필수 어법·밑줄)이다.
   // 실측(2026-11-01 전수): 영어 과제가 30.5초라 언어 조건 검사와 어법 보완이 모두 건너뛰어져
   // 본문에 한글이 남고("발명품은 Rocketbook 재사용 노트이다.") 밑줄이 굵게로 나갔다 — 둘 다 0점 사유다.
-  const overBudget = (what: string, kind: "optional" | "required" | "critical" = "optional"): boolean => {
+  // 보완 한 번에 실제로 걸리는 시간. 저장된 로그 31건 전수에서는 3.7~18.1초(중앙 8.0초)였는데, 그때는
+  // 보완이 `main`(mini)으로 돌았다. 글쓰기 역할(luna)로 바꾼 뒤 실측 **4.8초**(2026-11-08, 국어 1회)라
+  // 6초로 잡는다. 이 값이 "이 보완을 할 수 있는가"를 가르므로 실측 없이 올리지 말 것.
+  const REPAIR_COST_MS = 5000;
+  /**
+   * 필수 보완을 시작할 최소 여유. 실측 2026-11-08: 글쓰기 역할(luna)로 바꾼 보완이 4.8초,
+   * 다른 실행에서는 5.5초 안에 못 끝나 **버려졌다**(요금만 나갔다). 그래서 7초로 둔다 —
+   * 더 낮추면 돈만 쓰고 결과를 못 쓰는 호출이 늘고, 더 높이면 돌 기회가 사라진다.
+   */
+  const MIN_ROOM_MS = 7000;
+  /** 전체 목표 시간. 예전 고정선(22초)과 달리 **보완까지 끝난 총 시간**의 목표다. */
+  const totalBudgetMs = Number(process.env.ESSAY_TOTAL_MS ?? 30000);
+  const legacyBudget = process.env.ESSAY_BUDGET_MODE === "legacy";
+  /**
+   * 이 보완을 **하고 나면** 전체 목표를 넘는가.
+   *
+   * 예전 방식(ESSAY_BUDGET_MODE=legacy)은 고정선(22초/필수 26초)과 **이미 쓴 시간만** 비교했다.
+   * 그런데 생성(조사 중앙 10.5초 + 글쓰기)만으로 그 선을 넘기 때문에 **보완이 늘 건너뛰어졌다** —
+   * 로그 31건 전수에서 분량 보정 55회 전부, 안내문 요구를 채우는 단계 부분 보완도 20회 건너뜀.
+   * 즉 3분의 2쯤 되는 결과물이 **알려진 미충족을 안고** 나갔다.
+   * 이제는 "지금까지 쓴 시간 + 이 보완의 예상 시간"이 목표(기본 30초) 안에 들어오는지로 본다.
+   * optional은 한 번 더 들어올 자리를 남긴다(필수 보완이 뒤에 올 수 있다).
+   */
+  /** 남은 시간 안에 끝나지 않으면 버린다(원문 유지). 호출 자체를 멈출 수는 없어 요금은 나가지만, 30초는 지킨다. */
+  const withDeadline = async <T>(what: string, p: Promise<T>, fallback: T): Promise<T> => {
+    const room = totalBudgetMs - (Date.now() - start);
+    if (room <= 0) return fallback;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<T>((resolve) => {
+      timer = setTimeout(() => {
+        console.warn(`[generateEssay] ${what}이(가) 남은 ${(room / 1000).toFixed(1)}초 안에 안 끝나 원문을 그대로 씀`);
+        resolve(fallback);
+      }, room);
+    });
+    try {
+      return await Promise.race([p, late]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const overBudget = (what: string, kind: "optional" | "required" | "critical" = "optional", costMs = REPAIR_COST_MS): boolean => {
     if (!timeBudgetMs || kind === "critical") return false;
-    const limit = kind === "required" ? timeBudgetMs + 4000 : timeBudgetMs;
     const spent = Date.now() - start;
-    if (spent <= limit) return false;
-    console.warn(`[generateEssay] 시간 예산 초과(${(spent / 1000).toFixed(1)}초) — ${what} 건너뜀`);
+    if (legacyBudget) {
+      const limit = kind === "required" ? timeBudgetMs + 4000 : timeBudgetMs;
+      if (spent <= limit) return false;
+      console.warn(`[generateEssay] 시간 예산 초과(${(spent / 1000).toFixed(1)}초) — ${what} 건너뜀`);
+      return true;
+    }
+    // 필수 보완은 **남은 시간이 조금이라도 되면** 시작한다 — 시작한 뒤 넘치면 결과를 버리고 원문을 쓴다(아래 withDeadline).
+    // 추정으로 미리 막으면 5.4초가 남았는데 "예상 6초"라고 건너뛰는 일이 생긴다(실측 2026-11-08, 카드뉴스).
+    const room = totalBudgetMs - spent;
+    if (kind === "required" ? room >= MIN_ROOM_MS : room >= costMs * 2) return false;
+    console.warn(
+      `[generateEssay] 시간 예산 초과(${(spent / 1000).toFixed(1)}초 씀, 남은 ${(room / 1000).toFixed(1)}초 < 필요 ${((kind === "required" ? MIN_ROOM_MS : costMs * 2) / 1000).toFixed(1)}초) — ${what} 건너뜀`
+    );
     return true;
   };
   // 영어로 쓸 때는 안내문의 글자 수 기준(한국어)을 영어 글자 수로 늘린다 — 그대로 두면 분량 보정이 영어 글을 절반 이하로 잘라 낸다.
@@ -2195,7 +2246,7 @@ export async function generateEssay(
         )
       : null;
   const [flowingGaps, rubricGaps] = await Promise.all([
-    overBudget("소제목 없는 단계의 항목 확인") ? Promise.resolve([] as CoverageGap[]) : confirmCoverageGaps(attempt.sections),
+    overBudget("소제목 없는 단계의 항목 확인", "optional", 3000) ? Promise.resolve([] as CoverageGap[]) : confirmCoverageGaps(attempt.sections),
     // 안내문 요구 충족 여부라 "필수" 쪽으로 본다 — 결함 교정과 달리 못 지키면 그대로 감점이다.
     rubricScoped && !overBudget("안내문 조건 대조", "critical")
       ? judgeRubric(rubricScoped, attempt.sections.map((s) => ({ label: s.label, content: s.content })))
@@ -2522,7 +2573,11 @@ export async function generateEssay(
     const criticalRepair = grammarGaps.length > 0;
     if (!overBudget("단계 부분 보완", criticalRepair ? "critical" : requiredRepair ? "required" : "optional")) {
       const beforeRepair = attempt.sections.map((s) => ({ label: s.label, content: s.content }));
-      attempt = await repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], [...activityRewrites, ...boxRewrites]);
+      attempt = await withDeadline(
+        "단계 부분 보완",
+        repairLocally(attempt, elements, merged, repetitionIssue ? repeatedPairs : [], [...activityRewrites, ...boxRewrites]),
+        attempt
+      );
       // 보완이 제 일을 했는지 코드로 다시 본다 — 감지하고 보완까지 돌고도 안 고쳐지는 일이 있었다(repair-check.ts).
       // 모델 호출이 늘지 않는다. 남은 것은 뒤의 코드 강제(밑줄 등)와 측정이 집어간다.
       const residuals = residualsAfterRepair(beforeRepair, attempt.sections.map((s) => ({ label: s.label, content: s.content })), merged);
@@ -4294,7 +4349,9 @@ async function repairLocally(
     try {
       const res = await generate({
         label: "generateEssay:repair",
-        role: "main",
+        // 글쓰기와 같은 일(한 단계 다시 쓰기)이고 검색이 필요 없다 — 더 빠른 글쓰기 역할을 쓴다
+        // (2026-10-29 실측: 같은 과제 글쓰기가 luna 20.4초 vs mini 24.8초). ESSAY_REPAIR_ROLE=main으로 되돌림.
+        role: process.env.ESSAY_REPAIR_ROLE === "main" ? "main" : "write",
         effort: "low",
         prompt: `
 아래는 수행평가 한 단계의 원고다. 지적된 문제만 고쳐서 이 단계 본문 전체를 다시 써줘.
