@@ -15,7 +15,7 @@ const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual")
 const { isListeningTest } = await import("@/lib/gemini/analysis-normalize");
 const { extractCountRequirements, hasSizeLimit, wantsBriefScenes, isSceneListElement } = await import("@/lib/essay/form-requirements");
 const { isAttachmentStep, lengthRoleOf } = await import("@/lib/essay/length-plan");
-const { noLengthLimit } = await import("@/lib/essay/box-lines");
+const { noLengthLimit, boxLengths } = await import("@/lib/essay/box-lines");
 const { cellSubfields } = await import("@/lib/essay/cell-subfields");
 const { planEvidence } = await import("@/lib/essay/evidence-slots");
 const { needsExcerpt } = await import("@/lib/essay/excerpt-need");
@@ -151,6 +151,25 @@ const RULES: Rule[] = [
       [false, "각 칸에 들어갈 말을 적는다."],
       [false, "6칸으로 구성한다."],
       [false, "표에는 제목과 내용을 적는다."],
+    ],
+  },
+  {
+    name: "칸줄수",
+    what: "안내문 작성 기준에서 그 칸이 **몇 줄**인지 읽히는가(이제 분량의 최우선 기준이다 — 프롬프트와 판정이 같이 쓴다)",
+    run: (t) => boxLengths(["머리기사"], t, [t]).length > 0,
+    cases: [
+      [true, "머리기사: 제목 약 1줄, 내용 약 6줄."],
+      [true, "머리기사는 6줄 분량으로 작성한다."],
+      [true, "머리기사: 내용 5~6줄"],
+      [true, "머리기사 — 내용을 여섯 줄로 쓴다."],
+      [true, "머리기사: 답안 칸 10줄 안에 작성한다."],
+      // 줄 수가 아니라 다른 것을 세는 말은 걸리면 안 된다
+      [false, "머리기사: 기사 한 편을 완성한다."],
+      [false, "머리기사: 사진 2장을 붙인다."],
+      [false, "머리기사: 기사 두 편을 비교한다."],
+      [false, "머리기사와 사설을 각각 작성한다."],
+      // 칸 이름이 안 나오면 그 칸의 줄 수로 읽지 않는다(앞 칸으로 쏠리는 사고를 막은 방어)
+      [false, "각 칸은 6줄로 작성한다."],
     ],
   },
   {

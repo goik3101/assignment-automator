@@ -130,3 +130,15 @@ test("안내문이 분량 제한 없다고 하면 칸 줄 수로 묶지 않는�
   assert.equal(noLengthLimit(["분량은 800자 내외로 작성한다."]), false);
   assert.equal(noLengthLimit(["제한 시간 없이 작성한다."]), false);
 });
+
+test("한글 숫자로 쓴 줄 수도 읽는다 (rule-audit의 칸줄수 관문에서 놓침으로 나왔다)", () => {
+  assert.equal(linesInChunk("내용을 여섯 줄로 쓴다."), 6);
+  assert.equal(linesInChunk("제목 한 줄, 내용 여덟 줄."), 9);
+  assert.equal(linesInChunk("답안 칸 열두 줄 안에 쓴다."), 12);
+  // 줄이 아닌 단위는 세지 않는다
+  assert.equal(linesInChunk("사진 2장을 붙인다."), 0);
+  assert.equal(linesInChunk("기사 두 편을 비교한다."), 0);
+  const boxes = boxLengths(["머리기사"], "머리기사 — 내용을 여섯 줄로 쓴다.", []);
+  assert.equal(boxes.length, 1);
+  assert.equal(boxes[0].lines, 6);
+});

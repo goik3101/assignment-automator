@@ -20,7 +20,14 @@ export interface BoxLength {
   max: number;
 }
 
-const LINE_NUM = /(\d{1,2})\s*줄/g;
+/**
+ * 줄 수. **한글 숫자도 읽는다** — rule-audit의 "칸줄수" 관문에서 "내용을 여섯 줄로 쓴다"가 놓침으로 나왔다
+ * (2026-11-10). 선생님들이 작성 기준을 손으로 쓸 때 "여섯 줄"·"두 줄"처럼 적는 일이 흔하다.
+ */
+const LINE_NUM = /(\d{1,2}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|열한|열두)\s*줄/g;
+const HANGUL_NUM: Record<string, number> = {
+  한: 1, 두: 2, 세: 3, 네: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열: 10, 열한: 11, 열두: 12,
+};
 /** "질문1·답변1·질문2·답변2는 각각 약 2줄" — 각각 앞의 나열 개수만큼 곱한다. */
 const EACH = /각각/;
 
@@ -28,7 +35,7 @@ const EACH = /각각/;
 export function linesInChunk(chunk: string): number {
   let total = 0;
   for (const m of chunk.matchAll(LINE_NUM)) {
-    const n = Number(m[1]);
+    const n = HANGUL_NUM[m[1]] ?? Number(m[1]);
     if (!Number.isFinite(n) || n <= 0 || n > 60) continue;
     const before = chunk.slice(0, m.index ?? 0);
     if (EACH.test(before.slice(-30))) {
