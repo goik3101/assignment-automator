@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { studentPreparedVisuals, buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, stripFormLead } from "./deliverable.ts";
+import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, splitProductionNotes, stripFormLead, studentPreparedVisuals } from "./deliverable.ts";
 
 test("신문 영역이 각각 별개 단계면 그 칸 하나만 쓰게 한다", () => {
   // 실측(결과물.10): "이 단계는 신문 그 자체다"라는 지시 때문에 머리기사 안에 인터뷰·사설·만평이 다 들어갔다.
@@ -87,4 +87,26 @@ test("금지 문장에는 걸리지 않는다", () => {
 
 test("시각 자료 말이 없으면 빈 배열", () => {
   assert.deepEqual(studentPreparedVisuals(["원인과 해결 방안을 쓴다."]), []);
+});
+
+test("제작 참고를 떼면 칸이 비는 경우에는 떼지 않는다 (만평 칸이 0자가 된 실측)", () => {
+  // 기준선 3회 중 2회의 실제 모양 — 그릴 그림과 비판 대상이 제작 참고 안에 들어갔다
+  const bare = `### 지도 위의 선, 빠진 목소리
+
+### 제작 참고
+한반도 지도를 그리고 북위 38도선 위아래에 소련군과 미군의 표식을 각각 둔다. 말풍선에는 "우리 앞날을 정할 목소리는 어디에 있나?"라고 적는다.
+무엇을 비판하는가: 항복 구역을 정하는 과정에 당사자인 한국인의 뜻이 빠졌다는 점을 비판한다.`;
+  const r = splitProductionNotes(bare);
+  assert.equal(r.notes, null, "칸이 비는데도 떼어 냈다");
+  assert.ok(r.body.includes("한반도 지도를 그리고"), "칸 내용이 사라졌다");
+
+  // 칸에 글이 충분히 남으면 예전처럼 떼어 낸다
+  const normal = `### 남한에 대한민국 정부 수립
+1948년 8월 15일 대한민국 정부가 수립됐다. 국내 언론은 미·중의 승인 사실과 국내 정당의 환영 입장을 함께 전했다. 광복 뒤 3년 만의 일이다.
+
+### 제작 참고
+머리기사 옆에 넣을 사진·그림·지도 중 하나를 직접 준비하세요.`;
+  const r2 = splitProductionNotes(normal);
+  assert.ok(r2.notes?.includes("직접 준비하세요"));
+  assert.ok(!r2.body.includes("직접 준비하세요"));
 });

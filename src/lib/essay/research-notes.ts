@@ -73,10 +73,19 @@ const DETAIL_PATH = /(?:^|\/)(?:detail|view|read|article|post|show|item|content)
  */
 const UPLOAD_SITE = /(?:^|\.)(?:scribd|slideshare|studocu|coursehero|docsity|blog\.naver|tistory|wordpress|velog|brunch\.co)\./i;
 
+/**
+ * 뉴스 **재배포 포털**. 기사 자체는 멀쩡하지만 **어느 언론사가 썼는지 주소에서 가려진다** —
+ * 학생이 출처를 적을 때 "다음"·"네이트"라고 쓰게 되고, 원문이 내려가면 같이 사라진다.
+ * 전수 측정(2026-11-10, 출처 200개): `v.daum.net` 17회, `news.nate.com` 2회.
+ * 같은 기사를 원 언론사 주소로 쓰면 등급도 '신뢰 매체'가 된다 — 그래서 **뒤로 미루기만** 한다(버리지 않는다).
+ */
+const NEWS_PORTAL = /(?:^|\.)(?:v\.daum\.net|news\.nate\.com|n\.news\.naver\.com|news\.naver\.com|entertain\.naver\.com|sports\.news\.naver\.com|news\.zum\.com)$/i;
+
 export function isSecondChoicePage(url: string): boolean {
   try {
     const u = new URL(url);
     if (UPLOAD_SITE.test(u.hostname)) return true;
+    if (NEWS_PORTAL.test(u.hostname.replace(/^www\./, ""))) return true;
     const where = u.pathname + (u.search ? "?" : "");
     return LIST_PATH.test(u.pathname) && !DETAIL_PATH.test(where);
   } catch {

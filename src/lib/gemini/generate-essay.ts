@@ -107,7 +107,7 @@ import { stripOpinionCitations } from "@/lib/essay/opinion-citations";
 import { GRAMMAR_REPAIR_TEXT, UNDERLINE_REPAIR_TEXT, missingGrammarForms, missingUnderlinedForms, requiredGrammarForms, underlineGrammarForms, wantsUnderline, forbidsRelativeAdverb, relativeAdverbInUnderline, relativeAdverbRepairText } from "@/lib/essay/english-grammar";
 import { promptRuleScope } from "@/lib/essay/prompt-scope";
 import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
-import { dropRepeatedSentences, stripDefinitionPrefix } from "@/lib/essay/dedupe";
+import { dropRepeatedSentences, duplicateStepLabels, stripDefinitionPrefix } from "@/lib/essay/dedupe";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
 import { effectiveTarget, isAttachmentStep, lengthGuideLines } from "@/lib/essay/length-plan";
@@ -1563,6 +1563,19 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
       // 장치(stepWaves의 extraEdges, sectionOrderEdges, previousStepsBlock "share")는 테스트와 함께 남겨 두되 쓰지 않는다.
       const waves = stepOrderOn() ? stepWaves(elements, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide) : [labels];
       if (waves.length > 1) console.log(`[generateEssay] 단계 순서: ${waves.map((w) => w.join("+")).join(" → ")}`);
+      // 단계마다 **그 단계의 목표 분량**을 자기 호출에 다시 적는다 — 공유 프롬프트의 목록만으로는
+      // 저장된 9회가 214~930자로 갈렸다(목표 600, 역할 범위 300~900). 항목 나눠 쓰기에서 통한 처방과 같다.
+      const guideCtx = formRequirementsOn()
+        ? {
+            requirements: input.coreTaskInfo.requirements,
+            guide: input.coreTaskInfo.writing_guide,
+            labels: input.coreTaskInfo.task_elements.map((e) => e.label),
+          }
+        : undefined;
+      const targetOf = (l: string): number | undefined => {
+        const el = elements.find((e) => e.label === l);
+        return el ? (effectiveTarget(el, guideCtx) ?? undefined) : undefined;
+      };
       const byLabel = new Map<string, Awaited<ReturnType<typeof generate>>>();
       const done: { label: string; content: string }[] = [];
       for (const wave of waves) {
@@ -1575,7 +1588,7 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
               role: "write",
               prompt: `${prompt}
 
-${parallelWriteInstruction(l, labels, l === labels[0])}${prev ? `\n\n${prev}` : ""}`,
+${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}${prev ? `\n\n${prev}` : ""}`,
               effort: writeEffort(),
             })
           )
@@ -2525,10 +2538,12 @@ export async function generateEssay(
   if (dedupeOn()) {
     // 한 지면을 나눠 맡은 영역끼리만 지운다 — 따로 제출하는 글(처방전·편지)은 저마다 말이 돼야 한다.
     const sharedPage = newspaperSectionLabels(input.coreTaskInfo.topic, elements.map((e) => ({ label: e.label, description: e.description })));
-    const { sections: deduped, removed } = dropRepeatedSentences(
-      attempt.sections.map((s) => ({ label: s.label, content: s.content })),
-      sharedPage
-    );
+    // 분석이 같은 산출물을 두 단계로 쪼개 놓은 경우도 한 지면으로 본다 — 이름으로는 가릴 수 없어 글로 판정한다.
+    // 실측(2026-11-10, 국어 발표): "스토리보드"와 "발표용 그림 자료"가 따로 생겨 되풀이가 8쌍이었고 전부 그 둘 사이였다.
+    const sections0 = attempt.sections.map((s) => ({ label: s.label, content: s.content }));
+    const dupSteps = duplicateStepLabels(sections0);
+    if (dupSteps.length > 0) console.warn(`[generateEssay] 같은 산출물이 두 단계로 쪼개짐: ${dupSteps.join(" ↔ ")}`);
+    const { sections: deduped, removed } = dropRepeatedSentences(sections0, [...new Set([...sharedPage, ...dupSteps])]);
     if (removed.length > 0) {
       console.log(`[generateEssay] 되풀이 문장 ${removed.length}개를 코드로 지움: ${JSON.stringify(removed.map((r) => `${r.label}: ${r.text.slice(0, 30)}…`))}`);
       attempt = { ...attempt, sections: attempt.sections.map((s) => ({ ...s, content: deduped.find((d) => d.label === s.label)?.content ?? s.content })) };

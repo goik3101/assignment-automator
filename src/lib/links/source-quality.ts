@@ -11,8 +11,13 @@
 
 export type SourceTier = "official" | "reliable" | "reference" | "general" | "weak";
 
+// 전수 측정(2026-11-10, 저장된 결과물 63편의 출처 200개): **"일반" 69개(35%)의 대부분이 목록에 없을 뿐
+// 멀쩡한 곳**이었다 — 전자신문 37회, 정책브리핑(korea.kr) 7회, 국민연금연구원, 민주화운동기념사업회
+// 오픈아카이브, 에어코리아, 보험연구원, 대학 공개강의(KOCW), Wiley 학술지. 등급은 학생 화면에 그대로
+// 보이므로("일반 사이트"), 목록이 좁은 것이 곧 **멀쩡한 출처를 못 믿게 만드는 것**이다.
+// 거짓 경고를 걷어낸 것과 같은 이유로 넓힌다 — 단, `or.kr`을 통째로 넣지는 않는다(시민단체·사설 기관도 쓴다).
 const OFFICIAL =
-  /(^|\.)(go\.kr|gov|gov\.[a-z]{2}|mil|ac\.kr|re\.kr|edu|edu\.[a-z]{2}|ac\.[a-z]{2}|un\.org|europa\.eu|who\.int|icrc\.org|oecd\.org|unesco\.org|worldbank\.org|nobelprize\.org|si\.edu)$/i;
+  /(^|\.)(go\.kr|gov|gov\.[a-z]{2}|mil|ac\.kr|re\.kr|edu|edu\.[a-z]{2}|ac\.[a-z]{2}|un\.org|europa\.eu|who\.int|icrc\.org|oecd\.org|unesco\.org|worldbank\.org|nobelprize\.org|si\.edu|korea\.kr|korea\.net|kocw\.or\.kr|airkorea\.or\.kr|nps\.or\.kr|kdemo\.or\.kr|nahf\.or\.kr|bok\.or\.kr|kiri\.or\.kr|ebsi\.co\.kr|ebs\.co\.kr|nature\.com|science\.org|sciencedirect\.com|springer\.com|wiley\.com|jstor\.org|ssrn\.com|dbpia\.co\.kr|refworld\.org|freedomhouse\.org|carnegieendowment\.org)$/i;
 
 const RELIABLE = new RegExp(
   "(^|\\.)(" +
@@ -26,6 +31,12 @@ const RELIABLE = new RegExp(
       "bbc\\.com", "bbc\\.co\\.uk", "nytimes\\.com", "washingtonpost\\.com", "reuters\\.com",
       "apnews\\.com", "theguardian\\.com", "britannica\\.com", "doopedia\\.co\\.kr",
       "history\\.com", "biography\\.com", "nationalgeographic\\.com", "smithsonianmag\\.com",
+      // 2026-11-10 전수 측정에서 "일반"으로 떨어져 있던 언론 — 전자신문만 37회였다.
+      "etnews\\.com", "fnnews\\.com", "mt\\.co\\.kr", "inews24\\.com", "newspim\\.com",
+      "newsway\\.co\\.kr", "tf\\.co\\.kr", "heraldcorp\\.com", "asiae\\.co\\.kr",
+      "nocutnews\\.co\\.kr", "pressian\\.com", "sisain\\.co\\.kr", "lawtimes\\.co\\.kr",
+      "zdnet\\.co\\.kr", "koreajoongangdaily\\.com", "koreaherald\\.com", "dongascience\\.com",
+      "journalist\\.or\\.kr",
     ].join("|") +
     ")$",
   "i"

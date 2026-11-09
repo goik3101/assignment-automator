@@ -132,3 +132,14 @@ test("목록 낱말이 있어도 낱낱의 문서 페이지는 1순위다", () =
   assert.equal(isSecondChoicePage("https://example.go.kr/board/list?page=2"), true);
   assert.equal(isSecondChoicePage("https://sciencecube.kr/exec/front/Board/download/?filename=x.pdf"), true);
 });
+
+test("뉴스 재배포 포털은 뒤로 미룬다 — 원 언론사 주소가 낫다 (전수 200개 중 19개)", () => {
+  assert.equal(isSecondChoicePage("https://v.daum.net/v/20260101000001"), true);
+  assert.equal(isSecondChoicePage("https://news.nate.com/view/20260101n00001"), true);
+  assert.equal(isSecondChoicePage("https://n.news.naver.com/mnews/article/001/0000001"), true);
+  // 원 언론사 주소는 그대로 1순위
+  assert.equal(isSecondChoicePage("https://www.etnews.com/20260101000001"), false);
+  assert.equal(isSecondChoicePage("https://www.hani.co.kr/arti/society/1.html"), false);
+  // 포털의 비뉴스 페이지는 건드리지 않는다
+  assert.equal(isSecondChoicePage("https://dic.daum.net/word/view.do?wordid=1"), false);
+});

@@ -7,14 +7,37 @@ export function parallelWriteOn(labelCount: number): boolean {
   return labelCount >= 2 && process.env.ESSAY_PARALLEL_WRITE !== "off";
 }
 
-export function parallelWriteInstruction(label: string, labels: string[], withSummary: boolean): string {
+/**
+ * **이 단계가 쓸 분량**을 그 단계 호출에 다시 한 번 적는다.
+ *
+ * 왜(전수 측정 2026-11-10): 분량 가이드는 공유 프롬프트에 **네 단계 목표를 한꺼번에 나열**하는데,
+ * 각 칸은 자기 호출에서 따로 쓰인다. 자기 줄을 찾아 읽기를 바라고 있었던 셈이다.
+ * 역사 신문 "머리기사"는 목표 600자(300~900)인데 저장된 9회가 214·228·257·301·462·544·644·832·930자였다 —
+ * **4회가 역할 바닥(300자)에도 못 미쳤고 1회는 상한을 넘었다.** 같은 안내문·같은 사진이다.
+ *
+ * 항목을 나눠 쓰는 경로에서는 이미 같은 처방이 통했다(`myShareLine`: 목표의 0.52배 → 0.87배).
+ * 그때 이 파일에 "단계별 동시 쓰기는 프롬프트에 숫자가 적혀 있어 이 문제가 없다"고 적어 두었는데,
+ * 위 측정이 그 가정을 뒤집었다 — 숫자가 **어딘가에** 있는 것과 **이 호출에게** 말하는 것은 다르다.
+ */
+function stepLengthLine(label: string, target?: number): string {
+  if (!target || !Number.isFinite(target) || target < 100) return "";
+  const lo = Math.round((target * 0.8) / 50) * 50;
+  const hi = Math.round((target * 1.2) / 50) * 50;
+  // 상한을 못 박는 문구("${hi}자를 넘기지 말 것")는 **기각**(2026-11-10, 신문 각 2~3회):
+  // 넣어도 길이가 줄지 않았고 사설 칸이 798~966자 → 931~1121자로 오히려 늘었다. 점수는 둘 다 같았다
+  // (정답 채점 평균 10.33 대 10.5, n=3·2). 바닥을 채우게 하는 쪽만 효과가 확인됐으므로 그쪽만 남긴다.
+  return `분량: **네가 쓸 "${label}" 단계는 공백 포함 약 ${target}자**다(${lo}~${hi}자 안에 들어오게). 위 분량 가이드에 다른 단계 숫자도 적혀 있지만 너는 이 숫자만 지킨다 — 짧게 끝내지도, 다른 단계 몫까지 쓰지도 말 것.
+`;
+}
+
+export function parallelWriteInstruction(label: string, labels: string[], withSummary: boolean, target?: number): string {
   const others = labels.filter((l) => l !== label).map((l) => `"${l}"`).join(", ");
   return `
 【이번 호출에서 쓸 부분 — 반드시 지킬 것】
 이 과제의 단계(${labels.map((l) => `"${l}"`).join(", ")})는 여러 사람이 나눠서 동시에 쓴다. 너는 "## ${label}" 단계 하나만 쓴다.
 ${others ? `${others} 단계는 쓰지 말 것(그 단계의 내용은 위 단계 설명을 참고해 흐름만 맞춘다). ` : ""}책·인물·대상 이름과 사실은 위에 정해진 것만 쓴다(다른 단계와 어긋나지 않게).
 ${withSummary ? "맨 위에 과제 전체(모든 단계)를 요약한 불릿 3줄을 먼저 쓰고, 바로 이어서" : "맨 위 요약은 쓰지 말고 곧바로"} "## ${label}" 제목 줄부터 그 단계 본문을 쓴다.
-`.trim();
+${stepLengthLine(label, target)}`.trim();
 }
 
 /**

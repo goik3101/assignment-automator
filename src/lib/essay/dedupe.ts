@@ -106,3 +106,51 @@ export function stripDefinitionPrefix(content: string): { content: string; strip
   });
   return { content: lines.join("\n"), stripped };
 }
+
+/**
+ * **같은 산출물이 두 단계로 쪼개진 경우**를 글만 보고 찾는다.
+ *
+ * 왜(2026-11-10, 국어 발표 1회): 분석이 "스토리보드"와 "발표용 그림 자료"를 **따로** 만들었고
+ * 되풀이가 **8쌍**이었다 — 여덟 쌍 전부 그 두 단계 사이였다. 안내문이 요구한 것은 개요와 스토리보드
+ * 둘뿐인데, 분석의 단계 수가 실행마다 1·2·3개로 흔들린다(저장된 국어 실행 6회에서 모두 관찰).
+ * 단계 이름으로는 가릴 수 없다("발표용 그림 자료"가 스토리보드와 같은 것인지 이름만 봐서는 모른다).
+ *
+ * 그래서 **그 단계 문장의 절반 이상이 앞 단계와 거의 같은지**로 본다. 처방전↔편지처럼 따로 제출하는
+ * 글은 같은 사실을 한두 번 겹칠 뿐이라(실측 1쌍) 이 문턱에 걸리지 않는다.
+ */
+export function duplicateStepLabels(
+  sections: { label: string; content: string }[],
+  threshold = 0.72,
+  ratio = 0.5
+): string[] {
+  if (sections.length < 2) return [];
+  const pairs = findRepeatedStatements(sections, threshold);
+  const order = new Map(sections.map((s, i) => [s.label, i]));
+  const dupCount = new Map<string, Set<string>>();
+  for (const p of pairs) {
+    if (p.a.label === p.b.label) continue;
+    const later = (order.get(p.a.label) ?? 0) >= (order.get(p.b.label) ?? 0) ? p.a : p.b;
+    const set = dupCount.get(later.label) ?? new Set<string>();
+    set.add(later.text);
+    dupCount.set(later.label, set);
+  }
+  const out: string[] = [];
+  for (const sec of sections) {
+    const dup = dupCount.get(sec.label);
+    if (!dup || dup.size < 2) continue;
+    const lines = sec.content
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#") && !l.startsWith("|"));
+    if (lines.length === 0) continue;
+    if (dup.size / lines.length >= ratio) out.push(sec.label);
+  }
+  // 겹치는 짝의 **앞 단계**도 같은 지면으로 다뤄야 뒤쪽을 지울 수 있다(dropRepeatedSentences는 둘 다 요구한다).
+  if (out.length === 0) return [];
+  const partners = new Set(out);
+  for (const p of pairs) {
+    if (partners.has(p.a.label)) partners.add(p.b.label);
+    else if (partners.has(p.b.label)) partners.add(p.a.label);
+  }
+  return [...partners];
+}

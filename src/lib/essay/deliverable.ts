@@ -66,6 +66,19 @@ export function splitProductionNotes(content: string): { body: string; notes: st
     .join("\n")
     .trim();
   const body = [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  // 떼어 내면 **칸이 비어 버리는 경우**에는 떼지 않는다 — 모델이 그 칸의 내용을 "제작 참고" 안에 써 버린 것이다.
+  //
+  // 실측(2026-11-10, 역사 신문 기준선 3회 중 2회): "만평/광고" 칸이 제목 한 줄만 남고 **0자**가 됐다.
+  // 그릴 그림과 비판 대상이 제작 참고로 옮겨졌는데, 제작 참고는 화면에 "제출하는 글이 아니에요"로 표시된다.
+  // 만평은 안내문 양식의 한 칸(내용 3점 + 양식 2점)이라, 학생에게는 빈 칸이 남는다.
+  // 기준은 "짧다"가 아니라 **소제목밖에 안 남았다**로 잡는다 — 짧아도 글이 남아 있으면 예전대로 떼어 낸다
+  // (문턱을 40자로 두었더니 "### 머리기사 / 내용이다." 같은 짧은 글까지 안 떼어 냈다).
+  const bodyChars = body
+    .split("\n")
+    .filter((l) => !/^\s*#{1,6}\s/.test(l))
+    .join("")
+    .replace(/\s/g, "").length;
+  if (bodyChars < 10) return { body: content, notes: null };
   return { body, notes: notes || null };
 }
 

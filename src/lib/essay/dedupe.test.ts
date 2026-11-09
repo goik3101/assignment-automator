@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dropRepeatedSentences, stripDefinitionPrefix } from "./dedupe.ts";
+import { dropRepeatedSentences, duplicateStepLabels, stripDefinitionPrefix } from "./dedupe.ts";
 import { findRepeatedStatements } from "./repetition.ts";
 
 // 결과물20(한국사 신문)에서 실제로 네 영역에 되풀이된 문장
@@ -91,4 +91,33 @@ test("한 단계를 나눠 쓴 두 몫 사이의 되풀이도 지운다 (국어 
   assert.equal(r.removed.length, 1);
   assert.equal(r.removed[0].label, "몫2"); // 앞 몫이 그 사실의 주인
   assert.equal(findRepeatedStatements(r.sections).length, 0);
+});
+
+test("같은 산출물이 두 단계로 쪼개지면 그 둘을 한 지면으로 본다 (국어 발표 실측: 되풀이 8쌍)", () => {
+  const same = [
+    "말할 핵심: 헌법재판소가 2012년 8월 23일 인터넷 실명제를 위헌으로 결정했다는 내용이다.[1]",
+    "말할 핵심: 불법 게시물이 의미 있게 줄지 않고 해외 사이트로 옮겨 가는 부작용이 있었다.[2]",
+    "말할 핵심: 국내 사업자와 해외 사업자 사이에 역차별이 생겼다는 지적이 있었다.[3]",
+  ];
+  const sections = [
+    { label: "개요", content: "글의 목적: 인터넷 실명제 도입에 반대하는 발표를 한다.\n예상 독자: 같은 반 학생들이다.\n주제: 표현의 자유를 지켜야 한다." },
+    { label: "스토리보드", content: same.join("\n") },
+    { label: "발표용 그림 자료", content: same.join("\n") },
+  ];
+  const dups = duplicateStepLabels(sections);
+  assert.ok(dups.includes("발표용 그림 자료"), "쪼개진 뒤 단계를 못 찾았다");
+  assert.ok(dups.includes("스토리보드"), "짝이 되는 앞 단계가 빠졌다");
+  assert.ok(!dups.includes("개요"), "겹치지 않는 단계가 섞였다");
+  // 그 라벨들을 한 지면으로 넘기면 뒤 단계의 되풀이가 지워진다
+  const r = dropRepeatedSentences(sections, dups);
+  assert.ok(r.removed.length >= 1);
+  assert.ok(r.removed.every((x) => x.label === "발표용 그림 자료"));
+});
+
+test("따로 제출하는 글이 사실 하나를 겹치는 것은 쪼개진 것이 아니다", () => {
+  const sections = [
+    { label: "책 처방전", content: "친구는 성적이 떨어져 불안하다고 했다.[1]\n그래서 이 책을 골랐다.[1]\n주인공이 비슷한 고민을 지나간다.[2]\n읽고 나면 마음이 조금 가벼워질 것이다.[2]" },
+    { label: "친구에게 편지 쓰기", content: "친구는 성적이 떨어져 불안하다고 했다.[1]\n네게 이 책을 권하고 싶은 이유를 적어 볼게.[1]\n다음 주에 같이 읽자고 말하고 싶어.[2]\n네가 혼자가 아니라는 걸 알아주면 좋겠어.[2]" },
+  ];
+  assert.deepEqual(duplicateStepLabels(sections), []);
 });

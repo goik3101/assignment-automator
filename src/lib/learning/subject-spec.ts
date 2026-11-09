@@ -1,4 +1,5 @@
 import { generate } from "@/lib/llm";
+import { createSpecCache, specCacheKey } from "./spec-cache";
 import { Type, type Schema } from "@google/genai";
 import type { CoreTaskInfo } from "@/types/task";
 
@@ -77,6 +78,12 @@ function describeTask(params: { subject: string; info: CoreTaskInfo; instruction
 }
 
 /** 대상 조건 추출. 판별은 안내문에 실제로 적힌 표현에만 근거한다 — 관련 있어 보이는 종류를 짐작하지 않는다. */
+/**
+ * 같은 안내문을 받은 학생끼리 사양을 재사용한다(spec-cache.ts에 왜·다양성 영향 정리).
+ * 실측 2026-11-10: 이 호출만 6.0초이고, 자동 선정 25.5초가 전부 generateEssay 안에서 흐른다.
+ */
+const SPEC_CACHE = createSpecCache<SubjectSpec>();
+
 export async function extractSubjectSpec(params: {
   subject: string;
   info: CoreTaskInfo;
@@ -101,6 +108,12 @@ ${describeTask(params)}
   과제 조건을 충족하지 못하는 인접 분야의 대상을 포함한다.
 `.trim();
 
+  const cacheKey = specCacheKey([params.subject, JSON.stringify(params.info), params.instructions]);
+  const cached = SPEC_CACHE.get(cacheKey);
+  if (cached) {
+    console.log(`[extractSubjectSpec] 같은 안내문의 사양을 재사용함(모델 호출 생략) type=${cached.subject_type}`);
+    return cached;
+  }
   const res = await generate({
       label: "learning:subject-spec",
       role: "main",
@@ -111,7 +124,7 @@ ${describeTask(params)}
   const p = JSON.parse(res.text ?? "{}") as Partial<SubjectSpec>;
   const type = (SUBJECT_TYPES as readonly string[]).includes(p.subject_type ?? "") ? (p.subject_type as SubjectType) : "unspecified";
   const unclear = type === "unspecified" || p.needs_clarification === true;
-  return {
+  const spec: SubjectSpec = {
     subject_type: unclear ? "unspecified" : type,
     topic: p.topic?.trim() || params.info.topic,
     constraints: (p.constraints ?? []).map((s) => s.trim()).filter(Boolean),
@@ -126,6 +139,9 @@ ${describeTask(params)}
       ? p.clarification_note?.trim() || "안내문에서 어떤 종류의 대상을 고르라는 것인지 확인되지 않아요. 선생님 안내를 확인하고 직접 정해 주세요."
       : null,
   };
+  // 안내문을 못 읽은 결과는 캐시하지 않는다 — 다음 학생이 다시 시도할 기회를 남긴다.
+  if (!spec.needs_clarification) SPEC_CACHE.set(cacheKey, spec);
+  return spec;
 }
 
 export interface CandidateVerdict {
