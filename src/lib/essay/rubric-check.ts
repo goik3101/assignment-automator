@@ -182,7 +182,9 @@ export function rubricMisses(
   verdict: RubricVerdict,
   items: RubricItem[],
   sectionLabels: string[],
-  fallbackLabel?: string
+  fallbackLabel?: string,
+  /** 한 단계에서 고칠 수 없어 버린 조건(조립 조건). 조용히 사라지지 않게 호출하는 쪽이 로그에 남긴다. */
+  onDropped?: (text: string) => void
 ): RubricMiss[] {
   const byLabel = new Map<string, string[]>();
   for (const r of verdict.results ?? []) {
@@ -190,7 +192,10 @@ export function rubricMisses(
     const item = items.find((it) => it.id === r.id);
     if (!item) continue;
     const label = resolveMissLabel(item, sectionLabels, fallbackLabel);
-    if (!label) continue;
+    if (!label) {
+      onDropped?.(item.text);
+      continue;
+    }
     const fix = (r.fix ?? "").trim();
     const line = fix.length >= 6 ? `${item.text} → ${fix}` : item.text;
     const list = byLabel.get(label) ?? [];

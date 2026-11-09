@@ -201,3 +201,12 @@ test("'만평/광고'처럼 고르는 칸은 조건 줄 옆에 그 사실을 적
   const q = rubricPrompt([{ id: "r2", label: "머리기사", text: "제목과 본문을 쓴다." }], [{ label: "머리기사", content: "기사" }]);
   assert.ok(!q.includes("하나만"), "평범한 단계에 군더더기가 붙었다");
 });
+
+test("버린 조립 조건은 호출하는 쪽에 알려 준다(조용히 사라지지 않게)", () => {
+  const labels = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"];
+  const items = [{ id: "r1", label: null, text: "신문 양식에 머리기사, 인터뷰, 사설/칼럼, 만평/광고를 작성한다." }];
+  const dropped: string[] = [];
+  const misses = rubricMisses({ results: [{ id: "r1", ok: false }] }, items, labels, undefined, (t) => dropped.push(t));
+  assert.equal(misses.length, 0);
+  assert.equal(dropped.length, 1);
+});

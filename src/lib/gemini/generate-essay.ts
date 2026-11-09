@@ -2033,7 +2033,12 @@ async function judgeRubric(
       prompt: rubricPrompt(items, sections),
       schema: RUBRIC_SCHEMA,
     });
-    const misses = rubricMisses(JSON.parse(res.text ?? "{}") as RubricVerdict, items, sections.map((s) => s.label));
+    const dropped: string[] = [];
+    const misses = rubricMisses(JSON.parse(res.text ?? "{}") as RubricVerdict, items, sections.map((s) => s.label), undefined, (t) =>
+      dropped.push(t)
+    );
+    if (dropped.length > 0)
+      console.log(`[generateEssay] 한 단계에서 고칠 수 없는 조립 조건 ${dropped.length}건(보완하지 않음): ${JSON.stringify(dropped.map((t) => t.slice(0, 40)))}`);
     console.log(`[generateEssay] 안내문 조건 대조: 조건 ${items.length}개 중 미충족 ${misses.reduce((n, m) => n + m.missing.length, 0)}개`);
     return misses;
   } catch (err) {
