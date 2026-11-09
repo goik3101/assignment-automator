@@ -61,7 +61,7 @@ import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
-import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
+import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
 import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
@@ -95,6 +95,7 @@ import {
   isSceneLikeElement,
   isSceneListElement,
   requirementsForElement,
+  hasSizeLimit,
   describeReq,
   sceneBlockInputs,
   wantsBriefScenes,
@@ -2353,6 +2354,18 @@ export async function generateEssay(
           const body = evidenceSectionText(sec.content);
           const items = body === null ? -1 : countEvidenceItems(body);
           if (items >= 0 && items < plan.slots) parts.push(evidenceItemsRepairText(sec.label, items, plan.slots));
+          // 근거가 사실 한 줄로 끝났으면 두세 문장으로 채우게 한다 — 안내문 채점 기준이 "양을 제대로 채웠을 때 만점"이다.
+          // 문장 수 상한이 있는 단계에서는 돌리지 않는다("칸마다 한두 문장" 조건과 정면으로 부딪친다).
+          const elHere = elements.find((e) => e.label === sec.label);
+          const capped =
+            !!elHere &&
+            formRequirementsOn() &&
+            hasSizeLimit(requirementsForElement(elHere, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.map((e) => e.label)));
+          const thin = body === null || capped || !evidenceDepthOn() ? [] : thinEvidenceItems(body);
+          if (thin.length > 0) {
+            console.warn(`[generateEssay] 근거가 한 문장으로 끝남 label="${sec.label}" ${JSON.stringify(thin.map((t) => t.index))}`);
+            parts.push(thinEvidenceRepairText(sec.label, thin));
+          }
           // 근거 자리에 사실이 아니라 "이 자료를 ~에 쓴다"는 쓰임 설명이 들어간 것도 같이 고친다.
           const usePlans = body === null ? [] : findUsePlanSentences(body);
           if (usePlans.length > 0) parts.push(usePlanRepairText(sec.label, usePlans));

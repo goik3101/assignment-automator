@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countEvidenceItems, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, isEvidenceHeading , findUsePlanSentences, usePlanRepairText } from "./evidence-items.ts";
+import { countEvidenceItems, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, isEvidenceHeading , findUsePlanSentences, usePlanRepairText, thinEvidenceItems, thinEvidenceRepairText, evidenceDepthOn } from "./evidence-items.ts";
 
 const 실측 = `## 개요
 
@@ -71,4 +71,39 @@ test("쓰임 설명 보완 지시는 사실만 쓰라고 하고 각주는 두라
   assert.ok(t.includes("개요"));
   assert.ok(t.includes("각주"));
   assert.ok(t.includes("사실"));
+});
+
+test("근거가 한 문장으로 끝난 것을 찾는다 (국어 발표 채점에서 떨어진 항목)", () => {
+  const body = `- 헌법재판소는 2012년 8월 23일 인터넷 실명제를 위헌으로 결정했다.[1]
+- 실명제 시행 뒤에도 불법 게시물은 의미 있게 줄지 않았다.[2] 익명성이 사라져도 게시물의 양은 그대로였고, 이용자가 해외 사이트로 옮겨 가는 부작용만 남았다.[2]
+- 국내 사업자와 해외 사업자 사이에 역차별이 생겼다.[3]`;
+  const thin = thinEvidenceItems(body);
+  assert.deepEqual(thin.map((t) => t.index), [1, 3]);
+  assert.equal(thin[0].sentences, 1);
+  const txt = thinEvidenceRepairText("개요", thin);
+  assert.ok(txt.includes("1번·3번"));
+  assert.ok(txt.includes("새 사실이나 새 출처를 들고 오지 말고"), "앞 단계에 없는 출처를 들고 오는 것을 막는 말이 없다");
+});
+
+test("두 문장 이상 채운 근거는 건드리지 않는다", () => {
+  const body = `1) 실명제는 표현의 자유를 제한한다.[1] 헌법재판소도 그 제한이 과도하다고 판단했다.[1]
+2) 불법 게시물은 줄지 않았다.[2] 시행 전후의 게시물 수가 비슷했기 때문이다.[2]`;
+  assert.deepEqual(thinEvidenceItems(body), []);
+});
+
+test("근거 목록이 아니면 아무것도 찾지 않는다", () => {
+  assert.deepEqual(thinEvidenceItems("글의 목적: 실명제 반대 발표를 한다.\n예상 독자: 같은 반 학생들."), []);
+});
+
+test("근거 깊이 검사는 기본 꺼짐이다 (실제 실행에서 도는 것을 확인하지 못했다)", () => {
+  const old = process.env.EVIDENCE_DEPTH;
+  delete process.env.EVIDENCE_DEPTH;
+  try {
+    assert.equal(evidenceDepthOn(), false);
+    process.env.EVIDENCE_DEPTH = "on";
+    assert.equal(evidenceDepthOn(), true);
+  } finally {
+    if (old === undefined) delete process.env.EVIDENCE_DEPTH;
+    else process.env.EVIDENCE_DEPTH = old;
+  }
 });

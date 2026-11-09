@@ -114,3 +114,50 @@ export function usePlanRepairText(label: string, sentences: string[]): string {
     `그 자리를 그 근거가 무엇을 보여 주는지(사실의 내용)로 채울 것. 각주는 그대로 둘 것.`
   );
 }
+
+/**
+ * 근거가 **한 문장으로 끝났는지** 센다. 안내문이 "양을 제대로 채웠을 때 만점"이라고 한 과제에서,
+ * 근거마다 사실 한 줄만 적고 "그래서 주장을 어떻게 뒷받침하는지"를 안 쓰면 그 항목이 깎인다.
+ *
+ * 실측(2026-11-10, 국어 발표 정답 채점): 10/12·11/12로 떨어진 항목이
+ * "근거마다 사실 한 문장으로 끝내지 않고 두세 문장으로 채웠다"였다(개요의 근거 3항이 한 문장이었다).
+ *
+ * **문장 수 상한이 있는 단계에서는 부르지 말 것** — "칸마다 한두 문장" 조건과 정면으로 부딪친다.
+ * 호출하는 쪽이 `hasSizeLimit`으로 먼저 걸러 준다.
+ *
+ * **기본 꺼짐**(`EVIDENCE_DEPTH=on`으로 켠다): 국어 발표 4회에서 한 번도 발동하지 않았다 —
+ * 그 4회의 근거는 모두 두세 문장이었는데도 채점이 이 항목을 깎았다(채점 쪽이 더 엄한 기준을 쓴 것으로 보인다).
+ * 이 저장소의 규칙대로, **실제 실행에서 도는 것을 확인하지 못한 보완은 켜서 내보내지 않는다.**
+ * 장치와 테스트는 남겨 둬서 한 문장짜리 근거가 다시 나오면 바로 켤 수 있게 한다.
+ */
+export function evidenceDepthOn(): boolean {
+  return process.env.EVIDENCE_DEPTH === "on";
+}
+
+export function thinEvidenceItems(sectionText: string, min = 2): { index: number; text: string; sentences: number }[] {
+  const lines = sectionText.split("\n");
+  const BULLET = /^(?:[-*•]|\d+[.)]|근거\s*\d+\s*[.)·:]?)\s*\S/;
+  const items: { index: number; lines: string[] }[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (BULLET.test(line)) items.push({ index: items.length + 1, lines: [line] });
+    else if (items.length > 0 && !/^#/.test(line) && !/^\|/.test(line)) items[items.length - 1].lines.push(line);
+  }
+  const out: { index: number; text: string; sentences: number }[] = [];
+  for (const it of items) {
+    const body = it.lines.join(" ").replace(/^(?:[-*•]|\d+[.)]|근거\s*\d+\s*[.)·:]?)\s*/, "");
+    // 각주 뒤의 마침표를 문장 끝으로 본다. 소수점(숫자 뒤의 점)은 문장 끝이 아니다.
+    const sentences = body.split(/(?<=[.!?。](?:\[\d+(?:,\d+)*\])*)(?!\d)\s+/).filter((x) => x.replace(/\s/g, "").length >= 8).length;
+    if (sentences < min) out.push({ index: it.index, text: body.slice(0, 60), sentences });
+  }
+  return out;
+}
+
+export function thinEvidenceRepairText(label: string, thin: { index: number; sentences: number }[], min = 2): string {
+  return (
+    `"${label}"의 근거 ${thin.map((t) => `${t.index}번`).join("·")}이 ${min}문장도 되지 않는다(사실만 한 줄 적고 끝났다). ` +
+    `근거마다 **사실 한 문장 + 그 사실이 주장을 어떻게 뒷받침하는지 한두 문장**을 이어서 쓸 것 — 채점 기준이 "양을 제대로 채웠을 때 만점"이다. ` +
+    `새 사실이나 새 출처를 들고 오지 말고, 이미 쓴 사실의 뜻을 풀어 쓴다. 다른 근거와 각주 번호는 그대로 둘 것.`
+  );
+}
