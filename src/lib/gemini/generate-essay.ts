@@ -3398,7 +3398,10 @@ export async function generateEssay(
   attempt = {
     ...attempt,
     sections: attempt.sections.map((s) => {
-      const { body, notes } = splitProductionNotes(s.content);
+      // **그림으로 내는 칸은 떼지 않는다** — "무엇을 그릴지"가 곧 그 칸에 들어갈 내용이다(학생이 그 칸에 그린다).
+      // 실측(2026-11-10, 저장분석 신문 12회): 만평 칸이 3회 44~59자로 거의 비었고, 그릴 그림 설명이
+      // "제작 참고"(화면에 "제출하는 글이 아니에요"로 표시)로 넘어가 있었다. 글을 쓰는 칸은 예전대로 뗀다.
+      const { body, notes } = isPicturePanel(s.label) ? { body: s.content, notes: null } : splitProductionNotes(s.content);
       const sec = notes ? { ...s, content: body, productionNotes: notes } : s;
       // 안내문이 "사진·그림·지도는 학생이 준비한다"고 했는데 모델이 안내를 안 남기면 코드가 한 줄 채운다.
       // 프롬프트로 시켜 봤지만 3회 모두 무시했다(실측 2026-11-03, 역사 신문) — 학생은 무엇을 준비할지 알아야 한다.
