@@ -48,6 +48,7 @@ import {
   tabTableToMarkdown,
   stripWorkMarkers,
   stripFormLead,
+  stripOtherAreaSubsections,
   studentPreparedVisuals,
   newspaperSectionLabels,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
@@ -565,6 +566,19 @@ const SEPARATE_SEARCH_RULE_BOOK_EXCERPT = `책 제목, 저자, 인상 깊은 구
 
 const SEPARATE_SEARCH_RULE_BOOK = `책 제목과 저자는 서로 다른 사실이니 검색도 한 번의 포괄적인 질의로 뭉뚱그리지 말고 각각 확인해서, 전체 글이 출처 하나에만 계속 의존하지 않게 할 것.`;
 
+/**
+ * 프롬프트와 **생성 뒤 판정**이 같은 칸 크기를 보게 하는 단일 입구.
+ *
+ * 왜 함수로 묶었나(2026-11-10): 두 곳이 `boxLengths`를 **따로** 불렀고 인자가 갈려 있었다 —
+ * 프롬프트 쪽은 `requirements`를 넘겨 손글씨 "분량 제한 없음"을 읽었고, 판정 쪽은 그 인자를 빼먹어 못 읽었다.
+ * 그래서 칸을 읽은 실행 6회 **전부** 프롬프트가 "약 600자"라고 시키고 판정이 "칸 6줄=234자"로 넘침을 찍었다.
+ * 모델이 지시를 지켜도 깎이는 구조였고, 그 보완이 시간 예산까지 먹었다.
+ * **이 함수 밖에서 `boxLengths`를 직접 부르지 말 것.**
+ */
+function taskBoxLengths(elements: CoreTaskInfo["task_elements"], core: CoreTaskInfo) {
+  return boxLengthOn() ? boxLengths(elements.map((e) => e.label), core.writing_guide, core.requirements) : [];
+}
+
 function buildPrompt(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"], notes: ResearchNotes | null = null): string {
   const continuityBlock = input.previousOutputText
     ? `
@@ -657,16 +671,14 @@ ${input.previousOutputText}
   // 안내문이 칸의 줄 수를 알려 준 단계는 그 칸 크기가 기준이다 — 학생은 이 글을 그 칸에 옮겨 적는다(box-lines.ts).
   // 실측(2026-11-07, 역사 신문): "내용 약 5줄" 칸에 1102자·949자를 썼고 사설은 308자와 2286자로 7배 갈렸다.
   // 안내문이 "분량 제한 없음"이라고 했으면(손글씨 포함) 칸 줄 수로 묶지 않는다 — 둘이 반대를 말하면 그쪽이 맞다.
-  const boxes = boxLengthOn()
-    ? boxLengths(elements.map((e) => e.label), input.coreTaskInfo.writing_guide, input.coreTaskInfo.requirements)
-    : [];
-  const boxLabels = new Set(boxes.map((b) => b.label));
+  const boxes = taskBoxLengths(elements, input.coreTaskInfo);
   const boxBlock = boxLengthBlock(boxes);
   if (boxes.length > 0) console.log(`[generateEssay] 양식 칸 크기: ${boxes.map((b) => `${b.label} ${b.lines}줄→${b.min}~${b.max}자`).join(" / ")}`);
-  // 칸 크기를 읽은 단계에는 역할별 권장 범위를 주지 않는다 — 숫자가 둘이면 모델이 큰 쪽을 고른다(prompt-audit의 충돌 짝).
+  // 칸 크기를 읽은 단계를 걸러 내는 일은 이제 `lengthGuideLines`가 한다(length-plan.ts의 hasFormBox) —
+  // 여기서 걸러 내면 prompt-audit이 "이 단계에 가이드가 붙는가"를 물었을 때 실제와 다른 답을 받는다.
   const guideLines = lengthGuideLines(
-    elements.filter((e) => !boxLabels.has(e.label)),
-    formOn ? formCtx : undefined
+    elements,
+    formOn ? formCtx : { requirements: input.coreTaskInfo.requirements, guide: input.coreTaskInfo.writing_guide, labels: elements.map((e) => e.label) }
   );
   // 분량이 어디서 나왔는지 한 줄로 남긴다 — 틀린 결과물을 봤을 때 "역할 표가 틀렸나, 분석이 틀렸나"를 바로 가른다.
   if (guideLines.length > 0) console.log(`[generateEssay] 분량 가이드:\n${guideLines.join("\n")}`);
@@ -1566,13 +1578,13 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
       if (waves.length > 1) console.log(`[generateEssay] 단계 순서: ${waves.map((w) => w.join("+")).join(" → ")}`);
       // 단계마다 **그 단계의 목표 분량**을 자기 호출에 다시 적는다 — 공유 프롬프트의 목록만으로는
       // 저장된 9회가 214~930자로 갈렸다(목표 600, 역할 범위 300~900). 항목 나눠 쓰기에서 통한 처방과 같다.
-      const guideCtx = formRequirementsOn()
-        ? {
-            requirements: input.coreTaskInfo.requirements,
-            guide: input.coreTaskInfo.writing_guide,
-            labels: input.coreTaskInfo.task_elements.map((e) => e.label),
-          }
-        : undefined;
+      // ctx는 항상 넘긴다 — 없으면 `effectiveTarget`이 칸 크기를 읽지 못해 역할 표 숫자를 돌려준다(칸 블록과 어긋난다).
+      const guideCtx = {
+        requirements: input.coreTaskInfo.requirements,
+        guide: input.coreTaskInfo.writing_guide,
+        labels: input.coreTaskInfo.task_elements.map((e) => e.label),
+      };
+      // 칸을 아는 단계면 `effectiveTarget`이 칸에서 숫자를 내준다(length-plan.ts) — 여기서 따로 계산하지 않는다.
       const targetOf = (l: string): number | undefined => {
         const el = elements.find((e) => e.label === l);
         return el ? (effectiveTarget(el, guideCtx) ?? undefined) : undefined;
@@ -2645,7 +2657,10 @@ export async function generateEssay(
   // 즉 칸 크기는 전달되지만 **실행마다 지켜지지 않는다** — 프롬프트를 더 세게 쓰는 대신 코드로 세어 그 단계만 고친다.
   // 이미 도는 부분 보완에 얹으므로 다른 보완이 함께 발동한 경우에는 모델 호출이 늘지 않는다. 각주·사실은 그대로 둔다(출처 품질 유지).
   const boxRewrites = boxLengthOn()
-    ? boxOverflows(attempt.sections, boxLengths(elements.map((e) => e.label), input.coreTaskInfo.writing_guide)).map((o) => ({
+    // **프롬프트에 준 것과 같은 `boxes`를 쓴다.** 여기서 다시 계산하면 `texts`(요구사항)를 빼먹어
+    // 손글씨 "분량 제한 없음"을 못 읽는다 — 실측(2026-11-10): 칸을 읽은 실행 6회 **전부**
+    // 프롬프트는 "약 600자"라고 말하고 판정은 "칸 6줄=234자"로 넘침을 찍었다(모델은 지시를 지켰는데 깎였다).
+    ? boxOverflows(attempt.sections, taskBoxLengths(elements, input.coreTaskInfo)).map((o) => ({
         label: o.label,
         instruction: boxOverflowRepairText(o),
       }))
@@ -3210,6 +3225,14 @@ export async function generateEssay(
       const metaStripped = stripMetaNoteLines(refStripped.content);
       if (metaStripped.removed > 0) console.warn(`[generateEssay] 작업 설명 괄호 줄 ${metaStripped.removed}개 제거 label="${s.label}"`);
       let content = newspaperLabels.has(s.label) ? stripWorkMarkers(metaStripped.content) : metaStripped.content;
+      // 한 영역 안에 만들어 넣은 **다른 영역 소제목**을 뗀다 — 지시로는 막히지 않는다(실측 3/3).
+      if (newspaperLabels.has(s.label)) {
+        const other = stripOtherAreaSubsections(content, s.label, [...newspaperLabels]);
+        if (other.removed.length > 0) {
+          console.warn(`[generateEssay] 다른 영역을 만들어 넣은 소제목 제거 label="${s.label}" ${JSON.stringify(other.removed)}`);
+          content = other.content;
+        }
+      }
       if (fixes) {
         // 소제목에 베껴 붙은 작성 지시("### 해결 방안 (제출용 글 — 항목마다 문단)")와 탭으로 줄 맞춘 표를 바로잡는다.
         const heading = stripHeadingDirectives(content);

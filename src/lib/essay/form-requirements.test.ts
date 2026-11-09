@@ -133,7 +133,12 @@ test("장면 목록 단계의 기본 분량은 보고서 항목이 아니라 장
 test("FORM_REQUIREMENTS=off면 예전 동작(기본 분량 그대로, 장면 역할 없음)", () => {
   process.env.FORM_REQUIREMENTS = "off";
   try {
-    assert.equal(lengthGuideLines([SCRIPT], { requirements: REQUIREMENTS, guide: GUIDE, labels: labels3 }).length, 1);
+    // 2026-11-10: 이 안내문의 작성 기준은 "발표 대본은 시험지 답안 칸 **10줄** 안에"라고 칸 줄 수를 말한다.
+    // 칸을 아는 단계는 `boxLengthBlock`이 숫자를 말하므로 분량 가이드는 그 단계를 말하지 않는다
+    // (칸 규칙은 FORM_REQUIREMENTS가 아니라 BOX_LENGTH 스위치다 — 끄려면 그쪽을 끈다).
+    assert.equal(lengthGuideLines([SCRIPT], { requirements: REQUIREMENTS, guide: GUIDE, labels: labels3 }).length, 0);
+    // 칸 줄 수를 말하지 않는 안내문에서는 예전처럼 역할별 범위가 나온다
+    assert.equal(lengthGuideLines([SCRIPT], { requirements: [], guide: "발표 대본을 작성한다.", labels: labels3 }).length, 1);
     const el = { ...STORYBOARD, required_items: Array.from({ length: 8 }, (_, i) => `장면 ${i + 1}`) };
     assert.notEqual(planLength(el).role, "scenes");
   } finally {

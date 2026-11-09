@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { narrowTarget, planLength, lengthGuideLines, lengthRoleOf } from "./length-plan.ts";
+import { narrowTarget, planLength, lengthGuideLines, lengthRoleOf, effectiveTarget } from "./length-plan.ts";
 
 // ── 목표 하나로 좁히기 (LENGTH_TARGET) ─────────────────────
 test("범위 대신 목표 하나 ±20%로 좁힌다", () => {
@@ -72,4 +72,44 @@ test("자료를 붙이고 설명만 적는 칸은 붙임 분량이다", () => {
   assert.equal(lengthRoleOf(el), "attachment");
   const t = narrowTarget(el);
   assert.ok(t.target >= 150 && t.target <= 260, `만점 실측 170~202자에 맞아야 하는데 ${t.target}`);
+});
+
+test("양식 칸 크기가 있으면 그것만 말한다 — 분량 가이드와 두 숫자가 싸우지 않게 (2026-11-10 전수 확인)", () => {
+  const guide = "머리기사: 제목 약 1줄, 내용 약 6줄. 인터뷰: 대상 1줄과 질문·답변 약 9줄. 사설/칼럼: 제목 1줄, 내용 약 6줄.";
+  const elements = [
+    { label: "머리기사", description: "주요 사건을 기사로 쓴다.", required_items: [] },
+    { label: "인터뷰", description: "당시 사람을 인터뷰한 형식으로 쓴다.", required_items: [] },
+    { label: "사설/칼럼", description: "주장과 근거를 쓴다.", required_items: [] },
+  ];
+  const ctx = {
+    requirements: ["광복부터 정부 수립까지를 신문으로 만든다."],
+    guide,
+    labels: elements.map((e) => e.label),
+    topic: "현대사 신문 만들기",
+    siblings: elements.map((e) => ({ label: e.label, description: e.description })),
+  };
+  // 칸이 있는 단계는 분량 가이드 줄을 만들지 않는다(칸 블록이 이미 숫자를 말한다)
+  const lines = lengthGuideLines(elements as never, ctx as never);
+  assert.equal(lines.length, 0, `칸이 있는데도 분량 가이드가 나왔다: ${JSON.stringify(lines)}`);
+  // 단계별 호출에 적어 줄 숫자도 칸에서 나온다 — 역할 표의 600자가 아니다
+  const t = effectiveTarget(elements[0] as never, ctx as never);
+  assert.ok(t !== null && t < 300, `칸(135~234자)이 아니라 역할 표를 따랐다: ${t}`);
+
+  // 칸 크기를 모르는 과제는 예전대로 역할 표가 말한다
+  const noGuide = { ...ctx, guide: undefined };
+  assert.ok(lengthGuideLines(elements as never, noGuide as never).length > 0);
+  assert.ok((effectiveTarget(elements[0] as never, noGuide as never) ?? 0) >= 300);
+});
+
+test("안내문이 '분량제한 X'라고 하면 칸 규칙이 꺼지고 역할 표가 말한다 (손글씨가 인쇄를 이긴다)", () => {
+  const elements = [{ label: "머리기사", description: "기사를 쓴다.", required_items: [] }];
+  const ctx = {
+    requirements: ["분량 제한 없음(손글씨 안내)"],
+    guide: "머리기사: 제목 약 1줄, 내용 약 6줄.",
+    labels: ["머리기사"],
+    topic: "현대사 신문 만들기",
+    siblings: elements.map((e) => ({ label: e.label, description: e.description })),
+  };
+  assert.ok((effectiveTarget(elements[0] as never, ctx as never) ?? 0) >= 300);
+  assert.ok(lengthGuideLines(elements as never, ctx as never).length > 0);
 });

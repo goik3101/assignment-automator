@@ -3,10 +3,10 @@
 // 이 값은 생성 지시용 가이드일 뿐 강제 기준이 아니다(강제는 안내문이 명시한 분량만 — 부족 여부는 필수 항목 충족으로 본다).
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
 import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
-import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn } from "./quality-flags.ts";
+import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn, boxLengthOn } from "./quality-flags.ts";
 import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
-import { isDrawingBox } from "./box-lines.ts";
+import { boxLengths, isDrawingBox } from "./box-lines.ts";
 import { lengthFromAnalyzeOn, type LengthEstimate } from "./length-estimate.ts";
 import { newspaperSectionLabels } from "./deliverable.ts";
 
@@ -237,10 +237,25 @@ export type GuideCtx = {
 const roleCtx = (ctx?: GuideCtx): RoleCtx | undefined =>
   ctx ? { topic: ctx.topic, siblings: ctx.siblings } : undefined;
 
+/**
+ * 안내문이 이 단계의 **양식 칸 줄 수**를 알려 줬는가(box-lines.ts). 알려 줬으면 그 칸이 기준이고,
+ * 프롬프트에서 그 숫자를 말하는 것은 `boxLengthBlock` 쪽이다 — 여기서 또 말하면 **두 숫자가 싸운다**.
+ *
+ * 왜 이 모듈이 알아야 하나(2026-11-10): 이 걸러내기가 호출하는 쪽(generate-essay)에 있어서,
+ * `scripts/measure/prompt-audit.ts`가 "이 단계에 분량 가이드가 붙는가"를 물으면 **실제와 다른 답**을 받았다.
+ * 감사와 실제가 어긋나면 충돌을 못 본다 — 실제로 못 봤고, 그래서 6회 내내 프롬프트 600자 ↔ 판정 234자가 지나갔다.
+ * 인자는 생성 쪽과 **똑같이** 넘긴다(`requirements`를 빼면 손글씨 "분량 제한 없음"을 못 읽는다).
+ */
+function hasFormBox(e: GuideElement, ctx?: GuideCtx): boolean {
+  if (!ctx || !boxLengthOn()) return false;
+  return boxLengths(ctx.labels, ctx.guide, ctx.requirements).some((b) => b.label === e.label);
+}
+
 /** 이 단계에 분량 가이드를 줄 수 있는가(= lengthGuideLines가 이 단계를 다루는가). */
 function guided(e: GuideElement, ctx?: GuideCtx): boolean {
   if (e.target_length) return false;
   if (lengthTargetOn() && isDrawingBox(e.label)) return false;
+  if (hasFormBox(e, ctx)) return false;
   if (ctx && formRequirementsOn() && hasSizeLimit(requirementsForElement(e, ctx.requirements, ctx.guide, ctx.labels))) return false;
   return true;
 }
@@ -251,6 +266,10 @@ function guided(e: GuideElement, ctx?: GuideCtx): boolean {
  * 가이드 줄과 같은 사다리를 타야 한다 — 프롬프트에 적힌 숫자와 나눠 주는 숫자가 다르면 안 된다.
  */
 export function effectiveTarget(el: GuideElement, ctx?: GuideCtx): number | null {
+  // 칸을 아는 단계의 숫자는 **칸에서 나온다**. 가이드 글은 그 단계를 말하지 않지만(`guided`가 false),
+  // "이 단계는 몇 자인가"에 대한 답은 한 군데여야 한다 — 호출하는 쪽이 따로 계산하면 또 갈린다.
+  const box = ctx && boxLengthOn() ? boxLengths(ctx.labels, ctx.guide, ctx.requirements).find((b) => b.label === el.label) : undefined;
+  if (box) return Math.round((box.min + box.max) / 2);
   if (!guided(el, ctx)) return null;
   const pg = lineLengthOn() && ctx ? pageLengthForElement(el, ctx.requirements, ctx.guide, ctx.labels) : null;
   if (pg) return Math.round((pg.min + pg.max) / 2);

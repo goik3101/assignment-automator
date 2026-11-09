@@ -16,6 +16,8 @@ process.loadEnvFile(path.join(REPO, ".env.local"));
 const { inferDeliverableForm, isResearchMaterialStep } = await import("@/lib/essay/deliverable");
 const { isSceneListElement, wantsBriefScenes, requirementsForElement, hasSizeLimit, applyFormRequirements } = await import("@/lib/essay/form-requirements");
 const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual");
+const { boxLengths } = await import("@/lib/essay/box-lines");
+const { lengthGuideLines } = await import("@/lib/essay/length-plan");
 
 interface El {
   label: string;
@@ -43,6 +45,10 @@ const CONFLICTS: [string, string, string][] = [
   ["장면(대사 그대로)", "대본 금지", "하나는 말할 문장 그대로, 하나는 완성 대본 금지"],
   ["표 요구", "표 금지", "표를 만들라는 지시와 표를 쓰지 말라는 제한이 함께 간다"],
   ["분량 가이드", "분량 상한", "권장 글자 수와 'N문장 이내'가 함께 가면 모델이 큰 쪽을 따른다"],
+  // 2026-11-10에 추가. 이 짝이 없어서 **신문 4단계 중 3단계의 충돌을 이 감사가 못 봤다** —
+  // 분량 가이드가 "머리기사 약 600자", 칸 블록이 "머리기사 135~234자"를 둘 다 "반드시 지킬 것"으로 말했다.
+  // 블록 목록을 손으로 적는 대신 length-plan에 직접 물어본다(실제로 무엇이 붙는지와 어긋나지 않게).
+  ["양식 칸", "분량 가이드", "양식 칸이 'N줄→M자'를, 분량 가이드가 다른 글자 수를 말하면 2~4배가 벌어진다"],
 ];
 
 function blocksFor(core: Core, el: El, all: El[]): string[] {
@@ -64,7 +70,16 @@ function blocksFor(core: Core, el: El, all: El[]): string[] {
   if ((pol.banned ?? []).some((b: string) => b === "표" || b === "그래프")) out.push("표 금지");
   const reqs = requirementsForElement(el as never, core.requirements ?? [], core.writing_guide, labels);
   if (hasSizeLimit(reqs)) out.push("분량 상한");
-  else out.push("분량 가이드");
+  if (boxLengths(labels, core.writing_guide, texts).some((b: { label: string }) => b.label === el.label)) out.push("양식 칸");
+  // "분량 가이드가 붙는가"는 length-plan이 정한다 — 여기서 따로 추측하면 감사와 실제가 어긋난다.
+  const guideCtx = {
+    requirements: core.requirements ?? [],
+    guide: core.writing_guide,
+    labels,
+    topic: core.topic,
+    siblings: all.map((e) => ({ label: e.label, description: e.description })),
+  };
+  if (lengthGuideLines([el] as never, guideCtx as never).length > 0) out.push("분량 가이드");
   return out;
 }
 

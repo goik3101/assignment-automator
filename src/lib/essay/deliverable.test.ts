@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, splitProductionNotes, stripFormLead, studentPreparedVisuals } from "./deliverable.ts";
+import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, splitProductionNotes, stripFormLead, studentPreparedVisuals, stripOtherAreaSubsections } from "./deliverable.ts";
 
 test("신문 영역이 각각 별개 단계면 그 칸 하나만 쓰게 한다", () => {
   // 실측(결과물.10): "이 단계는 신문 그 자체다"라는 지시 때문에 머리기사 안에 인터뷰·사설·만평이 다 들어갔다.
@@ -109,4 +109,31 @@ test("제작 참고를 떼면 칸이 비는 경우에는 떼지 않는다 (만�
   const r2 = splitProductionNotes(normal);
   assert.ok(r2.notes?.includes("직접 준비하세요"));
   assert.ok(!r2.body.includes("직접 준비하세요"));
+});
+
+test("한 영역 안에 만들어 넣은 다른 영역 소제목을 뗀다 (신문 3회 모두 걸렸다)", () => {
+  const head = `**〈광복과 새 나라〉**
+
+### 대한민국 정부 수립 공식 선언
+**이승만, 1948년 8월 15일 기념사에서 새 정부 출범을 선포**
+
+이승만은 1948년 8월 15일 정부 수립을 공식 선언했다.[2]
+
+### 광고 — 신문
+대한민국 신정부 수립 소식을 전하는 신문! 새 나라의 소식을 읽어 보세요.`;
+  const r = stripOtherAreaSubsections(head, "머리기사", ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"]);
+  assert.deepEqual(r.removed, ["광고 — 신문"]);
+  assert.ok(!r.content.includes("신문! 새 나라의 소식"), "광고 본문이 남았다");
+  assert.ok(r.content.includes("정부 수립 공식 선언"), "멀쩡한 소제목이 사라졌다");
+});
+
+test("기사 본문이 다른 영역을 말하는 것은 건드리지 않는다", () => {
+  const head = `### 신문사 경영난 심화
+광고 수입이 줄어 신문사들이 어려움을 겪고 있다.[1] 사설과 만평을 줄이는 곳도 있다.[1]`;
+  assert.deepEqual(stripOtherAreaSubsections(head, "머리기사", ["머리기사", "만평/광고", "사설/칼럼"]).removed, []);
+});
+
+test("자기 영역 이름 소제목은 남긴다", () => {
+  const sec = "### 만평 — 통일의 다리 앞에서\n줄다리기 그림을 그린다.";
+  assert.deepEqual(stripOtherAreaSubsections(sec, "만평/광고", ["머리기사", "만평/광고"]).removed, []);
 });

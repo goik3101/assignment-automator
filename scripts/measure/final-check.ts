@@ -66,6 +66,9 @@ const CASES: Case[] = [
   { id: "사회 평가지(A4 1장)", analysisFile: "social-analysis.json", instructions: "주제는 노인 빈곤과 기초연금 문제로 할게.", extraRequirements: ["경제 문제 분석 및 소견 평가지는 A4 1장 이내로 작성한다."] },
   { id: "화작(원고지 8매)", images: ["KakaoTalk_20260829_112309789 - 복사본.jpg"], instructions: "기사에서 찾은 사회문제는 청년 고립·은둔 문제로 할게.", extraRequirements: ["원고지 8매 내외로 작성한다."] },
   { id: "사회(인권저널)", images: ["KakaoTalk_20260912_203359067_05 - 복사본.jpg"], instructions: "인권 선구자는 전태일로 정했어." },
+  // 2026-11-10: 양식 칸 크기가 **확실히 걸린 상태**를 분석 흔들림 없이 재기 위한 사례(저장된 분석 사용).
+  // 사진으로 돌리면 손글씨 "분량제한 X"를 읽는 실행과 못 읽는 실행이 섞여 칸 규칙이 켜졌다 꺼졌다 한다.
+  { id: "신문(저장분석)", analysisFile: "newspaper-analysis.json" },
 ];
 
 const sentences = (t: string) =>

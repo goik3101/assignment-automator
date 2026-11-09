@@ -80,9 +80,29 @@ export function buildRubric(scoped: { shared: string[]; byLabel: Record<string, 
   return items.slice(0, 14);
 }
 
+/**
+ * 단계 이름 자체가 **고르는 칸**인가("만평/광고", "만평 또는 광고"). 그렇다면 고르지 않은 쪽 조건을
+ * 안 지켰다고 깎아서는 안 된다.
+ *
+ * 실측(2026-11-10, 저장분석 신문 6회): 안내문의 "만평 **또는** 광고 중 하나"는 다른 문장에 있고,
+ * 체크리스트에 들어온 문장은 "광고는 상품과 그 특징이 드러나게 한다"뿐이었다 — 그 문장만 보면 필수로 읽힌다.
+ * 그래서 판정기가 매번 "광고가 없다"고 하고, 보완이 광고를 **덧붙여** 만평과 광고가 둘 다 들어갔다
+ * (정답 채점의 "만평이나 광고 중 하나를 골라 완성했다"가 그래서 떨어졌다).
+ * 판정 규칙에 "또는"을 한 줄 적는 것만으로는 안 통한다 — **그 조건 줄 옆에** 적어 줘야 한다.
+ */
+function choiceNote(label: string | null): string {
+  if (!label) return "";
+  const parts = label
+    .split(/[/]|또는|이나/)
+    .map((x) => x.trim())
+    .filter((x) => x.length >= 2);
+  if (parts.length < 2) return "";
+  return ` (이 칸은 ${parts.map((p) => `"${p}"`).join(" 또는 ")} 중 **하나만** 고르는 칸이다 — 고르지 않은 쪽이 글에 없다고 ok=false로 하지 말 것)`;
+}
+
 export function rubricPrompt(items: RubricItem[], sections: { label: string; content: string }[]): string {
   const list = items
-    .map((it) => `- ${it.id} [${it.label ?? "전체"}] ${it.text}`)
+    .map((it) => `- ${it.id} [${it.label ?? "전체"}] ${it.text}${choiceNote(it.label)}`)
     .join("\n");
   const body = sections.map((s) => `## ${s.label}\n${s.content}`).join("\n\n");
   return (
@@ -92,6 +112,10 @@ export function rubricPrompt(items: RubricItem[], sections: { label: string; con
     "- [단계 이름]이 붙은 조건은 그 단계의 글만 보고 판정한다. [전체]는 글 전부를 보고 판정한다.\n" +
     "- 조건이 요구한 것이 글에 아예 없거나, 개수·형식을 분명히 어겼을 때만 ok=false로 한다.\n" +
     "- 글만 봐서 알 수 없는 조건(발표 시간, 수업 중 수행 등)은 ok=true로 둔다.\n" +
+    // 실측(2026-11-10, 저장분석 신문 3회 중 3회): 안내문은 "만평 **또는** 광고 중 하나"인데
+    // "광고는 상품과 그 특징이 드러나게 한다"가 필수로 판정돼, 보완이 **머리기사에 광고를 쓰라고** 지시했고
+    // 머리기사 안에 "### 광고 — 신문"이 들어갔다(정답 채점의 "다른 영역 내용" 항목이 그래서 떨어졌다).
+    "- 조건이 'A 또는 B', 'A이나 B', '둘 중 하나'처럼 **고르는 것**을 말하면, 글이 한쪽만 지켜도 ok=true다. 고르지 않은 쪽이 없다고 ok=false로 하지 말 것.\n" +
     "- fix에는 그 단계의 글을 어떻게 고치면 조건을 지키는지 한 문장으로 적는다(조건을 되풀이하지 말고, 지금 글에서 무엇이 빠졌는지 짚어서).\n\n" +
     `[안내문 조건]\n${list}\n\n[제출할 글]\n${body}`
   );
@@ -105,6 +129,55 @@ export interface RubricVerdict {
  * 판정 결과를 단계별 보완 지시로 바꾼다. 조건이 [전체]면 `fallbackLabel`(보통 첫 단계)에 붙인다.
  * 한 단계에 너무 많이 붙으면 보완 한 번에 다 담기지 않으므로 단계마다 최대 3개만 남긴다.
  */
+/**
+ * 이 미충족을 **어느 단계에서 고칠 것인가**. 예전에는 단계가 없으면 무조건 첫 단계로 떠넘겼다.
+ *
+ * 실측(2026-11-10, 저장분석 신문 3회): 그 떠넘기기가 두 가지 해를 냈다.
+ *  ① "광고는 상품과 그 특징이 드러나게 한다"가 **머리기사**로 가서, 머리기사 안에 광고가 생겼다.
+ *  ② "신문 양식에 머리기사, 인터뷰, 사설/칼럼, 만평/광고를 작성한다"가 머리기사로 가서
+ *     "머리기사 부분만 보여서 조건을 못 지켰다"는 판정이 단계마다 붙었다 —
+ *     **한 단계 안에서는 고칠 수 없는 조건**이다(조립에 관한 조건이다).
+ *
+ * 그래서 조건이 단계 이름을 **둘 이상** 가리키면 조립 조건이므로 버리고(한 칸에서 고칠 수 없다),
+ * 하나만 가리키면 그 단계로 보내고, 아무 것도 가리키지 않으면 예전처럼 첫 단계로 보낸다.
+ */
+export function resolveMissLabel(item: RubricItem, sectionLabels: string[], fallbackLabel?: string): string | null {
+  if (item.label && sectionLabels.includes(item.label)) return item.label;
+  const flat = item.text.replace(/\s/g, "");
+  const named = sectionLabels.filter((l) => {
+    const whole = l.replace(/\s/g, "");
+    if (whole.length >= 2 && flat.includes(whole)) return true;
+    // "만평/광고"처럼 묶인 이름은 조각으로도 가리킬 수 있다("광고는 상품과 …").
+    return l
+      .split(/[\/·,]/)
+      .map((x) => x.trim().replace(/\s/g, ""))
+      .some((part) => part.length >= 2 && flat.includes(part));
+  });
+  if (named.length >= 2) {
+    // 단계 이름을 여럿 가리켜도, 이름을 빼고 **할 일이 남으면** 그것은 고칠 수 있는 조건이다.
+    //   "신문 양식에 머리기사, 인터뷰, 사설/칼럼, 만평/광고를 작성한다." → 이름을 빼면 할 일이 없다(조립 조건)
+    //   "개요와 스토리보드를 작성하고, 시각이미지를 탑재한다." → "시각이미지를 탑재한다"가 남는다(고칠 수 있다)
+    let rest = item.text;
+    for (const l of named) {
+      for (const part of [l, ...l.split(/[/·,]/)]) {
+        const t = part.trim();
+        if (t.length >= 2) rest = rest.split(t).join(" ");
+      }
+    }
+    // 이름을 뺀 자리에 남는 것이 **할 일**인지 본다. 산출물 이름과 "작성한다" 같은 빈 동사는 할 일이 아니다.
+    const FILLER = /신문|양식|글|작성|쓴다|한다|만든다|구성|포함|각각|모두|전부|다음|아래|위|그리고|또한|하고/g;
+    const actionable = rest
+      .replace(/[^가-힣A-Za-z0-9]/g, "")
+      .replace(FILLER, "")
+      // 남은 한 글자 조사(와·를·에·은·는·의·및·이·가)는 할 일이 아니다
+      .replace(/^(?:[와를에은는의및이가]+)/g, "")
+      .replace(/[와를에은는의및이가](?=[와를에은는의및이가]|$)/g, "");
+    if (actionable.length < 4) return null; // 조립 조건 — 한 단계에서 고칠 수 없다
+  }
+  if (named.length === 1) return named[0];
+  return fallbackLabel ?? sectionLabels[0] ?? null;
+}
+
 export function rubricMisses(
   verdict: RubricVerdict,
   items: RubricItem[],
@@ -116,7 +189,7 @@ export function rubricMisses(
     if (r?.ok !== false) continue;
     const item = items.find((it) => it.id === r.id);
     if (!item) continue;
-    const label = item.label && sectionLabels.includes(item.label) ? item.label : fallbackLabel ?? sectionLabels[0];
+    const label = resolveMissLabel(item, sectionLabels, fallbackLabel);
     if (!label) continue;
     const fix = (r.fix ?? "").trim();
     const line = fix.length >= 6 ? `${item.text} → ${fix}` : item.text;

@@ -560,3 +560,50 @@ export function studentPreparedVisuals(texts: (string | undefined)[]): string[] 
   }
   return [...found];
 }
+
+/**
+ * 한 영역의 글 안에 **다른 영역을 소제목으로 만들어 넣은 부분**을 뗀다.
+ *
+ * 왜(2026-11-10, 저장 분석 신문 3회 중 3회): 정답 채점이 "한 영역의 글 안에 다른 영역의 내용이 통째로
+ * 들어가 있지 않다"로 떨어졌다. 실제 모양은 머리기사 안의 `### 광고 — 신문`이었다 —
+ * 만평/광고 칸은 따로 멀쩡히 썼는데 머리기사가 광고를 하나 더 만들었다.
+ * 프롬프트에는 이미 "다른 영역(머리기사·인터뷰·사설/칼럼·만평/광고)의 내용을 여기에 쓰지 말 것"이 있다.
+ * 지시로 안 막히니 코드가 뗀다.
+ *
+ * **다른 영역의 이름이 소제목 자체일 때만** 뗀다 — 기사 본문이 광고를 언급하는 것("광고 수입이 줄었다")은
+ * 건드리지 않는다. 그 영역이 이 결과물에 실제로 있는 단계일 때만 본다(이름만 비슷한 과제에 걸리지 않게).
+ */
+export function stripOtherAreaSubsections(
+  content: string,
+  ownLabel: string,
+  otherLabels: string[]
+): { content: string; removed: string[] } {
+  const words = new Set<string>();
+  for (const l of otherLabels) {
+    if (l === ownLabel) continue;
+    for (const w of l.split(/[\/·,]/).map((x) => x.trim())) if (w.length >= 2) words.add(w.replace(/\s/g, ""));
+  }
+  if (words.size === 0) return { content, removed: [] };
+  const lines = content.split("\n");
+  const removed: string[] = [];
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    const h = /^\s*###\s+(.+?)\s*$/.exec(line);
+    if (h) {
+      const name = h[1].replace(/[*_]/g, "").replace(/\s/g, "");
+      // 소제목이 다른 영역 이름으로 **시작**할 때만("광고 — 신문", "만평: …"). 문장 속 언급은 소제목이 아니다.
+      const hit = [...words].some((w) => name.startsWith(w) || name.startsWith(`${w}—`) || name.startsWith(`${w}-`));
+      skipping = hit;
+      if (hit) {
+        removed.push(h[1].trim());
+        continue;
+      }
+    } else if (/^\s*##\s+\S/.test(line)) {
+      skipping = false;
+    }
+    if (!skipping) out.push(line);
+  }
+  if (removed.length === 0) return { content, removed: [] };
+  return { content: out.join("\n").replace(/\n{3,}/g, "\n\n").trim(), removed };
+}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRubric, rubricMisses, rubricPrompt, rubricRepairText } from "./rubric-check.ts";
+import { buildRubric, rubricMisses, rubricPrompt, rubricRepairText, resolveMissLabel } from "./rubric-check.ts";
 
 const KOREAN = {
   shared: [
@@ -139,4 +139,65 @@ test("요구사항과 작성 기준이 같은 조건을 두 번 말하면 한 �
   });
   assert.equal(items.length, 2);
   assert.ok(items[1].text.includes("그림·그래프·표만"));
+});
+
+test("조립 조건(단계 이름을 여럿 가리킴)은 어느 단계에도 떠넘기지 않는다 (신문 3/3 실측)", () => {
+  const labels = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"];
+  const assembly = { id: "r1", label: null, text: "신문 양식에 머리기사, 인터뷰, 사설/칼럼, 만평/광고를 작성한다." };
+  assert.equal(resolveMissLabel(assembly, labels), null);
+});
+
+test("한 단계만 가리키는 조건은 첫 단계가 아니라 그 단계로 보낸다 (머리기사에 광고가 생긴 원인)", () => {
+  const labels = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"];
+  assert.equal(
+    resolveMissLabel({ id: "r2", label: null, text: "광고는 상품과 그 특징이 드러나게 한다." }, labels),
+    "만평/광고"
+  );
+  assert.equal(
+    resolveMissLabel({ id: "r3", label: null, text: "인터뷰는 질문과 답변을 각각 두 개 쓴다." }, labels),
+    "인터뷰"
+  );
+});
+
+test("아무 단계도 가리키지 않으면 예전처럼 첫 단계로 보낸다", () => {
+  const labels = ["머리기사", "인터뷰"];
+  assert.equal(resolveMissLabel({ id: "r4", label: null, text: "역사적 사실을 정확하게 쓴다." }, labels), "머리기사");
+  assert.equal(
+    resolveMissLabel({ id: "r5", label: null, text: "역사적 사실을 정확하게 쓴다." }, labels, "인터뷰"),
+    "인터뷰"
+  );
+});
+
+test("판정 규칙에 '또는'은 한쪽만 지켜도 된다고 적혀 있다", () => {
+  const p = rubricPrompt([{ id: "r1", label: null, text: "만평 또는 광고 중 하나를 완성한다." }], [{ label: "만평/광고", content: "만평을 그린다." }]);
+  assert.ok(p.includes("한쪽만 지켜도 ok=true"), "또는 규칙이 없다");
+});
+
+test("이름을 빼고 할 일이 남으면 조립 조건이 아니다", () => {
+  // 할 일이 남는다("시각이미지를 탑재한다") → 고칠 수 있으므로 첫 단계로
+  assert.equal(
+    resolveMissLabel({ id: "a", label: null, text: "개요와 스토리보드를 작성하고, 시각이미지를 탑재한다." }, ["개요", "스토리보드"]),
+    "개요"
+  );
+  // 이름을 빼면 할 일이 없다("신문 양식에 …를 작성한다") → 버린다
+  assert.equal(
+    resolveMissLabel({ id: "b", label: null, text: "신문 양식에 머리기사, 인터뷰, 사설/칼럼, 만평/광고를 작성한다." }, [
+      "머리기사",
+      "인터뷰",
+      "사설/칼럼",
+      "만평/광고",
+    ]),
+    null
+  );
+});
+
+test("'만평/광고'처럼 고르는 칸은 조건 줄 옆에 그 사실을 적는다 (6회 내내 광고를 덧붙이게 했다)", () => {
+  const p = rubricPrompt(
+    [{ id: "r1", label: "만평/광고", text: "광고는 상품과 그 특징이 드러나게 한다." }],
+    [{ label: "만평/광고", content: "만평을 그린다." }]
+  );
+  assert.ok(p.includes('"만평" 또는 "광고" 중 **하나만** 고르는 칸'), "고르는 칸이라는 표시가 없다");
+  // 고르는 칸이 아닌 단계에는 붙이지 않는다
+  const q = rubricPrompt([{ id: "r2", label: "머리기사", text: "제목과 본문을 쓴다." }], [{ label: "머리기사", content: "기사" }]);
+  assert.ok(!q.includes("하나만"), "평범한 단계에 군더더기가 붙었다");
 });
