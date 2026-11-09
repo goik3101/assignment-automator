@@ -153,8 +153,18 @@ export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
       return { role, min: 900 + itemBoost, max: 1700 + itemBoost, basis: "말로 전하는 발표 3분 안팎" };
     case "report":
       return { role, min: 1000 + itemBoost, max: 2000 + itemBoost * 1.5, basis: "주장·근거·해석·결론을 갖춘 글" };
-    case "plan":
+    case "plan": {
+      // 항목이 여럿인 개요는 **항목마다 쓸 것이 있다**. 채점된 실측(2026-11-10, 국어 발표 9회,
+      // submitted-length 기준): 개요가 1,157~1,835자였고 만점 실행이 1,390자인데 목표는 790자였다 —
+      // 바닥 400자는 어떤 실행에도 맞지 않았다.
+      // 다만 상한은 1,800자로 막는다: 2026-10-29에 개요를 보고서로 보아 항목 7개 × 250~450을 줬더니
+      // 2,000~2,700자(26회 중앙 2,481자)짜리 개요가 나왔다. 그 사고를 되풀이하지 않는다.
+      if (items >= 3) {
+        const lo = items * 210;
+        return { role, min: Math.min(lo, 1200), max: Math.min(items * 350, 1800), basis: `개요 항목 ${items}개 × 항목당 서너 문장` };
+      }
       return { role, min: 400, max: 900 + itemBoost, basis: "실행 가능한 단계와 근거" };
+    }
     default:
       return { role, min: 500 + itemBoost, max: 1100 + itemBoost, basis: "요구 내용을 충분히 설명하는 글" };
   }

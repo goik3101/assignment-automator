@@ -138,6 +138,26 @@ const SCHEMA: any = {
   properties: { results: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { i: { type: Type.INTEGER }, ok: { type: Type.BOOLEAN }, why: { type: Type.STRING } }, required: ["i", "ok", "why"] } } },
   required: ["results"],
 };
+/**
+ * 채점 결과를 `scratchpad/measure/scores.json`에 쌓는다.
+ *
+ * 왜(2026-11-10): "알맞은 분량"은 **채점된 결과물의 실제 글자 수**에서만 알 수 있는데(length-truth.ts),
+ * 채점은 화면에만 찍고 아무 데도 남기지 않았다. 그래서 결과물 101편 중 근거로 쓸 수 있는 것이
+ * 사람이 손으로 옮겨 적은 13편뿐이었다 — 이 세션에서 30편 넘게 채점했는데도 그렇다.
+ * 같은 파일을 다시 채점하면 마지막 값으로 덮는다(체크리스트를 고치면 예전 점수는 더 이상 맞지 않는다).
+ */
+function recordScore(file: string, key: string, got: number, total: number, missed: string[]) {
+  const at = path.join(REPO, "scratchpad", "measure", "scores.json");
+  let all: Record<string, unknown> = {};
+  try {
+    all = JSON.parse(fs.readFileSync(at, "utf8"));
+  } catch {
+    all = {};
+  }
+  all[file] = { key, score: `${got}/${total}`, got, total, missed, at: new Date().toISOString().slice(0, 10) };
+  fs.writeFileSync(at, JSON.stringify(all, null, 2), "utf8");
+}
+
 for (const [file, key] of process.argv.slice(2).map((a) => a.split("="))) {
   const md = fs.readFileSync(path.join(REPO, "scratchpad/measure/out", file), "utf8");
   const list = TRUTH[key];
@@ -154,4 +174,5 @@ for (const [file, key] of process.argv.slice(2).map((a) => a.split("="))) {
   const bad = r.filter((x) => !x.ok);
   console.log(`\n## ${file}  →  ${r.length - bad.length}/${list.length}`);
   for (const x of bad) console.log(`   ✗ ${list[x.i - 1]}\n       ${x.why.slice(0, 110)}`);
+  recordScore(file, key, r.length - bad.length, list.length, bad.map((x) => list[x.i - 1]));
 }

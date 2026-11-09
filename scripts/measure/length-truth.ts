@@ -58,6 +58,26 @@ function split(file: string): [string, string] {
   return at > 0 ? [base.slice(0, at), base.slice(at + 1)] : [base, "-"];
 }
 
+/**
+ * `truth.ts`가 채점할 때 쌓아 두는 파일. 손으로 옮겨 적은 위 표(SCORED)와 **합쳐** 쓴다 —
+ * 2026-11-10까지는 손으로 옮긴 13편뿐이어서 결과물 101편의 대부분을 근거로 쓸 수 없었다.
+ * 같은 파일이 양쪽에 있으면 **자동 기록이 이긴다**(체크리스트를 고친 뒤 다시 채점한 값이기 때문).
+ */
+function loadRecordedScores(): Record<string, string> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(REPO, "scratchpad", "measure", "scores.json"), "utf8")) as Record<
+      string,
+      { score?: string }
+    >;
+    const out: Record<string, string> = {};
+    for (const [file, v] of Object.entries(raw)) if (v?.score) out[file] = v.score;
+    return out;
+  } catch {
+    return {};
+  }
+}
+const ALL_SCORED: Record<string, string> = { ...SCORED, ...loadRecordedScores() };
+
 const byCase = new Map<string, { tag: string; file: string; secs: Section[] }[]>();
 for (const file of fs.readdirSync(OUT).filter((f) => f.startsWith("fc-") && f.endsWith(".md")).sort()) {
   const [id, tag] = split(file);
@@ -70,15 +90,15 @@ for (const file of fs.readdirSync(OUT).filter((f) => f.startsWith("fc-") && f.en
 for (const [id, runs] of [...byCase].sort()) {
   console.log(`\n### ${id}  (실행 ${runs.length}회)`);
   for (const r of runs) {
-    const score = SCORED[r.file];
+    const score = ALL_SCORED[r.file];
     console.log(
       `   ${score ? `[${score}]` : "[ 미채점 ]"} ${r.tag.padEnd(10)} ${r.secs.map((s) => `${s.label}=${s.chars}`).join("  ")}`
     );
   }
   // 채점된 실행만으로 단계별 범위를 만든다 — 이것이 "알맞은 분량"의 유일한 근거다.
-  const scored = runs.filter((r) => SCORED[r.file]);
+  const scored = runs.filter((r) => ALL_SCORED[r.file]);
   const full = scored.filter((r) => {
-    const [a, b] = SCORED[r.file].split("/").map(Number);
+    const [a, b] = ALL_SCORED[r.file].split("/").map(Number);
     return a === b;
   });
   for (const group of [
@@ -93,6 +113,6 @@ for (const [id, runs] of [...byCase].sort()) {
   }
 }
 
-const scoredCount = Object.keys(SCORED).length;
+const scoredCount = Object.keys(ALL_SCORED).length;
 console.log(`\n=== 결과물 ${[...byCase.values()].reduce((n, r) => n + r.length, 0)}편 중 채점된 것 ${scoredCount}편 ===`);
 console.log("채점된 실행이 적은 안내문은 '만점 범위'를 근거로 쓸 수 없다(표본 수를 함께 보고할 것).");

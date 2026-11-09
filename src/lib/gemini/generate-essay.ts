@@ -53,6 +53,7 @@ import {
   newspaperSectionLabels,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { boxLengthBlock, boxLengths, boxOverflowRepairText, boxOverflows } from "@/lib/essay/box-lines";
+import { submittedLength } from "@/lib/essay/submitted-length";
 import { bookForm, bookFormBlock, bookThreadBlock, isReadingActivity } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-slot";
@@ -3306,8 +3307,15 @@ export async function generateEssay(
         // 설명은 버리지 않고 "### 제작 참고"로 옮겨 무엇을 준비할지 알려 준다(ascii-art.ts).
         const img = stripImageMarkup(content);
         if (img.hints.length > 0) {
-          console.warn(`[generateEssay] 본문의 이미지 표시 ${img.hints.length}개를 제작 참고로 옮김 label="${s.label}"`);
-          content = `${img.content}\n\n### 제작 참고\n${img.hints.map((h) => `준비할 자료: ${h.caption}`).join("\n")}`;
+          // **그림 칸에는 "제작 참고"를 붙이지 않는다** — 그 칸은 학생이 그리는 자리이고, 무엇을 그릴지가 곧 내용이다.
+          // 이 블록은 뒤의 `splitProductionNotes`가 떼어 가는 것을 전제로 썼는데, 그림 칸은 떼지 않게 바꿨다
+          // (2026-11-10). 그대로 두면 만평 칸에 "### 제작 참고"라는 줄이 그대로 남는다 — 후처리 사슬의 순서 문제다.
+          const asNotes = !isPicturePanel(s.label);
+          console.warn(
+            `[generateEssay] 본문의 이미지 표시 ${img.hints.length}개를 ${asNotes ? "제작 참고로 옮김" : "그 칸의 글로 남김"} label="${s.label}"`
+          );
+          const lines = img.hints.map((h) => `준비할 자료: ${h.caption}`).join("\n");
+          content = asNotes ? `${img.content}\n\n### 제작 참고\n${lines}` : `${img.content}\n\n${lines}`;
         }
       }
       return { ...s, content };
@@ -4081,8 +4089,12 @@ interface LengthIssue {
   softOnly?: boolean;
 }
 
+/**
+ * 안내문이 말한 글자 수와 맞춰 볼 때는 **학생이 실제로 적는 글자**를 센다(submitted-length.ts).
+ * 영어 단어 수(`countWords`)는 이미 각주와 마크다운을 빼고 세고 있었는데, 글자 수만 날것으로 재고 있었다.
+ */
 function countChars(text: string, countsSpaces: boolean): number {
-  return countsSpaces ? text.length : text.replace(/\s/g, "").length;
+  return submittedLength(text, countsSpaces);
 }
 
 /** 영어 단어 수 — 각주 표기([1])와 마크다운 기호는 세지 않는다. */

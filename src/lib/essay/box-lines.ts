@@ -11,6 +11,8 @@
 // 생성 가이드로만 쓴다 — 안내문에 없는 기준으로 학생에게 "못 지켰다"고 하면 안 된다(2026-11-03 190단어 사건).
 
 /** 양식지 손글씨 한 줄에 들어가는 글자 수(공백 포함) 추정. */
+import { submittedLength } from "./submitted-length.ts";
+
 export const CHARS_PER_LINE = 30;
 
 export interface BoxLength {
@@ -170,7 +172,9 @@ export function boxOverflows(
   for (const box of boxes) {
     const sec = sections.find((s) => s.label === box.label);
     if (!sec) continue;
-    const actual = sec.content.trim().length;
+    // 학생이 **칸에 옮겨 적는 글자**로 센다 — `###`·`**`·`[1]`은 손으로 쓰지 않는다(submitted-length.ts).
+    // 예전에는 `content.trim().length`로 재서, 각주가 많은 단계가 마크다운 때문에 부풀어 상한에 부딪혔다.
+    const actual = submittedLength(sec.content);
     if (actual > box.max * OVERFLOW_RATIO) out.push({ label: box.label, actual, max: box.max, lines: box.lines });
   }
   return out;

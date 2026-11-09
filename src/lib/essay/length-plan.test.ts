@@ -113,3 +113,21 @@ test("안내문이 '분량제한 X'라고 하면 칸 규칙이 꺼지고 역할 
   assert.ok((effectiveTarget(elements[0] as never, ctx as never) ?? 0) >= 300);
   assert.ok(lengthGuideLines(elements as never, ctx as never).length > 0);
 });
+
+test("항목이 여럿인 개요는 바닥 400자가 아니다 (채점된 9회가 전부 1,157자 이상)", () => {
+  const el = {
+    label: "개요",
+    description: "글의 목적·주제·예상 독자를 설정하고 중심 내용과 세부 내용을 구상하며 근거를 3가지 이상 모은다.",
+    items_format: "sections",
+    required_items: ["글의 목적·주제·예상 독자", "중심 내용과 세부 내용", "내용을 뒷받침하는 정보(근거) 3가지 이상", "출처"],
+  };
+  const p = planLength(el as never);
+  assert.equal(p.role, "plan");
+  // 만점 실행 1,390자가 범위 안에 들어야 한다
+  assert.ok(p.min <= 1390 && p.max >= 1390, `만점 분량이 범위 밖이다: ${p.min}~${p.max}`);
+  // 2026-10-29의 사고(2,000~2,700자 개요)를 되풀이하지 않는다
+  assert.ok(p.max <= 1800, `상한이 너무 크다: ${p.max}`);
+  // 항목이 적은 계획은 예전 그대로
+  const small = planLength({ label: "실행 계획", description: "할 일을 적는다.", required_items: ["준비물"] } as never);
+  assert.equal(small.min, 400);
+});

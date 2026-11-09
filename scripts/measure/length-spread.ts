@@ -12,6 +12,7 @@ const REPO = process.cwd();
 process.loadEnvFile(path.join(REPO, ".env.local"));
 
 const { isDrawingBox } = await import("@/lib/essay/box-lines");
+const { submittedLength } = await import("@/lib/essay/submitted-length");
 
 const DIR = path.join(REPO, "scratchpad", "measure", "out");
 const only = process.argv.slice(2);
@@ -23,13 +24,8 @@ function sectionLengths(file: string): { label: string; chars: number }[] {
   return heads.map((h, i) => {
     const from = h.index! + h[0].length;
     const to = i + 1 < heads.length ? heads[i + 1].index! : raw.length;
-    const body = raw
-      .slice(from, to)
-      .split("\n")
-      .filter((l) => !/^\s*(?:#|\|)/.test(l))
-      .join("")
-      .replace(/\s/g, "");
-    return { label: h[1].trim(), chars: body.length };
+    // 시스템이 칸 상한을 재는 것과 같은 자로 센다(submitted-length.ts).
+    return { label: h[1].trim(), chars: submittedLength(raw.slice(from, to)) };
   });
 }
 
