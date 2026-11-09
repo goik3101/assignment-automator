@@ -90,3 +90,13 @@ test("원래 잡던 날조는 그대로 잡는다 (2026-10-29 실제 결과물)"
   assert.equal(isOwnActivitySentence("수행평가지에 각 사진 아래에 출처를 오려 붙였다."), true);
   assert.equal(isOwnActivitySentence("시청 민원실을 방문해 자료를 받았다."), true);
 });
+
+test("인쇄가 과제 주제일 수 있다 — 단독 '인쇄'를 날조로 잡지 않는다 (영어 발명품 실측 3건)", () => {
+  assert.equal(isOwnActivitySentence("구텐베르크 활자 인쇄기는 활자를 배열해 종이에 글과 책을 인쇄하는 데 쓰였다."), false);
+  assert.equal(isOwnActivitySentence("구텐베르크는 1448년경부터 금속 활자를 이용한 인쇄를 실험했다."), false);
+  assert.equal(isOwnActivitySentence("이 인쇄기의 핵심에는 반복해서 쓸 수 있는 금속 활자가 있었다."), false);
+  // 학생이 출력해서 붙인 것은 그대로 잡는다
+  assert.equal(isOwnActivitySentence("기사를 출력해서 평가지에 붙였다."), true);
+  assert.equal(isOwnActivitySentence("기사 제목과 날짜가 보이게 출력했다."), true);
+  assert.equal(isOwnActivitySentence("지도를 인쇄해 오려 붙였다."), true);
+});
