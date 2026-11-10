@@ -607,3 +607,23 @@ export function stripOtherAreaSubsections(
   if (removed.length === 0) return { content, removed: [] };
   return { content: out.join("\n").replace(/\n{3,}/g, "\n\n").trim(), removed };
 }
+
+/**
+ * "제작 참고" 소제목 **줄만** 떼고 그 아래 내용은 칸에 남긴다.
+ *
+ * 왜(2026-11-10, `postprocess-audit.ts`가 찾음): 그림 칸(만평)은 "무엇을 그릴지"가 곧 칸 내용이라
+ * `splitProductionNotes`를 돌리지 않게 했는데, 그러면 모델이 쓴 `### 제작 참고`라는 **라벨이 그대로 남는다**
+ * (저장된 결과물 3편에서 확인). 학생이 그 칸에 "제작 참고"라고 적게 된다.
+ * 라벨은 우리 내부 약속이고 내용은 학생에게 필요한 것이므로, 줄만 뗀다.
+ */
+export function dropProductionNotesHeading(content: string): { content: string; dropped: boolean } {
+  const re = new RegExp(`^#{2,4}[ \t]*${PRODUCTION_NOTES_HEADING}[^\n]*$`, "m");
+  if (!re.test(content)) return { content, dropped: false };
+  return {
+    content: content
+      .replace(re, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+    dropped: true,
+  };
+}

@@ -49,6 +49,7 @@ import {
   stripWorkMarkers,
   stripFormLead,
   stripOtherAreaSubsections,
+  dropProductionNotesHeading,
   studentPreparedVisuals,
   newspaperSectionLabels,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
@@ -3409,8 +3410,14 @@ export async function generateEssay(
       // **그림으로 내는 칸은 떼지 않는다** — "무엇을 그릴지"가 곧 그 칸에 들어갈 내용이다(학생이 그 칸에 그린다).
       // 실측(2026-11-10, 저장분석 신문 12회): 만평 칸이 3회 44~59자로 거의 비었고, 그릴 그림 설명이
       // "제작 참고"(화면에 "제출하는 글이 아니에요"로 표시)로 넘어가 있었다. 글을 쓰는 칸은 예전대로 뗀다.
-      const { body, notes } = isPicturePanel(s.label) ? { body: s.content, notes: null } : splitProductionNotes(s.content);
-      const sec = notes ? { ...s, content: body, productionNotes: notes } : s;
+      // 그림 칸은 "무엇을 그릴지"가 곧 칸 내용이라 떼지 않는다. 다만 **라벨 줄은 뗀다** —
+      // 안 떼면 학생 칸에 "제작 참고"라고 적힌 줄이 그대로 남는다(사슬 감사가 저장된 3편에서 찾았다).
+      const { body, notes } = isPicturePanel(s.label)
+        ? { body: dropProductionNotesHeading(s.content).content, notes: null }
+        : splitProductionNotes(s.content);
+      // `body`는 **항상** 쓴다. 예전에는 `notes`가 없으면 원본 섹션을 그대로 돌려줘서, 떼어 낸 결과를 버렸다 —
+      // 그래서 그림 칸의 "제작 참고" 라벨 제거가 조용히 무효가 됐다(2026-11-10, 생성 1회로 확인).
+      const sec = notes ? { ...s, content: body, productionNotes: notes } : { ...s, content: body };
       // 안내문이 "사진·그림·지도는 학생이 준비한다"고 했는데 모델이 안내를 안 남기면 코드가 한 줄 채운다.
       // 프롬프트로 시켜 봤지만 3회 모두 무시했다(실측 2026-11-03, 역사 신문) — 학생은 무엇을 준비할지 알아야 한다.
       // 어떤 사진인지는 지어내지 않고, 안내문이 말한 종류와 이 칸의 주제만 말한다.

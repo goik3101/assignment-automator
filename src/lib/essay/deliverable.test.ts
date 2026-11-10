@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, splitProductionNotes, stripFormLead, studentPreparedVisuals, stripOtherAreaSubsections } from "./deliverable.ts";
+import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, splitProductionNotes, stripFormLead, studentPreparedVisuals, stripOtherAreaSubsections, dropProductionNotesHeading } from "./deliverable.ts";
 
 test("신문 영역이 각각 별개 단계면 그 칸 하나만 쓰게 한다", () => {
   // 실측(결과물.10): "이 단계는 신문 그 자체다"라는 지시 때문에 머리기사 안에 인터뷰·사설·만평이 다 들어갔다.
@@ -136,4 +136,20 @@ test("기사 본문이 다른 영역을 말하는 것은 건드리지 않는다"
 test("자기 영역 이름 소제목은 남긴다", () => {
   const sec = "### 만평 — 통일의 다리 앞에서\n줄다리기 그림을 그린다.";
   assert.deepEqual(stripOtherAreaSubsections(sec, "만평/광고", ["머리기사", "만평/광고"]).removed, []);
+});
+
+test("그림 칸에 남는 '제작 참고' 라벨만 떼고 내용은 칸에 남긴다 (사슬 감사가 3편에서 찾음)", () => {
+  const panel = `### 만평 — 지도 위의 선
+
+### 제작 참고
+한반도 지도를 그리고 38도선 위아래에 두 손을 그린다.
+무엇을 비판하는가: 당사자의 뜻이 빠진 결정을 비판한다.`;
+  const r = dropProductionNotesHeading(panel);
+  assert.equal(r.dropped, true);
+  assert.ok(!r.content.includes("제작 참고"), "라벨이 남았다");
+  assert.ok(r.content.includes("한반도 지도를 그리고"), "그릴 그림 설명이 사라졌다");
+  assert.ok(r.content.includes("무엇을 비판하는가"), "비판 대상이 사라졌다");
+  // 라벨이 없으면 아무것도 바꾸지 않는다
+  const plain = "### 만평 — 지도 위의 선\n줄다리기를 그린다.";
+  assert.deepEqual(dropProductionNotesHeading(plain), { content: plain, dropped: false });
 });
