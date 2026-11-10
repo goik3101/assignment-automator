@@ -34,10 +34,10 @@ const take = (r: unknown): string => (typeof r === "string" ? r : ((r as { conte
  * 거짓 경고가 난다 — 실측(2026-11-11): 붙임 칸 함수를 개요·만평에까지 돌려 "순서 의존 2짝"이 떴는데,
  * 실제 사슬에서는 스크랩·부착 단계에서만 돌아 생길 수 없는 짝이었다.
  */
-const isNewspaperLabel = (l) => /머리기사|인터뷰|사설|칼럼|만평|광고/.test(l.replace(/\s/g, ""));
-const isAttachLabel = (l) => /스크랩|오려\s*붙|붙이기|부착/.test(l);
-const isPanelLabel = (l) => /만평|광고|만화|풍자|삽화/.test(l.replace(/\s/g, ""));
-const looksEnglish = (t) => /[A-Za-z]{3,}\s+[A-Za-z]{3,}\s+[A-Za-z]{3,}/.test(t);
+const isNewspaperLabel = (l: string) => /머리기사|인터뷰|사설|칼럼|만평|광고/.test(l.replace(/\s/g, ""));
+const isAttachLabel = (l: string) => /스크랩|오려\s*붙|붙이기|부착/.test(l);
+const isPanelLabel = (l: string) => /만평|광고|만화|풍자|삽화/.test(l.replace(/\s/g, ""));
+const looksEnglish = (t: string) => /[A-Za-z]{3,}\s+[A-Za-z]{3,}\s+[A-Za-z]{3,}/.test(t);
 
 const STEPS: { name: string; run: (t: string) => string; when?: (label: string, text: string) => boolean }[] = [
   { name: "모델 참고목록 제거", run: (t) => take(D.stripModelReferenceBlock(t)) },
