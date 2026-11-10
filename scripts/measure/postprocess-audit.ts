@@ -23,13 +23,26 @@ const A = await import("@/lib/essay/ascii-art");
 const P = await import("@/lib/essay/picture-panel");
 const PC = await import("@/lib/essay/plan-citations");
 const C = await import("@/lib/gemini/citations");
+const PS = await import("@/lib/essay/paste-slot");
+const EG = await import("@/lib/essay/english-grammar");
+const RF = await import("@/lib/essay/refusal");
 
 /** 사슬에 실제로 도는 순서대로. `content`만 꺼내 문자열 → 문자열로 맞춘다. */
 const take = (r: unknown): string => (typeof r === "string" ? r : ((r as { content?: string })?.content ?? ""));
-const STEPS: { name: string; run: (t: string) => string }[] = [
+/**
+ * 실제 사슬에서 **조건이 붙어** 도는 단계는 그 조건을 함께 적는다. 조건을 무시하고 전부에 돌리면
+ * 거짓 경고가 난다 — 실측(2026-11-11): 붙임 칸 함수를 개요·만평에까지 돌려 "순서 의존 2짝"이 떴는데,
+ * 실제 사슬에서는 스크랩·부착 단계에서만 돌아 생길 수 없는 짝이었다.
+ */
+const isNewspaperLabel = (l) => /머리기사|인터뷰|사설|칼럼|만평|광고/.test(l.replace(/\s/g, ""));
+const isAttachLabel = (l) => /스크랩|오려\s*붙|붙이기|부착/.test(l);
+const isPanelLabel = (l) => /만평|광고|만화|풍자|삽화/.test(l.replace(/\s/g, ""));
+const looksEnglish = (t) => /[A-Za-z]{3,}\s+[A-Za-z]{3,}\s+[A-Za-z]{3,}/.test(t);
+
+const STEPS: { name: string; run: (t: string) => string; when?: (label: string, text: string) => boolean }[] = [
   { name: "모델 참고목록 제거", run: (t) => take(D.stripModelReferenceBlock(t)) },
   { name: "작업 설명 괄호줄 제거", run: (t) => take(D.stripMetaNoteLines(t)) },
-  { name: "작업 표지 제거(신문)", run: (t) => take(D.stripWorkMarkers(t)) },
+  { name: "작업 표지 제거(신문)", run: (t) => take(D.stripWorkMarkers(t)), when: (l) => isNewspaperLabel(l) },
   { name: "소제목 속 지시 제거", run: (t) => take(D.stripHeadingDirectives(t)) },
   { name: "탭 표 → 마크다운", run: (t) => take(D.tabTableToMarkdown(t)) },
   { name: "양식 정의 앞머리 제거", run: (t) => take(D.stripFormLead(t)) },
@@ -43,7 +56,38 @@ const STEPS: { name: string; run: (t: string) => string }[] = [
   { name: "이미지 표시 제거", run: (t) => take(A.stripImageMarkup(t)) },
   { name: "계획 문장 각주 제거", run: (t) => take(PC.stripPlanCitations(t)) },
   { name: "출력 글 다듬기", run: (t) => take(C.tidyOutputText(t)) },
+  // ── 여기부터는 실제 사슬에서 **조건이 붙어** 도는 단계들이다(신문일 때만, 영어일 때만, 붙임 칸일 때만…).
+  // 2026-11-11에 감사가 이것들을 아예 안 보고 있던 것을 찾았다 — 하필 전날 버그가 난 함수들이다.
+  // 조건은 과제마다 다르지만 **함수 자체의 멱등성과 다른 단계와의 순서 의존**은 조건과 무관하게 확인할 수 있다.
+  { name: "다른 영역 소제목 제거(신문)", run: (t) => take(D.stripOtherAreaSubsections(t, "머리기사", ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"])), when: (l) => isNewspaperLabel(l) },
+  { name: "밑줄 코드로 긋기(영어)", run: (t) => take(EG.underlineGrammarForms(t, ["passive", "relative", "emphasis"] as never)), when: (_l, t) => looksEnglish(t) },
+  { name: "붙임 칸 서지 비우기", run: (t) => take(PS.blankPastedMetadata(t)), when: (l) => !isAttachLabel(l) },
+  { name: "붙임 칸 바로잡기", run: (t) => take(PS.normalizeAttachmentSlot(t, RF.findRefusalSentences)), when: (l) => isAttachLabel(l) },
+  { name: "제작 참고 떼기(글 칸)", run: (t) => D.splitProductionNotes(t).body, when: (l) => !isPanelLabel(l) },
+  { name: "제작 참고 라벨만 떼기(그림 칸)", run: (t) => take(D.dropProductionNotesHeading(t)), when: (l) => isPanelLabel(l) },
 ];
+
+/**
+ * 감사가 실제 사슬의 함수를 **빠짐없이** 보고 있는지 스스로 확인한다.
+ *
+ * 왜(2026-11-11): 이 목록은 `generate-essay.ts`의 인라인 사슬을 **손으로 베낀 것**이라 어긋날 수 있다.
+ * 실제로 어긋나 있었다 — 사슬에 21개가 도는데 감사는 16개만 보고 있었고, 빠진 6개가 전날 버그가 난 함수들이었다.
+ * 그래서 사슬 코드에서 함수 이름을 긁어 이 목록과 맞춰 보고, 빠진 것이 있으면 경고한다.
+ * (근본 해결은 사슬을 이름 붙인 목록으로 꺼내 양쪽이 같은 것을 쓰는 것이다 — 아직 안 했다.)
+ */
+function missingFromAudit(): string[] {
+  const src = fs.readFileSync(path.join(REPO, "src", "lib", "gemini", "generate-essay.ts"), "utf8");
+  const chain = src.split(String.fromCharCode(10)).slice(3220, 3440).join(String.fromCharCode(10));
+  const called = new Set(
+    [...chain.matchAll(/\b((?:strip|fix|reduce|tab|tidy|normalize|blank|underline|split|drop)[A-Za-z]+)\s*\(/g)].map((m) => m[1])
+  );
+  const audited = new Set(
+    [...fs
+      .readFileSync(path.join(REPO, "scripts", "measure", "postprocess-audit.ts"), "utf8")
+      .matchAll(/[A-Z]{1,2}\.((?:strip|fix|reduce|tab|tidy|normalize|blank|underline|split|drop)[A-Za-z]+)\(/g)].map((m) => m[1])
+  );
+  return [...called].filter((n) => !audited.has(n)).sort();
+}
 
 /**
  * 그 단계 안의 **"### 출처" 칸**을 뗀다. 안내문 양식에 출처 칸이 있으면 `buildSourceListSection`이
@@ -89,11 +133,21 @@ for (const file of fs.readdirSync(OUT).filter((f) => f.startsWith("fc-") && f.en
 
 console.log(`=== 저장된 결과물의 단계 ${secs.length}개로 후처리 사슬을 본다 ===`);
 
+const missing = missingFromAudit();
+if (missing.length > 0) {
+  console.log(`
+⚠ **이 감사가 안 보고 있는 사슬 함수 ${missing.length}개**: ${missing.join(", ")}`);
+  console.log(`   (감사 목록은 사슬을 손으로 베낀 것이다 — 사슬에 단계를 더하면 이 목록에도 더할 것)`);
+} else {
+  console.log(`사슬의 함수를 빠짐없이 보고 있다`);
+}
+
 // ① 멱등성
 console.log(`\n## ① 두 번 돌리면 결과가 달라지는 함수`);
 let nonIdem = 0;
 for (const st of STEPS) {
   const bad = secs.filter((s) => {
+    if (st.when && !st.when(s.label, s.text)) return false;
     try {
       const once = st.run(s.text);
       return st.run(once) !== once;
@@ -119,6 +173,9 @@ for (let i = 0; i < STEPS.length; i++) {
     // (실측 2026-11-10: "모델 참고목록 제거 ↔ 작업 메모 제거"가 17단계에서 걸렸는데 차이가 글자 2개, 줄 단위 차이는 0이었다).
     const same = (x: string, y: string) => x.replace(/\s+/g, " ").trim() === y.replace(/\s+/g, " ").trim();
     const bad = secs.filter((s) => {
+      // 두 단계가 **같은 글에서 둘 다 도는** 경우만 순서를 따진다(조건이 다르면 같은 자리에서 만나지 않는다).
+      if (f.when && !f.when(s.label, s.text)) return false;
+      if (g.when && !g.when(s.label, s.text)) return false;
       try {
         return !same(g.run(f.run(s.text)), f.run(g.run(s.text)));
       } catch {
