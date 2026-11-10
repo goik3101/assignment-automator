@@ -49,6 +49,10 @@ const CONFLICTS: [string, string, string][] = [
   // 분량 가이드가 "머리기사 약 600자", 칸 블록이 "머리기사 135~234자"를 둘 다 "반드시 지킬 것"으로 말했다.
   // 블록 목록을 손으로 적는 대신 length-plan에 직접 물어본다(실제로 무엇이 붙는지와 어긋나지 않게).
   ["양식 칸", "분량 가이드", "양식 칸이 'N줄→M자'를, 분량 가이드가 다른 글자 수를 말하면 2~4배가 벌어진다"],
+  // 2026-11-10에 추가. 장면 블록은 "칸마다 짧게(각 1~2문장)"를, 분량 가이드는 "항목당 대여섯 문장"을 말했다 —
+  // 카드뉴스 칸이 137~176자로 나와 정답 채점의 "칸마다 한두 문장"이 떨어졌다(7/9). 설명이 서로 반대면 모델이 고른다.
+  ["장면(간단히)", "분량 가이드(항목당 대여섯 문장)", "칸마다 1~2문장과 항목당 대여섯 문장이 함께 간다"],
+  ["장면(대사 그대로)", "분량 가이드(항목당 대여섯 문장)", "칸마다 짧게와 항목당 대여섯 문장이 함께 간다"],
 ];
 
 function blocksFor(core: Core, el: El, all: El[]): string[] {
@@ -79,7 +83,11 @@ function blocksFor(core: Core, el: El, all: El[]): string[] {
     topic: core.topic,
     siblings: all.map((e) => ({ label: e.label, description: e.description })),
   };
-  if (lengthGuideLines([el] as never, guideCtx as never).length > 0) out.push("분량 가이드");
+  const guideLines = lengthGuideLines([el] as never, guideCtx as never);
+  if (guideLines.length > 0) {
+    // 가이드가 **무슨 근거로** 그 숫자를 말하는지까지 본다 — "항목당 대여섯 문장"은 장면 블록과 정면으로 부딪친다.
+    out.push(/항목당 대여섯 문장/.test(guideLines[0]) ? "분량 가이드(항목당 대여섯 문장)" : "분량 가이드");
+  }
   return out;
 }
 

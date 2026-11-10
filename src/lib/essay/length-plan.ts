@@ -5,7 +5,7 @@
 import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
 import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn, boxLengthOn } from "./quality-flags.ts";
 import { pageLengthForElement } from "./page-length.ts";
-import { hasSizeLimit, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
+import { hasSizeLimit, isSceneLikeElement, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 import { boxLengths, isDrawingBox } from "./box-lines.ts";
 import { lengthFromAnalyzeOn, type LengthEstimate } from "./length-estimate.ts";
 import { newspaperSectionLabels } from "./deliverable.ts";
@@ -54,6 +54,10 @@ export interface LengthPlan {
 export interface RoleCtx {
   topic?: string;
   siblings?: { label: string; description: string }[];
+  /** 안내문 글 — 칸 수를 개수 조건에서 읽으려면 필요하다(항목 수로 세면 분석이 펼칠 때마다 흔들린다). */
+  requirements?: string[];
+  guide?: string;
+  labels?: string[];
 }
 
 /**
@@ -64,6 +68,23 @@ export interface RoleCtx {
  */
 export function isAttachmentStep(el: { label: string }): boolean {
   return /스크랩|오려\s*붙|붙이기|부착/.test(el.label);
+}
+
+/**
+ * 이 단계가 몇 **칸**인가(장면·컷·카드·칸). 안내문의 개수 조건에서 읽는다 — 분석이 필수 항목을
+ * 펼치는 방식(칸마다 "시각 자료"+"간략한 글"로 두 줄)에 따라 항목 수가 흔들리므로 항목 수로 세면 안 된다.
+ */
+function sceneCount(el: PlanElement, ctx?: RoleCtx): number | null {
+  const reqs = ctx?.requirements && ctx?.labels ? requirementsForElement(el as never, ctx.requirements, ctx.guide, ctx.labels) : [];
+  for (const r of reqs as { word?: string; min?: number; max?: number; perItem?: boolean }[]) {
+    if (r.perItem) continue;
+    if (!/장면|컷|칸|카드|쪽|면/.test(r.word ?? "")) continue;
+    const n = r.max && r.max >= 2 ? r.max : r.min;
+    if (n && n >= 2 && n <= 30) return n;
+  }
+  // 필수 항목이 "장면 1…N"으로 펼쳐져 있으면 그 개수가 칸 수다.
+  const numbered = (el.required_items ?? []).filter((i) => /^\s*(?:장면|컷|카드|칸)\s*\d+/.test(i)).length;
+  return numbered >= 2 ? numbered : null;
 }
 
 export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
@@ -127,6 +148,24 @@ export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
       // 항목당 250~450자는 학교 평가지 칸(보통 기준선 5~6줄)보다 훨씬 길다 — 실측(2026-10-30): 항목 7개 평가지가 1,900~2,300자로 나와
       // "길고 반복적"이라는 지적과 글쓰기 14초(전체 29초)의 원인이 됐다. 안내문도 "칸의 기준선만큼" 쓰라고 한다.
       const n = Math.max(items, 2);
+      // 장면·칸 산출물(카드뉴스·스토리보드·컷만화)은 **총 분량은 이 범위가 맞지만**, 설명이 "항목당 대여섯 문장"이면
+      // 장면 블록("칸마다 짧게, 각 1~2문장")과 정면으로 부딪친다. 모델은 설명을 읽고 둘 중 하나를 고른다.
+      // 실측(2026-11-10, 카드뉴스): 분량 가이드가 "항목 9개 × 항목당 대여섯 문장"이라 칸마다 137~176자가 나오고
+      // 정답 채점의 "칸마다 한두 문장" 항목이 떨어졌다(7/9). 총 분량(만점 실측)은 건드리지 않고 설명만 맞춘다.
+      const brief = isSceneLikeElement(el);
+      if (brief) {
+        // **칸 수로 잰다** — 항목 수로 재면 분석이 항목을 펼칠 때마다(9개 → 15개) 목표가 따라 커진다.
+        // 실측(2026-11-10, 카드뉴스): 항목 15개로 펼쳐진 실행의 목표가 3,450자가 됐다.
+        // 채점된 실제(submitted-length 기준): 1,466자 → 8/9, **1,960자 → 9/9**, 2,585자 → 7/9.
+        // 칸 6개 + 머리 항목 세 개가 1,960자였으므로 "머리 약간 + 칸마다 두 칸(시각·글)"으로 잡는다.
+        const cells = sceneCount(el, ctx) ?? Math.max(2, Math.round(n / 2));
+        return {
+          role,
+          min: 150 + cells * 200,
+          max: 400 + cells * 330,
+          basis: `칸 ${cells}개 × 칸마다 짧게(각 1~2문장)`,
+        };
+      }
       return { role, min: n * 160, max: n * 300, basis: `보고서 항목 ${n}개 × 항목당 대여섯 문장` };
     }
     case "scenes": {
@@ -245,7 +284,7 @@ export type GuideCtx = {
 };
 
 const roleCtx = (ctx?: GuideCtx): RoleCtx | undefined =>
-  ctx ? { topic: ctx.topic, siblings: ctx.siblings } : undefined;
+  ctx ? { topic: ctx.topic, siblings: ctx.siblings, requirements: ctx.requirements, guide: ctx.guide, labels: ctx.labels } : undefined;
 
 /**
  * 안내문이 이 단계의 **양식 칸 줄 수**를 알려 줬는가(box-lines.ts). 알려 줬으면 그 칸이 기준이고,

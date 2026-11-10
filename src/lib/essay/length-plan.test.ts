@@ -131,3 +131,29 @@ test("항목이 여럿인 개요는 바닥 400자가 아니다 (채점된 9회�
   const small = planLength({ label: "실행 계획", description: "할 일을 적는다.", required_items: ["준비물"] } as never);
   assert.equal(small.min, 400);
 });
+
+test("칸 산출물은 항목 수가 아니라 칸 수로 분량을 잰다 (카드뉴스 목표가 3,450자로 부풀었다)", () => {
+  // 분석이 칸마다 "시각 자료"+"간략한 글"로 펼쳐 항목이 15개가 된 실행
+  const el = {
+    label: "민주화 운동 카드뉴스",
+    description: "책을 읽고 카드뉴스를 만든다.",
+    items_format: "sections",
+    required_items: [
+      "책 제목", "카드 뉴스 제목", "전달하고자 하는 메시지",
+      ...Array.from({ length: 6 }, (_, i) => [`${i + 1} 시각 자료`, `${i + 1} 간략한 글`]).flat(),
+    ],
+  };
+  const ctx = {
+    requirements: ["6개의 칸으로 구성된 카드뉴스를 만든다."],
+    guide: "칸마다 시각 자료와 간략한 글을 넣는다.",
+    labels: ["민주화 운동 카드뉴스"],
+    topic: "민주화 운동 카드뉴스 만들기",
+  };
+  const p = planLength(el as never, ctx as never);
+  // 채점된 실제: 1,466자 → 8/9, 1,960자 → 9/9, 2,585자 → 7/9. 만점이 범위 안이어야 한다.
+  assert.ok(p.min <= 1960 && p.max >= 1960, `만점 분량이 범위 밖이다: ${p.min}~${p.max}`);
+  // 항목 15개 × 160~300 = 2,400~4,500자였던 예전 공식으로 돌아가지 않았는지
+  assert.ok(p.max <= 2600, `항목 수를 따라 부풀었다: ${p.max}`);
+  // 설명이 장면 블록("칸마다 짧게")과 부딪치지 않는다
+  assert.ok(!/항목당 대여섯 문장/.test(p.basis), `설명이 장면 블록과 반대다: ${p.basis}`);
+});
