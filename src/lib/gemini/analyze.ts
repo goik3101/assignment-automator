@@ -148,6 +148,16 @@ export const ANALYZE_SCHEMA: Schema = {
             required: ["type", "label", "description"],
           },
         },
+        provided_materials: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            "안내문에 **학생이 읽고 쓰라고 실어 준 자료**가 있으면 그 내용을 그대로 옮긴다 — 신문 기사, 지문, 제시문, 통계표, 그래프 설명, 대화문 등. " +
+            "자료마다 한 칸으로 넣고 앞에 그 자료의 이름을 붙인다(예: \"사례1(《뉴스케이프》 2026.04.09): 청년 근로자들의 …\"). " +
+            "숫자·날짜·출처 표기는 **빠짐없이 그대로** 옮길 것 — 학생이 그 숫자로 표를 채운다. " +
+            "**이것은 과제 설명이 아니라 과제의 재료다.** 할 일(요구사항)과 섞지 말 것. " +
+            "배점·일시·장소·준비물·부정행위 안내처럼 글의 재료가 아닌 행정 정보는 절대 넣지 말 것. 실린 자료가 없으면 빈 배열.",
+        },
         writing_guide: {
           type: Type.STRING,
           description:
@@ -158,7 +168,7 @@ export const ANALYZE_SCHEMA: Schema = {
             "사진 준비 방법·AI 사용 주의·배점·날짜·감점·준비물 같은 행정 정보는 쓰지 말 것. 해당 내용이 없으면 빈 문자열.",
         },
       },
-      required: ["topic", "requirements", "task_elements", "writing_guide"],
+      required: ["topic", "requirements", "task_elements", "writing_guide", "provided_materials"],
     },
   },
   required: [

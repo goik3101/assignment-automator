@@ -55,6 +55,8 @@ import {
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { boxLengthBlock, boxLengths, boxOverflowRepairText, boxOverflows } from "@/lib/essay/box-lines";
 import { submittedLength } from "@/lib/essay/submitted-length";
+import { providedMaterialsBlock, researchFocusLine } from "@/lib/essay/provided-materials";
+import { mergeGuideFields } from "@/lib/essay/guide-fields";
 import { bookForm, bookFormBlock, bookThreadBlock, isReadingActivity } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-slot";
@@ -661,6 +663,19 @@ ${input.previousOutputText}
     });
   const lengthTargetBlock = lengthTargetLines.length ? `\n【분량 — 반드시 지킬 것】\n${lengthTargetLines.join("\n")}\n` : "";
   // 안내문에 분량이 없는 단계는 역할·항목 수로 정한 권장 범위를 준다(length-plan.ts) — 모든 단계에 같은 글자 수를 주지 않고, 부족 여부는 글자 수가 아니라 필수 항목 충족으로 본다.
+  // 분석이 양식 칸을 빠뜨려도 **작성 기준에 적힌 칸 이름**으로 채운다(guide-fields.ts).
+  // 실측(2026-11-11, 사회 2번): required_items가 5개였는데 같은 분석의 작성 기준에는 6번째 칸
+  // "'최적의 정책 제시' 약 5줄"이 적혀 있었다 — 구조는 흔들리고 안내문 글을 읽는 쪽은 안정적이다.
+  input = {
+    ...input,
+    coreTaskInfo: {
+      ...input.coreTaskInfo,
+      task_elements: input.coreTaskInfo.task_elements.map((el) => {
+        const merged = mergeGuideFields(el.required_items, input.coreTaskInfo.writing_guide);
+        return merged.length > (el.required_items?.length ?? 0) ? { ...el, required_items: merged } : el;
+      }),
+    },
+  };
   const formOn = formRequirementsOn();
   const formCtx = {
     requirements: input.coreTaskInfo.requirements,
@@ -885,7 +900,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${compoundBlock}${timeBlock}${bookFormBlockText}${bookThreadText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${providedMaterialsBlock(input.coreTaskInfo.provided_materials)}${compoundBlock}${timeBlock}${bookFormBlockText}${bookThreadText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -1323,7 +1338,7 @@ ${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 
 - 사실 문장은 사실 자체를 평서문으로 쓴다("1769년 제임스 와트가 증기기관을 개량했다."). "이 글은 ~라고 지적한다", "해당 기사에서 인용되었다", "~라고 보고하고 있다"처럼 출처를 주어로 쓰지 말고, 괄호 속 해석·평가를 덧붙이지 말 것.`
       : ""
   }
-- **검색어는 그 주제를 다루는 자료가 실제로 쓰인 언어로 쓴다.** 한국의 역사·사회·인물·제도·지역을 다루는 과제면 **한국어로 검색**하고 우리나라 기관·교과 자료(국사편찬위원회·국가기록원·우리역사넷·공공 통계 등)를 먼저 찾는다. 영어로 검색하면 한국사 사실이 거의 안 걸리고(실측 2026-11-09: 한국사 신문에서 영어 검색만 해 사실 4개·출처 1개로 끝났다) 학생이 확인하기 어려운 외국 자료가 출처가 된다. 과제를 영어로 써야 하거나 대상이 외국 제품·인물·기관이면 그 언어로 검색한다.
+${researchFocusLine(input.coreTaskInfo.provided_materials)}- **검색어는 그 주제를 다루는 자료가 실제로 쓰인 언어로 쓴다.** 한국의 역사·사회·인물·제도·지역을 다루는 과제면 **한국어로 검색**하고 우리나라 기관·교과 자료(국사편찬위원회·국가기록원·우리역사넷·공공 통계 등)를 먼저 찾는다. 영어로 검색하면 한국사 사실이 거의 안 걸리고(실측 2026-11-09: 한국사 신문에서 영어 검색만 해 사실 4개·출처 1개로 끝났다) 학생이 확인하기 어려운 외국 자료가 출처가 된다. 과제를 영어로 써야 하거나 대상이 외국 제품·인물·기관이면 그 언어로 검색한다.
 - 같은 사실을 중복하지 말고, 서로 다른 신뢰도 높은 페이지(공식 기관·원문·신뢰 매체 우선)에서 고른다. 위키형·블로그·동영상은 다른 근거가 없을 때만.
 - 기관·포털의 첫 화면 주소(예: https://www.me.go.kr/ , .../main.do)는 근거가 될 수 없다. 그 사실이 실제로 적힌 보도자료·통계표·기사 페이지의 주소를 쓸 것.
 - url은 검색 중 실제로 열어 본 페이지 주소여야 하고, title은 그 페이지 제목이다.${grouped ? " 같은 페이지에서 나온 사실은 한 항목의 facts에 모아 url과 title을 한 번만 쓴다." : ""}
