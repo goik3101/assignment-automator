@@ -61,7 +61,7 @@ import { bookForm, bookFormBlock, bookThreadBlock, isReadingActivity } from "@/l
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-slot";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
-import { adminLeakOn, dedupeOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { adminLeakOn, dedupeOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
@@ -70,6 +70,7 @@ import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evide
 import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
 import { tableSpecs, tableFormBlock, tableStepLine, tableFormRepairText } from "@/lib/essay/table-form";
 import { stripAdminLeak, isScoringStep } from "@/lib/essay/admin-leak";
+import { leanWritePrompt } from "@/lib/essay/lean-write";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
@@ -174,6 +175,12 @@ import type { ClaimCheckSummary, CoreTaskInfo, EssayResult, InsufficientDataResu
 export interface GenerateEssayInput {
   subject: string;
   coreTaskInfo: CoreTaskInfo;
+  /**
+   * 안내문 사진. `ESSAY_LEAN_WRITE=on`일 때 **작성자 모델이 안내문을 직접 읽는다**(lean-write.ts).
+   * 2026-11-12 기준선 측정에서 맨바닥 모델이 우리 파이프라인과 같거나 더 나은 점수를 냈고, 그 차이의
+   * 뿌리가 "작성자가 안내문을 본 적이 없다"였다. 기본 경로는 이 값을 쓰지 않는다.
+   */
+  noticeImages?: { base64: string; mimeType: string }[];
   /** F1~F2에서 학생이 입력한 지침. 무작위로 뽑은 친구의 고민 원문처럼, AI가 알 수
    * 없는 특정 단계에 필요한 실제 정보가 여기 담겨 올 수 있다 — 반드시 프롬프트에
    * 그대로 반영해야 한다. */
@@ -401,6 +408,13 @@ function splitAnnotatedIntoSections(annotated: string, labels: string[]): Map<st
   // 띄어쓰기·기호만 다른 제목("## 사설/칼럼" vs 라벨 "사설 / 칼럼")도 같은 단계로 본다 — 실측(2026-10-22): 조사→글쓰기 경로는
   // 단계 분리 모델(stage B)을 부르지 않아 정확히 일치하지 않으면 그 단계가 빈 글(0자)로 경고 없이 나갔다.
   const squashLabel = (s: string) => s.replace(/[\s/·・,.\-–—()[\]{}<>「」『』"'*#:]/g, "").toLowerCase();
+  // **마지막 안전장치**: 모델이 우리 라벨을 제목으로 쓰지 않아도 글은 멀쩡할 수 있다.
+  // 실측(2026-11-12, 얇은 경로 카드뉴스): 작성자가 안내문을 직접 읽고 자기 말로 제목을 달자
+  // 라벨("민주화 운동 카드 뉴스")이 글에 없어 전체가 폴백으로 떨어지고 **17자**가 나갔다(0/9).
+  // 라벨은 분석이 지어낸 이름이므로 글을 버릴 근거가 못 된다.
+  // ① 단계가 하나면 글 전체가 그 단계다. ② 단계 수와 '##' 제목 수가 같으면 순서로 짝짓는다.
+  const allH2 = [...annotated.matchAll(/^##(?!#)[^\n]*$/gm)];
+  const positional = labels.length >= 1 && allH2.length === labels.length;
   for (const label of labels) {
     const re = new RegExp(`^##[ \\t]*${escapeRegExp(label)}[ \\t]*$`, "m");
     let m: { index: number; 0: string } | null = re.exec(annotated.slice(searchFrom));
@@ -413,6 +427,18 @@ function splitAnnotatedIntoSections(annotated: string, labels: string[]): Map<st
           break;
         }
       }
+    }
+    if (!m && positional) {
+      const lm = allH2[labels.indexOf(label)];
+      if (lm && (lm.index ?? 0) >= searchFrom) {
+        console.warn(`[generateEssay] "## ${label}" 제목이 없어 순서로 짝지음 → "${lm[0].slice(0, 30)}"`);
+        m = { index: (lm.index ?? 0) - searchFrom, 0: lm[0] };
+      }
+    }
+    if (!m && labels.length === 1) {
+      console.warn(`[generateEssay] "## ${label}" 제목이 없어 글 전체를 이 단계로 봄(단계가 하나뿐이다)`);
+      result.set(label, annotated.replace(/^#{1,3}[^\n]*\n/, "").trim());
+      continue;
     }
     if (!m) {
       console.warn(`[generateEssay] annotated 텍스트에서 "## ${label}" 제목줄을 찾지 못함 — 이 단계는 stage B의 content로 폴백`);
@@ -1546,7 +1572,34 @@ async function generateOnce(
     }
   }
 
-  const prompt = buildPrompt(input, elements, notes);
+  const lean = leanWriteOn() && (input.noticeImages?.length ?? 0) > 0;
+  const prompt = lean
+    ? leanWritePrompt({
+        steps: elements.map((e) => ({ label: e.label, description: e.description })),
+        instructions: input.instructions,
+        factSheet: notes ? factSheetText(notes.facts) : undefined,
+        factRules: notes ? factSheetRules() : undefined,
+        avoidance: input.avoidanceInstruction,
+        providedMaterials: input.coreTaskInfo.provided_materials,
+        visualPolicy: (() => {
+          const pol = visualPolicy([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", ...elements.map((e) => e.description)]);
+          return pol.allowed.length || pol.banned.length ? visualPolicyInstruction(pol, elements.map((e) => e.label)) : undefined;
+        })(),
+        bookThread: (() => {
+          const book = notes?.book ?? input.presetBook;
+          if (!book || !isReadingActivity([input.coreTaskInfo.topic, input.instructions ?? ""])) return undefined;
+          return bookThreadBlock(book.title, Math.max(...elements.map((e) => e.required_items?.length ?? 1), 1));
+        })(),
+        lengthLines: lengthGuideLines(elements, {
+          requirements: input.coreTaskInfo.requirements,
+          guide: input.coreTaskInfo.writing_guide,
+          labels: elements.map((e) => e.label),
+          topic: input.coreTaskInfo.topic,
+          siblings: elements.map((e) => ({ label: e.label, description: e.description })),
+        }),
+      })
+    : buildPrompt(input, elements, notes);
+  if (lean) console.log(`[generateEssay] 얇은 경로(안내문 사진 ${input.noticeImages?.length}장, 프롬프트 ${prompt.length}자 — 기본 경로는 보통 1만자 이상)`);
   if (process.env.LOG_PROMPTS === "1") console.log("[generateEssay] prompt:\n" + prompt); // 학생 입력이 섞여 있어 기본은 남기지 않는다
 
   let validatedSources: SourceRef[];
@@ -1562,7 +1615,7 @@ async function generateOnce(
     let writes: Awaited<ReturnType<typeof generate>>[];
     // 단계가 하나뿐이면 단계별 동시 쓰기가 안 걸린다 — 필수 항목이 넉넉하면 항목을 나눠 동시에 쓴다(parallel-write.ts).
     const soloItemGroups =
-      labels.length === 1 && process.env.ESSAY_ITEM_PARALLEL !== "off" && elements[0]?.items_format === "sections"
+      !lean && labels.length === 1 && process.env.ESSAY_ITEM_PARALLEL !== "off" && elements[0]?.items_format === "sections"
         ? itemGroups(elements[0]?.required_items)
         : [];
     if (soloItemGroups.length > 1) {
@@ -1602,7 +1655,7 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
       }
       // 합친 글 하나로 돌려준다 — 아래 mergeParallelParts(단계별 합치기)가 다시 돌면 안 된다. 호출별 토큰·비용은 trace가 따로 센다.
       writes = [{ ...parts[0], text: mergeItemParts(partTexts, labels[0]) }];
-    } else if (parallelWriteOn(labels.length)) {
+    } else if (!lean && parallelWriteOn(labels.length)) {
       // 안내문이 "A를 바탕으로 B"라고 한 단계는 순서대로 쓰고, 뒤 단계에 앞 단계의 완성된 글(사실 번호 포함)을 넘긴다(step-order.ts).
       // 의존 표현이 없으면 웨이브가 하나라 예전처럼 전부 동시에 쓴다.
       // 신문처럼 한 소재를 여러 영역이 나눠 맡으면 배경을 맡은 영역을 먼저 쓴다 — 나머지는 그 글을 보고 동시에 쓰므로
@@ -1649,7 +1702,17 @@ ${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}\n${tableSte
       }
       writes = labels.map((l) => byLabel.get(l)!);
     } else {
-      writes = [await generate({ label: "generateEssay:write", role: "write", prompt, effort: writeEffort() })];
+      writes = [
+        await generate({
+          label: "generateEssay:write",
+          role: "write",
+          // 얇은 경로는 안내문 사진을 작성자에게 직접 준다 — 요약을 거치지 않는 유일한 경로다.
+          prompt: lean
+            ? [...(input.noticeImages ?? []).map((im) => ({ image: im })), { text: prompt }]
+            : prompt,
+          effort: writeEffort(),
+        }),
+      ];
     }
     const write = writes[0];
     if (writes.some((w) => !w.text)) throw new Error("AI가 빈 응답을 반환했습니다.");

@@ -180,3 +180,16 @@ export function adminLeakOn(): boolean {
 export function noticeFormOn(): boolean {
   return process.env.NOTICE_FORM !== "off";
 }
+
+/**
+ * **작성자 모델에게 안내문 사진을 직접 주고 우리 지시를 최소로 줄이는 경로**(lean-write.ts). 기본 꺼짐 —
+ * `ESSAY_LEAN_WRITE=on`.
+ *
+ * 왜(2026-11-12 측정): 같은 모델에 안내문 사진 + 한 줄 요청만 준 맨바닥 기준선이 같은 정답 체크리스트에서
+ * 신문 11/11·수학 12/12·카드뉴스 9/9·사회 7/8이었다(우리 파이프라인은 9~11·10~12·8~9·5~8).
+ * 작성자 모델은 안내문을 **한 번도 보지 않고** 흔들리는 요약과 규칙 190여 개만 보고 쓴다.
+ * 맨바닥이 못 하는 것(각주 0·검색 0·대화체 머리말·쏠림 억제 없음)만 우리가 지킨다.
+ */
+export function leanWriteOn(): boolean {
+  return process.env.ESSAY_LEAN_WRITE === "on";
+}

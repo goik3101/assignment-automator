@@ -105,7 +105,9 @@ for (const c of CASES) {
       if (c.extraRequirements) core = { ...core, requirements: [...core.requirements, ...c.extraRequirements] };
       const textEls = core.task_elements.filter((e) => e.type === "text_submission");
       if (textEls.length === 0) return { result: null, usage: summarizeTrace(trace), subject, core };
-      const result = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] } });
+      // 얇은 경로(ESSAY_LEAN_WRITE=on)는 작성자가 안내문을 직접 읽는다 — 측정에서는 사진을 그대로 넘긴다.
+      const noticeImages = c.images?.map((rel) => ({ base64: fs.readFileSync(path.join(IMG, rel)).toString("base64"), mimeType: "image/jpeg" }));
+      const result = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] }, noticeImages });
       return { result, usage: summarizeTrace(trace), subject, core };
     });
     if (!result || result.type !== "essay") {
