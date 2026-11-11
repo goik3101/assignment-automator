@@ -32,9 +32,11 @@ export default function Sidebar() {
 
   const linkClass = (active: boolean) =>
     [
-      "flex h-10 items-center gap-3 rounded-xl px-3 text-[14px] font-semibold transition-colors",
+      "relative flex h-9 items-center gap-3 rounded-lg px-3 text-[13.5px] font-medium transition-colors",
       collapsed ? "md:justify-center md:px-0" : "",
-      active ? "bg-raised text-foreground" : "text-muted hover:bg-raised hover:text-foreground",
+      active
+        ? "bg-raised text-foreground before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-foreground"
+        : "text-muted hover:bg-raised hover:text-foreground",
     ].join(" ");
 
   function startNew() {
@@ -91,11 +93,11 @@ export default function Sidebar() {
             onClick={startNew}
             title={inTutor ? t("새 대화") : t("새 창작물")}
             className={[
-              "flex h-11 w-full items-center gap-2.5 rounded-xl bg-accent px-3.5 text-[14px] font-bold text-accent-foreground transition-opacity hover:opacity-90",
+              "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13.5px] font-medium text-foreground transition-colors hover:bg-raised",
               collapsed ? "md:justify-center md:px-0" : "",
             ].join(" ")}
           >
-            <Plus size={18} strokeWidth={2.2} className="shrink-0" />
+            <Plus size={18} strokeWidth={1.7} className="shrink-0" />
             {!collapsed && <span>{inTutor ? t("새 대화") : t("새 창작물")}</span>}
           </button>
         </div>
@@ -109,7 +111,7 @@ export default function Sidebar() {
               title={t(label)}
               className={linkClass(pathname === href || (href !== "/" && pathname.startsWith(href)))}
             >
-              <Icon size={18} strokeWidth={1.7} className="shrink-0" />
+              <Icon size={17} strokeWidth={1.7} className="shrink-0" />
               {!collapsed && <span>{t(label)}</span>}
             </Link>
           ))}

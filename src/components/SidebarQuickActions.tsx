@@ -31,7 +31,7 @@ export default function SidebarQuickActions({
   }
 
   const item = [
-    "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground",
+    "flex h-8 w-full items-center gap-3 rounded-lg px-3 text-[13px] font-normal text-muted transition-colors hover:bg-raised hover:text-foreground",
     collapsed ? "md:justify-center md:px-0" : "",
   ].join(" ");
   const iconProps = { size: 16, strokeWidth: 1.7 } as const;

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Check, ChevronDown, FilePlus2, Sparkles, SquarePen } from "lucide-react";
+import { BookOpen, Check, ChevronDown, FilePlus2, ImagePlus, Sparkles, SquarePen, Type } from "lucide-react";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useT } from "@/lib/i18n";
 import ChatView from "./ChatView";
 import { useChat, type ChatContextRef } from "./useChat";
+import type { NewPrefill } from "@/components/home/HomeDashboard";
 
 interface PickItem {
   key: string;
@@ -18,7 +19,7 @@ interface PickItem {
  * 홈 위쪽(사진 업로드·텍스트로 붙여넣기 버튼 바로 아래)의 입력창. 새 안내문(사진·글)을 붙여서 바로 질문하거나, "질문할 과제"를 골라 이미 만든 과제에 대해 묻는다.
  * 대화가 시작되면 입력창 위로 대화창이 펼쳐진다. 로그인한 사용자만 쓸 수 있다.
  */
-export default function HomeChat() {
+export default function HomeChat({ onNew }: { onNew?: (prefill?: NewPrefill) => void }) {
   const { user } = useAuth();
   const t = useT();
   const chat = useChat(null);
@@ -79,7 +80,7 @@ export default function HomeChat() {
         onClick={() => setPickerOpen((v) => !v)}
         aria-expanded={pickerOpen}
         aria-haspopup="listbox"
-        className="inline-flex h-8 max-w-[260px] items-center gap-1.5 rounded-full bg-surface px-3 text-[12.5px] font-semibold transition-colors hover:bg-raised"
+        className="inline-flex h-8 max-w-[260px] items-center gap-1.5 rounded-full border border-border-strong px-3 text-[12.5px] font-medium transition-colors hover:bg-raised"
       >
         {target ? (
           target.ref.kind === "learning" ? <BookOpen size={13} strokeWidth={1.8} className="shrink-0" /> : <Sparkles size={13} strokeWidth={1.8} className="shrink-0" />
@@ -146,6 +147,26 @@ export default function HomeChat() {
     </div>
   );
 
+  const pill =
+    "inline-flex h-8 items-center gap-1.5 rounded-full border border-border-strong px-3 text-[12.5px] font-medium transition-colors hover:bg-raised";
+  const footer = (
+    <div className="flex flex-wrap items-center gap-2">
+      {onNew && (
+        <>
+          <button onClick={() => onNew({ kind: "image" })} className={pill}>
+            <ImagePlus size={14} strokeWidth={1.7} />
+            {t("사진 업로드")}
+          </button>
+          <button onClick={() => onNew({ kind: "text" })} className={pill}>
+            <Type size={14} strokeWidth={1.7} />
+            {t("텍스트로 붙여넣기")}
+          </button>
+        </>
+      )}
+      {picker}
+    </div>
+  );
+
   return (
     <section aria-label={t("AI에게 질문하기")} className="w-full">
       <ChatView
@@ -153,7 +174,7 @@ export default function HomeChat() {
         composerFirst
         allowImage={!target}
         placeholder={target ? t("“{title}”에 대해 무엇이든 물어보세요", { title: target.title }) : t("무엇이든 물어보기")}
-        header={picker}
+        footer={footer}
         messagesClassName="max-h-[52vh] rounded-3xl bg-surface p-5"
         disabledReason={user ? null : t("로그인하면 질문할 수 있어요")}
       />

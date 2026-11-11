@@ -81,6 +81,7 @@ export default function ChatView({
   empty,
   disabledReason,
   composerFirst = false,
+  footer,
   className = "",
   onMemorizeTool,
 }: {
@@ -95,6 +96,8 @@ export default function ChatView({
   disabledReason?: string | null;
   /** true면 입력창이 위, 대화가 그 아래에 펼쳐진다(홈 화면). 기본은 대화 위·입력창 아래(채팅 레일). */
   composerFirst?: boolean;
+  /** 입력 상자 안쪽 아래에 놓는 줄(버튼들). 있으면 상자가 더 넉넉해진다. */
+  footer?: ReactNode;
   className?: string;
   /** 있으면 암기 요청에 대한 답 아래에 "플래시카드·퀴즈·정리해줘" 버튼을 보여주고, 눌렀을 때 부른다(저장된 과제 화면에서만 넘긴다). */
   onMemorizeTool?: (tool: MemorizeTool) => void;
@@ -167,7 +170,7 @@ export default function ChatView({
       );
   const composerBlock = (
     <>
-        <div className="rounded-3xl bg-surface transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--foreground)]">
+        <div className={["rounded-3xl bg-surface transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--foreground)]", footer ? "border border-border-strong" : ""].join(" ")}>
           {image && (
             <div className="flex items-center gap-2 px-3 pt-3">
               <div className="relative">
@@ -213,7 +216,7 @@ export default function ChatView({
               <textarea
                 ref={areaRef}
                 value={text}
-                rows={1}
+                rows={footer ? 2 : 1}
                 onChange={(e) => {
                   setText(e.target.value);
                   autosize();
@@ -227,7 +230,7 @@ export default function ChatView({
                 }}
                 placeholder={disabledReason ?? placeholder}
                 disabled={!!disabledReason}
-                className="max-h-[140px] w-full resize-none bg-transparent px-2 py-2.5 text-[14px] leading-relaxed placeholder:text-faint disabled:cursor-not-allowed"
+                className={`max-h-[140px] w-full resize-none bg-transparent focus-visible:outline-none! px-2 py-2.5 text-[14px] leading-relaxed placeholder:text-faint disabled:cursor-not-allowed ${footer ? "min-h-[64px]" : ""}`}
               />
             </label>
             <button
@@ -239,6 +242,7 @@ export default function ChatView({
               <SendHorizontal size={18} strokeWidth={1.9} />
             </button>
           </div>
+          {footer && <div className="px-3 pb-3">{footer}</div>}
         </div>
         {imageError && (
           <p role="alert" className="mt-2 text-xs text-danger">

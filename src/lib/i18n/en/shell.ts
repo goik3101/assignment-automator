@@ -11,6 +11,7 @@ export const shell: Record<string, string> = {
   "히스토리": "History",
   "관리자 대시보드": "Admin dashboard",
   "작업 목록": "Recent work",
+  "최근": "Recent",
   "학습 모드": "Study mode",
   "AI 모드": "AI mode",
   "창작·작성형": "Writing",

@@ -17,8 +17,8 @@
   --surface: #f6f6f7;
   --raised: #ececef;
   --foreground: #111113;
-  --muted: #6b6b73;
-  --faint: #a1a1aa;
+  --muted: #5a5a63;
+  --faint: #72727e; /* 작은 글씨 대비 4.5:1 이상(예전 #a1a1aa는 약 2.6:1) */
   --border: #ececef;
   --border-strong: #dcdce1;
   --accent: #0b0b0c;
@@ -48,8 +48,8 @@
   --surface: #161618;
   --raised: #202023;
   --foreground: #f4f4f5;
-  --muted: #9b9ba3;
-  --faint: #6a6a72;
+  --muted: #a3a3ab;
+  --faint: #85858f; /* 작은 글씨 대비 약 5.4:1(예전 #6a6a72는 약 3.6:1) */
   --border: #212125;
   --border-strong: #2f2f35;
   --accent: #f4f4f5;
