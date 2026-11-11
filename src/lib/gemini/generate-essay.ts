@@ -71,6 +71,7 @@ import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingP
 import { tableSpecs, tableFormBlock, tableStepLine, tableFormRepairText } from "@/lib/essay/table-form";
 import { stripAdminLeak, isScoringStep } from "@/lib/essay/admin-leak";
 import { leanWritePrompt } from "@/lib/essay/lean-write";
+import { looksLikeAskingPermission, JSON_ONLY_REMINDER, researchRetryOn } from "@/lib/essay/research-retry";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
@@ -119,7 +120,7 @@ import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { dropRepeatedSentences, duplicateStepLabels, stripDefinitionPrefix } from "@/lib/essay/dedupe";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
-import { effectiveTarget, isAttachmentStep, lengthGuideLines } from "@/lib/essay/length-plan";
+import { effectiveTarget, isAttachmentStep, lengthGuideLines, planLength } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock, inferFormKinds } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
@@ -1398,13 +1399,29 @@ ${
   }
 `.trim();
   try {
-    const res = await generate({
+    let res = await generate({
       label: "generateEssay:research",
       role: "main",
       prompt,
       search: { force: true, maxCalls: 2 },
       effort: "low",
     });
+    // 조사 모델이 사실 배열 대신 **사람에게 말을 거는 답**("검색을 시작해도 될까요?")을 준 경우 한 번만 다시 묻는다.
+    // 실측(2026-11-12, 사회 얇은 경로): 검색이 페이지 26곳을 이미 열었는데 사실 0개로 읽혀 조사 실패가 되고,
+    // 글쓰기가 예전 경로로 떨어져 **출처 0개**가 됐다(그 경로가 23.5초를 두 번 썼다).
+    // 다시 묻는 값(8~12초)이 실패한 폴백(약 47초 + 출처 0개)보다 싸다. RESEARCH_RETRY=off로 되돌림.
+    if (researchRetryOn() && looksLikeAskingPermission(res.rawText ?? res.text)) {
+      console.warn(
+        `[generateEssay] 조사가 JSON 대신 되물음 — 형식을 못 박아 1회 재시도: ${JSON.stringify((res.text ?? "").slice(0, 60))}`
+      );
+      res = await generate({
+        label: "generateEssay:research",
+        role: "main",
+        prompt: `${prompt}\n${JSON_ONLY_REMINDER}`,
+        search: { force: true, maxCalls: 2 },
+        effort: "low",
+      });
+    }
     // 검색 응답은 제공자가 인라인 링크를 걷어낸 text를 주는데, 그 정리가 JSON 안의 [..](..)·괄호를 건드릴 수 있어 원문(rawText)을 먼저 읽는다.
     const readBook = (t: string) => parseBookResearch(t);
     const parsedBook = bookTask ? (res.rawText ? readBook(res.rawText) : null) ?? readBook(res.text) : null;
@@ -2250,6 +2267,24 @@ export async function generateEssay(
 
   // 3단계: 후보 생성 ↔ 검증 분리. F6 재생성(previousOutputText 있음)은
   // 이전 버전에서 이미 책이 확정돼 있으므로 다시 고르지 않는다(안 그러면
+  // 안내문이 분량을 말하지 않은 단계의 **바닥**(역할 목표 최소값의 절반). 상한은 보지 않는다.
+  // 왜: 분량 검사는 `target_length`(안내문이 말한 분량)가 있을 때만 돌아서, 분량이 안 적힌 안내문에서는
+  // 하한 검사가 아예 없었다 — 616자·0자 칸이 그대로 나갔다(2026-11-12 실측).
+  const lengthFloors = new Map<string, { floor: number; planned: number }>(
+    elements
+      .filter((el) => !el.target_length)
+      .map((el) => {
+        const plan = planLength(el, {
+          topic: input.coreTaskInfo.topic,
+          siblings: elements.map((e) => ({ label: e.label, description: e.description })),
+          requirements: input.coreTaskInfo.requirements,
+          guide: input.coreTaskInfo.writing_guide,
+          labels: elements.map((e) => e.label),
+        });
+        return [el.label, { floor: Math.round(plan.min * 0.5), planned: plan.min }] as const;
+      })
+  );
+
   // "이미 정해진 사실은 바꾸지 말라"는 지시와 충돌할 수 있음). presetBook을
   // input에 얹어서 이 아래 모든 generateOnce() 호출(초회+재시도)에 자연스럽게
   // 전달되게 한다.
@@ -2389,7 +2424,24 @@ export async function generateEssay(
   const bookMentionsNeedingVerification = excerptRequired && !preExcerpt
     ? extractBookMentionsNeedingVerification(attempt.sections, attempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote)
     : [];
-  const lengthIssues = checkLengthCompliance(attempt.sections, elements);
+  // **기대한 칸이 글에 아예 없으면 빈 칸으로 끼워 넣는다.** 그래야 아래 검사·보완이 그 칸을 본다.
+  // 왜(2026-11-12 실측): 신문 한 실행이 네 칸 중 **세 칸만** 돌아와 8/11이 됐다(만평 칸이 통째로 없었다).
+  // 없는 칸은 검사 어디에도 걸리지 않았다 — 모든 검사가 `sections`를 돌기 때문이다. 칸 하나를 다 잃는 것이
+  // 가장 비싼 실패이므로, 빈 칸으로 만들어 바닥 미달로 올리고 예산을 무시하는 보완이 채우게 한다.
+  {
+    const absent = elements.filter((el) => !attempt.sections.some((s) => s.label === el.label));
+    if (absent.length > 0) {
+      console.warn(`[generateEssay] 글에 없는 칸 ${absent.length}개를 빈 칸으로 올림: ${absent.map((e) => `"${e.label}"`).join(", ")}`);
+      const filled = [...attempt.sections, ...absent.map((el) => ({ label: el.label, content: "" }))];
+      const order = new Map(elements.map((el, i) => [el.label, i]));
+      attempt = {
+        ...attempt,
+        sections: filled.sort((a, b) => (order.get(a.label) ?? 999) - (order.get(b.label) ?? 999)),
+      };
+    }
+  }
+
+  const lengthIssues = checkLengthCompliance(attempt.sections, elements, lengthFloors);
   for (const el of elements) {
     const t = el.target_length;
     const sec = t && attempt.sections.find((x) => x.label === el.label);
@@ -3025,7 +3077,7 @@ export async function generateEssay(
         ];
         const stillHasUncitedBooks = isBookTask ? detectUncitedBookMentions(retryAttempt.sections) : [];
         const stillNeedsVerification = excerptRequired ? extractBookMentionsNeedingVerification(retryAttempt.sections, retryAttempt.sources, !isBookTask).filter((b) => isBookTask || !!b.candidateQuote) : [];
-        const stillHasLengthIssues = checkLengthCompliance(retryAttempt.sections, elements);
+        const stillHasLengthIssues = checkLengthCompliance(retryAttempt.sections, elements, lengthFloors);
         const stillMissingItems = detectMissingRequiredItems(retryAttempt.sections);
         if (stillMissingItems.length > 0) {
           console.warn(`[generateEssay] 재시도 후에도 필수 항목 누락(경고 표시): ${JSON.stringify(stillMissingItems)}`);
@@ -3248,8 +3300,9 @@ export async function generateEssay(
     // 안내문이 직접 못 박은 분량("5문장 이내", "800자 이내")을 어긴 것은 예산을 보지 않고 고친다 —
     // 로그 전수(2026-11-03, 실행 56회): 분량 보정은 **건너뜀 56회·적용 0회**로 한 번도 돈 적이 없다.
     // 생성만으로 예산 22초를 넘기기 때문이다. 우리가 예시에서 유추한 상한(soft_max)만 어긴 경우는 그대로 건너뛴다.
-    const pending = checkLengthCompliance(attempt.sections, elements);
-    const hardMiss = pending.some((i) => !i.softOnly);
+    const pending = checkLengthCompliance(attempt.sections, elements, lengthFloors);
+    // 바닥(역할 목표의 절반) 미달도 예산을 무시한다 — 거의 빈 칸은 그 칸 점수를 통째로 잃는다.
+    const hardMiss = pending.some((i) => !i.softOnly || i.floorOnly);
     const remaining = overBudget("분량 보정", hardMiss ? "critical" : "optional") ? [] : pending;
     if (remaining.length > 0) {
       const adjusted = await Promise.all(
@@ -3276,7 +3329,7 @@ export async function generateEssay(
   // 재시도까지 거치고도 분량 기준을 못 맞춘 단계는, 조용히 최종본인 척
   // 내보내지 않고 정직하게 알린다 — lengthWarning은 사용자에게 그대로
   // 보여줄 문구다(ResultPanel.tsx에서 렌더링).
-  const finalLengthIssues = checkLengthCompliance(attempt.sections, elements);
+  const finalLengthIssues = checkLengthCompliance(attempt.sections, elements, lengthFloors);
   if (finalLengthIssues.length > 0) {
     console.warn(`[generateEssay] 재시도 후에도 분량 기준 미달(경고 표시): ${JSON.stringify(finalLengthIssues)}`);
   }
@@ -4220,6 +4273,16 @@ interface LengthIssue {
   unit?: "chars" | "words";
   /** 안내문이 아니라 예시 분량에서 우리가 유추한 상한만 넘은 경우 — 학생에게 "기준 미달"로 보여주지 않는다. */
   softOnly?: boolean;
+  /**
+   * **안내문이 분량을 말하지 않은 단계가 터무니없이 짧은 것**(역할 목표의 절반도 안 됨).
+   *
+   * 왜(2026-11-12): 분량 검사는 `target_length`가 있을 때만 돌고 그 값은 **안내문이 분량을 말했을 때만**
+   * 생긴다. 즉 분량이 안 적힌 안내문에서는 하한 검사가 **아예 없었다** — 얇은 경로 카드뉴스가 616자
+   * (만점 실측 1,960자), 신문 만평 칸이 0자로 나간 실측이 그래서 그냥 통과했다.
+   * 채점 데이터는 "길이가 점수를 따라가지 않는다"고 말하지만(국어 만점이 1,450자와 1,966자),
+   * **거의 빈 칸은 그 칸 점수를 통째로 잃는다.** 그래서 상한은 그대로 두고 **바닥만** 본다.
+   */
+  floorOnly?: boolean;
 }
 
 /**
@@ -4237,10 +4300,27 @@ function countWords(text: string): number {
 
 const unitWord = (unit?: "chars" | "words") => (unit === "words" ? "단어" : "자");
 
-function checkLengthCompliance(sections: RawSection[], elements: CoreTaskInfo["task_elements"]): LengthIssue[] {
+function checkLengthCompliance(
+  sections: RawSection[],
+  elements: CoreTaskInfo["task_elements"],
+  floors?: Map<string, { floor: number; planned: number }>
+): LengthIssue[] {
   const issues: LengthIssue[] = [];
   for (const el of elements) {
-    if (!el.target_length) continue;
+    if (!el.target_length) {
+      // 안내문이 분량을 말하지 않은 단계 — **바닥만** 본다(LengthIssue.floorOnly 주석 참고).
+      const f = floors?.get(el.label);
+      if (!f) continue;
+      const sec = sections.find((s) => s.label === el.label);
+      // **칸이 통째로 없는 것**이 가장 비싼 실패다(그 칸 점수를 다 잃는다). 실측(2026-11-12): 신문 한 실행이
+      // 네 칸 중 세 칸만 돌아와 8/11이 됐고(만평 누락), 다른 실행들은 만평 칸이 0자였다.
+      // 없는 칸은 0자로 보고 바닥 미달로 올린다 — 그러면 아래 보완이 예산을 무시하고 그 칸만 다시 쓴다.
+      const actual = sec ? countChars(sec.content, true) : 0;
+      if (actual < f.floor) {
+        issues.push({ label: el.label, actual, min: f.planned, max: 0, countsSpaces: true, floorOnly: true });
+      }
+      continue;
+    }
     const { min, max, counts_spaces, unit } = el.target_length;
     // 2차 방어선(analyze.ts에서 이미 한 번 걸러내지만, 여기서도 유한하고
     // 현실적인 값인지 다시 확인한다) — Infinity/NaN이 새어 들어오면
