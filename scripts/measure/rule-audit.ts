@@ -25,6 +25,8 @@ const { isInterrogativeItemList } = await import("@/lib/gemini/analysis-normaliz
 const { requiredGrammarForms } = await import("@/lib/essay/english-grammar");
 const { stepDependencies } = await import("@/lib/essay/step-order");
 const { inferDeliverableForm, classifyRequiredItem } = await import("@/lib/essay/deliverable");
+const { isTableForm, labelIsTable } = await import("@/lib/essay/table-form");
+const { stripAdminLeak } = await import("@/lib/essay/admin-leak");
 
 type Case = [want: boolean, text: string];
 interface Rule {
@@ -38,6 +40,60 @@ interface Rule {
 const el = (description: string) => ({ label: "산출물", description, required_items: [] as string[] });
 
 const RULES: Rule[] = [
+  {
+    name: "표칸양식",
+    what: "이 칸의 양식이 **표**인가(열 이름을 소제목으로 풀어 쓰면 안 되는 칸)",
+    // 칸 이름으로 판정하는 규칙이라 텍스트를 단계 이름으로 넣는다.
+    run: (t) => isTableForm({ label: t, description: "", required_items: ["구분", "내용"] }, undefined),
+    cases: [
+      [true, "사례 분석표"],
+      [true, "분석적 채점 기준표"],
+      [true, "비교표"],
+      [true, "관찰 기록표"],
+      [true, "탐구 결과 정리표"],
+      // 낱말 끝의 '표'가 표가 아닌 것들 — 걸리면 멀쩡한 글 칸이 표로 바뀐다.
+      [false, "주제 발표"],
+      [false, "모둠 대표"],
+      [false, "학습 목표"],
+      [false, "머리기사"],
+      [false, "탐구 보고서"],
+    ],
+  },
+  {
+    name: "표칸지시",
+    what: "작성 기준이 '표로 정리·표 칸·표 형태'라고 말했는가",
+    run: (t) => isTableForm({ label: "조사 내용", description: "", required_items: ["구분", "내용"] }, t),
+    cases: [
+      [true, "조사 내용은 표로 정리한다."],
+      [true, "조사 내용 칸은 표 형태로 작성한다."],
+      [true, "4단계 조사 내용 표 칸: ‘구분 / 내용’."],
+      [true, "조사 내용은 아래 표에 채워 넣는다."],
+      [false, "조사 내용은 문단으로 서술한다."],
+      [false, "조사 내용은 표지에 적지 않는다."],
+      // 2026-11-11 prompt-audit이 찾은 오발동: "이름표 칸"의 '표 칸'에 걸려 만평 칸이 표가 됐다.
+      [false, "조사 내용은 글을 쓰는 이름표 칸 없이 그림으로 구성한다."],
+      // 다른 칸을 가리킨 지시는 이 칸에 걸리지 않아야 한다.
+      [false, "소감 칸은 표로 정리한다."],
+    ],
+  },
+  {
+    name: "운영안내유입",
+    what: "제출 글에 섞인 수업 운영·배점 안내인가(코드가 지우는 줄)",
+    run: (t) => stripAdminLeak(t).removed.length > 0,
+    cases: [
+      [true, "(총 30점, 기본점수 10점 포함)"],
+      [true, "실시일 : 8월 24일 ~ 8월 26일 중 1시간"],
+      [true, "시험 대형으로 책상 간격을 띄운다."],
+      [true, "부정행위 적발 시 최하점을 부여한다."],
+      [true, "8개가 기본이며 부족 시 감점됩니다."],
+      [true, "제출 기한 : 9월 20일"],
+      // 학생이 쓴 글은 한 줄도 지워지면 안 된다.
+      [false, "1945년 광복 직후 서울에서는 식량 배급이 큰 문제였다."],
+      [false, "(1) 구간에서 곡선과 x축 사이의 넓이를 구하시오. (12점)"],
+      [false, "| 평가 요소 | 배점 |"],
+      [false, "노인 빈곤율은 2023년 38.2%였다."],
+    ],
+  },
   {
     name: "선정필요",
     what: "학생이 대상을 골라야 하는 과제인가",

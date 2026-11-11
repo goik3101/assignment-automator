@@ -60,12 +60,42 @@ function wantsTable(text: string): boolean {
  * 이 단계가 글 안에 표·그래프를 직접 만들어야 하는가.
  * soleStep(이번에 만드는 단계가 하나뿐)이면 안내문의 조건이 모두 그 단계의 것이다.
  */
-export function needsDataTable(el: VisualElement, requirements: string[] = [], guide?: string, soleStep = false): boolean {
-  if (wantsTable(`${el.label} ${el.description} ${(el.required_items ?? []).join(" ")}`)) return true;
-  return [...requirements, guide ?? ""].some((line) => {
-    if (!line) return false;
-    if (!soleStep && !labelMentioned(el.label, line)) return false;
-    return wantsTable(line);
+/**
+ * 이 문장이 **어느 단계 이야기인가**를 가린다.
+ *
+ * 왜(2026-11-11 실측, 수학 수리논술 출제): 작성 기준 한 문단이 네 단계를 차례로 설명하는데
+ * labelMentioned가 낱말 하나만 겹쳐도 참이라 **네 단계 전부**에 "표를 만들라"가 붙었다
+ * ("문항 설계 및 출제 계획", "단계별 모범 답안"까지 — 그 칸들은 표가 아니다).
+ * 지시가 네 갈래로 흩어져 정작 표여야 하는 "분석적 채점 기준표"는 표 줄 0개인 산문으로 나왔다.
+ *
+ * 주인을 가리는 신호는 둘이다: 이름을 **통째로** 부르거나, 그 단계의 **필수 항목 두 개 이상**을
+ * 나열한다("4단계 표 칸: 문항 번호 / 평가 요소 / 세부 채점 기준 및 조건 / 배점").
+ * 주인이 가려지지 않는 문장("그림이나 표는 필수")은 예전처럼 느슨하게 본다 — 과제 전체에 걸린 조건이다.
+ */
+function sentenceOwners(sentence: string, siblings: VisualElement[]): VisualElement[] {
+  const strip = (t: string) => t.replace(/\s/g, "");
+  const flat = strip(sentence);
+  return siblings.filter((sib) => {
+    if (strip(sib.label).length >= 3 && flat.includes(strip(sib.label))) return true;
+    const items = (sib.required_items ?? []).filter((i) => strip(i).length >= 3);
+    return items.filter((i) => flat.includes(strip(i))).length >= 2;
+  });
+}
+
+export function needsDataTable(
+  el: VisualElement,
+  requirements: string[] = [],
+  guide?: string,
+  soleStep = false,
+  siblings: VisualElement[] = []
+): boolean {
+  if (wantsTable([el.label, el.description, (el.required_items ?? []).join(" ")].join(" "))) return true;
+  const sentences = [...requirements, guide ?? ""].flatMap((line) => (line ? splitSentences(line) : []));
+  return sentences.some((sentence) => {
+    if (!wantsTable(sentence)) return false;
+    const owners = sentenceOwners(sentence, siblings);
+    if (owners.length > 0) return owners.some((o) => o.label === el.label);
+    return soleStep || labelMentioned(el.label, sentence);
   });
 }
 

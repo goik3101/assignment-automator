@@ -75,3 +75,25 @@ test("'쓸 수 없다'만으로도 금지를 읽는다", () => {
   assert.ok(visualPolicy(["사진은 쓸 수 없다."]).banned.includes("사진"));
   assert.ok(visualPolicy(["영상은 넣을 수 없습니다."]).banned.includes("영상"));
 });
+
+test("표 요구는 그 문장의 주인 단계에만 붙는다 (2026-11-11 수학)", () => {
+  const guide =
+    "1단계 양식 칸: ‘성취 기준’, ‘출제 의도 및 핵심 아이디어’. 문항 및 의도 배점은 8점이다. " +
+    "4단계 표 칸: ‘문항 번호 / 평가 요소 / 세부 채점 기준 및 조건 / 배점’, 마지막에 ‘합계’. 분석적 채점표 배점은 10점이다.";
+  const steps = [
+    { label: "문항 설계 및 출제 계획", description: "성취 기준과 출제 의도를 작성한다.", required_items: ["성취 기준", "출제 의도 및 핵심 아이디어"] },
+    { label: "수리논술 문항", description: "[제시문 및 조건]에는 수식을 기술한다.", required_items: ["제시문 및 조건", "문제"] },
+    { label: "단계별 모범 답안", description: "풀이를 작성한다." },
+    { label: "분석적 채점 기준표", description: "문항별 분석적 채점 기준표를 작성한다.", required_items: ["문항 번호", "평가 요소", "세부 채점 기준 및 조건", "배점", "합계"] },
+  ];
+  // 예전: 작성 기준 한 문단이 낱말 겹침으로 **네 단계 전부**에 걸렸다.
+  assert.equal(needsDataTable(steps[0], [], guide, false, steps), false);
+  assert.equal(needsDataTable(steps[1], [], guide, false, steps), false);
+  assert.equal(needsDataTable(steps[2], [], guide, false, steps), false);
+  // 표인 칸은 그대로 걸린다(자기 이름·자기 항목이 그 문장의 주인이다).
+  assert.equal(needsDataTable(steps[3], [], guide, false, steps), true);
+  // 단계를 아무도 가리키지 않는 조건은 예전처럼 느슨하게 본다(인권 저널의 "그림이나 표는 필수").
+  const paper = [{ label: "자료 수집", description: "" }, { label: "신문", description: "" }];
+  assert.equal(needsDataTable(paper[1], ["신문에는 그림이나 표는 필수로 넣는다."], undefined, false, paper), true);
+  assert.equal(needsDataTable(paper[0], ["신문에는 그림이나 표는 필수로 넣는다."], undefined, false, paper), false);
+});

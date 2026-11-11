@@ -146,3 +146,37 @@ export function lengthTargetOn(): boolean {
 export function dedupeOn(): boolean {
   return process.env.ESSAY_DEDUPE !== "off";
 }
+
+/**
+ * 안내문 양식이 **표**인 칸을 표로 쓰게 한다(table-form.ts). 기본 켜짐, TABLE_FORM=off로 되돌린다.
+ *
+ * 왜(2026-11-11): 우리는 양식을 "소제목 목록" 한 종류로만 다뤘다. 그래서 사회 "사례 분석표"가
+ * 소제목 10개 × 대여섯 문장의 산문 3,000자가 되고, 수학 "분석적 채점 기준표"(안내문이 열 이름까지
+ * 적어 준다)가 표 줄 0개인 1,104자가 됐다. 표 양식은 흔하다 — 열과 소제목은 다르다.
+ */
+export function tableFormOn(): boolean {
+  return process.env.TABLE_FORM !== "off";
+}
+
+/**
+ * 안내문의 **수업 운영·배점 안내**가 제출 글에 섞여 나가면 코드가 지운다(admin-leak.ts). ADMIN_LEAK=off로 되돌림.
+ *
+ * 왜(2026-11-11 측정, 안내문 10종): 행정 정보 분리는 분석 모델의 판단에 맡겨져 있고, **10종 중 6종**에서
+ * 차시·시험 대형·배점·감점 문구가 `core_task_info`로 들어왔다. 생성은 그것을 과제 설명으로 읽어 글에 적는다 —
+ * 과제 3종 중 2종에서 "총 30점(기본점수 10점 포함)", "## 1차시 멸치해부실험"이 제출 글에 들어갔다.
+ */
+export function adminLeakOn(): boolean {
+  return process.env.ADMIN_LEAK !== "off";
+}
+
+/**
+ * 안내문 **원문 전사의 표 구조**에서 분석이 흘린 양식 칸을 되찾는다(notice-form.ts). NOTICE_FORM=off로 되돌림.
+ *
+ * 왜(2026-11-11): 분석이 만든 구조(required_items)는 실행마다 흔들리고, 흘린 칸은 그 아래 어디서도
+ * 복구되지 않는다 — 사회 "경제적 유인" 2번 양식은 6칸인데 5칸만 잡힌 실행이 나왔고 '최적의 정책 제시'
+ * 칸이 통째로 빠졌다. 원문 전사는 그 양식을 표 그대로 옮겨 적는다. 저장된 안내문 10종 중 표가 전사된 것은
+ * 이 한 종뿐이어서 나머지 과제는 아무것도 바뀌지 않는다(표가 없으면 손대지 않는다).
+ */
+export function noticeFormOn(): boolean {
+  return process.env.NOTICE_FORM !== "off";
+}

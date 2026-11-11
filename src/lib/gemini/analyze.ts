@@ -1,6 +1,8 @@
 import { Type, type Schema } from "@google/genai";
 import { generate, type LlmPart } from "@/lib/llm";
 import { normalizeSubject } from "./normalize-subject";
+import { recoverFormFields } from "@/lib/essay/notice-form";
+import { noticeFormOn } from "@/lib/essay/quality-flags";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
 import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
@@ -34,7 +36,11 @@ export const ANALYZE_SCHEMA: Schema = {
     // 효과가 없는 것을 켜 두면 모든 사용자의 분석 호출에 출력 토큰(최대 2,000자)만 늘어난다.
     // **생성 프롬프트에는 절대 넣지 말 것** — 원문에는 배점·일시·부정행위 안내가 그대로 들어 있고,
     // 그런 글이 프롬프트에 가면 보완이 그 안내를 글 안에 적어 버린다(CLAUDE.md).
-    ...(process.env.NOTICE_TEXT === "on"
+    // 2026-11-11부터 **기본 켜짐**이다(NOTICE_TEXT=off로 되돌림). 2026-11-08에 껐던 이유는 "효과가 없는데
+    // 출력 토큰만 든다"였는데, 이제 코드가 이 전사의 **표 구조에서 분석이 흘린 양식 칸을 되찾는다**
+    // (notice-form.ts). 실측: 사회 "경제적 유인" 2번 양식 6칸 중 분석이 5칸만 잡았고 전사에서 1칸을 되찾았다.
+    // 되찾기는 코드가 하고 전사는 **생성 프롬프트에 넣지 않는다**(배점·일시가 들어 있다 — 아래 설명 그대로).
+    ...(process.env.NOTICE_TEXT !== "off"
       ? {
         notice_text: {
           type: Type.STRING,
@@ -483,6 +489,22 @@ export async function analyzeAssignment(
     if (process.env.LOG_PROMPTS === "1") console.warn(`  topic="${parsed.core_task_info.topic}"`);
   }
 
+  // 안내문 원문의 표 구조에서 **분석이 흘린 양식 칸**을 되찾는다(notice-form.ts).
+  // 분석이 만든 구조는 실행마다 흔들리고(2026-11-01 측정) 흘린 칸은 아래 어디서도 복구되지 않는다.
+  const noticeText = (parsed as { notice_text?: string }).notice_text;
+  const recovered = noticeFormOn() ? recoverFormFields(task_elements, noticeText) : null;
+  const withRecovered = recovered
+    ? task_elements.map((el, i) =>
+        recovered[i].length > (el.required_items?.length ?? 0) ? { ...el, required_items: recovered[i] } : el
+      )
+    : task_elements;
+  if (recovered)
+    withRecovered.forEach((el, i) => {
+      const before = task_elements[i].required_items?.length ?? 0;
+      if ((el.required_items?.length ?? 0) > before)
+        console.warn(`[analyzeAssignment] 안내문 원문에서 양식 칸 되찾음 label="${el.label}": ${el.required_items?.slice(before).join(", ")}`);
+    });
+
   const writingGuide = fixes ? [parsed.core_task_info.writing_guide?.trim(), ...guideExtras].filter(Boolean).join("\n").slice(0, 1500) : "";
   const { writing_guide: _rawGuide, ...coreRest } = parsed.core_task_info;
   void _rawGuide;
@@ -490,7 +512,7 @@ export async function analyzeAssignment(
   return {
     ...parsed,
     subject,
-    core_task_info: { ...coreRest, requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], task_elements, ...(writingGuide ? { writing_guide: writingGuide } : {}) },
+    core_task_info: { ...coreRest, requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], task_elements: withRecovered, ...(writingGuide ? { writing_guide: writingGuide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }

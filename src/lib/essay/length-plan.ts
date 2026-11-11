@@ -3,10 +3,11 @@
 // 이 값은 생성 지시용 가이드일 뿐 강제 기준이 아니다(강제는 안내문이 명시한 분량만 — 부족 여부는 필수 항목 충족으로 본다).
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
 import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
-import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn, boxLengthOn } from "./quality-flags.ts";
+import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn, boxLengthOn, tableFormOn } from "./quality-flags.ts";
 import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneLikeElement, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 import { boxLengths, isDrawingBox } from "./box-lines.ts";
+import { isTableForm, tableColumns, tableRowLabels, PER_CELL_MIN, PER_CELL_MAX, DEFAULT_ROWS } from "./table-form.ts";
 import { lengthFromAnalyzeOn, type LengthEstimate } from "./length-estimate.ts";
 import { newspaperSectionLabels } from "./deliverable.ts";
 
@@ -28,6 +29,7 @@ export type LengthRole =
   | "deep_analysis" // 심층 분석 보고서 (LENGTH_INFER)
   | "plan" // 계획·개요·설계
   | "scenes" // 장면 번호 소제목(스토리보드·컷)으로 쓰는 단계 — 장면마다 화면·대사 한두 문장
+  | "table" // 양식이 **표**인 칸(비교표·분석표·채점 기준표) — 칸 이름은 소제목이 아니라 **열**이다
   | "general";
 
 export interface PlanElement {
@@ -97,6 +99,10 @@ export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
   }
   // 자료를 붙이고 설명만 적는 칸 — 본체가 글이 아니다. 만점 결과물 실측 170·202자인데 역할 표는 1,200자를 줬다(5.9배).
   if (isAttachmentStep(el)) return "attachment";
+  // 양식이 표인 칸은 "소제목 N개 × 항목당 대여섯 문장"이 아니다 — 실측(2026-11-11): 사회 "사례 분석표"가
+  // 그 공식으로 640~1,200자를 받아 소제목 10개 산문 3,000자가 됐고, 수학 "분석적 채점 기준표"는 800~1,500자를
+  // 받아 표 줄 0개인 1,104자가 됐다. 표는 칸 수(열×줄)로 잰다.
+  if (tableFormOn() && isTableForm(el, ctx?.guide)) return "table";
   if (inferDeliverableForm(el) === "newspaper") return "newspaper";
   if (formRequirementsOn() && isSceneListElement(el)) return "scenes";
   // 개요·계획은 항목이 여럿이어도 보고서가 아니다 — 항목 수로만 정하면 "개요"에 보고서 분량(항목 7개 × 250~450 = 1,750~3,150자)이 붙어
@@ -167,6 +173,12 @@ export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
         };
       }
       return { role, min: n * 160, max: n * 300, basis: `보고서 항목 ${n}개 × 항목당 대여섯 문장` };
+    }
+    case "table": {
+      const cols = Math.max(2, tableColumns(el, ctx?.guide).length);
+      const rows = Math.max(1, tableRowLabels(el, ctx?.guide, ctx?.requirements ?? []).length || DEFAULT_ROWS);
+      const cells = cols * rows;
+      return { role, min: cells * PER_CELL_MIN, max: cells * PER_CELL_MAX, basis: `표 열 ${cols}개 × 줄 ${rows}개 = 칸 ${cells}개 × 칸마다 한두 문장` };
     }
     case "scenes": {
       const n = Math.max(items, 2);

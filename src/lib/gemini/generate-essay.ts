@@ -61,13 +61,15 @@ import { bookForm, bookFormBlock, bookThreadBlock, isReadingActivity } from "@/l
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-slot";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
-import { dedupeOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { adminLeakOn, dedupeOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
 import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
+import { tableSpecs, tableFormBlock, tableStepLine, tableFormRepairText } from "@/lib/essay/table-form";
+import { stripAdminLeak, isScoringStep } from "@/lib/essay/admin-leak";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
 import { findUncitedFigures, uncitedFigureRepairText } from "@/lib/essay/uncited-figures";
@@ -606,11 +608,18 @@ ${input.previousOutputText}
   // 신문 "영역"을 전부 잡는 판정(newspaperSectionLabels)은 만들어 두었지만 쓰지 않는다 — 실측 2026-11-01:
   // 영역 블록이 처음으로 돌자 분량이 3134자 → 1500자로 줄고 정답 채점이 10/11 → 9/11이 됐다.
   // 즉 단계 이름으로만 잡히던 때(머리기사 하나)가 결과가 더 좋았다. 분량을 깎지 않는 영역 블록을 만든 뒤 다시 켠다.
+  // 양식이 **표**인 칸은 열 이름을 소제목으로 풀어 쓰면 안 된다(table-form.ts) — 아래 구조화 블록에서 뺀다.
+  const tables = tablesFor(input, elements);
+  const tableLabels = new Set(tables.map((t) => t.label));
+  if (tables.length) console.log(`[generateEssay] 표 양식 칸: ${tables.map((t) => `"${t.label}"(열 ${t.columns.length}개)`).join(", ")}`);
   const newspaperEls = elements.filter((el) => inferDeliverableForm(el) === "newspaper" && (el.required_items?.length ?? 0) >= 1);
   // 신문 단계는 구조화 블록에서 뺀다 — 두 블록이 정반대를 말한다(실측 2026-11-01 프롬프트 검사):
   //   신문:   "항목 이름을 그대로 소제목으로 쓰지 말고 기사다운 헤드라인을 붙일 것"
   //   구조화: "각 항목을 정확히 \"### <항목명>\" 소제목으로, 항목명은 글자 그대로"
-  const structuredEls = elements.filter((el) => isStructuredElement(el) && !newspaperEls.includes(el));
+  // 표 칸도 같은 이유로 뺀다(실측 2026-11-11, prompt-audit): 표 블록은 "열을 머리줄로 하는 표 하나",
+  // 구조화 블록은 "각 항목을 '### <항목명>' 소제목으로"라고 말했다. 수학 채점 기준표가 소제목 다섯 개,
+  // 사회 사례 분석표가 소제목 열 개의 산문으로 나온 것이 이 충돌의 결과다.
+  const structuredEls = elements.filter((el) => isStructuredElement(el) && !newspaperEls.includes(el) && !tableLabels.has(el.label));
   const flowingEls = elements.filter(
     (el) => el.items_format === "flowing" && (el.required_items?.length ?? 0) >= 2 && !newspaperEls.includes(el)
   );
@@ -772,8 +781,12 @@ ${input.previousOutputText}
   if (bookForTone) console.log(`[generateEssay] 읽은 책: "${bookForTone.title}" 독후활동=${readingActivity} 블록=${bookThreadText ? "붙임" : "없음"}`);
   if (timeRange) console.log(`[generateEssay] 다룰 시기: ${timeRange.text} (${timeRange.startYear}~${timeRange.endYear})`);
   const evidenceItemBlock = evidenceWritingBlock(writeEvidence.label, writeEvidence.slots);
+  // 양식이 **표**인 칸은 열 이름을 소제목으로 풀어 쓰면 안 된다(table-form.ts). 실측 2026-11-11:
+  // 수학 "분석적 채점 기준표"가 "### 문항 번호 / ### 평가 요소 …" 소제목 다섯 개로, 사회 "사례 분석표"가
+  // 소제목 열 개의 산문 3,000자로 나왔다 — 학생이 종이 표에 옮길 수 없다.
+  const tableBlock = tableFormBlock(tables);
   const dataTableBlock = qualityFixesOn()
-    ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((el) => el.label))
+    ? dataTableInstruction(elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1, elements)).map((el) => el.label))
     : "";
   // 책 과제인가 / 인상 깊은 구절(원문 인용)을 요구하는가에 따라 검색·인용 규칙의 범위를 정한다(essay/excerpt-need.ts).
   const isBookPrompt = !!input.presetBook || needsBookCandidateSelection(input, elements);
@@ -783,7 +796,7 @@ ${input.previousOutputText}
   // 실측(2026-10-31): "설정하고"가 대상 선정을, "그림·그래프·표만 가능"이 표 요구를 켰고 둘 다 글을 망가뜨렸다.
   console.log(
     `[generateEssay] 안내문 규칙: 대상=${input.presetSubject ? `"${input.presetSubject.name}"` : "없음"}` +
-      ` 표요구=[${elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)).map((e) => e.label).join(",")}]` +
+      ` 표요구=[${elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1, elements)).map((e) => e.label).join(",")}]` +
       ` 자료제한=허용[${visuals.allowed.join("·")}]` +
       ` 직접기록=[${elements.filter(isOwnRecordStep).map((e) => e.label).join(",")}]` +
       ` 구절인용=${wantsExcerpt}` +
@@ -900,7 +913,7 @@ ${continuityBlock}너는 한국 고등학생이 수행평가로 제출할 글을
 ${requirementsText}
 [작성해야 할 단계들]
 ${sectionsBlock}
-${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${providedMaterialsBlock(input.coreTaskInfo.provided_materials)}${compoundBlock}${timeBlock}${bookFormBlockText}${bookThreadText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
+${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${formLimitBlock}${buildTitleFieldBlock(elements)}${structuredBlock}${sceneBlock}${briefBlock}${sourceItemBlock}${flowingBlock}${newspaperBlock}${formRulesBlock}${dataTableBlock}${tableBlock}${visualBlock}${ownRecordBlock}${evidenceItemBlock}${providedMaterialsBlock(input.coreTaskInfo.provided_materials)}${compoundBlock}${timeBlock}${bookFormBlockText}${bookThreadText}${languageBlock}${input.instructions ? `[학생이 추가로 입력한 지침 — 특정 단계에 필요한 실제 정보(예: 무작위로 뽑은 친구의 고민 원문, 실제 자료 등)가 여기 포함되어 있을 수 있으니 반드시 확인해서 해당 단계에 반영할 것]\n${input.instructions}` : ""}
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
@@ -1249,6 +1262,11 @@ function taskNeedsExcerpt(input: GenerateEssayInput, elements: CoreTaskInfo["tas
 
 /** 글쓰기 호출의 추론 강도. 검색이 없어 minimal이 가능하고, low는 글이 목표보다 짧게 나오는 경향이 측정됐다(810자 vs 목표 1,200자 이상).
  * ESSAY_WRITE_EFFORT=low로 바꿔 품질을 비교할 수 있다(minimal이 ChatGPT 대비 품질 차이의 한 원인일 수 있다는 추정 — 측정 전). */
+/** 양식이 **표**인 칸들(table-form.ts). 프롬프트·단계별 호출·보완이 모두 이 한 함수에 묻는다. */
+function tablesFor(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]) {
+  return tableFormOn() ? tableSpecs(elements, input.coreTaskInfo.writing_guide, input.coreTaskInfo.requirements) : [];
+}
+
 export function writeEffort(): "minimal" | "low" {
   return process.env.ESSAY_WRITE_EFFORT === "low" ? "low" : "minimal";
 }
@@ -1487,6 +1505,7 @@ async function generateOnce(
   elements: CoreTaskInfo["task_elements"]
 ): Promise<Attempt> {
   const labels = elements.map((e) => e.label);
+  const tables = tablesFor(input, elements);
   // 사실 조사가 필요 없는 창작·계산·기획형 과제에는 검색을 강제하지 않는다(검색 호출당 요금 — search-policy.ts).
   const wantSearch = needsFactSearch(
     input.coreTaskInfo.topic,
@@ -1618,7 +1637,7 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
               role: "write",
               prompt: `${prompt}
 
-${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}${prev ? `\n\n${prev}` : ""}`,
+${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}\n${tableStepLine(l, tables)}${prev ? `\n\n${prev}` : ""}`,
               effort: writeEffort(),
             })
           )
@@ -2572,11 +2591,21 @@ export async function generateEssay(
   // 안내문이 요구한 표·그래프가 글에 실제로 없으면 그 단계만 다시 쓰게 한다(data-visual.ts — 설명·자리 표시로 대신한 경우).
   if (fixes) {
     for (const el of elements) {
-      if (!needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1)) continue;
+      if (!needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1, elements)) continue;
       const sec = attempt.sections.find((s) => s.label === el.label);
       if (!sec || hasDataTable(sec.content)) continue;
       console.warn(`[generateEssay] 표·그래프를 글에 만들지 않음 label="${el.label}"`);
       activityRewrites.push({ label: el.label, instruction: dataTableRepairText(el.label), must: "notice" });
+    }
+  }
+  // 양식이 표인 칸이 표로 안 나왔으면 그 칸만 다시 쓰게 한다(안내문 양식이라 등급은 notice).
+  const tables = tablesFor(input, elements);
+  if (fixes) {
+    for (const t of tables) {
+      const sec = attempt.sections.find((x) => x.label === t.label);
+      if (!sec || hasDataTable(sec.content)) continue;
+      console.warn(`[generateEssay] 표 양식 칸이 표가 아님 label="${t.label}"`);
+      activityRewrites.push({ label: t.label, instruction: tableFormRepairText(t.label, t), must: "notice" });
     }
   }
   // 영역 사이에 거의 같은 문장이 되풀이되면 **코드가 뒤쪽 것을 지운다**(dedupe.ts — 모델 호출 0).
@@ -3446,6 +3475,25 @@ export async function generateEssay(
   };
 
   attempt = { ...attempt, sections: attempt.sections.map((s) => ({ ...s, content: tidyOutputText(s.content) })) };
+
+  // 안내문의 **수업 운영·배점 안내**가 글에 섞여 나왔으면 코드가 지운다(admin-leak.ts — 모델 호출 0).
+  // 실측(2026-11-11): 분석 10종 중 6종에서 차시·시험 대형·배점이 core_task_info로 들어오고,
+  // 과제 3종 중 2종이 글에 적었다("(총 30점, 기본점수 10점 포함)", "## 1차시 멸치해부실험").
+  if (adminLeakOn()) {
+    const dropped: string[] = [];
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((sec) => {
+        const el = elements.find((e) => e.label === sec.label);
+        // 채점 기준을 **만드는** 칸에서는 배점이 학생이 쓸 내용이다(수학 수리논술 출제).
+        const keepScoring = isScoringStep(sec.label, el?.required_items ?? []);
+        const r = stripAdminLeak(sec.content, { keepScoring });
+        dropped.push(...r.removed);
+        return r.removed.length ? { ...sec, content: r.content } : sec;
+      }),
+    };
+    if (dropped.length) console.warn(`[generateEssay] 수업 운영·배점 안내 ${dropped.length}줄 지움: ${dropped.slice(0, 3).map((d) => `"${d.slice(0, 40)}"`).join(", ")}`);
+  }
 
   // 필수 항목(소제목) 구조는 재시도까지 거치고도 남은 누락만 정직하게 알린다.
   // 소제목 없는 단계(신문 등)는 처음에 누락이 확인된 경우에만 다시 판정한다(모델 호출 최소화). 떼어 둔 "제작 참고"도 포함해서 본다.

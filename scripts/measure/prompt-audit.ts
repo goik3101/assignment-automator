@@ -18,6 +18,7 @@ const { isSceneListElement, wantsBriefScenes, requirementsForElement, hasSizeLim
 const { visualPolicy, needsDataTable } = await import("@/lib/essay/data-visual");
 const { boxLengths } = await import("@/lib/essay/box-lines");
 const { lengthGuideLines } = await import("@/lib/essay/length-plan");
+const { isTableForm } = await import("@/lib/essay/table-form");
 
 interface El {
   label: string;
@@ -53,6 +54,11 @@ const CONFLICTS: [string, string, string][] = [
   // 카드뉴스 칸이 137~176자로 나와 정답 채점의 "칸마다 한두 문장"이 떨어졌다(7/9). 설명이 서로 반대면 모델이 고른다.
   ["장면(간단히)", "분량 가이드(항목당 대여섯 문장)", "칸마다 1~2문장과 항목당 대여섯 문장이 함께 간다"],
   ["장면(대사 그대로)", "분량 가이드(항목당 대여섯 문장)", "칸마다 짧게와 항목당 대여섯 문장이 함께 간다"],
+  // 2026-11-11에 추가. 양식이 표인 칸에 소제목 블록이 함께 가면 열 이름이 ### 소제목이 된다 —
+  // 실측: 수학 "분석적 채점 기준표"가 "### 문항 번호 / ### 평가 요소 …" 다섯 개로, 사회 "사례 분석표"가 소제목 열 개로 나왔다.
+  ["표 양식", "구조화", "표는 열을 머리줄로 쓰라, 구조화는 항목명을 소제목으로 쓰라"],
+  ["표 양식", "보고서 항목", "표 한 칸에 한두 문장과 항목마다 문단이 함께 간다"],
+  ["표 양식", "분량 가이드(항목당 대여섯 문장)", "표 칸 한두 문장과 항목당 대여섯 문장이 함께 간다"],
 ];
 
 function blocksFor(core: Core, el: El, all: El[]): string[] {
@@ -62,13 +68,17 @@ function blocksFor(core: Core, el: El, all: El[]): string[] {
   const brief = wantsBriefScenes(texts);
   const scene = isSceneListElement(el);
   if (isNewspaper(el)) out.push("신문");
-  if (isStructured(el) && !isNewspaper(el)) out.push("구조화");
+  // 표 칸은 구조화·보고서 항목 블록에서 뺀다 — 생성도 같이 뺀다(generate-essay의 structuredEls).
+  const isTable = isTableForm(el as never, core.writing_guide);
+  if (isStructured(el) && !isNewspaper(el) && !isTable) out.push("구조화");
   if (isFlowing(el) && !isNewspaper(el)) out.push("흐름");
   if (scene && !brief) out.push("장면(대사 그대로)");
   if (scene && brief) out.push("장면(간단히)");
   if (brief && !scene) out.push("대본 금지");
-  if (isStructured(el) && !isResearchMaterialStep(el) && !scene) out.push("보고서 항목");
-  if (needsDataTable(el as never, core.requirements ?? [], core.writing_guide, all.length === 1)) out.push("표 요구");
+  if (isStructured(el) && !isResearchMaterialStep(el) && !scene && !isTable) out.push("보고서 항목");
+  if (needsDataTable(el as never, core.requirements ?? [], core.writing_guide, all.length === 1, all as never)) out.push("표 요구");
+  // 양식이 표인 칸은 "열을 머리줄로 하는 표 하나"를 말한다 — 소제목 구조·보고서 항목 블록과 정면으로 부딪친다.
+  if (isTable) out.push("표 양식");
   const pol = visualPolicy(texts);
   // "도표"가 금지라고 "표"가 금지인 것은 아니다 — 정확히 일치할 때만 본다.
   if ((pol.banned ?? []).some((b: string) => b === "표" || b === "그래프")) out.push("표 금지");

@@ -26,6 +26,7 @@ const C = await import("@/lib/gemini/citations");
 const PS = await import("@/lib/essay/paste-slot");
 const EG = await import("@/lib/essay/english-grammar");
 const RF = await import("@/lib/essay/refusal");
+const AL = await import("@/lib/essay/admin-leak");
 
 /** 사슬에 실제로 도는 순서대로. `content`만 꺼내 문자열 → 문자열로 맞춘다. */
 const take = (r: unknown): string => (typeof r === "string" ? r : ((r as { content?: string })?.content ?? ""));
@@ -65,6 +66,9 @@ const STEPS: { name: string; run: (t: string) => string; when?: (label: string, 
   { name: "붙임 칸 바로잡기", run: (t) => take(PS.normalizeAttachmentSlot(t, RF.findRefusalSentences)), when: (l) => isAttachLabel(l) },
   { name: "제작 참고 떼기(글 칸)", run: (t) => D.splitProductionNotes(t).body, when: (l) => !isPanelLabel(l) },
   { name: "제작 참고 라벨만 떼기(그림 칸)", run: (t) => take(D.dropProductionNotesHeading(t)), when: (l) => isPanelLabel(l) },
+  // 운영·배점 안내 제거는 **채점 기준을 만드는 칸에서는 배점을 남긴다** — 그 조건까지 함께 적는다.
+  { name: "운영·배점 안내 제거", run: (t) => AL.stripAdminLeak(t).content, when: (l) => !AL.isScoringStep(l) },
+  { name: "운영 안내만 제거(채점 칸)", run: (t) => AL.stripAdminLeak(t, { keepScoring: true }).content, when: (l) => AL.isScoringStep(l) },
 ];
 
 /**
@@ -77,7 +81,11 @@ const STEPS: { name: string; run: (t: string) => string; when?: (label: string, 
  */
 function missingFromAudit(): string[] {
   const src = fs.readFileSync(path.join(REPO, "src", "lib", "gemini", "generate-essay.ts"), "utf8");
-  const chain = src.split(String.fromCharCode(10)).slice(3220, 3440).join(String.fromCharCode(10));
+  // 사슬의 범위는 **줄 번호가 아니라 표시**로 찾는다 — 번호를 박아 두면 사슬이 길어질 때 새 단계가 범위 밖으로 나가
+  // 이 어긋남 검사가 조용히 통과한다(2026-11-11에 admin-leak을 사슬 끝에 붙이면서 실제로 그렇게 됐다).
+  const from = src.indexOf("stripModelReferenceBlock(");
+  const to = src.indexOf("// 필수 항목(소제목) 구조는 재시도까지");
+  const chain = src.slice(from, to > from ? to : undefined);
   const called = new Set(
     [...chain.matchAll(/\b((?:strip|fix|reduce|tab|tidy|normalize|blank|underline|split|drop)[A-Za-z]+)\s*\(/g)].map((m) => m[1])
   );

@@ -71,9 +71,34 @@ const MIN_ITEM_BODY_CHARS = 12;
  * 필수 항목 중 (1) 대응하는 "###" 소제목이 없거나 (2) 소제목은 있는데 본문이
  * 사실상 비어 있는 항목을 돌려준다. 모든 항목이 있으면 빈 배열.
  */
+/**
+ * 표의 **머리줄 칸**(과 첫 열의 값)도 "그 항목을 다뤘다"로 센다.
+ *
+ * 왜(2026-11-11): 양식이 표인 칸은 필수 항목이 소제목이 아니라 **열**이다. 소제목만 찾으면
+ * 수학 "분석적 채점 기준표"가 표를 제대로 썼는데도 항목 5개 전부 누락으로 잡혀, 멀쩡한 표를
+ * 다시 쓰게 하는 보완 호출이 돌았다(시간 45.6초).
+ */
+function tableHeadings(content: string): string[] {
+  const lines = content.split("\n").map((l) => l.trim());
+  const out: string[] = [];
+  for (let i = 0; i + 2 < lines.length + 1; i++) {
+    if (!/^\|.*\|$/.test(lines[i] ?? "")) continue;
+    if (!/^\|[\s:|-]+\|$/.test(lines[i + 1] ?? "")) continue;
+    const body = lines.slice(i + 2).filter((l) => /^\|.*\|$/.test(l));
+    if (body.length === 0) continue;
+    const cells = (s: string) => s.split("|").map((c) => c.trim()).filter(Boolean);
+    out.push(...cells(lines[i] ?? ""));
+    // 첫 열의 값도 항목 이름일 수 있다(줄이 "사례1"·"합계"인 표).
+    out.push(...body.map((r) => cells(r)[0] ?? "").filter(Boolean));
+  }
+  return out;
+}
+
 export function findMissingItems(content: string, requiredItems: string[]): string[] {
   const blocks = splitByH3(content);
+  const heads = tableHeadings(content);
   return requiredItems.filter((item) => {
+    if (heads.some((h) => itemMatchesHeading(item, h))) return false;
     const block = blocks.find((b) => itemMatchesHeading(item, b.heading));
     if (!block) return true;
     return visibleLength(block.body) < MIN_ITEM_BODY_CHARS;
