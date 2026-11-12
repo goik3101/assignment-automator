@@ -258,6 +258,15 @@ export default function NewCreationModal({
 
   function startAi() {
     if (!core) return;
+    // **학생이 질문에 답하는 동안 조사를 미리 돌려 둔다**(research-prefetch.ts, 2026-11-13).
+    // 생성의 직렬 구간은 조사 8~13초 → 글쓰기 13~24초인데, 조사는 여기서부터 생성까지 비는
+    // 10~30초 안에 끝낼 수 있다. 답이 주제를 바꾸는 과제는 서버가 알아서 건너뛴다(대상 미정이면 안 한다).
+    // 실패해도 생성이 평소대로 조사하므로 결과를 기다리지 않고 그냥 던진다.
+    void fetch("/api/tasks/research/prefetch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject, coreTaskInfo: core, instructions }),
+    }).catch(() => {});
     setStage("questions");
     setQAnswers([]);
     void fetchNextQuestion([]);

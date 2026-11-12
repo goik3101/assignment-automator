@@ -5,7 +5,7 @@ import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
 import { parseSourceScope } from "@/lib/essay/source-scope";
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { generateEssay } from "@/lib/gemini/generate-essay";
+import { generateEssay, type ResearchNotes } from "@/lib/gemini/generate-essay";
 import { identifyCluster } from "@/lib/clusters/identify-cluster";
 import { buildAvoidanceInstruction } from "@/lib/clusters/avoidance";
 import { saveResultEmbedding, essayResultToText } from "@/lib/clusters/save-result-embedding";
@@ -19,6 +19,9 @@ import { assignmentKey, issueTicket, ticketSecret } from "@/lib/usage/ticket";
 import { verifyTurnstile } from "@/lib/turnstile/verify";
 import { isLimitExempt } from "@/lib/admin/session";
 import type { AdministrativeInfo, CoreTaskInfo } from "@/types/task";
+import { prefetchKey, takePrefetchedResearch, researchPrefetchOn } from "@/lib/essay/research-prefetch";
+import { findStudentTopic } from "@/lib/selection/student-topic";
+
 
 // N1: 목표 3~4초대. 계획서(plan) 경로보다 짧을 것으로 예상하지만, 검색 그라운딩이
 // 걸리는 만큼 여유 있게 60초로 잡아둔다 (Vercel Pro 기준 상한, 15번 챕터 참고).
@@ -81,10 +84,28 @@ export const POST = routeUsage("essay", withUiLangRoute(async function POST(req:
     // 관리자 테스트 실행은 실제 추천 통계에서 빠지도록 표시한다(x-studed-test 헤더는 관리자 요청에서만 인정).
     const isTest = admin && req.headers.get("x-studed-test") === "1";
 
+    // 학생이 제작 전 질문에 답하는 동안 미리 돌려 둔 조사가 있으면 가져다 쓴다(research-prefetch.ts).
+    // 가져가면 사라지므로 다른 학생과 섞이지 않고, 없으면 generateEssay가 평소대로 조사한다.
+    // 열쇠에 **학생이 고른 주제**가 들어 있어, 질문의 답이 주제를 바꿨으면 자동으로 안 맞아 버려진다.
+    const textSteps = (coreTaskInfo.task_elements ?? []).filter((e) => e.type === "text_submission");
+    const prefetched = researchPrefetchOn()
+      ? await takePrefetchedResearch<ResearchNotes>(
+          prefetchKey({
+            subject,
+            topic: coreTaskInfo.topic ?? "",
+            labels: textSteps.map((e) => e.label),
+            studentTopic: findStudentTopic(instructions) ?? "",
+          })
+        )
+      : null;
+    if (prefetched) console.log(`[essay] 미리 해 둔 조사 사용: 사실 ${prefetched.facts?.length ?? 0}개 — 조사 호출을 건너뛴다`);
+
     const result = await withSourceScope(parseSourceScope(sourceScope), () => generateEssay({
       subject,
       coreTaskInfo,
       instructions,
+      // undefined면 generateEssay가 직접 조사한다(그 구분이 1567~1568줄에 있다).
+      ...(prefetched ? { researchNotes: prefetched } : {}),
       avoidanceInstruction: avoidanceInstruction ?? undefined,
       recentBookGuidance: bookGuidance?.instructionText,
       recentSubjectGuidance: subjectGuidance?.instructionText,
