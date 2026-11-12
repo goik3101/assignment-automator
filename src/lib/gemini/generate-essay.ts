@@ -2270,7 +2270,7 @@ export async function generateEssay(
   // 안내문이 분량을 말하지 않은 단계의 **바닥**(역할 목표 최소값의 절반). 상한은 보지 않는다.
   // 왜: 분량 검사는 `target_length`(안내문이 말한 분량)가 있을 때만 돌아서, 분량이 안 적힌 안내문에서는
   // 하한 검사가 아예 없었다 — 616자·0자 칸이 그대로 나갔다(2026-11-12 실측).
-  const lengthFloors = new Map<string, { floor: number; planned: number }>(
+  const lengthFloors = new Map<string, { floor: number; planned: number; ceiling: number; planned2x: number }>(
     elements
       .filter((el) => !el.target_length)
       .map((el) => {
@@ -2281,7 +2281,17 @@ export async function generateEssay(
           guide: input.coreTaskInfo.writing_guide,
           labels: elements.map((e) => e.label),
         });
-        return [el.label, { floor: Math.round(plan.min * 0.5), planned: plan.min }] as const;
+        // 바닥은 역할 목표 최소값의 절반, 천장은 **최대값의 1.4배**(그 아래는 손대지 않는다 — 점수가 길이를
+        // 따라가지 않으므로 어설픈 줄이기는 시간만 쓴다). 줄일 때 말해 줄 목표는 역할 최대값 그대로다.
+        return [
+          el.label,
+          {
+            floor: Math.round(plan.min * 0.5),
+            planned: plan.min,
+            ceiling: Math.round(plan.max * 1.4),
+            planned2x: plan.max,
+          },
+        ] as const;
       })
   );
 
@@ -3302,7 +3312,7 @@ export async function generateEssay(
     // 생성만으로 예산 22초를 넘기기 때문이다. 우리가 예시에서 유추한 상한(soft_max)만 어긴 경우는 그대로 건너뛴다.
     const pending = checkLengthCompliance(attempt.sections, elements, lengthFloors);
     // 바닥(역할 목표의 절반) 미달도 예산을 무시한다 — 거의 빈 칸은 그 칸 점수를 통째로 잃는다.
-    const hardMiss = pending.some((i) => !i.softOnly || i.floorOnly);
+    const hardMiss = pending.some((i) => !i.softOnly || i.floorOnly || i.ceilingOnly);
     const remaining = overBudget("분량 보정", hardMiss ? "critical" : "optional") ? [] : pending;
     if (remaining.length > 0) {
       const adjusted = await Promise.all(
@@ -4283,6 +4293,12 @@ interface LengthIssue {
    * **거의 빈 칸은 그 칸 점수를 통째로 잃는다.** 그래서 상한은 그대로 두고 **바닥만** 본다.
    */
   floorOnly?: boolean;
+  /**
+   * **안내문이 분량을 말하지 않은 단계가 터무니없이 긴 것**(역할 목표 최대값의 1.4배 초과).
+   * 사용자가 실제로 써 보고 "너무 길고 읽기 불편하다"고 한 2026-11-12 피드백 + 채점 데이터
+   * (국어 만점 전체가 2,250~2,950자인데 실제 경로는 3,000~4,500자)로 넣었다. 코드가 줄인다.
+   */
+  ceilingOnly?: boolean;
 }
 
 /**
@@ -4303,7 +4319,7 @@ const unitWord = (unit?: "chars" | "words") => (unit === "words" ? "단어" : "�
 function checkLengthCompliance(
   sections: RawSection[],
   elements: CoreTaskInfo["task_elements"],
-  floors?: Map<string, { floor: number; planned: number }>
+  floors?: Map<string, { floor: number; planned: number; ceiling: number; planned2x: number }>
 ): LengthIssue[] {
   const issues: LengthIssue[] = [];
   for (const el of elements) {
@@ -4318,6 +4334,13 @@ function checkLengthCompliance(
       const actual = sec ? countChars(sec.content, true) : 0;
       if (actual < f.floor) {
         issues.push({ label: el.label, actual, min: f.planned, max: 0, countsSpaces: true, floorOnly: true });
+      } else if (f.ceiling > 0 && actual > f.ceiling) {
+        // **천장**: 바닥의 거울상이다. 사용자가 실제로 써 보고 "너무 길게 나온다, 읽기 불편하다"고 했고(2026-11-12),
+        // 채점 데이터가 그 말을 받쳐 준다 — 국어 만점 실행의 **전체**가 2,250~2,950자인데 실제 경로는
+        // 3,000~4,500자가 나왔다(개요 한 단계가 만점 상한 1,900자를 넘기는 실행이 여럿이다).
+        // 점수는 길이를 따라가지 않으므로(만점이 1,390자와 1,900자) 긴 쪽은 점수가 아니라 **읽기**를 망친다.
+        // 프롬프트로 상한을 못 박는 쪽은 2026-11-10에 기각됐다(길이가 줄지 않았다) — 그래서 코드가 줄인다.
+        issues.push({ label: el.label, actual, min: 0, max: f.planned2x, countsSpaces: true, ceilingOnly: true });
       }
       continue;
     }
