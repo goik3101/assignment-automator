@@ -32,7 +32,9 @@ export const QUIZ_COUNT = { min: 1, max: 30 };
 export const FLASHCARD_COUNT = { min: 1, max: 50 };
 
 export const DEFAULT_STUDY_PREFS: StudyPrefs = {
-  quiz: { types: [...QUIZ_TYPES], difficulty: "normal", depth: "basic", count: 10 },
+  // 기본은 **단답형 + 빈칸**이다(2026-11-13 결정). 수행평가는 백지에서 꺼내 쓰는 시험이라,
+  // 보기를 고르는 연습만 하면 "알 것 같은데 안 써진다"가 된다 — 선택형·OX는 학생이 직접 켠다.
+  quiz: { types: ["short", "blank"], difficulty: "normal", depth: "basic", count: 10 },
   flashcards: { count: 10 },
   summary: { detail: "standard", format: "bullets", easy: false },
 };
