@@ -8,6 +8,7 @@ import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneLikeElement, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 import { boxLengths, isDrawingBox } from "./box-lines.ts";
 import { isTableForm, tableColumns, tableRowLabels, PER_CELL_MIN, PER_CELL_MAX, DEFAULT_ROWS } from "./table-form.ts";
+import { handwriteBudget, clampToHandwrite } from "./handwrite-budget.ts";
 import { lengthFromAnalyzeOn, type LengthEstimate } from "./length-estimate.ts";
 import { newspaperSectionLabels } from "./deliverable.ts";
 
@@ -132,6 +133,22 @@ const PER_ITEM = 140;
 // 평가 기준 개수로 상한을 줄이는 규칙은 넣지 않는다(2026-11-06 시도 후 제거): 기준 개수를 문장 매칭으로 세면 부정확해서
 // 8장면 스토리보드가 "500~500자"가 됐다. 짧게 나오는 문제를 키우므로 기준 수 → 분량 규칙은 만들지 않는다.
 export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
+  const plan = rolePlanLength(el, ctx);
+  // **교실에서 손으로 쓰는 평가면 쓸 수 있는 시간이 상한이다**(handwrite-budget.ts).
+  // 사용자 실사용(2026-11-12): 과학 탐구보고서가 2,181자로 나왔는데 그 과제는 "2차시 개별 평가, 시험 대형"이다 —
+  // 40~50분에 손으로 옮겨 적을 수 없는 양이다. 만점 실측(1,307~1,501자)이 바로 "한 차시에 쓸 수 있는 양"이었다.
+  const budget = handwriteBudget([ctx?.guide, ...(ctx?.requirements ?? []), el.description]);
+  const capped = clampToHandwrite({ min: plan.min, max: plan.max }, budget);
+  if (!capped.clamped || !budget) return plan;
+  return {
+    ...plan,
+    min: capped.min,
+    max: capped.max,
+    basis: plan.basis + " → 손으로 쓸 시간에 맞춤(" + budget.basis + ")",
+  };
+}
+
+function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   const role = lengthRoleOf(el, ctx);
   const items = el.required_items?.length ?? 0;
   const itemBoost = Math.max(0, items - 2) * PER_ITEM;
