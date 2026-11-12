@@ -4,6 +4,7 @@ import type { StudyContext } from "./context";
 import { validateQuizQuestion, type QuizQuestion } from "./quiz-validate";
 import { quizTypePlan, type QuizPrefs, type QuizType, type SummaryPrefs } from "./prefs";
 import { readMemorizeSource, memorizeBlock, orderInstruction, termInstruction } from "./memorize-source";
+import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 export type { QuizQuestion };
 
 // 학습 도구: 이미 만들어진 과제 내용(AI 결과물 또는 학습 모드의 조사 자료·학생 글)을 "공부하기 좋은 형태"로 바꿔 준다.
@@ -305,6 +306,22 @@ const EXAM_SCHEMA: Schema = {
 };
 
 export async function makeExam(c: StudyContext): Promise<MockExam> {
+  // **진짜 시험 조건을 코드가 못 박는다**(2026-11-13): 지금까지 `duration_min`은 모델이 10~40분 사이로
+  // 지어냈고, 정작 우리는 그 과제의 **실제 조건**을 안다 — 안내문이 말한 평가 시간(없으면 한 차시)과
+  // 거기서 나오는 글자 수(handwrite-budget.ts), 그리고 학생이 채울 칸 목록(memorize-source.ts).
+  // 그 조건으로 써 보는 것이 곧 리허설이고, 다른 서비스는 안내문을 안 읽으니 흉내도 못 낸다.
+  const mem = memorize(c);
+  const real = handwriteBudget([c.assignmentInfo]);
+  const conditions = [
+    real ? `- 이 시험은 **${real.minutes}분**이고, 손으로 약 **${real.chars}자**를 쓴다(${real.basis}).` : "",
+    mem.src.boxes.length > 1
+      ? `- 실제 시험지는 칸이 ${mem.src.boxes.length}개다: ${mem.src.boxes.join(" / ")}. ` +
+        `requirements는 그 칸들을 **빠짐없이, 적힌 순서대로** 쓰라는 조건으로 적는다.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const { data } = await generateJson<{
     title: string;
     duration_min: number;
@@ -318,6 +335,7 @@ export async function makeExam(c: StudyContext): Promise<MockExam> {
     schema: EXAM_SCHEMA,
     effort: "low",
     prompt: `${rules(c)}\n\n아래 자료를 공부한 학생이 "빈 종이에 시험 주제만 받고 직접 써 보는" 가상 서술형 시험을 만들어줘. 학생은 자료를 보지 않고 기억만으로 답한다.\n- 문제(task)는 하나이고, 자료를 이해해야 쓸 수 있는 질문이어야 한다.\n- requirements는 시험지에 함께 적히는 작성 조건이다.\n- hints는 힌트 버튼으로 하나씩 여는 용도라 점점 구체적이어야 하며 정답을 통째로 주지 않는다.\n- key_points는 학생에게 숨기는 채점 기준이다.
+${conditions}
 - 학생은 시험 중 자료를 볼 수 없다. 문제·작성 조건·힌트에서는 "자료"라는 말을 쓰지 말고 "공부한 내용"이라고 부르며, "자료만을 바탕으로" 같은 표현이나 "자료에 없는 사실은 쓰지 마시오" 같은 조건은 넣지 않는다.\n\n${material(c)}`,
   });
   const task = data.task?.trim();
@@ -325,7 +343,8 @@ export async function makeExam(c: StudyContext): Promise<MockExam> {
   const clean = (a?: string[], max = 6) => (a ?? []).map((s) => s.trim()).filter(Boolean).slice(0, max);
   return {
     title: data.title?.trim() || `${c.title} 가상 시험`,
-    durationMin: Math.min(40, Math.max(10, Math.round(data.duration_min) || 20)),
+    // 안내문이 시간을 말했으면 **그 시간**이다 — 모델이 지어낸 값으로 덮지 않는다.
+    durationMin: real ? real.minutes : Math.min(40, Math.max(10, Math.round(data.duration_min) || 20)),
     task,
     requirements: clean(data.requirements, 4),
     hints: clean(data.hints, 3),
