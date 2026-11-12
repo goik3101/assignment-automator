@@ -27,6 +27,7 @@ const { stepDependencies } = await import("@/lib/essay/step-order");
 const { inferDeliverableForm, classifyRequiredItem } = await import("@/lib/essay/deliverable");
 const { isTableForm, labelIsTable } = await import("@/lib/essay/table-form");
 const { stripAdminLeak } = await import("@/lib/essay/admin-leak");
+const { handwriteBudget } = await import("@/lib/essay/handwrite-budget");
 
 type Case = [want: boolean, text: string];
 interface Rule {
@@ -40,6 +41,23 @@ interface Rule {
 const el = (description: string) => ({ label: "산출물", description, required_items: [] as string[] });
 
 const RULES: Rule[] = [
+  {
+    name: "손글씨시간",
+    what: "교실에서 그 자리에서 손으로 쓰는 평가인가(분량 상한을 쓸 시간에서 가져올 과제)",
+    run: (t) => handwriteBudget([t]) !== null,
+    cases: [
+      [true, "2차시는 먹이관계와 생태계 피라미드에 대한 개별 평가"],
+      [true, "미리 시험 대형으로 책상 간격을 띄우고 개별 작성"],
+      [true, "시험 대형으로 배치, 번호순으로 착석, 평가 시간: 시작부터 40분 부여함"],
+      [true, "휴대폰 사용 불가(시작 전에 휴대폰 걷고 시작함.)"],
+      [true, "부정 행위 적발시 학업성적관리위원회에 따른 최하점 부여"],
+      // 집에서 쓰는 과제·발표 과제는 걸리면 안 된다(분량을 엉뚱하게 깎는다).
+      [false, "조사한 내용을 바탕으로 보고서를 작성하여 제출한다."],
+      [false, "순서는 제비뽑기로 정하며, 시간: 2분30초~3분만 인정"],
+      [false, "모둠별로 역할을 나누어 자료를 수집한다."],
+      [false, "기한 내에 온라인 클래스룸에 올린다."],
+    ],
+  },
   {
     name: "표칸양식",
     what: "이 칸의 양식이 **표**인가(열 이름을 소제목으로 풀어 쓰면 안 되는 칸)",

@@ -62,14 +62,15 @@ export const results: Record<string, string> = {
   "암기노트를 만드는 중...": "Creating memo note...",
   "키워드": "Keywords",
   "핵심 요약": "Key summary",
+  "쓰는 순서": "The order you write it in",
 
   // 공부 도구 (StudyRail)
   "요약": "Summary",
-  "핵심만 한눈에": "The essentials at a glance",
+  "핵심 + 개념 정리": "Key points + concepts",
   "플래시카드": "Flashcards",
-  "외울 것 반복": "Repeat what to memorize",
+  "개념 카드 뒤집기": "Flip the concept cards",
   "퀴즈": "Quiz",
-  "이해했는지 확인": "Check your understanding",
+  "빈칸·단답 퀴즈": "Fill-in and short-answer quiz",
   "가상 시험": "Mock exam",
   "빈 종이에 써 보기": "Write it on a blank sheet",
   "공부 도구": "Study tools",
@@ -160,7 +161,7 @@ export const results: Record<string, string> = {
 
   // 요약
   "핵심만 골라 정리하고 있어요...": "Picking out the essentials...",
-  "꼭 알아둘 용어": "Key terms to know",
+  "꼭 외울 개념": "Concepts to memorize",
 
   // 히스토리
   "로그인하면 만든 결과물의 히스토리를 볼 수 있어요.": "Log in to see the history of what you've made.",

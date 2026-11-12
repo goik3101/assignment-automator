@@ -25,9 +25,10 @@ import { useLang, useT } from "@/lib/i18n";
 type Tool = "summary" | "flashcards" | "quiz" | "exam";
 
 const TOOLS: { id: Tool; label: string; hint: string; icon: LucideIcon }[] = [
-  { id: "summary", label: "요약", hint: "핵심만 한눈에", icon: NotebookText },
-  { id: "flashcards", label: "플래시카드", hint: "외울 것 반복", icon: Layers },
-  { id: "quiz", label: "퀴즈", hint: "이해했는지 확인", icon: CircleHelp },
+  // 설명에 **무엇이 들어 있는지**를 적는다 — 개념이 들어가는 도구는 "개념"이라고 밝힌다(2026-11-13).
+  { id: "summary", label: "요약", hint: "핵심 + 개념 정리", icon: NotebookText },
+  { id: "flashcards", label: "플래시카드", hint: "개념 카드 뒤집기", icon: Layers },
+  { id: "quiz", label: "퀴즈", hint: "빈칸·단답 퀴즈", icon: CircleHelp },
   { id: "exam", label: "가상 시험", hint: "빈 종이에 써 보기", icon: GraduationCap },
 ];
 

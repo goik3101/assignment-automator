@@ -291,8 +291,19 @@ function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText
   );
 }
 
+// 제출할 글을 **읽는** 화면이다. 사용자 실사용(2026-11-12): "길긴 한데 읽기가 복잡하다."
+// 원인 두 가지를 고쳤다 — ① `prose-sm`(본문 14px)은 한글에서 빽빽하다 → 기본 `prose`(16px)
+// ② `max-w-none`은 넓은 화면에서 한 줄이 100자를 넘어가 눈이 줄을 놓친다 → 한 줄을 64자로 묶는다
+// (`ch`는 글꼴의 '0' 너비 기준이라 한글은 그보다 넓다 — 실제로는 한 줄 약 32~38자가 된다).
+// 칸(`## `)마다 위에 옅은 경계선을 둬서 "여기서 한 칸이 끝난다"가 눈에 보이게 했다 —
+// 학생이 종이 양식의 칸을 옮겨 적을 때 칸 경계가 곧 작업 단위다.
+// 칸 경계는 `prose-h2:` 수정자가 아니라 **직접 선택자**로 쓴다 — 첫 칸만 경계선을 빼야 하는데
+// (`first:prose-h2:`는 Tailwind에서 그 순서로 동작하지 않는다) `[&>h2:first-child]`는 확실하다.
 const ARTICLE =
-  "prose prose-sm max-w-none prose-neutral dark:prose-invert prose-headings:tracking-tight prose-h2:mt-0 prose-h2:text-lg prose-h3:text-[15px] prose-p:leading-[1.85] prose-li:leading-[1.8] prose-a:underline";
+  "prose max-w-[64ch] prose-neutral dark:prose-invert prose-headings:tracking-tight " +
+  "prose-h3:text-[15px] prose-h3:mt-6 prose-p:leading-[1.9] prose-li:leading-[1.8] prose-a:underline " +
+  "[&>h2]:mt-10 [&>h2]:border-t [&>h2]:border-border-strong [&>h2]:pt-6 [&>h2]:text-lg " +
+  "[&>h2:first-child]:mt-0 [&>h2:first-child]:border-t-0 [&>h2:first-child]:pt-0";
 
 export function EssayPanel({
   label,

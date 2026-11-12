@@ -3,6 +3,7 @@ import { generateJson } from "@/lib/llm";
 import type { StudyContext } from "./context";
 import { validateQuizQuestion, type QuizQuestion } from "./quiz-validate";
 import { quizTypePlan, type QuizPrefs, type QuizType, type SummaryPrefs } from "./prefs";
+import { readMemorizeSource, memorizeBlock, orderInstruction, termInstruction } from "./memorize-source";
 export type { QuizQuestion };
 
 // 학습 도구: 이미 만들어진 과제 내용(AI 결과물 또는 학습 모드의 조사 자료·학생 글)을 "공부하기 좋은 형태"로 바꿔 준다.
@@ -25,6 +26,18 @@ function rules(c: StudyContext): string {
 
 function material(c: StudyContext): string {
   return `[자료 — 제목: ${c.title} / 과목: ${c.subject} / ${c.sourceLabel}]\n${c.text}`;
+}
+
+/**
+ * 공부 도구가 **무엇을 외울 것으로 볼지**를 코드가 먼저 가려 준다(memorize-source.ts).
+ * 본문 전체만 주면 "멸치: 바닷물고기" 같은 교과서 수준 낱말이 핵심 용어로 올라온다 —
+ * 칸 이름과 **각주 붙은 문장**을 앞에 세우면 그 기준이 재료 자체에 들어간다.
+ * 외울 것이 없는 과제(각주 없는 창작·계획형)에서는 빈 문자열이라 예전과 똑같이 돈다.
+ */
+function memorize(c: StudyContext) {
+  const src = readMemorizeSource(c.text ?? "");
+  const block = memorizeBlock(src);
+  return { src, block: block ? `${block}\n\n` : "" };
 }
 
 const strArr = (description?: string): Schema => ({ type: Type.ARRAY, items: { type: Type.STRING }, description });
@@ -80,6 +93,7 @@ const SUMMARY_DETAIL: Record<SummaryPrefs["detail"], { points: string; paragraph
 };
 
 export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise<StudySummary> {
+  const mem = memorize(c);
   const d = SUMMARY_DETAIL[prefs.detail];
   const shape =
     prefs.format === "prose"
@@ -99,7 +113,21 @@ export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise
     role: "study",
     schema: SUMMARY_SCHEMA,
     effort: "low",
-    prompt: `${rules(c)}\n\n아래 자료의 핵심을 요약해줘. 분량을 채우려고 늘리지 말고 정말 중요한 것만 남겨.\n${shape}\n- key_terms는 ${d.terms}.\n${easy}\n\n${material(c)}`,
+    prompt: [
+      rules(c),
+      "",
+      "아래 자료의 핵심을 요약해줘. 분량을 채우려고 늘리지 말고 정말 중요한 것만 남겨.",
+      shape,
+      `- key_terms는 ${d.terms}.`,
+      // 칸 순서와 '외울 문장'을 지키게 하는 두 줄(해당 과제일 때만 들어간다).
+      orderInstruction(mem.src),
+      termInstruction(mem.src),
+      easy,
+      "",
+      mem.block + material(c),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   });
   const clean = (a?: string[]) => (a ?? []).map((s) => s.trim()).filter(Boolean).slice(0, d.max);
   const points = clean(data.points);
@@ -142,13 +170,17 @@ const FLASHCARD_SCHEMA: Schema = {
 };
 
 export async function makeFlashcards(c: StudyContext, count: number): Promise<Flashcard[]> {
+  const mem = memorize(c);
   const { data } = await generateJson<{ cards: Flashcard[] }>({
     label: "study:flashcards",
     role: "study",
     schema: FLASHCARD_SCHEMA,
     effort: "low",
     maxOutputTokens: Math.min(12000, 1200 + count * 160),
-    prompt: `${rules(c)}\n\n아래 자료로 암기용 플래시카드를 ${count}장 만들어줘.\n- 인물·연도·숫자·핵심 개념·주장과 근거처럼 외워야 할 것 위주로, 카드 한 장에 한 가지만.\n- 앞면은 질문이나 빈칸 문장, 뒷면은 정답.\n- 같은 내용을 두 장에 중복하지 않는다.\n\n${material(c)}`,
+    // 카드는 **단어장처럼 뒤집어 보는 것**이다 — 앞뒤가 길면 카드가 아니다.
+    // 위에 [칸 순서]가 있으면 칸마다 한 장(앞=칸 이름, 뒤=핵심어 2~3개)이 가장 쓸모 있다:
+    // 시험지 앞에서 제일 먼저 막히는 것이 "무엇을 어떤 순서로 쓰지?"다.
+    prompt: `${rules(c)}\n\n아래 자료로 암기용 플래시카드를 ${count}장 만들어줘.\n- 앞면도 뒷면도 짧게(단어장처럼 뒤집어 보는 카드다). 긴 설명은 카드가 아니다.\n- 위에 [칸 순서]가 있으면 **칸마다 한 장씩 먼저** 만든다 — 앞면은 칸 이름, 뒷면은 그 칸에 쓸 핵심어 2~3개.\n- 나머지는 [외울 문장]에서 만든다(연도·수치·정의처럼 틀리면 감점되는 것).\n- 교과서를 펴면 바로 나오는 일반 상식은 카드로 만들지 않는다.\n- 같은 내용을 두 장에 중복하지 않는다.\n\n${mem.block}${material(c)}`,
   });
   const seen = new Set<string>();
   return (data.cards ?? [])
@@ -202,6 +234,7 @@ const QUIZ_DIFFICULTY_TEXT: Record<QuizPrefs["difficulty"], string> = {
 type RawQuiz = { questions: (Partial<QuizQuestion> & { answer_index?: number; answer_text?: string; accepted_answers?: string[] })[] };
 
 export async function makeQuiz(c: StudyContext, prefs: QuizPrefs): Promise<QuizQuestion[]> {
+  const mem = memorize(c);
   const plan = quizTypePlan(prefs.types, prefs.count);
   const count = plan.reduce((sum, p) => sum + p.n, 0);
   const maxOutputTokens = Math.min(14000, 1500 + count * 320);
@@ -211,7 +244,7 @@ export async function makeQuiz(c: StudyContext, prefs: QuizPrefs): Promise<QuizQ
     schema: QUIZ_SCHEMA,
     effort: "low",
     maxOutputTokens,
-    prompt: `${rules(c)}\n\n아래 자료를 읽은 학생이 이해했는지 확인하는 퀴즈를 모두 ${count}문제 만들어줘.\n- 유형별 문항 수: ${plan.map((p) => `${QUIZ_TYPE_TEXT[p.type]} ${p.n}문제`).join(", ")}.\n- 난이도: ${QUIZ_DIFFICULTY_TEXT[prefs.difficulty]}\n- 자료 내용을 읽었다면 풀 수 있는 문제만 낸다(자료 밖 상식·추측 금지). 정답은 반드시 하나여야 한다.\n- choice의 오답 보기는 그럴듯하지만 자료에 비춰 분명히 틀린 것으로 만든다. 정답 위치가 한쪽으로 몰리지 않게 섞는다.\n- short·blank의 정답은 자료에 나온 표현 그대로, 15자 이내로. 같은 답을 다르게 쓸 수 있으면 accepted_answers에 넣는다.\n- 같은 내용을 두 번 묻지 않는다.\n- 설명에는 자료의 어느 내용 때문에 그 답인지 쓴다.\n\n${material(c)}`,
+    prompt: `${rules(c)}\n\n아래 자료를 읽은 학생이 이해했는지 확인하는 퀴즈를 모두 ${count}문제 만들어줘.\n- 유형별 문항 수: ${plan.map((p) => `${QUIZ_TYPE_TEXT[p.type]} ${p.n}문제`).join(", ")}.\n- 난이도: ${QUIZ_DIFFICULTY_TEXT[prefs.difficulty]}\n- 자료 내용을 읽었다면 풀 수 있는 문제만 낸다(자료 밖 상식·추측 금지). 정답은 반드시 하나여야 한다.\n- choice의 오답 보기는 그럴듯하지만 자료에 비춰 분명히 틀린 것으로 만든다. 정답 위치가 한쪽으로 몰리지 않게 섞는다.\n- short·blank의 정답은 자료에 나온 표현 그대로, 15자 이내로. 같은 답을 다르게 쓸 수 있으면 accepted_answers에 넣는다.\n- 같은 내용을 두 번 묻지 않는다.\n- 설명에는 자료의 어느 내용 때문에 그 답인지 쓴다.\n- blank(빈칸)는 위 [외울 문장]의 **핵심어만 가린다** — 조사로 확인된 값이라 틀리게 쓰면 감점되는 자리다. 문장은 자료 그대로 두고 한 문장에 빈칸은 하나.\n- short(단답)도 [외울 문장]과 [칸 순서]에서 낸다.\n\n${mem.block}${material(c)}`,
   });
   let questions = data.questions ?? [];
 
