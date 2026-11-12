@@ -138,13 +138,20 @@ export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   // 사용자 실사용(2026-11-12): 과학 탐구보고서가 2,181자로 나왔는데 그 과제는 "2차시 개별 평가, 시험 대형"이다 —
   // 40~50분에 손으로 옮겨 적을 수 없는 양이다. 만점 실측(1,307~1,501자)이 바로 "한 차시에 쓸 수 있는 양"이었다.
   const budget = handwriteBudget([ctx?.guide, ...(ctx?.requirements ?? []), el.description]);
-  const capped = clampToHandwrite({ min: plan.min, max: plan.max }, budget);
-  if (!capped.clamped || !budget) return plan;
+  // **한 지면을 나눠 맡은 칸들은 예산도 나눠 쓴다.** 실측(2026-11-12, length-standard 표): 신문은 네 칸을
+  // 한 차시에 쓰는데 상한 1,350자가 칸마다 따로 걸려 총합이 2,400자가 됐다 — 한 차시에 쓸 수 없는 양이다.
+  // 만점 실행의 칸이 167~300자였던 것이 "네 칸이 한 차시를 나눠 쓴 결과"다.
+  // 차시가 다른 단계(과학 1차시 실험 / 2차시 보고서)는 저마다 한 차시를 쓰므로 나누지 않는다.
+  const sharesPage = plan.role === "form_box" || plan.role === "attachment";
+  const sharing = sharesPage ? Math.max(1, ctx?.siblings?.length ?? 1) : 1;
+  const shared = budget && sharing > 1 ? { ...budget, chars: Math.round(budget.chars / sharing) } : budget;
+  const capped = clampToHandwrite({ min: plan.min, max: plan.max }, shared);
+  if (!capped.clamped || !shared) return plan;
   return {
     ...plan,
     min: capped.min,
     max: capped.max,
-    basis: plan.basis + " → 손으로 쓸 시간에 맞춤(" + budget.basis + ")",
+    basis: plan.basis + " → 손으로 쓸 시간에 맞춤(" + shared.basis + (sharing > 1 ? ", 칸 " + sharing + "개가 나눠 씀" : "") + ")",
   };
 }
 
