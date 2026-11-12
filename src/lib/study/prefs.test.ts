@@ -53,3 +53,17 @@ test("주관식 채점: 띄어쓰기·대소문자·문장부호 차이는 무�
   assert.equal(isTextAnswerCorrect("인권선언", q), false);
   assert.equal(isTextAnswerCorrect("   ", q), false);
 });
+
+test("퀴즈 기본은 빈칸·단답이고, 옛 기본값이 저장돼 있으면 옮긴다", () => {
+  // 새 사용자
+  assert.deepEqual(sanitizeQuizPrefs(null).types, ["short", "blank"]);
+  // 설정을 열어 본 적 있어 네 유형이 다 저장된 사람 — 고른 적 없는 것으로 보고 옮긴다
+  assert.deepEqual(sanitizeQuizPrefs({ types: ["choice", "ox", "short", "blank"] }).types, ["short", "blank"]);
+  // 직접 고른 사람은 그대로 둔다
+  assert.deepEqual(sanitizeQuizPrefs({ types: ["choice"] }).types, ["choice"]);
+  assert.deepEqual(sanitizeQuizPrefs({ types: ["ox", "short"] }).types, ["ox", "short"]);
+  // 난이도·개수 같은 다른 설정은 건드리지 않는다
+  const kept = sanitizeQuizPrefs({ types: ["choice", "ox", "short", "blank"], difficulty: "hard", count: 15 });
+  assert.equal(kept.difficulty, "hard");
+  assert.equal(kept.count, 15);
+});

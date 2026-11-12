@@ -50,9 +50,14 @@ export function sanitizeQuizPrefs(v: unknown): QuizPrefs {
   const o = rec(v);
   const d = DEFAULT_STUDY_PREFS.quiz;
   const types = Array.isArray(o.types) ? QUIZ_TYPES.filter((t) => (o.types as unknown[]).includes(t)) : [];
+  // **옛 기본값(네 유형 전부)이 저장된 것은 "고른 적 없음"으로 본다**(2026-11-13).
+  // 설정은 브라우저에 저장되므로, 기본값만 바꾸면 이미 설정 화면을 열어 본 사람에게는 영원히 안 먹는다.
+  // 네 개를 **다** 켜 둔 것은 예전 기본값 그대로라는 뜻이라 새 기본값(빈칸·단답)으로 옮긴다 —
+  // 일부만 고른 사람은 직접 고른 것이므로 그대로 둔다.
+  const keptOldDefault = types.length === QUIZ_TYPES.length;
   return {
     // 하나도 안 고르면 문제를 낼 수 없으므로 기본값으로 돌린다.
-    types: types.length ? types : [...d.types],
+    types: types.length && !keptOldDefault ? types : [...d.types],
     difficulty: oneOf(o.difficulty, ["easy", "normal", "hard"], d.difficulty),
     depth: oneOf(o.depth, ["basic", "deep"], d.depth),
     count: clampInt(o.count, QUIZ_COUNT.min, QUIZ_COUNT.max, d.count),
