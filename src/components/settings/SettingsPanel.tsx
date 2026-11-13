@@ -444,7 +444,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
     {
       tab: "ai",
       title: t("퀴즈 설정"),
-      keywords: [t("문제 유형"), t("객관식"), t("주관식"), t("빈칸 채우기"), t("난이도"), t("생성 방식"), t("심층"), t("문항 수")],
+      keywords: [t("문제 유형"), t("객관식"), t("주관식"), t("빈칸 채우기"), t("짝 맞추기"), t("난이도"), t("생성 방식"), t("심층"), t("문항 수")],
       node: (
         <Group title={t("퀴즈 설정")}>
           <Row stacked label={t("문제 유형")}>
@@ -457,6 +457,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
                 { id: "ox", label: t("OX") },
                 { id: "short", label: t("주관식") },
                 { id: "blank", label: t("빈칸 채우기") },
+                { id: "match", label: t("짝 맞추기") },
               ]}
             />
           </Row>

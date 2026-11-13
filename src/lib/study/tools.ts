@@ -204,15 +204,28 @@ const QUIZ_SCHEMA: Schema = {
       items: {
         type: Type.OBJECT,
         properties: {
-          type: { type: Type.STRING, enum: ["choice", "ox", "short", "blank"] },
+          type: { type: Type.STRING, enum: ["choice", "ox", "short", "blank", "match"] },
           question: { type: Type.STRING, description: "blank면 정답 자리를 ____ 로 비운 문장" },
           choices: strArr("choice면 보기 4개, ox면 [\"O\", \"X\"], short·blank면 빈 배열"),
           answer_index: { type: Type.INTEGER, description: "choice·ox의 정답 보기 순번(0부터). short·blank면 -1" },
           answer_text: { type: Type.STRING, description: "short·blank의 정답(짧은 단어나 구). choice·ox면 빈 문자열" },
           accepted_answers: strArr("short·blank에서 정답으로 인정할 다른 표기(띄어쓰기·약칭·영문 표기 등). 없으면 빈 배열"),
           explanation: { type: Type.STRING, description: "왜 그게 정답인지 자료에 근거해 한두 문장" },
+          // 짝 맞추기만 채운다. 보기를 만들지 않으므로 **오답을 지어낼 일이 없는** 유일한 유형이다.
+          pairs: {
+            type: Type.ARRAY,
+            description: "match면 올바른 짝 3~5개. 다른 유형이면 빈 배열",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                left: { type: Type.STRING, description: "용어·인물·개념 이름(짧게)" },
+                right: { type: Type.STRING, description: "그 뜻 한 줄" },
+              },
+              required: ["left", "right"],
+            },
+          },
         },
-        required: ["type", "question", "choices", "answer_index", "answer_text", "accepted_answers", "explanation"],
+        required: ["type", "question", "choices", "answer_index", "answer_text", "accepted_answers", "explanation", "pairs"],
       },
     },
   },
@@ -226,6 +239,8 @@ const QUIZ_TYPE_TEXT: Record<QuizType, string> = {
   ox: "O/X(ox)",
   short: "주관식(short: 정답이 한 단어나 짧은 구로 딱 떨어지는 질문)",
   blank: "빈칸 채우기(blank: 자료의 핵심 문장에서 중요한 말 하나를 ____ 로 비운 문제)",
+  // 짝 맞추기는 **오답을 지어낼 필요가 없다** — 서로가 서로의 오답이 된다. 품질이 가장 안 나오던 부분이 빠진다.
+  match: "짝 맞추기(match: 용어 3~5개와 그 뜻을 pairs로 준다. 왼쪽은 용어·인물·개념 이름, 오른쪽은 그 뜻 한 줄. 보기는 만들지 않는다)",
 };
 
 const QUIZ_DIFFICULTY_TEXT: Record<QuizPrefs["difficulty"], string> = {
@@ -247,7 +262,7 @@ export async function makeQuiz(c: StudyContext, prefs: QuizPrefs): Promise<QuizQ
     schema: QUIZ_SCHEMA,
     effort: "low",
     maxOutputTokens,
-    prompt: `${rules(c)}\n\n아래 자료를 읽은 학생이 이해했는지 확인하는 퀴즈를 모두 ${count}문제 만들어줘.\n- 유형별 문항 수: ${plan.map((p) => `${QUIZ_TYPE_TEXT[p.type]} ${p.n}문제`).join(", ")}.\n- 난이도: ${QUIZ_DIFFICULTY_TEXT[prefs.difficulty]}\n- 자료 내용을 읽었다면 풀 수 있는 문제만 낸다(자료 밖 상식·추측 금지). 정답은 반드시 하나여야 한다.\n- choice의 오답 보기는 그럴듯하지만 자료에 비춰 분명히 틀린 것으로 만든다. 정답 위치가 한쪽으로 몰리지 않게 섞는다.\n- short·blank의 정답은 자료에 나온 표현 그대로, 15자 이내로. 같은 답을 다르게 쓸 수 있으면 accepted_answers에 넣는다.\n- 같은 내용을 두 번 묻지 않는다.\n- 설명에는 자료의 어느 내용 때문에 그 답인지 쓴다.\n- blank(빈칸)는 위 [외울 문장]의 **핵심어만 가린다** — 조사로 확인된 값이라 틀리게 쓰면 감점되는 자리다. 문장은 자료 그대로 두고 한 문장에 빈칸은 하나.\n- short(단답)도 [외울 문장]과 [칸 순서]에서 낸다.\n\n${mem.block}${material(c)}`,
+    prompt: `${rules(c)}\n\n아래 자료를 읽은 학생이 이해했는지 확인하는 퀴즈를 모두 ${count}문제 만들어줘.\n- 유형별 문항 수: ${plan.map((p) => `${QUIZ_TYPE_TEXT[p.type]} ${p.n}문제`).join(", ")}.\n- 난이도: ${QUIZ_DIFFICULTY_TEXT[prefs.difficulty]}\n- 자료 내용을 읽었다면 풀 수 있는 문제만 낸다(자료 밖 상식·추측 금지). 정답은 반드시 하나여야 한다.\n- choice의 오답 보기는 그럴듯하지만 자료에 비춰 분명히 틀린 것으로 만든다. 정답 위치가 한쪽으로 몰리지 않게 섞는다.\n- short·blank의 정답은 자료에 나온 표현 그대로, 15자 이내로. 같은 답을 다르게 쓸 수 있으면 accepted_answers에 넣는다.\n- 같은 내용을 두 번 묻지 않는다.\n- 설명에는 자료의 어느 내용 때문에 그 답인지 쓴다.\n- blank(빈칸)는 위 [외울 문장]의 **핵심어만 가린다** — 조사로 확인된 값이라 틀리게 쓰면 감점되는 자리다. 문장은 자료 그대로 두고 한 문장에 빈칸은 하나.\n- short(단답)도 [외울 문장]과 [칸 순서]에서 낸다.\n- match(짝 맞추기)는 **[외울 문장]의 용어와 그 뜻**으로 만든다. 왼쪽은 이름(짧게), 오른쪽은 뜻 한 줄.\n  같은 말이 두 번 나오지 않게 하고, 서로 헷갈릴 만한 것끼리 한 문제에 모은다(그래야 짝 맞추기가 문제가 된다).\n  question은 \"다음 용어와 뜻을 알맞게 이으세요\"처럼 짧게 쓰고, choices는 빈 배열로 둔다.\n\n${mem.block}${material(c)}`,
   });
   let questions = data.questions ?? [];
 

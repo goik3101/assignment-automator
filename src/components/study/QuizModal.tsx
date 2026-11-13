@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { CircleCheck, CircleX, RotateCcw } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
@@ -12,6 +12,8 @@ import { isTextAnswerCorrect, type QuizQuestion as Question } from "@/lib/study/
 import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
 
 const isText = (q: Question) => q.type === "short" || q.type === "blank";
+/** 짝 맞추기: 왼쪽(용어)을 누르고 오른쪽(뜻)을 눌러 잇는다. 보기를 고르는 것이 아니라 **잇는** 문제다. */
+const isMatch = (q: Question) => q.type === "match";
 
 /** 빈칸 문제의 ____ 를 눈에 띄는 빈칸으로 보여 준다. */
 function QuestionText({ q }: { q: Question }) {
@@ -37,12 +39,40 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
   const [picked, setPicked] = useState<number | null>(null);
   const [typed, setTyped] = useState("");
   const [textResult, setTextResult] = useState<"right" | "wrong" | null>(null);
+  // 짝 맞추기 — links[왼쪽 순번] = 학생이 이은 오른쪽의 **원래** 순번(정답은 둘이 같을 때).
+  const [links, setLinks] = useState<Record<number, number>>({});
+  const [activeLeft, setActiveLeft] = useState<number | null>(null);
+  const [matchResult, setMatchResult] = useState<"right" | "wrong" | null>(null);
   const [wrong, setWrong] = useState<Question[]>([]);
   const [score, setScore] = useState(0);
   const done = i >= list.length;
   const q = list[i];
-  const answered = picked !== null || textResult !== null;
-  const correct = q && (isText(q) ? textResult === "right" : picked === q.answerIndex);
+  const answered = picked !== null || textResult !== null || matchResult !== null;
+  const correct = q && (isText(q) ? textResult === "right" : isMatch(q) ? matchResult === "right" : picked === q.answerIndex);
+
+  // 오른쪽(뜻)은 섞어 보여 준다 — 문항이 바뀔 때만 섞는다(다시 그릴 때마다 섞이면 풀 수가 없다).
+  const rightOrder = useMemo(() => {
+    const order = [...Array(q?.pairs?.length ?? 0).keys()];
+    for (let k = order.length - 1; k > 0; k--) {
+      const j = Math.floor(Math.random() * (k + 1));
+      [order[k], order[j]] = [order[j], order[k]];
+    }
+    return order;
+  }, [q]);
+
+  /** 왼쪽을 고른 뒤 오른쪽을 누르면 이어진다. 다 이으면 그 자리에서 채점한다. */
+  function link(rightIndex: number) {
+    if (answered || activeLeft === null) return;
+    const next = { ...links, [activeLeft]: rightIndex };
+    setLinks(next);
+    setActiveLeft(null);
+    const total = q.pairs?.length ?? 0;
+    if (Object.keys(next).length < total) return;
+    const ok = [...Array(total).keys()].every((idx) => next[idx] === idx);
+    setMatchResult(ok ? "right" : "wrong");
+    if (ok) setScore((s) => s + 1);
+    else setWrong((w) => [...w, q]);
+  }
 
   function choose(idx: number) {
     if (answered) return;
@@ -67,6 +97,9 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
     setPicked(null);
     setTyped("");
     setTextResult(null);
+    setLinks({});
+    setActiveLeft(null);
+    setMatchResult(null);
     setI((v) => v + 1);
   }
 
@@ -97,6 +130,9 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
                 setPicked(null);
                 setTyped("");
                 setTextResult(null);
+                setLinks({});
+                setActiveLeft(null);
+                setMatchResult(null);
               }}
             >
               <RotateCcw size={15} strokeWidth={1.8} />
@@ -123,7 +159,7 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
         </div>
       </div>
       <p className="mb-2 text-xs font-semibold text-faint">
-        {q.type === "choice" ? t("객관식") : q.type === "ox" ? t("OX") : q.type === "short" ? t("주관식") : t("빈칸 채우기")}
+        {q.type === "choice" ? t("객관식") : q.type === "ox" ? t("OX") : q.type === "short" ? t("주관식") : q.type === "match" ? t("짝 맞추기") : t("빈칸 채우기")}
       </p>
       <p className="text-[19px] font-bold leading-relaxed tracking-tight">
         <QuestionText q={q} />
@@ -158,7 +194,70 @@ function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: 
         </form>
       )}
 
-      <ul className={["mt-5 gap-2.5", q.type === "ox" ? "grid grid-cols-2" : "flex flex-col", isText(q) ? "hidden" : ""].join(" ")}>
+      {/* 짝 맞추기 — 왼쪽(용어)을 누르고 오른쪽(뜻)을 눌러 잇는다. 오른쪽은 섞여 있고, 다 이으면 바로 채점한다.
+          보기를 만들지 않으므로 **오답을 지어낼 일이 없는** 유형이다(2026-11-13 결정). */}
+      {isMatch(q) && (
+        <div className="mt-5 grid grid-cols-2 gap-2.5">
+          <ul className="flex flex-col gap-2.5">
+            {(q.pairs ?? []).map((pair, li) => {
+              const linked = links[li];
+              const state = answered ? (linked === li ? "right" : "wrong") : activeLeft === li ? "active" : linked !== undefined ? "done" : "idle";
+              return (
+                <li key={li}>
+                  <button
+                    onClick={() => !answered && setActiveLeft(activeLeft === li ? null : li)}
+                    disabled={answered}
+                    aria-pressed={activeLeft === li}
+                    className={[
+                      "flex w-full items-center gap-2 rounded-2xl px-3.5 py-3.5 text-left text-[15px] leading-snug transition-colors",
+                      state === "idle" ? "bg-surface hover:bg-raised" : "",
+                      state === "active" ? "bg-raised ring-2 ring-foreground" : "",
+                      state === "done" ? "bg-raised" : "",
+                      state === "right" ? "bg-foreground font-semibold text-background" : "",
+                      state === "wrong" ? "bg-danger/10 text-danger" : "",
+                    ].join(" ")}
+                  >
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-background/70 text-xs font-semibold tabular-nums text-foreground">
+                      {linked !== undefined ? rightOrder.indexOf(linked) + 1 : li + 1}
+                    </span>
+                    <span className="flex-1">{pair.left}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <ul className="flex flex-col gap-2.5">
+            {rightOrder.map((ri, pos) => {
+              const takenBy = Object.keys(links).find((k) => links[Number(k)] === ri);
+              const state = answered ? (takenBy !== undefined && Number(takenBy) === ri ? "right" : takenBy !== undefined ? "wrong" : "dim") : takenBy !== undefined ? "done" : "idle";
+              return (
+                <li key={ri}>
+                  <button
+                    onClick={() => link(ri)}
+                    disabled={answered || activeLeft === null}
+                    className={[
+                      "flex w-full items-center gap-2 rounded-2xl px-3.5 py-3.5 text-left text-[14px] leading-snug transition-colors",
+                      state === "idle" ? "bg-surface hover:bg-raised disabled:hover:bg-surface" : "",
+                      state === "done" ? "bg-raised" : "",
+                      state === "right" ? "bg-foreground font-semibold text-background" : "",
+                      state === "wrong" ? "bg-danger/10 text-danger" : "",
+                      state === "dim" ? "bg-surface text-faint" : "",
+                    ].join(" ")}
+                  >
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-background/70 text-xs font-semibold tabular-nums text-foreground">{pos + 1}</span>
+                    <span className="flex-1">{(q.pairs ?? [])[ri]?.right}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {isMatch(q) && !answered && (
+        <p className="mt-3 text-xs text-faint">{activeLeft === null ? t("왼쪽에서 하나를 고르세요") : t("이제 오른쪽에서 알맞은 뜻을 고르세요")}</p>
+      )}
+
+      <ul className={["mt-5 gap-2.5", q.type === "ox" ? "grid grid-cols-2" : "flex flex-col", isText(q) || isMatch(q) ? "hidden" : ""].join(" ")}>
         {q.choices.map((c, idx) => {
           const isAnswer = idx === q.answerIndex;
           const isPicked = picked === idx;

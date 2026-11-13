@@ -1,7 +1,7 @@
 // 공부 도구 AI 설정(설정 > AI 설정): 퀴즈·플래시카드·요약을 어떻게 만들지. 계정 없이도 쓰도록 브라우저에 저장하고,
 // 만들 때 요청 본문으로 보낸다. 서버는 같은 sanitize 함수로 값을 다시 검사한다(순수 함수 — alias import 없음).
 
-export type QuizType = "choice" | "ox" | "short" | "blank";
+export type QuizType = "choice" | "ox" | "short" | "blank" | "match";
 export type QuizDifficulty = "easy" | "normal" | "hard";
 export type QuizDepth = "basic" | "deep";
 export type SummaryDetail = "brief" | "standard" | "detailed";
@@ -27,7 +27,7 @@ export interface StudyPrefs {
   summary: SummaryPrefs;
 }
 
-export const QUIZ_TYPES: QuizType[] = ["choice", "ox", "short", "blank"];
+export const QUIZ_TYPES: QuizType[] = ["choice", "ox", "short", "blank", "match"];
 export const QUIZ_COUNT = { min: 1, max: 30 };
 export const FLASHCARD_COUNT = { min: 1, max: 50 };
 
@@ -120,7 +120,7 @@ export function resetStudyPrefs() {
  * (문장 안에서 골라야 해서 그냥 객관식보다 낫고, 타이핑이 없다).
  * 10문제 기준 대략 객관식 4 · 빈칸 2 · OX 2 · 단답 2가 된다.
  */
-const QUIZ_TYPE_WEIGHT: Record<QuizType, number> = { choice: 2, blank: 1, ox: 1, short: 1 };
+const QUIZ_TYPE_WEIGHT: Record<QuizType, number> = { choice: 3, blank: 2, short: 2, match: 2, ox: 1 };
 
 export function quizTypePlan(types: QuizType[], count: number): { type: QuizType; n: number }[] {
   const list = QUIZ_TYPES.filter((t) => types.includes(t));
