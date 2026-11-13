@@ -71,6 +71,7 @@ import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingP
 import { tableSpecs, tableFormBlock, tableStepLine, tableFormRepairText } from "@/lib/essay/table-form";
 import { stripAdminLeak, isScoringStep } from "@/lib/essay/admin-leak";
 import { leanWritePrompt } from "@/lib/essay/lean-write";
+import { isInterviewStep, reportLikeAnswers, interviewVoiceRepairText, interviewVoiceOn } from "@/lib/essay/interview-voice";
 import { looksLikeAskingPermission, JSON_ONLY_REMINDER, researchRetryOn } from "@/lib/essay/research-retry";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
@@ -2731,6 +2732,19 @@ export async function generateEssay(
       if (!sec || hasDataTable(sec.content)) continue;
       console.warn(`[generateEssay] 표 양식 칸이 표가 아님 label="${t.label}"`);
       activityRewrites.push({ label: t.label, instruction: tableFormRepairText(t.label, t), must: "notice" });
+    }
+  }
+  // **인터뷰 답변이 사람의 말이 아니라 기사면 그 칸만 다시 쓴다**(interview-voice.ts).
+  // 실측(2026-11-13, 같은 분석 고정 3회): 신문이 세 번 모두 같은 항목에서 떨어졌다 —
+  // 답변이 "미·영·소 외상이 1945년 12월 모여 … 논의했다.[1]"처럼 연표였다. 프롬프트에는 이미
+  // "겪은 사람의 말"이라는 지시가 있는데 3/3으로 어겼다. 지시로 안 되면 검사로 잡는다.
+  if (fixes && interviewVoiceOn()) {
+    for (const sec of attempt.sections) {
+      if (!isInterviewStep(sec.label)) continue;
+      const bad = reportLikeAnswers(sec.content);
+      if (bad.length === 0) continue;
+      console.warn(`[generateEssay] 인터뷰 답변이 기사 문체 label="${sec.label}" 답변=${bad.join(",")}`);
+      activityRewrites.push({ label: sec.label, instruction: interviewVoiceRepairText(sec.label, bad), must: "notice" });
     }
   }
   // 영역 사이에 거의 같은 문장이 되풀이되면 **코드가 뒤쪽 것을 지운다**(dedupe.ts — 모델 호출 0).
