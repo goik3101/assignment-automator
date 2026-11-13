@@ -3693,8 +3693,18 @@ export async function generateEssay(
   const sceneListLabels = new Set(formOn ? elements.filter(isSceneLikeElement).map((e) => e.label) : []);
   // 출처 0개로 끝났으면 로그에 크게 남긴다 — 이 상태가 조용히 지나가서 제출용 글이 근거 없이 나간 적이 있다
   // (2026-11-01, 인권 저널: 각주 0개인데 "우리는 기계가 아니다" 인용까지 들어 있었다). 측정도 이 줄로 센다.
-  if (attempt.sources.length === 0 && attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label))))
+  // **안내문이 자료를 실어 준 과제는 출처 0개가 정상이다**(2026-11-14): 사회 "경제적 유인"은 기사 두 개가
+  // 안내문에 인쇄돼 있고 학생은 그것을 읽고 표를 채운다. 글의 사실이 그 자료에서 오므로 웹 주소가 없는 것이 맞다 —
+  // 여기서 경고를 띄우면 멀쩡한 결과물에 "근거가 없다"고 말하는 셈이고, 거짓 경고는 진짜 결함을 가린다.
+  const materialsGiven = (input.coreTaskInfo.provided_materials?.length ?? 0) > 0;
+  if (
+    attempt.sources.length === 0 &&
+    !materialsGiven &&
+    attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)))
+  )
     console.error(`[generateEssay] ⚠ 출처 0개로 끝남 — 확인할 사실 주장이 있는데 근거가 하나도 없다 (단계 ${attempt.sections.length}개)`);
+  else if (attempt.sources.length === 0 && materialsGiven)
+    console.log(`[generateEssay] 출처 0개 — 안내문이 자료를 실어 준 과제라 정상(provided_materials ${input.coreTaskInfo.provided_materials?.length}건)`);
   const researchFacts: NonNullable<EssayResult["researchFacts"]> = [];
   // 각주 번호는 문서 전체에서 한 번만 매긴다 — 단계마다 1번부터 다시 매기면 같은 [1]이 단계마다 다른 출처가 된다
   // (실측 2026-10-31, 사용자 결과물.6: "개요"의 [1]=전자신문, "스토리보드"의 [1]=경향신문. 한 장에 같이 제출하는 글이다).
