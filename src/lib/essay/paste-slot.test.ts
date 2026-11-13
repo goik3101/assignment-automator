@@ -80,3 +80,35 @@ test("붙임 칸을 코드가 바로잡는다 — 거절문 제거 + 서지 비�
   assert.ok(/붙일\s*자료\s*[:：]/.test(r.content), "붙임 표시가 복구되지 않았다");
   assert.ok(r.content.includes("[직접 작성: 붙인 기사의 출처]"));
 });
+
+// 2026-11-14 실측(사회 평가지 6/6 → 3/6 → 4/6): 붙임 칸이 매번 다른 꼴로 비켜 갔다.
+test("'신문사명:'처럼 라벨 뒤에 명/란/칸이 붙어도 같은 칸이다", () => {
+  const r = blankPastedMetadata("신문사명: [신문사명]\n언론사란: 한겨레\n\n붙일 자료: 기사 본문", { force: true });
+  assert.match(r.content, /신문사명: \[직접 작성/);
+  assert.match(r.content, /언론사란: \[직접 작성/);
+});
+
+test("대괄호만 씌운 자리표시는 빈칸이 아니다 — 값도 빈칸도 아닌 상태를 없앤다", () => {
+  const r = blankPastedMetadata("제목: [기사 제목]\n\n붙일 자료: 기사 본문", { force: true });
+  assert.match(r.content, /제목: \[직접 작성: 붙인 기사의 제목\]/);
+  // 이미 제대로 된 빈칸은 건드리지 않는다
+  const keep = blankPastedMetadata("제목: [직접 작성: 붙인 기사의 제목]\n\n붙일 자료: 기사 본문", { force: true });
+  assert.equal(keep.blanked.length, 0);
+});
+
+test("서지를 한 줄에 몰아 쓴 꼴도 칸마다 한 줄로 펼친다", () => {
+  const r = blankPastedMetadata("제목·보도 날짜·출처: 출력한 기사에 표시된 실제 값\n\n붙일 자료: 기사 본문", { force: true });
+  assert.match(r.content, /제목: \[직접 작성/);
+  assert.match(r.content, /보도 날짜: \[직접 작성/);
+  assert.match(r.content, /출처: \[직접 작성/);
+  // 쉼표·가운뎃점이 들어간 평범한 문장은 건드리지 않는다
+  const keep = blankPastedMetadata("이 글은 노인 빈곤, 기초연금과 사각지대를 다룬다.\n\n붙일 자료: x", { force: true });
+  assert.match(keep.content, /노인 빈곤, 기초연금과 사각지대/);
+});
+
+test("기사 위에 적으라고 시키는 붙일 자료 줄은 우리 문구로 바꾼다", () => {
+  const bad = "붙일 자료: 위에 제목·보도 날짜·신문사명을 표시한 신문 기사 원문 전체.";
+  const out = normalizeAttachmentSlot(bad, () => []).content;
+  assert.match(out, /기사 위에 아무것도 쓰지 말 것/);
+  assert.doesNotMatch(out, /표시한/);
+});

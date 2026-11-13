@@ -21,7 +21,33 @@ const PASTE_MARK = /(?:^|\n)\s*(?:[-*•]\s*)?[*_]{0,2}\[?\s*붙일\s*자료\s*[
 // 칸 이름 앞에 꾸밈말이 붙는다 — "기사 제목"만 보다가 "**보도 날짜**: 2026년 6월 9일"을 놓쳤다
 // (실측 2026-11-09: 제목·출처는 빈칸이 됐는데 날짜만 지어낸 값이 남아 정답 채점 5/6).
 const META_LABEL =
-  /^(\s*(?:[-*•]\s*)?[*_]{0,2}(?:기사|보도|발행|작성|취재|게재)?\s*(?:제목|날짜|일자|작성일|보도일|게재일|신문사|언론사|매체|출처|기자|작성자|발행처|발행일)[*_]{0,2})\s*[:：]\s*(.+)$/;
+  /^(\s*(?:[-*•]\s*)?[*_]{0,2}(?:기사|보도|발행|작성|취재|게재)?\s*(?:제목|날짜|일자|작성일|보도일|게재일|신문사|언론사|매체|출처|기자|작성자|발행처|발행일)s*(?:명|란|칸)?[*_]{0,2})\s*[:：]\s*(.+)$/;
+/**
+ * `[신문사명]`처럼 **대괄호만 씌운 자리표시**는 값도 빈칸도 아니다 — 학생이 무엇을 적어야 하는지 모른다.
+ * 실측(2026-11-14, 사회 평가지 3/6): `신문사명: [신문사명]`이 그대로 나가 서지 조건이 떨어졌다.
+ */
+const BARE_PLACEHOLDER = /^\[[^\]]{1,20}\]$/;
+
+/**
+ * **서지 칸을 한 줄에 몰아 쓴 꼴**도 쪼갠다 — "제목·보도 날짜·출처: 출력한 기사에 표시된 …".
+ *
+ * 왜(2026-11-14, 두 번째 실측): 라벨을 하나씩만 보는 규칙을 고치자 모델이 라벨을 **합쳐서** 썼다.
+ * 그 줄은 값도 빈칸도 아니라 학생이 무엇을 어디에 적을지 알 수 없다. 칸마다 한 줄씩으로 펼친다.
+ */
+const META_WORDS = ["제목", "보도 날짜", "날짜", "신문사", "언론사", "매체", "출처", "기자", "발행처"];
+function splitCombinedMetaLine(line: string): string[] | null {
+  const m = /^(\s*)([^:：\n]{2,40})\s*[:：]\s*(.*)$/.exec(line);
+  if (!m) return null;
+  const label = m[2];
+  // 구분자로 이어 붙인 라벨만 본다("제목·보도 날짜·출처"). 문장은 건드리지 않는다.
+  if (!/[·,/、]|\s와\s|\s과\s/.test(label)) return null;
+  const found = META_WORDS.filter((w) => label.includes(w));
+  // "보도 날짜"와 "날짜"가 같이 잡히면 긴 쪽만 남긴다.
+  const words = found.filter((w) => !found.some((o) => o !== w && o.includes(w)));
+  if (words.length < 2) return null;
+  return words.map((w) => `${m[1]}${w}: [직접 작성: 붙인 기사의 ${w}]`);
+}
+
 /** 이미 빈칸이면 건드리지 않는다. */
 const ALREADY_BLANK = /\[(?:직접\s*작성|붙일\s*자료)[^\]]*\]|^[_\s]*$|^\(\s*\)$/;
 
@@ -40,18 +66,29 @@ export function blankPastedMetadata(
 ): { content: string; blanked: BlankedMeta[] } {
   if (!opts.force && !PASTE_MARK.test(content)) return { content, blanked: [] };
   const blanked: BlankedMeta[] = [];
+  const blankedCombined: string[] = [];
   const out = content
     .split("\n")
+    // 합쳐 쓴 서지 줄을 먼저 칸마다 한 줄로 펼친다.
+    .flatMap((line) => {
+      const split = splitCombinedMetaLine(line);
+      if (!split) return [line];
+      for (const w of split) blankedCombined.push(w.split(":")[0].trim());
+      return split;
+    })
     .map((line) => {
       const m = META_LABEL.exec(line);
       if (!m) return line;
       const value = m[2].trim();
-      if (!value || ALREADY_BLANK.test(value)) return line;
+      // 제대로 된 빈칸(`[직접 작성: …]`·빈 줄·`( )`)만 그대로 둔다.
+      // 값이든 `[신문사명]` 같은 자리표시든 나머지는 전부 빈칸으로 바꾼다 — 학생이 적을 자리이기 때문이다.
+      if (!value || (ALREADY_BLANK.test(value) && !BARE_PLACEHOLDER.test(value.replace(/\[(?:직접\s*작성|붙일\s*자료)[^\]]*\]/, "x")))) return line;
       const label = m[1].replace(/^[\s\-*•]+/, "").trim();
       blanked.push({ label, was: value.slice(0, 40) });
       return `${m[1]}: [직접 작성: 붙인 기사의 ${label}]`;
     })
     .join("\n");
+  for (const label of blankedCombined) blanked.push({ label, was: "(합쳐 쓴 서지 줄)" });
   return { content: out, blanked };
 }
 
@@ -79,6 +116,18 @@ export function normalizeAttachmentSlot(
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  if (!PASTE_MARK.test(`\n${out}`)) out += `\n\n붙일 자료: 기사 본문 — 출력해서 붙일 것, 기사 위에 아무것도 쓰지 말 것`;
+  // 모델이 쓴 "붙일 자료" 줄이 **기사 위에 적으라고** 시키는 경우가 있다 — 안내문이 "신문기사에 그 어떤 글자도
+  // 기재하지 않음"이라고 못 박은 과제에서 그대로 나갔다(2026-11-14 실측, 사회 평가지 3/6):
+  //   "붙일 자료: 위에 제목·보도 날짜·신문사명을 표시한 신문 기사 원문 전체."
+  // 서지는 **위 칸에** 적는 것이지 기사에 적는 것이 아니므로, 그런 줄은 우리 문구로 바꾼다.
+  // 어순이 뒤집힌 꼴도 잡아야 한다 — 실제로 나온 문장은 "위에 …을 **표시한** 신문 기사 원문"이었다.
+  // 그래서 낱말 순서를 보지 않고, 붙일 자료 줄에 "표시/기재"가 있으면 우리 문구로 바꾼다(우리 문구엔 없다).
+  const WRITE_ON_ARTICLE = /표시|기재|적어\s*넣|써\s*넣/;
+  const SAFE_PASTE_LINE = "붙일 자료: 기사 본문 — 출력해서 붙일 것, 기사 위에 아무것도 쓰지 말 것";
+  out = out
+    .split("\n")
+    .map((line) => (PASTE_MARK.test(`\n${line}`) && WRITE_ON_ARTICLE.test(line) ? SAFE_PASTE_LINE : line))
+    .join("\n");
+  if (!PASTE_MARK.test(`\n${out}`)) out += `\n\n${SAFE_PASTE_LINE}`;
   return { content: out, blanked, droppedRefusals: refusals };
 }
