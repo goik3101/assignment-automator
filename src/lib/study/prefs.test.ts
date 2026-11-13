@@ -27,9 +27,10 @@ test("설정이 다르면 서명도 다르다", () => {
 });
 
 test("문제 유형별 문항 수 나누기", () => {
+  // 2026-11-13: 고르게 나누던 것을 **객관식 비중을 2배**로 바꿨다(10문제면 4·2·2·2).
   assert.deepEqual(quizTypePlan(["choice", "ox", "short", "blank"], 10), [
-    { type: "choice", n: 3 },
-    { type: "ox", n: 3 },
+    { type: "choice", n: 4 },
+    { type: "ox", n: 2 },
     { type: "short", n: 2 },
     { type: "blank", n: 2 },
   ]);
@@ -54,16 +55,17 @@ test("주관식 채점: 띄어쓰기·대소문자·문장부호 차이는 무�
   assert.equal(isTextAnswerCorrect("   ", q), false);
 });
 
-test("퀴즈 기본은 빈칸·단답이고, 옛 기본값이 저장돼 있으면 옮긴다", () => {
-  // 새 사용자
-  assert.deepEqual(sanitizeQuizPrefs(null).types, ["short", "blank"]);
-  // 설정을 열어 본 적 있어 네 유형이 다 저장된 사람 — 고른 적 없는 것으로 보고 옮긴다
-  assert.deepEqual(sanitizeQuizPrefs({ types: ["choice", "ox", "short", "blank"] }).types, ["short", "blank"]);
-  // 직접 고른 사람은 그대로 둔다
-  assert.deepEqual(sanitizeQuizPrefs({ types: ["choice"] }).types, ["choice"]);
-  assert.deepEqual(sanitizeQuizPrefs({ types: ["ox", "short"] }).types, ["ox", "short"]);
-  // 난이도·개수 같은 다른 설정은 건드리지 않는다
-  const kept = sanitizeQuizPrefs({ types: ["choice", "ox", "short", "blank"], difficulty: "hard", count: 15 });
-  assert.equal(kept.difficulty, "hard");
-  assert.equal(kept.count, 15);
+test("퀴즈는 네 유형을 다 쓰고 객관식이 가장 많다 (2026-11-13)", () => {
+  assert.deepEqual(sanitizeQuizPrefs(null).types, ["choice", "ox", "short", "blank"]);
+  // 10문제면 객관식 4 · OX 2 · 단답 2 · 빈칸 2
+  assert.deepEqual(quizTypePlan(["choice", "ox", "short", "blank"], 10), [
+    { type: "choice", n: 4 },
+    { type: "ox", n: 2 },
+    { type: "short", n: 2 },
+    { type: "blank", n: 2 },
+  ]);
+  // 직접 고른 설정은 그대로 둔다
+  assert.deepEqual(sanitizeQuizPrefs({ types: ["blank"] }).types, ["blank"]);
+  // 객관식을 끄면 남은 유형끼리 고르게 나눈다
+  assert.deepEqual(quizTypePlan(["short", "blank"], 10), [{ type: "short", n: 5 }, { type: "blank", n: 5 }]);
 });

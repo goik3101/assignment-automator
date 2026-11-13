@@ -32,9 +32,10 @@ export const QUIZ_COUNT = { min: 1, max: 30 };
 export const FLASHCARD_COUNT = { min: 1, max: 50 };
 
 export const DEFAULT_STUDY_PREFS: StudyPrefs = {
-  // 기본은 **단답형 + 빈칸**이다(2026-11-13 결정). 수행평가는 백지에서 꺼내 쓰는 시험이라,
-  // 보기를 고르는 연습만 하면 "알 것 같은데 안 써진다"가 된다 — 선택형·OX는 학생이 직접 켠다.
-  quiz: { types: ["short", "blank"], difficulty: "normal", depth: "basic", count: 10 },
+  // 네 유형을 다 쓰고 **객관식을 가장 많이** 낸다(QUIZ_TYPE_WEIGHT, 2026-11-13).
+  // 우리 객관식은 **빈칸에 들어갈 말 고르기**를 포함해 타이핑 없이 문맥을 읽게 하고,
+  // 백지에서 꺼내는 연습은 단답·빈칸이 맡는다. 10문제면 객관식 4 · OX 2 · 단답 2 · 빈칸 2다.
+  quiz: { types: [...QUIZ_TYPES], difficulty: "normal", depth: "basic", count: 10 },
   flashcards: { count: 10 },
   summary: { detail: "standard", format: "bullets", easy: false },
 };
@@ -50,14 +51,11 @@ export function sanitizeQuizPrefs(v: unknown): QuizPrefs {
   const o = rec(v);
   const d = DEFAULT_STUDY_PREFS.quiz;
   const types = Array.isArray(o.types) ? QUIZ_TYPES.filter((t) => (o.types as unknown[]).includes(t)) : [];
-  // **옛 기본값(네 유형 전부)이 저장된 것은 "고른 적 없음"으로 본다**(2026-11-13).
-  // 설정은 브라우저에 저장되므로, 기본값만 바꾸면 이미 설정 화면을 열어 본 사람에게는 영원히 안 먹는다.
-  // 네 개를 **다** 켜 둔 것은 예전 기본값 그대로라는 뜻이라 새 기본값(빈칸·단답)으로 옮긴다 —
-  // 일부만 고른 사람은 직접 고른 것이므로 그대로 둔다.
-  const keptOldDefault = types.length === QUIZ_TYPES.length;
+  // (2026-11-13 오전에 "네 유형 전부 = 옛 기본값이니 빈칸·단답으로 옮긴다"를 넣었다가 같은 날 되돌렸다.
+  //  객관식이 **빈칸 고르기**를 포함하게 되면서 네 유형을 다 쓰는 쪽이 기본이 됐기 때문이다 — 이제 옮길 곳이 없다.)
   return {
     // 하나도 안 고르면 문제를 낼 수 없으므로 기본값으로 돌린다.
-    types: types.length && !keptOldDefault ? types : [...d.types],
+    types: types.length ? types : [...d.types],
     difficulty: oneOf(o.difficulty, ["easy", "normal", "hard"], d.difficulty),
     depth: oneOf(o.depth, ["basic", "deep"], d.depth),
     count: clampInt(o.count, QUIZ_COUNT.min, QUIZ_COUNT.max, d.count),
@@ -116,10 +114,22 @@ export function resetStudyPrefs() {
 }
 
 /** 고른 문제 유형에 문항 수를 고르게 나눈다(나머지는 앞 유형부터). 0문항인 유형은 뺀다. */
+/**
+ * 유형별 **비중**. 객관식이 가장 많다(2026-11-13 결정): 보기를 고르는 문제는 한 손으로 풀려서
+ * "간편·빠르게"에 맞고, 우리 객관식은 그냥 사지선다뿐 아니라 **빈칸에 들어갈 말을 고르는 문제**도 포함한다
+ * (문장 안에서 골라야 해서 그냥 객관식보다 낫고, 타이핑이 없다).
+ * 10문제 기준 대략 객관식 4 · 빈칸 2 · OX 2 · 단답 2가 된다.
+ */
+const QUIZ_TYPE_WEIGHT: Record<QuizType, number> = { choice: 2, blank: 1, ox: 1, short: 1 };
+
 export function quizTypePlan(types: QuizType[], count: number): { type: QuizType; n: number }[] {
   const list = QUIZ_TYPES.filter((t) => types.includes(t));
   if (!list.length || count < 1) return [];
-  const base = Math.floor(count / list.length);
-  const rest = count % list.length;
-  return list.map((type, i) => ({ type, n: base + (i < rest ? 1 : 0) })).filter((x) => x.n > 0);
+  const total = list.reduce((s, t) => s + QUIZ_TYPE_WEIGHT[t], 0);
+  // 먼저 비중대로 내림해서 나누고, 남는 문항은 비중이 큰 유형부터 하나씩 더 준다.
+  const plan = list.map((type) => ({ type, n: Math.floor((count * QUIZ_TYPE_WEIGHT[type]) / total) }));
+  let rest = count - plan.reduce((s, p) => s + p.n, 0);
+  const order = [...plan].sort((a, b) => QUIZ_TYPE_WEIGHT[b.type] - QUIZ_TYPE_WEIGHT[a.type]);
+  for (let i = 0; rest > 0; i = (i + 1) % order.length, rest--) order[i].n += 1;
+  return plan.filter((x) => x.n > 0);
 }
