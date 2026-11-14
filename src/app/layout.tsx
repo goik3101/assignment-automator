@@ -16,6 +16,7 @@ const SITE_JSON_LD = [
     name: SITE_TITLE,
     alternateName: SITE_ALT_NAMES,
     url: SITE_URL,
+    description: SITE_DESCRIPTION,
     logo: `${SITE_URL}/icon.png`,
     email: CONTACT_EMAIL,
     contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: CONTACT_EMAIL, availableLanguage: ["Korean", "English"] },
