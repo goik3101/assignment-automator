@@ -4,7 +4,7 @@ import { normalizeSubject } from "./normalize-subject";
 import { recoverFormFields } from "@/lib/essay/notice-form";
 import { noticeFormOn } from "@/lib/essay/quality-flags";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
-import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
+import { dropInterrogativeItems, foldSkeletonItems, soloDefault, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import { lengthFromAnalyzeOn, sanitizeLengthEstimate } from "@/lib/essay/length-estimate";
@@ -40,7 +40,9 @@ export const ANALYZE_SCHEMA: Schema = {
     // 출력 토큰만 든다"였는데, 이제 코드가 이 전사의 **표 구조에서 분석이 흘린 양식 칸을 되찾는다**
     // (notice-form.ts). 실측: 사회 "경제적 유인" 2번 양식 6칸 중 분석이 5칸만 잡았고 전사에서 1칸을 되찾았다.
     // 되찾기는 코드가 하고 전사는 **생성 프롬프트에 넣지 않는다**(배점·일시가 들어 있다 — 아래 설명 그대로).
-    ...(process.env.NOTICE_TEXT !== "off"
+    // 기본은 전사를 이 구조화 호출에서 빼고(NOTICE_TEXT_PARALLEL=off로 되돌림) **별도 호출을 동시에** 돌린다(아래 transcribeNotice) —
+    // 전사가 출력 토큰 1,200~1,700개(≈4초)를 차지해 분석 시간을 늘렸다(2026-11-15 실측).
+    ...(process.env.NOTICE_TEXT !== "off" && process.env.NOTICE_TEXT_PARALLEL === "off"
       ? {
         notice_text: {
           type: Type.STRING,
@@ -383,6 +385,24 @@ export async function analyzeAssignment(
       schema: ANALYZE_SCHEMA,
       ...(process.env.ANALYZE_EFFORT ? { effort: process.env.ANALYZE_EFFORT as "minimal" | "low" | "medium" } : {}),
     });
+  // 전사를 분석과 **동시에** 돌린다. 실패하면 null(전사 없이 진행 — 양식 칸 되찾기만 못 한다).
+  const parallelTranscript = process.env.NOTICE_TEXT !== "off" && process.env.NOTICE_TEXT_PARALLEL !== "off" && !!input.imageBase64;
+  const transcriptPromise: Promise<string | null> = parallelTranscript
+    ? generate({
+        label: "analyze:transcribe",
+        role: "lite",
+        effort: "low",
+        prompt: [
+          ...parts.filter((p) => "image" in p),
+          { text: "사진에 적힌 글을 **요약하지 말고 그대로 옮겨 써라**(OCR처럼). 사진이 여러 장이면 순서대로 이어 붙인다. 표는 칸 내용을 '|'로 구분해 한 줄씩 옮긴다. 학생이 채울 빈 칸은 칸 이름만 옮기고(빈 줄은 '___'), 손글씨 예시·도장·학교 로고처럼 글이 아닌 것은 건너뛴다. 읽을 수 없는 글자는 '?'로 둔다. 네가 판단하거나 보충한 말은 한 글자도 넣지 말고, 글이 많으면 2,000자까지만 쓴다. 옮긴 글만 출력한다." },
+        ],
+      })
+        .then((r) => (r.text ?? "").trim().slice(0, 2500) || null)
+        .catch((err) => {
+          console.warn("[analyzeAssignment] 전사 호출 실패(전사 없이 진행)", err instanceof Error ? err.message : err);
+          return null;
+        })
+    : Promise.resolve(null);
   let response = await runAnalyze();
   // 실측(같은 안내문 4회 분석 중 1회): 항목 나열이 통째로 8~9개의 별개 "단계"로 쪼개지는 오분석. 이런 모양(5개 이상, 항목 나열 없음)이면 한 번만 다시 분석하고 단계가 더 적은 쪽을 쓴다.
   try {
@@ -467,7 +487,7 @@ export async function analyzeAssignment(
   // 칸이 있는 제작물(카드뉴스·신문 등)은 글 단계로 올린다 — 칸에 들어갈 말은 학생이 써야 하고,
   // 산출물 이름만 보고 external_production에 두면 같은 안내문인데 실행마다 글을 받았다 못 받았다 한다.
   const distributed = distributeSharedLength(task_elements_raw).map((e) =>
-    dropInterrogativeItems(textWhenBoxesToFill(forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic)))
+    foldSkeletonItems(dropInterrogativeItems(textWhenBoxesToFill(forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic))))
   );
   // 수업 중 작성하는 기록지는 만들 결과물에서 빼고, 왜 없는지 학생이 볼 수 있게 요구사항에 한 줄 남긴다.
   const { kept: keptSteps, dropped: droppedSheets } = formRequirementsOn() ? dropNonSubmissionActivities(distributed, [...parsed.core_task_info.requirements, parsed.core_task_info.writing_guide ?? "", parsed.administrative_info?.other_notes ?? ""]) : { kept: distributed, dropped: [] };
@@ -502,7 +522,7 @@ export async function analyzeAssignment(
 
   // 안내문 원문의 표 구조에서 **분석이 흘린 양식 칸**을 되찾는다(notice-form.ts).
   // 분석이 만든 구조는 실행마다 흔들리고(2026-11-01 측정) 흘린 칸은 아래 어디서도 복구되지 않는다.
-  const noticeText = (parsed as { notice_text?: string }).notice_text;
+  const noticeText = parallelTranscript ? ((await transcriptPromise) ?? undefined) : (parsed as { notice_text?: string }).notice_text;
   const recovered = noticeFormOn() ? recoverFormFields(task_elements, noticeText) : null;
   const withRecovered = recovered
     ? task_elements.map((el, i) =>
@@ -520,10 +540,15 @@ export async function analyzeAssignment(
   const { writing_guide: _rawGuide, ...coreRest } = parsed.core_task_info;
   void _rawGuide;
 
+  // 팀으로 할 때만 해당하는 칸·문장은 혼자 하는 학생에게서 뺀다(analysis-normalize.ts soloDefault).
+  const solo = soloDefault({ requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], writing_guide: writingGuide, elements: withRecovered }, [input.instructions, input.topicText].filter(Boolean).join(" "));
+  if (solo.dropped.length > 0) console.warn(`[analyzeAssignment] 팀 진행 전용 칸을 뺌(학생 지침에 팀 언급 없음): ${solo.dropped.join(", ")}`);
   return {
     ...parsed,
+    // 병렬 전사는 분석 JSON 밖에서 왔으므로, 순차 모드와 같은 모양이 되게 결과에 얹는다(측정 도구·되찾기가 읽는다).
+    ...(parallelTranscript && noticeText ? { notice_text: noticeText } : {}),
     subject,
-    core_task_info: { ...coreRest, requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], task_elements: withRecovered, ...(writingGuide ? { writing_guide: writingGuide } : {}) },
+    core_task_info: { ...coreRest, requirements: solo.requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }

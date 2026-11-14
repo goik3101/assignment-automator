@@ -54,6 +54,9 @@ export function stripBaseScore(line: string): string {
   return line.replace(BASE_SCORE_PAREN, "").replace(BASE_SCORE_PHRASE, "").replace(/\s+([.,)）])/g, "$1").replace(/[ \t]{2,}/g, " ");
 }
 
+/** 줄머리의 "<행동>하면/시 N점:" 라벨. 뒤에 실제 글이 15자 이상 있을 때만 걸린다. */
+const SCORE_LABEL = /^(\s*(?:[-*•]\s+)?)((?:[^:：\n.]{2,40}?(?:하면|했으면|이면|시|경우|할\s*때)\s*\d+\s*점|\d+\s*점\s*(?:[-~∼]\s*\d+\s*점)?))\s*[:：]\s+(?=\S.{14,})/;
+
 export function stripAdminLeak(content: string, opts: AdminLeakOptions = {}): { content: string; removed: string[] } {
   const removed: string[] = [];
   const out: string[] = [];
@@ -77,6 +80,15 @@ export function stripAdminLeak(content: string, opts: AdminLeakOptions = {}): { 
       }
       removed.push(line);
       continue;
+    }
+    // 채점표의 "내용을 충실하게 작성하면 9점:" 같은 배점 문구가 줄머리 라벨로 묻어 나오면 라벨만 뗀다(2026-11-15 사회-04).
+    if (!opts.keepScoring) {
+      const m = raw.match(SCORE_LABEL);
+      if (m) {
+        removed.push(`배점 라벨: ${m[2].trim()}`);
+        out.push(m[1] + raw.slice(m[0].length));
+        continue;
+      }
     }
     out.push(raw);
   }

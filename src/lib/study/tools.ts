@@ -5,6 +5,7 @@ import { validateQuizQuestion, type QuizQuestion } from "./quiz-validate";
 import { quizTypePlan, type QuizPrefs, type QuizType, type SummaryPrefs } from "./prefs";
 import { readMemorizeSource, memorizeBlock, orderInstruction, termInstruction } from "./memorize-source";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
+import { filterKeyTerms } from "./summary-terms";
 export type { QuizQuestion };
 
 // 학습 도구: 이미 만들어진 과제 내용(AI 결과물 또는 학습 모드의 조사 자료·학생 글)을 "공부하기 좋은 형태"로 바꿔 준다.
@@ -64,10 +65,10 @@ const SUMMARY_SCHEMA: Schema = {
     paragraphs: strArr("서술식일 때 문단(각 2~4문장). 개조식이면 빈 배열."),
     key_terms: {
       type: Type.ARRAY,
-      description: "시험·발표 전에 알아야 할 핵심 용어/인물/개념",
+      description: "이 과제를 이해하고 시험에서 쓰려면 꼭 알아야 하는 **교과 개념**(예: 생산자, 소비자, 분해자). 과제 진행 방법·관찰 지침·예상·보고서 항목 같은 말은 개념이 아니다.",
       items: {
         type: Type.OBJECT,
-        properties: { term: { type: Type.STRING }, meaning: { type: Type.STRING, description: "자료에 나온 뜻을 한 줄로" } },
+        properties: { term: { type: Type.STRING, description: "교과 개념 이름(자료에 실제로 나온 낱말)" }, meaning: { type: Type.STRING, description: "고등학교 교과서 수준의 **정확한 뜻** 한 줄(필요하면 예를 하나)" } },
         required: ["term", "meaning"],
       },
     },
@@ -119,10 +120,15 @@ export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise
       "",
       "아래 자료의 핵심을 요약해줘. 분량을 채우려고 늘리지 말고 정말 중요한 것만 남겨.",
       shape,
-      `- key_terms는 ${d.terms}.`,
-      // 칸 순서와 '외울 문장'을 지키게 하는 두 줄(해당 과제일 때만 들어간다).
-      orderInstruction(mem.src),
-      termInstruction(mem.src),
+      `- key_terms는 ${d.terms}. **이 과제의 주제를 이해하고 시험에서 쓰려면 꼭 알아야 하는 교과 개념**만 고른다 — 예를 들어 생태계 과제면 생산자·소비자·분해자·먹이그물·에너지 흐름처럼 단원의 핵심 용어. ` +
+        `"관찰 지침"·"예상 결과"·"보고서 항목"·"실험 계획"처럼 **과제를 진행하는 말이나 문서 구조는 개념이 아니므로 넣지 않는다.** ` +
+        `term은 자료에 실제로 나온 낱말이어야 하고, meaning은 **교과서 기준으로 정확한 뜻**을 쓴다(자료의 설명이 짧거나 부정확해도 교과 개념은 바르게 설명한다. 단, 자료에 없는 숫자·연도·사람 이름은 덧붙이지 않는다).`,
+      `- points는 과제를 한 줄로 되풀이하지 말고 **알아야 할 지식과 결론**(무엇이 무엇이다, 왜 그렇다)을 써라. 개념끼리의 관계(예: 생산자 → 1차 소비자 → 2차 소비자)도 정확해야 한다. 교과 지식과 어긋나는 문장은 옮기지 말고 바르게 고쳐 쓴다.`,
+      // 칸이 여럿인 과제는 요점을 칸 순서로 쓰게 한다(해당 과제일 때만 들어간다). 외울 문장 기준의 "교과 상식 금지"(termInstruction)는 요약에서는 쓰지 않는다 — 학생이 진짜 필요한 개념을 못 얻었다(2026-11-15).
+      mem.src.boxes.length >= 2
+        ? `- 요점은 [칸 순서] 순서대로 쓰되 **칸마다 1~2개 항목**으로 나눈다. 항목 하나는 한 문장이고, 세미콜론(;)으로 여러 내용을 이어 붙이지 않는다. 칸 이름을 항목 앞에 붙인다(예: "논술형 탐구보고서 — …").`
+        : "",
+      "- 실험·활동을 어떻게 하라는 진행 설명보다 **그 활동으로 알게 되는 개념과 결론**을 먼저 쓴다.",
       easy,
       "",
       mem.block + material(c),
@@ -139,7 +145,7 @@ export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise
     format: prefs.format === "prose" ? (paragraphs.length ? "prose" : "bullets") : points.length ? "bullets" : "prose",
     points,
     paragraphs,
-    keyTerms: (data.key_terms ?? []).filter((k) => k.term?.trim() && k.meaning?.trim()).slice(0, 10),
+    keyTerms: filterKeyTerms((data.key_terms ?? []).filter((k) => k.term?.trim() && k.meaning?.trim()), c.text ?? "").slice(0, 10),
     easyExplanations: prefs.easy ? (data.easy_explanations ?? []).filter((e) => e.topic?.trim() && e.explanation?.trim()).slice(0, 5) : [],
   };
 }

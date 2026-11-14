@@ -70,7 +70,7 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
           )}
         </div>
         <StudyRail
-          studyRef={{ kind: "history", id: history.id }}
+          studyRef={{ kind: "history", id: history.id, ...(history.submission_id ? { key: `work:${history.submission_id}` } : {}) }}
           title={title}
         />
       </div>

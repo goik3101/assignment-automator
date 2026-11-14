@@ -234,7 +234,7 @@ export function questionGroupsFromMaterials(materials: string[] | undefined): st
     const label = m.slice(0, idx).trim();
     const body = m.slice(idx + 1);
     if (!QUESTION_MATERIAL_LABEL.test(label) || !QUESTION_MATERIAL_BODY.test(body)) continue;
-    const group = label.replace(/\s*\d+\s*(?:번)?\s*$/, "").trim(); // "탐구 확인 문제 1" → "탐구 확인 문제"
+    const group = label.replace(/\s*\d+(?:\s*[~∼-]\s*\d+)?\s*(?:번)?\s*$/, "").trim(); // "탐구 확인 문제 1" → "탐구 확인 문제", "이론 평가 문항 1~3" → "이론 평가 문항"
     if (group && !groups.includes(group)) groups.push(group);
   }
   return groups;
@@ -248,7 +248,18 @@ export function ensureQuestionSteps<T extends { type: string; label: string; des
   const out = [...els];
   for (const group of questionGroupsFromMaterials(materials)) {
     const key = stripSpaces(group);
-    if (out.some((e) => stripSpaces(`${e.label} ${e.description}`).includes(key))) continue;
+    // 설명에 "탐구 확인 문제에도 답한다"가 적혀 있어도 **단계의 이름이나 칸이 아니면** 덮인 것으로 보지 않는다 —
+    // 2026-11-15 사회-05: 그 한 줄 때문에 단계를 안 붙였고 글에는 문항 답이 하나도 없었다(채점 11/11 → 8/10).
+    // 단계 이름·칸이 그룹 이름을 담거나 **낱말이 60% 이상 겹치면**("이론 평가 답안" ↔ "이론 평가 문항") 그 단계가 문항을 맡은 것이다.
+    // 겹침을 안 보고 이름만 보면 과학-09에서 이미 문항에 답하는 "이론 평가 답안"이 있는데 단계를 두 개 더 붙여 생성이 통째로 실패했다(25자, 2/12).
+    const gTokens = group.split(/\s+/).filter((t) => t.length >= 2);
+    const covers = (e: { label: string; required_items?: string[] }) => {
+      const text = `${e.label} ${(e.required_items ?? []).join(" ")}`;
+      if (stripSpaces(text).includes(key)) return true;
+      const hit = gTokens.filter((t) => text.includes(t)).length;
+      return gTokens.length >= 2 && hit >= Math.ceil(gTokens.length * 0.6);
+    };
+    if (out.some(covers)) continue;
     out.push({
       type: "text_submission",
       label: group,
@@ -257,4 +268,70 @@ export function ensureQuestionSteps<T extends { type: string; label: string; des
     added.push(group);
   }
   return { steps: out, added };
+}
+
+/**
+ * 안내문의 **형식 뼈대**(서론·본론·결론·참고문헌·요약)와 **내용 항목**이 한 목록에 섞여 오면 뼈대만 칸으로 둔다.
+ *
+ * 왜(2026-11-15, 거대 안내문 점검 과학-01): 분석이 required_items를 ["현재 사회의 문제점 분석", …(내용 7개),
+ * "서론","본론","결론","참고문헌","요약"] 12개로 냈고, 생성은 그것을 전부 소제목으로 받아 **보고서를 두 번** 썼다 —
+ * 내용 7칸 다음에 다시 서론·본론·결론, 참고문헌이 두 번, 요약이 참고문헌 뒤에. 안내문은 "서론-본론-결론-참고문헌-요약의
+ * 형식으로 작성"이라 했을 뿐이고 내용 항목은 **그 본론 안에서 다룰 것**이다. 프롬프트로 "합쳐 쓰라"고 하는 길 대신
+ * 코드가 목록을 바로잡는다: 뼈대는 안내문 순서 그대로 칸으로, 내용 항목은 설명에 "본론에서 다룰 내용"으로 옮긴다.
+ * 뼈대 낱말이 3개 미만이거나 내용 항목이 2개 미만이면 건드리지 않는다("제목"·"초록"만 있는 양식지 등).
+ */
+const SKELETON_ITEM = /^(?:서론|서\s*론|본론|본\s*론|결론|결\s*론|참고\s*문헌|요약|초록|머리말|맺음말)$/;
+
+export function foldSkeletonItems<T extends { description: string; required_items?: string[] }>(el: T): T {
+  const items = (el.required_items ?? []).map((i) => (i ?? "").trim()).filter(Boolean);
+  const skeleton = items.filter((i) => SKELETON_ITEM.test(i));
+  const content = items.filter((i) => !SKELETON_ITEM.test(i));
+  if (skeleton.length < 3 || content.length < 2) return el;
+  const note = ` 본론에서 다룰 내용: ${content.join("; ")}.`;
+  return { ...el, required_items: skeleton, description: `${el.description.trim()}${note}` };
+}
+
+/**
+ * "팀 진행 시 …"처럼 **짝·모둠으로 할 때만 해당하는 항목**은 혼자 하는 학생에게서 뺀다.
+ *
+ * 왜(2026-11-15, 거대 안내문 점검 정보-01): 안내문이 "개인 진행은 1인 1보고서, 팀 진행은 2인 1보고서 — 팀 진행 시 A학생 의견,
+ * B학생 의견, 최종 결론을 작성"이라 했고, 분석이 그 세 칸을 required_items에 넣어 글이 "A학생 의견: A학생은 …말했다"를 **지어냈다**
+ * — 학생은 혼자 하는데 있지도 않은 팀원의 의견을 쓴 것이다. 두 갈래 중 어느 쪽인지는 학생만 안다. 학생이 지침에 팀·모둠·친구를
+ * 말하지 않았으면 혼자 하는 쪽을 기본으로 하고 팀 전용 칸·문장을 뺀다(학생이 팀이라고 했으면 그대로 둔다).
+ */
+const TEAM_WORD = /팀|모둠|짝\s*활동|친구와|같이\s*(?:하|진행)|둘이|2\s*인/;
+const TEAM_COND = /(?:팀|모둠|조|짝)[^.。\n]{0,6}(?:진행|활동|참여)\s*(?:시|할\s*경우|하는\s*경우)/;
+const sentencesOf = (t: string) => (t ?? "").split(/(?<=[.。!?])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
+const isTeamConditional = (s: string) => TEAM_COND.test(s) || (/개인/.test(s) && /(?:팀|모둠)/.test(s) && /진행|활동|제출/.test(s));
+
+export function soloDefault<T extends { required_items?: string[] }>(
+  core: { requirements: string[]; writing_guide?: string; elements: T[] },
+  studentText: string | undefined
+): { requirements: string[]; writing_guide?: string; elements: T[]; dropped: string[] } {
+  const unchanged = { requirements: core.requirements, writing_guide: core.writing_guide, elements: core.elements, dropped: [] as string[] };
+  if (studentText && TEAM_WORD.test(studentText)) return unchanged;
+  const teamSentences = [...core.requirements.flatMap(sentencesOf), ...sentencesOf(core.writing_guide ?? "")].filter(isTeamConditional);
+  if (teamSentences.length === 0) return unchanged;
+  const flat = teamSentences.map((s) => s.replace(/\s+/g, "")).join("|");
+  const dropped: string[] = [];
+  const elements = core.elements.map((el) => {
+    const items = el.required_items ?? [];
+    const keep = items.filter((i) => {
+      const k = (i ?? "").replace(/\s+/g, "");
+      const hit = k.length >= 3 && flat.includes(k);
+      if (hit) dropped.push(i);
+      return !hit;
+    });
+    // 칸이 둘 이하로 줄면 잘못 본 것이다 — 건드리지 않는다.
+    return keep.length >= 2 && keep.length < items.length ? { ...el, required_items: keep } : el;
+  });
+  if (dropped.length === 0) return unchanged;
+  const requirements = core.requirements.flatMap((r) => {
+    if (!isTeamConditional(r) && !sentencesOf(r).some(isTeamConditional)) return [r];
+    return /개인/.test(r) ? ["개인 진행(1인 1보고서)으로 작성한다."] : [];
+  });
+  const writing_guide = core.writing_guide
+    ? sentencesOf(core.writing_guide).filter((s) => !isTeamConditional(s)).join(" ")
+    : core.writing_guide;
+  return { requirements, writing_guide, elements, dropped };
 }

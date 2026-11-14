@@ -108,9 +108,12 @@ test("문항에 답할 단계가 없으면 글 단계를 붙이고, 있으면 �
   assert.equal(r.steps[1].type, "text_submission");
   const had = [...els, { type: "text_submission", label: "탐구 확인 문제", description: "○×로 답한다" }];
   assert.equal(ensureQuestionSteps(had, QUIZ).added.length, 0);
-  // 설명에만 이름이 있어도 이미 다루는 것으로 본다(띄어쓰기 무시)
+  // 설명에만 이름이 있으면 덮인 것이 아니다 — 2026-11-15 사회-05: 설명의 "탐구 확인 문제에도 답한다" 한 줄 때문에 단계를 안 붙였고 글에 문항 답이 없었다.
   const inDesc = [{ type: "text_submission", label: "마무리", description: "탐구확인문제에 답한다" }];
-  assert.equal(ensureQuestionSteps(inDesc, QUIZ).added.length, 0);
+  assert.equal(ensureQuestionSteps(inDesc, QUIZ).added.length, 1);
+  // 단계 이름이나 칸에 있으면(띄어쓰기 무시) 이미 다루는 것으로 본다
+  const inItems = [{ type: "text_submission", label: "마무리", description: "", required_items: ["탐구확인문제 답"] }];
+  assert.equal(ensureQuestionSteps(inItems, QUIZ).added.length, 0);
 });
 
 import { dropNonSubmissionActivities, dropNote, isOptionalActivity, isTranscriptionStep } from "./analysis-normalize.ts";

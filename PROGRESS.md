@@ -26,6 +26,13 @@
 
 ## 최근에 한 것 (자세한 내용은 같은 날짜의 아래 항목에)
 
+- **11-15 3차 전체 점검 — 안내문 34종 전수 + 공부 도구 10건 + 겹침방지**(`docs/full-check-2026-11-15.md`). 전수 2회(고치기 전 338/379=89.2%, 1차 수정 뒤 329/379, 그 뒤 5종 재실행 반영 344/379=90.8%),
+  생성(조사 제외) 중앙 27.9초·합계 32.7초. **내 수정이 만든 회귀 하나**: 문항 단계 덮임 판정을 좁혔더니 과학-09에서 단계를 둘 더 붙여 결과물 전체가 insufficient_data(25자) — 낱말 겹침 판정 + 한 단계만 모자라면 그 단계만 빈칸으로(`PARTIAL_INSUFFICIENT`).
+  코드 강제로 고친 것: 뼈대·내용 항목 섞임(`foldSkeletonItems`)과 참고문헌 이중(`placeSourceList`), 추가 자료 자리(`extra-material.ts`), 지어낸 기사 제목·URL(`source-list-need.ts`+출처 목록 항목 확장), 프롬프트 표기 누출(`prompt-leak.ts`), 항목 이름 라벨(`item-label.ts`),
+  서지 칸(`bibliographic-fields.ts`), 값 없는 출처 줄(`source-line.ts`), 팀 전용 칸(`soloDefault`), 배점 라벨(`admin-leak.ts`), 한문의 한자 삭제(`hanja-scope.ts`), 조사 비었을 때 재시도(`RESEARCH_RETRY`), 남은 날조 문장 삭제(`removeOwnActivitySentences`, `HONESTY_REMOVE`).
+  **채점 도구 정정**: 판정 불능이던 공통 항목 제거, 조사 미리 띄우기 흐름 반영(`giant-check.ts`의 조사초·생성초·합계초), 가정-03·한문-01 추가.
+  겹침방지는 DB에 쓰지 않고 점검했고 전후 행 수가 같다. 남은 것은 문서 맨 아래.
+
 - **11-14 밤 — 새 안내문 30종 첫 점검**(`docs/giant-notice-test-2026-11-14.md`, 도구 `scripts/measure/giant-check.ts`·`giant-cases.ts`).
   정답 채점 89.9%(338/376), 만점 8종, 생성 중앙값 29.0초(30초 이내 16/30), 총 $1.25. **과제당 1회라 흔들림은 못 본 값.**
   진짜 결함: ① 안내문의 객관식 문항·보기를 분석이 흘려 생성이 없는 문항을 지어 답함(사회-05) ② 지어낸 참고 도서(역사-05)

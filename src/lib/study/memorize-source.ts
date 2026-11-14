@@ -21,6 +21,7 @@ export interface MemorizeSource {
 }
 
 const H2 = /^##\s+(?!#)(.+?)\s*$/;
+const H3 = /^###\s+(?!#)(.+?)\s*$/;
 /** 맨 아래 출처 목록·제작 참고는 외울 것이 아니다. */
 const NOT_A_BOX = /^(출처|참고\s*자료|참고\s*문헌|제작\s*참고|references?)$/i;
 
@@ -44,6 +45,7 @@ export function readMemorizeSource(markdown: string): MemorizeSource {
   const boxes: string[] = [];
   const anchored: { box: string; sentence: string }[] = [];
   let current = "";
+  const subBoxes: string[] = [];
 
   for (const raw of (markdown ?? "").split("\n")) {
     const h = H2.exec(raw.trim());
@@ -51,6 +53,12 @@ export function readMemorizeSource(markdown: string): MemorizeSource {
       const name = stripMarks(h[1]);
       current = name;
       if (!NOT_A_BOX.test(name.replace(/\s/g, ""))) boxes.push(name);
+      continue;
+    }
+    const h3 = H3.exec(raw.trim());
+    if (h3 && current && !NOT_A_BOX.test(current.replace(/\s/g, ""))) {
+      const sub = stripMarks(h3[1]);
+      if (!NOT_A_BOX.test(sub.replace(/\s/g, ""))) subBoxes.push(sub);
       continue;
     }
     if (!current || NOT_A_BOX.test(current.replace(/\s/g, ""))) continue;
@@ -62,14 +70,18 @@ export function readMemorizeSource(markdown: string): MemorizeSource {
       anchored.push({ box: current, sentence: clean });
     }
   }
-  return { boxes, anchored };
+  // 단계가 하나뿐이면 "칸"은 단계 이름이 아니라 그 안의 항목(###)이다 — 2026-11-15 역사 인물 평전: 칸 순서가 [1. 역사 인물 평전] 한 줄이라
+  // 퀴즈가 "칸 순서 1번 항목의 이름은?"을 냈다.
+  const finalBoxes = boxes.length < 2 && subBoxes.length >= 2 ? subBoxes : boxes;
+  return { boxes: finalBoxes, anchored };
 }
 
 /** 공부 도구 프롬프트에 끼울 블록. 외울 것이 없으면 빈 문자열(그러면 예전처럼 본문만 쓴다). */
 export function memorizeBlock(src: MemorizeSource): string {
-  if (src.boxes.length === 0 && src.anchored.length === 0) return "";
+  if (src.boxes.length < 2 && src.anchored.length === 0) return "";
   const parts: string[] = [];
-  if (src.boxes.length > 0) {
+  // 칸이 하나뿐이면 "순서"가 없다 — 칸 이름만 외울 이유가 없다.
+  if (src.boxes.length >= 2) {
     parts.push(
       `[칸 순서 — 학생이 시험지에 이 순서로 쓴다]\n${src.boxes.map((b, i) => `${i + 1}. ${b}`).join("\n")}`
     );

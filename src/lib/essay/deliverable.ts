@@ -348,9 +348,15 @@ export function isResearchMaterialStep(el: { label: string }): boolean {
 }
 
 // 필수 항목 중 "신뢰할 수 있는 출처 3개 이상", "참고 문헌" 같은 출처 목록 항목 — 글쓰기 모델에게 맡기면 확인 안 된 주소를 지어내거나(실측) 출처 목록 금지 규칙과 부딪혀 누락으로 잡힌다.
-const SOURCE_LIST_ITEM = /출처|참고\s*(?:문헌|자료|사이트)|인용\s*자료|레퍼런스|references?/i;
+// 2026-11-15 정보-01: 안내문이 "참고한 기사 제목과 URL을 보고서 맨 아래에"라고 했고 분석이 "참고한 기사 제목"·"URL" 두 칸으로 냈다.
+// 낱말(출처·참고문헌…)이 없어 출처 목록 항목으로 안 잡혔고, 모델이 **존재하지 않는 기사 제목 세 개**를 지어 쓰고 URL 칸은 비웠다.
+const SOURCE_LIST_ITEM = /출처|참고\s*(?:문헌|자료|사이트)|참고한\s*(?:기사|자료|글|책|문헌|사이트|웹)|인용\s*자료|레퍼런스|references?/i;
+/** "URL"·"링크"처럼 주소만 따로 칸이 된 항목. 제목 칸과 함께 있으면 한 목록으로 채운다. */
+export function isUrlOnlyItem(item: string): boolean {
+  return /^\s*(?:URL|링크|웹\s*주소|인터넷\s*주소|사이트\s*주소|출처\s*주소)\s*$/i.test(item);
+}
 export function isSourceListItem(item: string): boolean {
-  return SOURCE_LIST_ITEM.test(item) && !/분석|비교|평가|신뢰도\s*(?:판단|비교)/.test(item);
+  return (SOURCE_LIST_ITEM.test(item) || isUrlOnlyItem(item)) && !/분석|비교|평가|신뢰도\s*(?:판단|비교)/.test(item);
 }
 
 /**
@@ -626,4 +632,33 @@ export function dropProductionNotesHeading(content: string): { content: string; 
       .trim(),
     dropped: true,
   };
+}
+
+/**
+ * 출처 목록을 글에 넣는다. 모델이 이미 "참고문헌" 같은 목록 소제목을 직접 써 놓았으면 **그 자리를 시스템 목록으로 바꾸고**(안내문이 정한 순서 그대로)
+ * 다른 목록 소제목은 지운다 — 예전에는 맨 끝에 하나를 더 붙여 참고문헌이 두 번, 요약 뒤에 나왔다(2026-11-15 과학-01).
+ * 모델이 쓴 목록은 확인 안 된 제목·연도를 지어낸 것이라 버리고 코드가 확인한 출처로만 채운다.
+ */
+export function placeSourceList(content: string, item: string, sectionMd: string): string {
+  const lines = content.replace(/\s+$/, "").split("\n");
+  const isHead = (l: string) => /^#{2,4}\s+\S/.test(l);
+  const heads = lines.map((l, i) => (isHead(l) && isSourceListItem(l.replace(/^#+\s*/, "").trim()) ? i : -1)).filter((i) => i >= 0);
+  if (heads.length === 0) return `${stripTrailingItemHeading(content, item)}\n\n${sectionMd}`;
+  const out: string[] = [];
+  let i = 0;
+  let placed = false;
+  while (i < lines.length) {
+    if (!heads.includes(i)) {
+      out.push(lines[i++]);
+      continue;
+    }
+    let j = i + 1;
+    while (j < lines.length && !isHead(lines[j])) j++;
+    if (!placed) {
+      out.push(...sectionMd.split("\n"), "");
+      placed = true;
+    }
+    i = j;
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
 }

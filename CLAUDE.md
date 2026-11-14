@@ -162,6 +162,13 @@ docs/
 - **실험 규칙:** 효과가 실측으로 확인된 변경만 적용하고, 실패하면 기존 방식으로 돌아갈 수 있게(환경변수 스위치 등) 하며, 효과가 없으면 억지로 수정하지 않고 되돌린다. 이미 기각한 실험은 `docs/current-goals.md`의 진행 상태에서 확인하고 같은 방식으로 반복하지 않는다. 추측을 사실처럼 말하지 말고 측정값에는 표본 수를 함께 적는다.
 - **조사 노트 캐시**(`lib/essay/research-cache*.ts`)는 기본 꺼짐이다(다양성 저하 우려). 켜려면 `RESEARCH_CACHE=on`.
 - **품질 개선 스위치**: `ESSAY_QUALITY_FIXES=off`면 2026-10-21~22 점검에서 바꾼 프롬프트·후처리(양식 충실 규칙, writing_guide 사용, 작업 메모·주소 제거 등)를 전부 예전 방식으로 되돌린다. 글쓰기 호출만 다른 모델로 바꾸려면 `OPENAI_MODEL_WRITE`(없으면 `OPENAI_MODEL_MAIN`). 안내문 분석은 `OPENAI_MODEL_ANALYZE`, 공부 도구(요약·플래시카드·퀴즈·가상 시험·암기노트·예상 질문)는 `OPENAI_MODEL_STUDY`(둘 다 없으면 `OPENAI_MODEL_LITE`, 현재 gpt-6-luna). 테스트 스크립트는 `SOURCE_STATS_LOG=off`로 링크 통계(source_validations)에 기록을 남기지 않는다. 속도 스위치(2026-10-23, 기본 켜짐): `ESSAY_PARALLEL_WRITE=off`(단계별 동시 글쓰기 끄기, `lib/essay/parallel-write.ts`), `ESSAY_BOOK_EXCERPT=legacy`(구절 요구 책 과제를 예전 경로로), `ESSAY_AUTHOR_PRECHECK=off`, `PLAN_REUSE_ESSAY_FACTS=off`(계획이 원고 사실을 재사용하지 않고 다시 조사).
+- **3차 전체 점검(2026-11-15, `docs/full-check-2026-11-15.md`) — 코드로 강제한 후처리와 스위치**: 안내문 34종을 전수로 돌려 반복되는 모양을 코드가 바로잡게 했다.
+  분석 단계 보정 `foldSkeletonItems`(서론·본론·결론 뼈대와 내용 항목이 섞이면 뼈대만 칸으로)·`soloDefault`(학생이 팀을 말하지 않으면 "팀 진행 시" 칸 제외),
+  생성 후처리 `essay/extra-material.ts`·`source-list-need.ts`·`prompt-leak.ts`·`item-label.ts`·`bibliographic-fields.ts`·`source-line.ts`·`hanja-scope.ts`와 `deliverable.ts` `placeSourceList`(모델이 쓴 참고문헌을 시스템 출처로 제자리 교체),
+  `own-activity.ts` `removeOwnActivitySentences`(`HONESTY_REMOVE=off`; 보완 뒤에도 남은 "사진 준비해 첨부했다" 류를 지움). 되돌리기: `RESEARCH_RETRY=off`(조사 비었을 때 재시도), `PARTIAL_INSUFFICIENT=off`(한 단계만 자료 부족이면 그 단계만 빈칸).
+  **`ensureQuestionSteps`의 덮임 판정은 이름·칸의 낱말 60% 겹침이다** — 이름만 보면 과학-09에서 단계를 둘 더 붙여 결과물이 통째로 실패했다(회귀 테스트 `analysis-questions.test.ts`).
+  **측정 도구**: 전수 `giant-check.ts`(조사 미리 띄우기를 흉내 내 조사초·생성초·합계초를 따로 적는다)와 `full-table.mjs`, 구조 이상 전수 `structure-audit.ts`, 공부 도구 `study-check.ts`,
+  겹침방지는 DB에 쓰지 않는 `diversity-check.ts`·`cluster-readonly-check.ts`(전후 행 수 비교)로 본다 — **측정 때문에 실제 서비스의 겹침방지 표가 바뀌지 않게 서버 경로(`identifyCluster` 등)를 타지 말 것**.
 - **글 품질 작업(2026-10-29~30) 스위치** — 전부 기본 켜짐, 괄호 안 값으로 되돌린다. 근거와 측정값은 `PROGRESS.md`의 같은 날짜 항목에 있다.
   `OPENAI_MODEL_WRITE=gpt-6-luna`(완성 원고 글쓰기만 luna — mini 대비 24.8→20.4초·되풀이 1.3→0쌍, 더 비싼 gpt-6-sol·gpt-5.6-luna는 이 과제에서 더 낫지 않았다), `ESSAY_WRITE_EFFORT=low`(luna는 minimal을 거부),
   `ESSAY_WRITER_KNOWLEDGE=strict`(기본은 교과서 수준 일반 지식 허용 — 금지해 두면 노트 10~14개 사실만으로 글을 채우느라 같은 말이 되풀이됐다),

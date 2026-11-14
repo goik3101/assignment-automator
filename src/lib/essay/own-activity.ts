@@ -67,7 +67,8 @@ export function findOwnActivitySentences(content: string): string[] {
   const out: string[] = [];
   for (const line of content.split("\n")) {
     if (/^\s*(?:#|\|)/.test(line)) continue;
-    for (const sentence of line.split(/(?<=[.!?。])\s+/)) {
+    // 각주가 문장 끝 마침표 뒤에 붙는("…유물이다.[1] 다음 문장") 글에서 문장이 합쳐지지 않게 각주까지 앞 문장으로 본다.
+    for (const sentence of line.split(/(?<=[.!?。](?:\[\d+(?:,\s*\d+)*\])*)\s+/)) {
       const s = sentence.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim();
       if (s.length >= 8 && isOwnActivitySentence(s)) out.push(s);
     }
@@ -77,7 +78,7 @@ export function findOwnActivitySentences(content: string): string[] {
 
 /** 학생이 직접 수행한 것을 적는 단계인가(자료 수집·조사 기록·관찰 활동지). 이런 단계만 빈칸 규칙을 적용한다. */
 const OWN_RECORD_LABEL =
-  /자료\s*수집|수집\s*(?:및|과|·)?\s*기록|조사\s*(?:및|과|·)?\s*기록|관찰\s*기록|기록지|활동지|활동\s*기록|탐구\s*일지|취재/;
+  /자료\s*수집|수집\s*(?:및|과|·)?\s*기록|조사\s*(?:및|과|·)?\s*기록|관찰\s*기록|기록지|활동지|활동\s*기록|행동\s*기록|(?:협업|활용|사용)\s*과정\s*기록|사용\s*기록|(?:AI|챗봇|챗지피티|ChatGPT)[^\n]{0,12}기록|탐구\s*일지|취재/i;
 const OWN_RECORD_DESC = /(?:직접|스스로)\s*(?:조사|수집|관찰|촬영|기록)|수행평가지에\s*(?:붙|적|기록)/;
 export function isOwnRecordStep(el: { label: string; description?: string }): boolean {
   return OWN_RECORD_LABEL.test(el.label) || OWN_RECORD_DESC.test(el.description ?? "");
@@ -107,4 +108,29 @@ export function ownActivityRepairText(sentences: string[]): string {
     `빈칸("[직접 작성: 무엇]")은 학생 본인만 알 수 있는 것(이름·사는 지역·조사한 날짜·본인이 직접 센 값)에만 남길 것. ` +
     `다른 문장과 사실(연도·수치·각주 번호)은 그대로 둘 것.`
   );
+}
+
+/**
+ * 보완(모델 재작성) 뒤에도 남은 **지어낸 행동 문장을 코드가 지운다.**
+ *
+ * 왜(2026-11-15, 거대 안내문 점검 역사-03·사회-04): 정직성 보완은 시간 예산을 무시하고 한 번 도는데도 모델이 문장을 그대로 두는 실행이 있었다
+ * ("각 유물마다 사진을 한 장씩 따로 준비해 첨부했다", "수업 중 스마트폰으로 관련 자료를 검색하고,") — 재작성 길이가 699→698자로 사실상 안 바뀌었다.
+ * 모델에게 또 시키는 길은 이 프로젝트에서 반복해서 실패했고, 이 검사기는 오탐을 12건에서 0건으로 줄여 둔 상태라 **걸린 문장을 지워도 되는 정밀도**다.
+ * 지운 뒤 글이 40자 미만으로 줄면 지우지 않는다(칸이 비는 쪽이 더 나쁘다).
+ */
+export function removeOwnActivitySentences(content: string): { content: string; removed: string[] } {
+  // 학생이 몸으로 하는 일 중에서도 **사진·화면·스마트폰 자료 수집**만 지운다 — "인터뷰했다·방문했다"는 가상 회고록·일기 같은 글에서 정상이다.
+  const STRONG = /(?:사진|그림|화면|자료)[^.\n]{0,40}(?:준비|촬영|첨부|캡처|캡쳐|부착|붙)|스마트폰으로[^.\n]{0,40}(?:검색|촬영|찾|확인)|수업\s*(?:중|시간)[^.\n]{0,30}(?:촬영|캡처|검색)/;
+  const found = findOwnActivitySentences(content).filter((s) => STRONG.test(s));
+  if (found.length === 0) return { content, removed: [] };
+  let next = content;
+  const removed: string[] = [];
+  for (const s of found) {
+    if (!next.includes(s)) continue;
+    const cut = next.replace(s, "").replace(/[ \t]{2,}/g, " ").replace(/^[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n");
+    if (cut.replace(/\s/g, "").length < 40) continue;
+    next = cut;
+    removed.push(s);
+  }
+  return { content: next.replace(/[ \t]+$/gm, ""), removed };
 }

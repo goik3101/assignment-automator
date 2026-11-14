@@ -404,7 +404,7 @@ export default function AssignmentFlow() {
         })}
       </div>
         <StudyRail
-          studyRef={submissionId ? { kind: "submission", id: submissionId } : null}
+          studyRef={submissionId ? { kind: "submission", id: submissionId, key: `work:${submissionId}` } : null}
           title={info?.topic ?? t("이 과제")}
           lockedReason={
             loadingCount > 0

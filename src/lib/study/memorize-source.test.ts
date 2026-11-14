@@ -52,7 +52,12 @@ test("외울 것이 없으면 아무것도 끼우지 않는다", () => {
   assert.equal(termInstruction(src), "");
   // 칸이 하나뿐이면 순서를 말할 것이 없다
   assert.equal(orderInstruction(src), "");
-  assert.match(memorizeBlock(src), /칸 순서/); // 칸 이름은 있으니 블록은 생긴다
+  // 칸이 하나뿐이면 블록도 없다(2026-11-15: "칸 순서 1번 항목의 이름은?" 같은 무의미한 문제가 나왔다)
+  assert.equal(memorizeBlock(src), "");
+  // 단계 하나 안의 ### 항목이 둘 이상이면 그것이 칸이다
+  const items = readMemorizeSource("## 평전\n\n### 배경\n글.\n\n### 업적\n글.\n\n### 평가\n글.");
+  assert.deepEqual(items.boxes, ["배경", "업적", "평가"]);
+  assert.match(memorizeBlock(items), /칸 순서/);
   assert.equal(memorizeBlock(readMemorizeSource("")), "");
 });
 

@@ -9,7 +9,8 @@ process.loadEnvFile(path.join(REPO, ".env.local"));
 process.env.SOURCE_STATS_LOG = "off";
 
 const { analyzeAssignment } = await import("@/lib/gemini/analyze");
-const { generateEssay } = await import("@/lib/gemini/generate-essay");
+const { generateEssay, researchForTask } = await import("@/lib/gemini/generate-essay");
+const { needsSubjectSelection } = await import("@/lib/selection/selection-need");
 const { generatePlan } = await import("@/lib/gemini/generate-plan");
 const { withLlmTrace, generate } = await import("@/lib/llm");
 const { summarizeTrace } = await import("@/lib/llm/usage");
@@ -24,13 +25,12 @@ const { CASES } = await import("./giant-cases.ts");
 // 모든 과제에 붙는 글 품질 조건(안내문 조건이 아니라 우리 제품 기준). 개별 체크리스트와 따로 센다.
 const COMMON_TRUTH = [
   "소제목(항목 이름)이 본문과 줄이 나뉘어 구분된다(소제목과 본문이 한 줄에 이어 붙어 있지 않다)",
-  "안내문이 요구한 칸·항목이 하나도 빠지지 않고 모두 있다(안내문에 칸이 여러 개면 모든 칸이 글에 있다)",
   "번역체·기계 말투 없이 한국 고등학생이 쓴 것처럼 자연스럽고 같은 말을 되풀이하지 않는다",
 ];
 
 const ROOT = path.join(REPO, "수행평가 안내문", "거대 수행평가 안내문");
 const OUT = path.join(REPO, "scratchpad", "measure", "out");
-const RESULTS = path.join(REPO, "scratchpad", "measure", "giant-results.json");
+const RESULTS = process.env.GIANT_RESULTS ?? path.join(REPO, "scratchpad", "measure", "giant-results.json");
 fs.mkdirSync(OUT, { recursive: true });
 
 function imagesFor(id: string): string[] {
@@ -90,18 +90,30 @@ for (const c of CASES) {
     console.log(`  분석 ${analyzeSec.toFixed(1)}초 | 과목 ${subject} | 글 단계 ${textEls.length}: ${textEls.map((e) => e.label).join(" / ")} | 외부 제작 ${extEls.length}: ${extEls.map((e) => e.label).join(" / ")}`);
 
     // 2) 생성 (앱이 하는 것처럼 글 단계는 generateEssay, 외부 제작 단계는 generatePlan)
-    const g0 = Date.now();
+    let g0 = Date.now();
+    let researchSec = 0;
+    let prefetched: Awaited<ReturnType<typeof researchForTask>> = null;
     const { essay, plan, usage } = await withLlmTrace(`giant:${c.id}`, async (trace) => {
       let essay: Awaited<ReturnType<typeof generateEssay>> | null = null;
       let plan: Awaited<ReturnType<typeof generatePlan>> | null = null;
-      if (textEls.length) essay = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] } });
+      if (textEls.length) {
+        // 앱은 학생이 제작 전 질문에 답하는 동안 조사를 미리 돌려 둔다(research-prefetch). 대상이 미정인 과제는 건너뛴다.
+        // 그 흐름을 그대로 따라 **조사 시간을 따로** 잰다 — 학생이 생성 버튼 뒤에 기다리는 시간은 genSec(조사 제외)다.
+        if (process.env.PREFETCH !== "off" && !needsSubjectSelection(core)) {
+          const r0 = Date.now();
+          prefetched = await researchForTask({ subject, coreTaskInfo: core, instructions: c.instructions }, textEls).catch(() => null);
+          researchSec = (Date.now() - r0) / 1000;
+        }
+        g0 = Date.now();
+        essay = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] }, ...(prefetched ? { researchNotes: prefetched } : {}) });
+      }
       if (extEls.length) {
         const planCore = { ...core, task_elements: extEls };
         plan = await generatePlan({ subject, coreTaskInfo: planCore, instructions: c.instructions });
       }
       return { essay, plan, usage: summarizeTrace(trace) };
     });
-    const genSec = (Date.now() - g0) / 1000;
+    const genSec = (Date.now() - g0) / 1000; // 조사를 미리 돌린 과제는 조사 시간을 뺀 값(학생이 생성 버튼 뒤에 기다리는 시간)
 
     const parts: string[] = [];
     const sources: { n: number; title: string; url: string; tier?: string; url_valid: boolean | null }[] = [];
@@ -168,7 +180,7 @@ for (const c of CASES) {
     // 호출별 시간(조사·글쓰기·보완이 어디서 시간을 쓰는지) — 30초 목표를 못 맞춘 과제의 원인을 보려는 것.
     const byLabel = Object.entries(usage.byLabel).sort((x, y) => y[1].ms - x[1].ms);
     console.log(`  호출 ${usage.calls}건 | ` + byLabel.slice(0, 6).map(([l, v]) => `${l.replace("generateEssay:", "")} ${(v.ms / 1000).toFixed(1)}초×${v.calls}`).join(" · "));
-    console.log(`  생성 ${genSec.toFixed(1)}초 $${usage.estimatedCostUsd.toFixed(4)} | 분량 ${totalLen}자 (${lens}) | 출처 ${sources.length}개 ${JSON.stringify(tiers)} 무효링크 ${badLinks} 첫화면 ${landing} | 날조 ${own} 빈칸 ${blanks} 금지자료 ${banned} 무각주수치 ${uncited} 되풀이 ${repeated} 경고 ${warns}`);
+    console.log(`  조사(미리) ${researchSec.toFixed(1)}초, 생성 ${genSec.toFixed(1)}초, 합계 ${(genSec + researchSec).toFixed(1)}초 $${usage.estimatedCostUsd.toFixed(4)} | 분량 ${totalLen}자 (${lens}) | 출처 ${sources.length}개 ${JSON.stringify(tiers)} 무효링크 ${badLinks} 첫화면 ${landing} | 날조 ${own} 빈칸 ${blanks} 금지자료 ${banned} 무각주수치 ${uncited} 되풀이 ${repeated} 경고 ${warns}`);
 
     const all = loadResults();
     all[c.id] = {
@@ -176,6 +188,8 @@ for (const c of CASES) {
       at: new Date().toISOString(),
       analyzeSec,
       genSec,
+      researchSec,
+      prefetched: !!prefetched,
       costUsd: usage.estimatedCostUsd,
       calls: Object.fromEntries(Object.entries(usage.byLabel).map(([l, v]) => [l, { sec: +(v.ms / 1000).toFixed(1), n: v.calls }])),
       textSteps: textEls.map((e) => e.label),

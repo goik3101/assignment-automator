@@ -36,6 +36,8 @@ import {
   isProseForm,
   isResearchMaterialStep,
   isSourceListItem,
+  isUrlOnlyItem,
+  placeSourceList,
   splitProductionNotes,
   stripInlineUrls,
   stripWorkNotes,
@@ -63,10 +65,17 @@ import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-
 import { blankUnverifiedReferenceBook } from "@/lib/essay/reference-slot";
 import { restoreHeadingBreaks } from "@/lib/essay/heading-breaks";
 import { blankSelfEvaluationScores, stripCalculationCitations } from "@/lib/essay/self-evaluation";
+import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
+import { stripFlowingItemLabels } from "@/lib/essay/item-label";
+import { trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
+import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
+import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
+import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
+import { wantsExtraMaterial, ensureExtraMaterialSlot } from "@/lib/essay/extra-material";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { adminLeakOn, dedupeOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
-import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
+import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
@@ -1590,6 +1599,14 @@ async function generateOnce(
     // 실측(2026-11-01, 통합사회2 인권 저널): 안내문의 자료 출처 나열("…인물 평전, 책 내용 등")이 책 과제 판정을 켜고,
     // 모델이 "온라인 자료 검색 허가 요청"을 책 제목이라 내놓고, 그 책 조사가 실패해 각주 0개짜리 신문이 나왔다.
     // 책이 아니어도 이 과제는 조사할 사실이 있다 — 책을 빼고 한 번 더 조사한다.
+    // 책이 아닌 과제도 조사가 비면(모델이 적은 주소가 검색이 연 페이지와 안 맞아 사실이 버려진 경우 등) 한 번 더 조사한다.
+    // 실측(2026-11-15, 통합사회2 탐구 활동지): 조사 실패 → 검색 없는 대체 경로로 38초·$0.065를 쓰고도 출처 0개에
+    // "(출처 예시: 환경부·정부 정책 문서와 연합뉴스…)" 같은 가짜 출처 문구가 나갔다. 재조사는 10초 안팎이고 실패했을 때만 든다.
+    if (!notes && !bookResearch && sourceRetryOn() && process.env.RESEARCH_RETRY !== "off") {
+      console.warn("[generateEssay] 조사가 비어 일반 조사 1회 재시도(출처 0개 방지)");
+      notes = await researchWithCache(input, elements);
+      console.warn(`[generateEssay] 조사 재시도 결과: ${notes ? `사실 ${notes.facts.length}개` : "또 실패"}`);
+    }
     if (!notes && bookResearch && sourceRetryOn()) {
       console.warn("[generateEssay] 책 조사 실패 → 책을 빼고 일반 조사 1회 재시도(출처 0개 방지)");
       notes = await researchWithCache({ ...input, presetBook: undefined }, elements);
@@ -2175,6 +2192,14 @@ async function judgeRubric(
 export async function generateEssay(
   input: GenerateEssayInput
 ): Promise<EssayResult | InsufficientDataResult> {
+  // 한자가 답인 과제(한문)에서는 "이상 문자 제거" 안전장치가 한자를 지우지 않게 요청 범위로 알린다(hanja-scope.ts).
+  const allowHan = isHanjaTask([input.subject, input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.flatMap((e) => [e.label, e.description])]);
+  return withHanjaScope(allowHan, () => generateEssayImpl(input));
+}
+
+async function generateEssayImpl(
+  input: GenerateEssayInput
+): Promise<EssayResult | InsufficientDataResult> {
   const start = Date.now();
   // 30초를 넘기면 학생이 "그냥 ChatGPT가 낫다"고 느낀다 — 필수 경로(조사·글쓰기)는 끝까지 하되,
   // 품질 교정용 추가 모델 호출(재생성·부분 보완·분량 보정·형식 보완·한국어 재작성·항목 재판정)은 예산을 넘기면 건너뛴다.
@@ -2258,7 +2283,10 @@ export async function generateEssay(
     .map((e) => {
       // "신뢰할 수 있는 출처 3개 이상" 같은 출처 목록 항목은 모델이 쓰지 않고, 마지막에 확인된 출처로 코드가 채운다(아래 sourceListItems).
       if (!fixes || !e.required_items?.some(isSourceListItem)) return e;
-      for (const item of e.required_items.filter(isSourceListItem)) sourceListItems.push({ label: e.label, item });
+      // "참고한 기사 제목" 칸과 "URL" 칸이 따로 있으면 한 목록("제목: 주소")으로 채우고 URL 칸은 따로 만들지 않는다(deliverable.ts isUrlOnlyItem).
+      const listItems = e.required_items.filter(isSourceListItem);
+      const hasNonUrl = listItems.some((i) => !isUrlOnlyItem(i));
+      for (const item of listItems) if (!(hasNonUrl && isUrlOnlyItem(item))) sourceListItems.push({ label: e.label, item });
       return { ...e, required_items: e.required_items.filter((i) => !isSourceListItem(i)) };
     })
     .map((e) => {
@@ -2272,6 +2300,14 @@ export async function generateEssay(
       // (실측 2026-11-02, 공통영어2: 안내문은 "120단어 이상"뿐인데 화면에 "목표 120~190단어, 실제 230단어"가 떴다).
       return ex && ex >= t.min ? { ...e, target_length: { ...t, max: Math.round(ex * 1.4), soft_max: true } } : e;
     });
+  // 안내문이 글 끝의 출처 목록을 요구했는데 분석이 칸으로 옮기지 않았으면 문장에서 읽어 같은 경로로 채운다(source-list-need.ts). 글 단계가 하나인 과제만.
+  if (fixes && elements.length === 1 && sourceListItems.length === 0) {
+    const reqTexts = [...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", elements[0].description];
+    if (wantsSourceList(reqTexts) && !(elements[0].required_items ?? []).some(isSourceListItem)) {
+      sourceListItems.push({ label: elements[0].label, item: sourceListHeading(reqTexts) });
+      console.warn(`[generateEssay] 안내문이 출처 목록을 요구해 확인된 출처로 채움 label="${elements[0].label}"`);
+    }
+  }
   if (sourceListItems.length > 0) input = { ...input, sourceListItems };
 
   // 3단계: 후보 생성 ↔ 검증 분리. F6 재생성(previousOutputText 있음)은
@@ -2391,6 +2427,25 @@ export async function generateEssay(
     }
   }
 
+  // 한 단계만 자료가 모자라(시험 당일 제시 자료 등) 못 쓰는 것이면 그 단계만 학생이 채울 빈칸으로 두고 나머지는 살린다.
+  // 2026-11-15 과학-09: 문항 한 개가 "당일 제시 그림이 필요"하다며 결과물 **전체**를 insufficient_data로 만들어 다른 단계 전부가 사라졌다(25자).
+  if (attempt.insufficientReasons.length > 0 && process.env.PARTIAL_INSUFFICIENT !== "off") {
+    const reasons = attempt.insufficientReasons;
+    const blockedLabels = attempt.sections.filter((s) => reasons.some((r) => r.startsWith(`${s.label}:`) || r.startsWith(`${s.label} :`))).map((s) => s.label);
+    const rest = attempt.sections.filter((s) => !blockedLabels.includes(s.label) && s.content.trim().length >= 40);
+    if (blockedLabels.length > 0 && blockedLabels.length < attempt.sections.length && rest.length > 0 && blockedLabels.length >= reasons.length) {
+      console.warn(`[generateEssay] 자료가 모자란 단계 ${JSON.stringify(blockedLabels)}만 빈칸으로 두고 나머지를 살림`);
+      attempt = {
+        ...attempt,
+        insufficientReasons: [],
+        sections: attempt.sections.map((s) =>
+          blockedLabels.includes(s.label)
+            ? { ...s, content: `[직접 작성: 이 부분은 시험 당일 제시되는 자료가 있어야 답할 수 있어요 — ${reasons.find((r) => r.startsWith(`${s.label}:`))?.slice(s.label.length + 1).trim() ?? "자료 필요"}]` }
+            : s
+        ),
+      };
+    }
+  }
   if (attempt.insufficientReasons.length > 0) {
     console.error(`[generateEssay] 재시도 후에도 자료부족: ${JSON.stringify(attempt.insufficientReasons)}`);
     return {
@@ -3482,12 +3537,55 @@ export async function generateEssay(
             content = calc.content;
           }
         }
+        // 프롬프트의 책 표기("『제목』 (저자: 이름)")가 문장에 그대로 묻어 나온 것을 지운다(prompt-leak.ts).
+        {
+          const leak = stripPromptLeaks(content);
+          if (leak.fixed > 0) {
+            console.warn(`[generateEssay] 프롬프트 표기 누출 ${leak.fixed}곳 정리 label="${s.label}"`);
+            content = leak.content;
+          }
+        }
+        // 소제목 없이 이어 쓰는 단계에 항목 이름이 문단 머리 라벨("항목: …")로 묻어 나왔으면 뗀다(item-label.ts).
+        if (s.flowingItems && s.flowingItems.length >= 2) {
+          const lab = stripFlowingItemLabels(content, s.flowingItems);
+          if (lab.stripped.length > 0) {
+            console.warn(`[generateEssay] 항목 이름 라벨 ${lab.stripped.length}개 제거 ${JSON.stringify(lab.stripped)} label="${s.label}"`);
+            content = lab.content;
+          }
+        }
+        // 안내문이 "추가 자료 1개 이상 포함"을 요구했는데 표나 자리가 없으면 학생이 채울 자리를 둔다(extra-material.ts). 글 단계가 하나인 과제만.
+        if (
+          (input.coreTaskInfo.task_elements ?? []).filter((e) => e.type === "text_submission").length === 1 &&
+          wantsExtraMaterial([...(input.coreTaskInfo.requirements ?? []), input.coreTaskInfo.writing_guide ?? "", ...(input.coreTaskInfo.task_elements ?? []).map((e) => e.description)])
+        ) {
+          const extra = ensureExtraMaterialSlot(content);
+          if (extra.added) {
+            console.warn(`[generateEssay] 추가 자료 자리 표시를 넣음 label="${s.label}"`);
+            content = extra.content;
+          }
+        }
         // 참고 도서 칸(제목·저자)에 학생 지침이나 검색 출처에서 확인되지 않은 책이 들어갔으면 빈칸으로 되돌린다 — 없는 책을 참고했다고 적어 내게 되므로(reference-slot.ts).
         {
           const ref = blankUnverifiedReferenceBook(content, { instructions: input.instructions, sourceTitles: (attempt.sources ?? []).map((src) => src.title) });
           if (ref.blanked.length > 0) {
             console.warn(`[generateEssay] 확인되지 않은 참고 도서 ${JSON.stringify(ref.blanked)} 를 빈칸으로 되돌림 label="${s.label}"`);
             content = ref.content;
+          }
+        }
+        // 글 끝의 "자료 출처: … 미기재" 같은 값 없는 출처 줄은 확인된 출처로 채우거나 지운다(source-line.ts).
+        {
+          const srcLine = fillPlaceholderSourceLine(content, (attempt.sources ?? []).filter((x) => x.url_valid !== false && x.tier !== "weak").map((x) => ({ n: x.n, title: x.title, url: x.url })));
+          if (srcLine.replaced) {
+            console.warn(`[generateEssay] 값 없는 출처 줄을 확인된 출처로 바꿈 label="${s.label}"`);
+            content = srcLine.content;
+          }
+        }
+        // 책 이름·지은이·출판사 칸은 이름만 적는 칸이다 — 설명문으로 늘어난 것은 첫 문장으로 줄이고, 작성 요령으로 찬 출판사 칸은 빈칸으로 되돌린다(bibliographic-fields.ts).
+        {
+          const bib = trimBibliographicFields(content);
+          if (bib.trimmed.length > 0) {
+            console.warn(`[generateEssay] 서지 칸 ${bib.trimmed.length}개를 이름만 남기도록 줄임 ${JSON.stringify(bib.trimmed)} label="${s.label}"`);
+            content = bib.content;
           }
         }
         // 학생이 실물을 붙이는 칸의 날짜·신문사를 지어냈으면 빈칸으로 되돌린다 — 그대로 내면 거짓 기록이다(paste-slot.ts).
@@ -3667,6 +3765,19 @@ export async function generateEssay(
     if (dropped.length) console.warn(`[generateEssay] 칸 이름으로 시작하는 설명 ${dropped.length}줄 지움: ${JSON.stringify(dropped.slice(0, 2))}`);
   }
 
+  // 정직성 보완(모델 재작성) 뒤에도 남은 "사진을 준비해 첨부했다·스마트폰으로 검색했다" 류 지어낸 행동 문장은 코드가 지운다(own-activity.ts). HONESTY_REMOVE=off로 끈다.
+  if (process.env.HONESTY_REMOVE !== "off") {
+    const goneAll: string[] = [];
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((sec) => {
+        const r = removeOwnActivitySentences(sec.content);
+        goneAll.push(...r.removed);
+        return r.removed.length ? { ...sec, content: r.content } : sec;
+      }),
+    };
+    if (goneAll.length) console.warn(`[generateEssay] 보완 뒤에도 남은 지어낸 행동 문장 ${goneAll.length}개를 코드가 지움: ${goneAll.slice(0, 3).map((d) => `"${d.slice(0, 40)}"`).join(", ")}`);
+  }
   if (adminLeakOn()) {
     const dropped: string[] = [];
     attempt = {
@@ -3729,7 +3840,7 @@ export async function generateEssay(
     }
     console.log(`[generateEssay] 출처 목록 항목을 확인된 출처 ${list.length}개로 채움 label="${label}"`);
     const sections = [...attempt.sections];
-    sections[idx] = { ...sec, content: `${stripTrailingItemHeading(sec.content, item)}\n\n${buildSourceListSection(item, list)}` };
+    sections[idx] = { ...sec, content: placeSourceList(sec.content, item, buildSourceListSection(item, list)) };
     attempt = { ...attempt, sections };
   }
   // 요약 줄에서 각주를 지운 자리에 남는 "…되었다 ." 공백도 정리한다(본문은 tidyOutputText가 이미 정리).
@@ -4714,6 +4825,8 @@ const GREEK = /\p{Script=Greek}/gu;
 // 아래·위 첨자 숫자(H₂O, CO₂, m²)도 정상 표기다 — 실측(2026-10-22): "₂"(U+2082) 때문에 과학 보고서가 재생성(+18.7초)됐다.
 const OTHER_NUMBER = /\p{No}/gu;
 function maskHanjaGloss(text: string): string {
+  // 한자가 답인 과제(한문)에서는 모든 한자를 정상 글자로 가린다(hanja-scope.ts).
+  if (hanjaAllowed()) text = text.replace(/\p{Script=Han}/gu, "가");
   return qualityFixesOn()
     ? text.replace(HANJA_GLOSS, (_m, h: string, han: string) => `${h}(${"가".repeat([...han].length)})`).replace(GREEK, "a").replace(OTHER_NUMBER, "1")
     : text;

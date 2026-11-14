@@ -41,7 +41,44 @@ interface Rule {
 
 const el = (description: string) => ({ label: "산출물", description, required_items: [] as string[] });
 
+const { wantsExtraMaterial } = await import("@/lib/essay/extra-material");
+const { foldSkeletonItems } = await import("@/lib/gemini/analysis-normalize");
+
 const RULES: Rule[] = [
+  {
+    name: "추가자료",
+    what: "안내문이 추가 자료·이미지 포함을 요구했는가(걸리면 학생이 붙일 자리를 코드가 둔다 — extra-material.ts, 2026-11-15)",
+    run: (t) => wantsExtraMaterial([t]),
+    cases: [
+      [true, "추가 자료는 1개 이상으로 포함할 것."],
+      [true, "참고 자료를 2개 이상 첨부한다."],
+      [true, "보조 자료(그림, 표, 그래프)를 한 개 이상 넣을 것"],
+      [true, "그림을 1개 이상 삽입하시오."],
+      [true, "이미지(사진·그림)를 삽입하여 작성한다."],
+      [true, "시각 자료를 1개 이상 포함해야 한다."],
+      [true, "보고서에 관련 사진이나 그림을 하나 첨부한다."],
+      [false, "참고문헌의 신뢰성을 고려할 것."],
+      [false, "사진 없이 그림만 가능하다."],
+      [false, "사진은 사용할 수 없다."],
+      [false, "자료를 조사하여 보고서를 작성한다."],
+      [false, "그래프를 해석하여 서술한다."],
+    ],
+  },
+  {
+    name: "뼈대접기",
+    what: "required_items에 형식 뼈대(서론·본론·결론…)와 내용 항목이 섞였는가(걸리면 뼈대만 칸으로 둔다 — foldSkeletonItems)",
+    run: (t) => {
+      const items = t.split("/").map((x) => x.trim());
+      return foldSkeletonItems({ description: "", required_items: items }).required_items?.length !== items.length;
+    },
+    cases: [
+      [true, "문제점 분석 / 사례 분석 / 서론 / 본론 / 결론 / 참고문헌 / 요약"],
+      [true, "배경 / 의의 / 서론 / 본론 / 결론"],
+      [false, "서론 / 본론 / 결론"],
+      [false, "제목 / 내용 / 서론 / 본론"],
+      [false, "문제점 / 해결책"],
+    ],
+  },
   {
     name: "검색필요",
     what: "웹 검색을 강제할 과제인가(끄면 모델이 필요할 때만 쓴다 — 호출당 요금과 25초가 든다)",
