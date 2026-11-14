@@ -2,7 +2,7 @@ import { dedupeAdjacentMarkers, mergeAdjacentMarkers, cleanMarkers } from "./cit
 import { generate } from "@/lib/llm";
 import { currentSourceScope } from "@/lib/llm/scope";
 import { isDomesticUrl, keepInScope } from "@/lib/essay/source-scope";
-import { needsFactSearch } from "@/lib/llm/search-policy";
+import { factSearchReason } from "@/lib/llm/search-policy";
 import { mentionsBookTask } from "./book-hint";
 import { Type, type Schema } from "@google/genai";
 import {
@@ -1552,12 +1552,15 @@ async function generateOnce(
   const labels = elements.map((e) => e.label);
   const tables = tablesFor(input, elements);
   // 사실 조사가 필요 없는 창작·계산·기획형 과제에는 검색을 강제하지 않는다(검색 호출당 요금 — search-policy.ts).
-  const wantSearch = needsFactSearch(
+  const search = factSearchReason(
     input.coreTaskInfo.topic,
     ...input.coreTaskInfo.requirements,
     ...elements.flatMap((e) => [e.label, e.description]),
     input.instructions
   );
+  const wantSearch = search.search;
+  // 엉뚱하게 켜지거나 꺼져도 결과물만 봐서는 알 수 없다 — 무엇이 결정했는지 남긴다(2026-11-14).
+  console.log(`[generateEssay] 검색 강제=${wantSearch ? "켬" : "끔"} 도구=${search.tool ? "붙임" : "없음"} 이유=${search.why}`);
   const isBook = !!input.presetBook || needsBookCandidateSelection(input, elements);
 
   // 검색이 필요한 비(非)책 과제는 "조사 → 글쓰기"로 나눈다: 조사 호출이 사실 노트(사실+근거 페이지)를 만들고, 글쓰기 호출은 검색 없이 그 노트로만 쓴다.
@@ -1802,7 +1805,8 @@ ${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}\n${tableSte
         label: "generateEssay:stepA",
         role: "main",
         prompt: p,
-        search: { force: wantSearch, maxCalls: researchFailed ? 2 : 4 },
+        // 도구를 붙이면 강제하지 않아도 모델이 쓴다 — 조사가 필요 없는 과제에는 아예 넘기지 않는다(2026-11-14).
+        search: search.tool ? { force: wantSearch, maxCalls: researchFailed ? 2 : 4 } : undefined,
       });
 
     let stageA = await runStageA(prompt);
@@ -3713,9 +3717,19 @@ export async function generateEssay(
   // 안내문에 인쇄돼 있고 학생은 그것을 읽고 표를 채운다. 글의 사실이 그 자료에서 오므로 웹 주소가 없는 것이 맞다 —
   // 여기서 경고를 띄우면 멀쩡한 결과물에 "근거가 없다"고 말하는 셈이고, 거짓 경고는 진짜 결함을 가린다.
   const materialsGiven = (input.coreTaskInfo.provided_materials?.length ?? 0) > 0;
+  // **검색 도구를 아예 붙이지 않은 과제도 출처 0개가 정상이다**(2026-11-14): 학생이 문제를 내고 채점
+  //  기준을 만드는 과제는 조사할 사실이 없어 우리가 도구를 떼고 돌린다 — 찾을 길을 막아 놓고 "근거가 없다"고
+  //  경고하면 거짓 경고다(search-policy.ts의 factSearchReason).
+  const noSearchTool = !factSearchReason(
+    input.coreTaskInfo.topic,
+    ...input.coreTaskInfo.requirements,
+    ...elements.flatMap((e) => [e.label, e.description]),
+    input.instructions
+  ).tool;
   if (
     attempt.sources.length === 0 &&
     !materialsGiven &&
+    !noSearchTool &&
     attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)))
   )
     console.error(`[generateEssay] ⚠ 출처 0개로 끝남 — 확인할 사실 주장이 있는데 근거가 하나도 없다 (단계 ${attempt.sections.length}개)`);
@@ -3749,7 +3763,7 @@ export async function generateEssay(
         sources: renumberedSources,
         lengthWarning: [lengthWarningByLabel.get(s.label), formWarningByLabel.get(s.label)].filter(Boolean).join(" ") || undefined,
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
-        noSourcesWarning: renumberedSources.length === 0 && sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)),
+        noSourcesWarning: !noSearchTool && renumberedSources.length === 0 && sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)),
         structureWarning:
           structureWarningByLabel.get(s.label) ??
           (fixes && !s.content.trim() ? "이 단계의 글을 만들지 못했어요. 이 단계만 다시 생성해 주세요." : undefined),
@@ -3765,7 +3779,9 @@ export async function generateEssay(
     // === false)면 학생 입장에선 "출처 없음"과 다르지 않다 — 원래는 sources.
     // length(검증 여부와 무관한 원본 개수)만 봐서, 6개 중 1개가 죽은 페이지로
     // 확인돼도 noSourcesWarning이 안 뜨는 문제가 있었다.
+    // 조사할 사실이 없어 우리가 검색 도구를 떼고 돌린 과제(출제형)는 출처 0개가 정상이다 — 배너를 띄우지 않는다.
     noSourcesWarning:
+      !noSearchTool &&
       attempt.sources.every((s) => s.url_valid === false || s.tier === "weak") &&
       attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label))),
     // 추천 다양성 시스템(recommendation-diversity.ts)이 이 생성에서 실제로

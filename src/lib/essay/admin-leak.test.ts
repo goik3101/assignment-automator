@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stripAdminLeak, isScoringStep } from "./admin-leak.ts";
+import { stripAdminLeak, isScoringStep, stripBaseScore } from "./admin-leak.ts";
 
 test("배점 안내 줄을 지운다 (2026-11-11 수학 실측)", () => {
   const r = stripAdminLeak("### 문제\n(총 30점, 기본점수 10점 포함)\n\n(1) 구간에서 넓이를 구하시오. (12점)");
@@ -44,4 +44,23 @@ test("멀쩡한 글은 한 줄도 지우지 않는다", () => {
   const r = stripAdminLeak(body);
   assert.equal(r.removed.length, 0);
   assert.equal(r.content, body);
+});
+
+// 2026-11-14 실측(수학 출제, 정답 채점 11/12): 학생이 만든 채점표의 합계 칸에
+// "… = 30점(기본점수 10점 포함)."이 들어갔다. 기본점수는 선생님이 그냥 주는 점수라 학생 글에 들어갈 수 없다.
+test("기본점수 구절은 채점표 칸 안에서도 뗀다", () => {
+  const row = "| 합계 | | 위 항목 합계: 8 + 12 + 10 = 30점(기본점수 10점 포함). | 30 |";
+  assert.equal(stripBaseScore(row), "| 합계 | | 위 항목 합계: 8 + 12 + 10 = 30점. | 30 |");
+  assert.equal(stripBaseScore("총점은 30점, 기본점수 10점 포함이다."), "총점은 30점이다.");
+  // 학생이 만든 배점은 그대로 남는다
+  assert.equal(stripBaseScore("| 2 | 정적분 설정 | 식을 세우면 만점 | 4 |"), "| 2 | 정적분 설정 | 식을 세우면 만점 | 4 |");
+  assert.equal(stripBaseScore("각 소문항 배점을 합하여 총 30점으로 한다."), "각 소문항 배점을 합하여 총 30점으로 한다.");
+});
+
+test("채점 칸에서 배점은 남기되 기본점수는 뗀다", () => {
+  const before = ["| 문항 | 배점 |", "| --- | --- |", "| (1) | 8 |", "합계: 30점(기본점수 10점 포함)"].join("\n");
+  const r = stripAdminLeak(before, { keepScoring: true });
+  assert.match(r.content, /\| \(1\) \| 8 \|/);
+  assert.doesNotMatch(r.content, /기본\s*?점수/);
+  assert.match(r.content, /합계: 30점/);
 });

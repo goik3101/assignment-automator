@@ -10,6 +10,7 @@ const { lengthRoleOf, planLength } = await import("@/lib/essay/length-plan");
 const { needsExcerpt } = await import("@/lib/essay/excerpt-need");
 const { isOwnRecordStep } = await import("@/lib/essay/own-activity");
 const { inferFormKinds } = await import("@/lib/essay/form-rules");
+const { needsFactSearch } = await import("@/lib/llm/search-policy");
 
 const OUT = "scratchpad/measure/out";
 const files = [
@@ -26,6 +27,9 @@ for (const p of files) {
   const texts = [core.topic, ...core.requirements, core.writing_guide ?? "", ...els.map((e: any) => e.description)];
   console.log(`\n### ${path.basename(p).replace(/\.json$/, "")}  [${a.subject}]`);
   console.log(`  자동 대상 선정 : ${needsSubjectSelection(core) ? "켬" : "끔"}`);
+  // generate-essay.ts의 호출과 같은 인자로 본다(writing_guide는 넣지 않는다).
+  const searchArgs = [core.topic, ...core.requirements, ...els.flatMap((e: any) => [e.label, e.description])];
+  console.log(`  검색 강제      : ${needsFactSearch(...searchArgs) ? "켬" : "끔"}`);
   const ev = planEvidence({ topic: core.topic, requirements: core.requirements, writing_guide: core.writing_guide, task_elements: els });
   console.log(`  근거 슬롯      : ${ev.slots}개 입장=${ev.stance ?? "-"} 단계=${ev.label ?? "-"}`);
   const pol = visualPolicy(texts);

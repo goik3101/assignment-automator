@@ -28,6 +28,7 @@ const { inferDeliverableForm, classifyRequiredItem } = await import("@/lib/essay
 const { isTableForm, labelIsTable } = await import("@/lib/essay/table-form");
 const { stripAdminLeak } = await import("@/lib/essay/admin-leak");
 const { handwriteBudget } = await import("@/lib/essay/handwrite-budget");
+const { needsFactSearch } = await import("@/lib/llm/search-policy");
 
 type Case = [want: boolean, text: string];
 interface Rule {
@@ -41,6 +42,32 @@ interface Rule {
 const el = (description: string) => ({ label: "산출물", description, required_items: [] as string[] });
 
 const RULES: Rule[] = [
+  {
+    name: "검색필요",
+    what: "웹 검색을 강제할 과제인가(끄면 모델이 필요할 때만 쓴다 — 호출당 요금과 25초가 든다)",
+    run: (t) => needsFactSearch(t),
+    cases: [
+      // 조사해 와야 하는 과제는 반드시 켜져야 한다
+      [true, "인권 선구자의 업적을 조사하여 보고서를 작성한다"],
+      [true, "청소년 문제의 실태를 자료와 함께 쓰고 출처를 표기한다"],
+      [true, "광복 직후의 사건을 다룬 역사 신문을 만든다"],
+      [true, "책 한 권을 골라 독서 감상문을 쓴다"],
+      // 학생이 문제를 내고 채점 기준을 만드는 과제는 조사할 사실이 없다(2026-11-14 실측)
+      [false, "미적분 수리논술 문항 및 분석적 채점 기준 제작하기"],
+      [false, "수리논술 문항 작성하기, 단계별 모범 답안, 분석적 채점 기준표"],
+      [false, "서술형 평가 문항을 직접 출제하고 채점 기준표를 만든다"],
+      [false, "단원 시험지를 제작한다"],
+      [false, "성취 기준과 출제 의도 및 핵심 아이디어를 작성한다"],
+      // 출제형이어도 조사해 오라고 적혀 있으면 켜진다
+      [true, "한국사 서술형 문항을 출제하되 역사적 사건을 조사하여 제시문을 만든다"],
+      [true, "사회 문항을 출제하고 통계를 인용하며 출처를 표기한다"],
+      // 안내문마다 있는 "채점 기준표에 따라" 문구에 걸리면 안 된다
+      [true, "아래 채점 기준표에 따라 사회문제 탐구 보고서를 작성한다"],
+      [true, "채점 기준표를 참고하여 조사 보고서를 작성한다"],
+      // 주어진 문제를 푸는 과제는 출제가 아니다
+      [true, "환경 문제를 해결하는 정책을 설계하여 제안서를 쓴다"],
+    ],
+  },
   {
     name: "손글씨시간",
     what: "교실에서 그 자리에서 손으로 쓰는 평가인가(분량 상한을 쓸 시간에서 가져올 과제)",

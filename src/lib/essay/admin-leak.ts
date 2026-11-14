@@ -41,10 +41,25 @@ export function isScoringStep(label: string, items: string[] = []): boolean {
 
 const SCORING_LINE = /총\s*\d+\s*점|기본\s*?점수|배점|총점|감점/;
 
+// 선생님이 **그냥 주는** 기본점수는 채점 기준을 만드는 칸에서도 학생이 쓸 내용이 아니다.
+// 왜(2026-11-14 실측, 수학 출제): 학생이 만든 채점표의 합계 칸이 "… = 30점(기본점수 10점 포함)."으로 나왔다 —
+// 기본점수는 선생님이 안내문에 적어 둔 운영 사항이고, 학생이 낸 문항의 배점 합계와는 무관하다.
+// 표 칸 안으로 들어오므로 줄을 지우지 않고 **그 구절만** 뗀다(같은 줄에 학생이 만든 배점 합계가 함께 있다).
+const BASE_SCORE_PAREN = /\s*[(（[【][^)）\]】]*기본\s*?점수[^)）\]】]*[)）\]】]/g;
+const BASE_SCORE_PHRASE = /[,，]?\s*기본\s*?점수\s*\d+\s*점(?:\s*포함)?/g;
+
+/** 어느 줄에서든 기본점수 구절을 뗀다(표 칸 포함). 뗀 자리의 군더더기 공백·쉼표를 정리한다. */
+export function stripBaseScore(line: string): string {
+  if (!/기본\s*?점수/.test(line)) return line;
+  return line.replace(BASE_SCORE_PAREN, "").replace(BASE_SCORE_PHRASE, "").replace(/\s+([.,)）])/g, "$1").replace(/[ \t]{2,}/g, " ");
+}
+
 export function stripAdminLeak(content: string, opts: AdminLeakOptions = {}): { content: string; removed: string[] } {
   const removed: string[] = [];
   const out: string[] = [];
-  for (const raw of content.split("\n")) {
+  for (const original of content.split("\n")) {
+    const raw = stripBaseScore(original);
+    if (raw !== original) removed.push(`기본점수 구절: ${original.trim().slice(0, 60)}`);
     const line = raw.trim();
     // 표 줄은 건드리지 않는다 — 학생이 만든 채점표의 값이 들어 있다.
     if (/^\|/.test(line)) {
