@@ -140,7 +140,7 @@ export default async function AdminDashboardPage() {
             />
           </dl>
           <p className="mt-3 text-[11px] leading-relaxed text-faint">
-            예상 = 지금까지 + 최근 7일 하루 평균 × 남은 날. 가격표 기준 추정이라 실제 청구액은 OpenAI 대시보드로 확인하세요.
+            예상 = 지금까지 + 최근 7일 하루 평균 × 남은 날. 가격표 기준 추정이라 실제 청구액은 OpenAI 대시보드로 확인하세요. 사이트에서 들어온 AI 요청만 센 값이라 측정 스크립트·임베딩·응답 없이 시간 초과로 끊긴 호출의 비용은 빠져 있어요(그래서 청구액이 더 클 수 있어요).
             {ai.totals30.limited > 0 && ` 최근 30일 횟수 제한에 걸린 요청 ${ai.totals30.limited}건.`}
           </p>
         </div>

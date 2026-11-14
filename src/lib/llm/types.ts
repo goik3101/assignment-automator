@@ -86,6 +86,9 @@ export class LlmError extends Error {
   status?: number;
   /** 서버가 알려준 재시도 대기 시간(ms). 있으면 지수 백오프 대신 이 값을 쓴다. */
   retryAfterMs?: number;
+  /** 오류가 났어도 응답은 실제로 받아서 토큰이 청구된 경우(빈 본문·형식 오류 등)의 사용량 — 버려진 호출의 비용을 비용 집계에 넣으려고 남긴다. */
+  usage?: { inputTokens: number; outputTokens: number; reasoningTokens: number; cachedInputTokens: number; searchCalls: number };
+  servedTier?: string;
   constructor(message: string, kind: LlmErrorKind, retryable: boolean, status?: number) {
     super(message);
     this.name = "LlmError";

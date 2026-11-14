@@ -117,3 +117,19 @@ test("검색 요청의 시간 초과는 한 번만 다시 시도한다(끊겨도
   assert.equal((await generate({ label: "s429", role: "main", prompt: "x", search: { force: true } })).text, "성공");
   setProviderForTest(null);
 });
+
+test("버려진 시도의 토큰도 비용에 남는다: 응답을 받고 오류로 버린 시도는 사용량이 기록되고, 응답이 없던 시도는 0", async () => {
+  const usage = { inputTokens: 1000, outputTokens: 4000, reasoningTokens: 4000, cachedInputTokens: 0, searchCalls: 1 };
+  const bad = new LlmError("빈 본문", "empty_output", true);
+  bad.usage = usage;
+  const ok: LlmResponse = { text: "ok", usage: { inputTokens: 500, outputTokens: 200, reasoningTokens: 0, cachedInputTokens: 0, searchCalls: 0 }, provider: "openai", model: "m" } as LlmResponse;
+  const p = fake([() => bad, () => new LlmError("시간 초과", "timeout", true), () => ok]);
+  setProviderForTest(p);
+  const trace = await withLlmTrace("t", async (tr) => {
+    await generate({ label: "x", role: "main", prompt: "p" } as LlmRequest);
+    return tr;
+  });
+  setProviderForTest(null);
+  const tokens = trace.calls.map((c) => [c.ok, c.inputTokens, c.outputTokens, c.searchCalls]);
+  assert.deepEqual(tokens, [[false, 1000, 4000, 1], [true, 500, 200, 0]]); // 시간 초과 시도는 사용량을 몰라 기록하지 않는다
+});

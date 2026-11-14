@@ -47,12 +47,22 @@ export async function generate(req: LlmRequest): Promise<LlmResponse> {
     } catch (e) {
       const err = e instanceof LlmError ? e : new LlmError(e instanceof Error ? e.message : String(e), "unknown", false);
       const cap = req.search && err.kind === "timeout" ? SEARCH_TIMEOUT_RETRIES : MAX_RETRIES;
+      const u = err.usage;
       if (!err.retryable || attempt >= cap) {
         recordCall({
           label: req.label, provider: provider.name, model, ms: Date.now() - started, ok: false, retries,
-          errorKind: err.kind, inputTokens: 0, outputTokens: 0, reasoningTokens: 0, searchCalls: 0,
+          errorKind: err.kind, inputTokens: u?.inputTokens ?? 0, outputTokens: u?.outputTokens ?? 0, reasoningTokens: u?.reasoningTokens ?? 0,
+          cachedInputTokens: u?.cachedInputTokens ?? 0, searchCalls: u?.searchCalls ?? 0, tier: err.servedTier,
         });
         throw err;
+      }
+      // 다시 시도하더라도, 응답을 받고 버린 시도의 토큰은 청구되므로 비용에 남긴다(응답이 없던 시도는 사용량을 알 수 없어 남기지 않는다).
+      if (u) {
+        recordCall({
+          label: req.label, provider: provider.name, model, ms: Date.now() - started, ok: false, retries,
+          errorKind: err.kind, inputTokens: u.inputTokens, outputTokens: u.outputTokens, reasoningTokens: u.reasoningTokens,
+          cachedInputTokens: u.cachedInputTokens, searchCalls: u.searchCalls, tier: err.servedTier,
+        });
       }
       retries++;
       const delay = Math.min(err.retryAfterMs ?? BASE_DELAY_MS * 2 ** attempt, 15000);

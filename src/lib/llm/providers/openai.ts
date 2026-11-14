@@ -58,6 +58,18 @@ export const openaiProvider: LlmProvider = {
     let body = buildRequestBody(req, model, { searchContextSize: contextSize, sourceScope: currentSourceScope() });
     const tier = wantedTier();
     if (tier) body = { ...body, service_tier: tier };
+    // 추론이 출력 한도를 다 써서 다시 요청하면 첫 응답의 토큰도 청구된다 — 버리지 않고 마지막 응답의 사용량에 더해 비용에 잡는다.
+    let carried: { inputTokens: number; outputTokens: number; reasoningTokens: number; cachedInputTokens: number; searchCalls: number } | null = null;
+    const withCarried = (u: { inputTokens: number; outputTokens: number; reasoningTokens: number; cachedInputTokens: number; searchCalls: number }) =>
+      carried
+        ? {
+            inputTokens: u.inputTokens + carried.inputTokens,
+            outputTokens: u.outputTokens + carried.outputTokens,
+            reasoningTokens: u.reasoningTokens + carried.reasoningTokens,
+            cachedInputTokens: u.cachedInputTokens + carried.cachedInputTokens,
+            searchCalls: u.searchCalls + carried.searchCalls,
+          }
+        : u;
     for (let pass = 0; pass < 3; pass++) {
       const { status, json, retryAfterMs } = await post("/responses", body, timeoutMs(search));
       if (status >= 400 && body.service_tier && /service[_ ]?tier|priority/i.test(JSON.stringify(json ?? ""))) {
@@ -88,8 +100,11 @@ export const openaiProvider: LlmProvider = {
         if (problem.kind === "empty_output" && pass === 0 && resp.status === "incomplete") {
           const cur = Number(body.max_output_tokens ?? 6000);
           body = { ...body, max_output_tokens: Math.min(cur * 2, 32000) };
+          carried = withCarried(n.usage);
           continue;
         }
+        problem.usage = withCarried(n.usage);
+        problem.servedTier = (resp as { service_tier?: string }).service_tier;
         throw problem;
       }
       let text = n.text;
@@ -97,7 +112,10 @@ export const openaiProvider: LlmProvider = {
         try {
           text = JSON.stringify(restoreOptional(JSON.parse(text), req.schema));
         } catch {
-          throw new LlmError(`${req.label}: 구조화 출력이 JSON이 아닙니다.`, "invalid_output", true);
+          const bad = new LlmError(`${req.label}: 구조화 출력이 JSON이 아닙니다.`, "invalid_output", true);
+          bad.usage = withCarried(n.usage);
+          bad.servedTier = (resp as { service_tier?: string }).service_tier;
+          throw bad;
         }
       }
       const rawText = search
@@ -107,7 +125,7 @@ export const openaiProvider: LlmProvider = {
         text,
         rawText,
         grounding: n.grounding,
-        usage: { inputTokens: n.usage.inputTokens, outputTokens: n.usage.outputTokens, reasoningTokens: n.usage.reasoningTokens, cachedInputTokens: n.usage.cachedInputTokens, searchCalls: n.usage.searchCalls },
+        usage: withCarried({ inputTokens: n.usage.inputTokens, outputTokens: n.usage.outputTokens, reasoningTokens: n.usage.reasoningTokens, cachedInputTokens: n.usage.cachedInputTokens, searchCalls: n.usage.searchCalls }),
         provider: "openai",
         model,
         servedTier: (resp as { service_tier?: string }).service_tier,
