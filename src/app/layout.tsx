@@ -5,7 +5,9 @@ import Footer from "@/components/Footer";
 import { LangProvider } from "@/lib/i18n";
 import { getLang } from "@/lib/i18n/server";
 import VisitBeacon from "@/components/VisitBeacon";
-import { CONTACT_EMAIL, SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_ALT_NAMES, SITE_URL, SOCIAL_LINKS, jsonLdString } from "@/lib/seo/site";
+import { CONTACT_EMAIL, HOME_TITLE, SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_ALT_NAMES, SITE_URL, SOCIAL_LINKS, jsonLdString } from "@/lib/seo/site";
+
+const PRETENDARD_CSS = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css";
 
 // 검색엔진·AI 검색이 사이트가 무엇인지 확실히 알도록 사이트와 운영 주체를 알린다.
 const SITE_JSON_LD = [
@@ -27,13 +29,13 @@ const SITE_JSON_LD = [
 export const metadata: Metadata = {
   // 링크 미리보기 이미지 주소가 이 도메인 기준으로 만들어진다. 비우면 Vercel 배포 주소로 떨어진다.
   metadataBase: process.env.NEXT_PUBLIC_SITE_URL ? new URL(process.env.NEXT_PUBLIC_SITE_URL) : undefined,
-  title: { default: `${SITE_TITLE} - 수행평가 AI`, template: "%s | STUDED AI" },
+  title: { default: HOME_TITLE, template: "%s | STUDED AI" },
   keywords: ["STUDED AI", "studed ai", "studedai", "스터디드", "수행평가 AI", "수행평가 도우미", "수행평가 자동화", "고등학생 수행평가"],
   description: SITE_DESCRIPTION,
   openGraph: {
     type: "website",
     siteName: SITE_TITLE,
-    title: SITE_TITLE,
+    title: HOME_TITLE,
     description: SITE_DESCRIPTION,
     locale: "ko_KR",
   },
@@ -55,10 +57,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         ))}
         <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
         {/* 한글 UI 서체: Pretendard Variable(필요한 글자만 내려받는 dynamic subset). */}
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+        {/* 스타일시트 <link>는 화면 그리기를 막으므로(render-blocking) 스크립트로 붙인다. 글꼴이 늦게 와도 font-display: swap이라 글은 먼저 보인다. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var l=document.createElement('link');l.rel='stylesheet';l.href='${PRETENDARD_CSS}';document.head.appendChild(l);})();`,
+          }}
         />
+        <noscript>
+          <link rel="stylesheet" href={PRETENDARD_CSS} />
+        </noscript>
         {/* 라이트/다크 선택을 hydration 전에 미리 반영해서 깜빡임(FOUC)을 막는다. */}
         <script
           dangerouslySetInnerHTML={{

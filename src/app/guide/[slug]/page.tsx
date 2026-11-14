@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GUIDES, getGuide } from "@/lib/seo/guides";
-import { SITE_NAME, SITE_URL, jsonLdString } from "@/lib/seo/site";
+import { SITE_NAME, SITE_URL, jsonLdString, pageOpenGraph } from "@/lib/seo/site";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: guide.title,
     description: guide.description,
     alternates: { canonical: `/guide/${guide.slug}` },
-    openGraph: { type: "article", title: guide.title, description: guide.description, publishedTime: guide.datePublished, modifiedTime: guide.dateModified },
+    openGraph: pageOpenGraph(`/guide/${guide.slug}`, { type: "article", title: guide.title, description: guide.description, publishedTime: guide.datePublished, modifiedTime: guide.dateModified }),
   };
 }
 

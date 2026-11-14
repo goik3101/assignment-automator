@@ -3,6 +3,9 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://assignment
 
 export const SITE_NAME = "STUDED AI";
 
+// 홈 제목: 검색 결과에서 잘리지 않는 선(한글 30자 안팎)에서 서비스가 무엇인지 말한다.
+export const HOME_TITLE = "STUDED AI - 수행평가 AI, 안내문 사진으로 원고까지";
+
 // 띄어쓰기·표기가 달라도 같은 서비스로 알아보게 하는 이름들(검색어 "studed ai" / "studedai" / "스터디드").
 export const SITE_ALT_NAMES = ["studed ai", "studedai", "STUDED", "스터디드", "스터디드 AI", "수행평가 AI"];
 
@@ -24,4 +27,9 @@ export const PRIVATE_PATHS = ["/api/", "/admin", "/histories", "/trash", "/setti
 /** JSON-LD를 <script>에 넣을 때 "</script>" 같은 문자열로 태그가 깨지지 않게 "<"를 이스케이프한다. */
 export function jsonLdString(data: unknown): string {
   return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
+/** 페이지별 Open Graph. 페이지가 openGraph를 지정하면 레이아웃 것을 통째로 대체하므로 공통 값(siteName·locale)과 og:url을 여기서 같이 채운다. */
+export function pageOpenGraph(path: string, extra: Record<string, unknown> = {}) {
+  return { type: "website" as const, siteName: SITE_NAME, locale: "ko_KR", url: path, ...extra };
 }

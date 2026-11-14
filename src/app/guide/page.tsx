@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GUIDES } from "@/lib/seo/guides";
-import { SITE_NAME, SITE_URL, jsonLdString } from "@/lib/seo/site";
+import { SITE_NAME, SITE_URL, jsonLdString, pageOpenGraph } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
   title: "수행평가 가이드",
   description: "수행평가 안내문 읽는 법, 독서 감상문 구조, AI 활용 방법, 출처 다는 법, 발표 준비 순서를 정리한 수행평가 가이드예요.",
   alternates: { canonical: "/guide" },
+  openGraph: pageOpenGraph("/guide", { title: "수행평가 가이드" }),
 };
 
 const jsonLd = {

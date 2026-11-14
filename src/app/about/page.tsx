@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LEGAL } from "@/lib/legal/info";
 import { FAQ, FEATURES } from "@/lib/seo/about-content";
-import { CONTACT_EMAIL, SITE_ALT_NAMES, SITE_DESCRIPTION, SITE_NAME, SITE_URL, SOCIAL_LINKS, jsonLdString } from "@/lib/seo/site";
+import { CONTACT_EMAIL, SITE_ALT_NAMES, SITE_DESCRIPTION, SITE_NAME, SITE_URL, SOCIAL_LINKS, jsonLdString, pageOpenGraph } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
   title: "수행평가 AI 서비스 소개와 자주 묻는 질문",
   description: "수행평가 AI 도우미 STUDED AI가 무엇이고 어떻게 쓰는지, 출처·다른 학생과 겹치는 문제·개인정보에 대한 질문에 답해요.",
   alternates: { canonical: "/about" },
+  openGraph: pageOpenGraph("/about", { title: "수행평가 AI 서비스 소개와 자주 묻는 질문" }),
 };
 
 const jsonLd = [
