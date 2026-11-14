@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CircleHelp, ImagePlus, Layers, LoaderCircle, NotebookText, SendHorizontal, X } from "lucide-react";
+import { ArrowUp, CircleHelp, ImagePlus, Layers, LoaderCircle, NotebookText, SendHorizontal, X } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { prepareImage, type PreparedImage } from "@/lib/ui/image";
 import type { ChatMessage, useChat } from "./useChat";
@@ -168,9 +168,100 @@ export default function ChatView({
           )}
         </div>
       );
-  const composerBlock = (
+  // 홈 입력창(footer가 있을 때): YouLearn 입력창과 같은 구조 — 위에 글칸, 아래 왼쪽에 버튼들, 아래 오른쪽에 둥근 보내기 버튼.
+  // 글칸과 버튼 줄의 왼쪽 선이 같고, 사진 첨부 아이콘은 보내기 버튼 옆으로 옮겼다.
+  const homeComposer = (
+    <div className="rounded-[28px] border border-border-strong bg-surface transition-colors focus-within:border-foreground/40">
+      {image && (
+        <div className="px-4 pt-4">
+          <div className="relative inline-flex items-center gap-3 rounded-xl border border-dashed border-border-strong p-2 pr-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={image.previewUrl} alt={t("첨부할 안내문 미리보기")} className="h-11 w-11 rounded-lg object-cover" />
+            <p className="text-[13px] text-muted">{t("이 사진을 안내문으로 보고 답해요")}</p>
+            <button
+              onClick={() => setImage(null)}
+              aria-label={t("첨부 사진 지우기")}
+              className="absolute -right-2 -top-2 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-surface text-muted hover:text-foreground"
+            >
+              <X size={11} strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+      )}
+      <label className="block">
+        <span className="sr-only">{t("질문 입력")}</span>
+        <textarea
+          ref={areaRef}
+          value={text}
+          rows={2}
+          onChange={(e) => {
+            setText(e.target.value);
+            autosize();
+          }}
+          onKeyDown={(e) => {
+            // 한글 입력 중(조합 중)의 Enter는 보내기가 아니라 글자 확정이다.
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+          placeholder={disabledReason ?? placeholder}
+          disabled={!!disabledReason}
+          className="block max-h-[160px] min-h-[60px] w-full resize-none bg-transparent px-4 pt-4 text-[15px] leading-relaxed placeholder:text-faint focus-visible:outline-none! disabled:cursor-not-allowed"
+        />
+      </label>
+      {/* 버튼들과 오른쪽 아래 보내기 버튼이 한 줄로 흐른다 — 좁은 화면에서는 버튼이 줄바꿈되고 보내기 버튼은 마지막 줄 끝에 남는다 */}
+      <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-1">
+        {footer}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {allowImage && (
+            <>
+              <button
+                onClick={() => fileRef.current?.click()}
+                aria-label={t("안내문 사진 첨부")}
+                title={t("안내문 사진 첨부")}
+                className="grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-raised hover:text-foreground"
+              >
+                <ImagePlus size={18} strokeWidth={1.7} />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                aria-label={t("안내문 사진 선택")}
+                onChange={(e) => {
+                  void onPick(e.target.files?.[0] ?? null);
+                  e.target.value = "";
+                }}
+              />
+            </>
+          )}
+          <button
+            onClick={() => void submit()}
+            disabled={!text.trim() || chat.busy || !!disabledReason}
+            aria-label={t("보내기")}
+            className="grid h-9 w-9 place-items-center rounded-full bg-muted text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            <ArrowUp size={18} strokeWidth={2.2} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const composerBlock = footer ? (
     <>
-        <div className={["rounded-3xl bg-surface transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--foreground)]", footer ? "border border-border-strong" : ""].join(" ")}>
+      {homeComposer}
+      {imageError && (
+        <p role="alert" className="mt-2 text-xs text-danger">
+          {imageError}
+        </p>
+      )}
+    </>
+  ) : (
+    <>
+        <div className="rounded-3xl bg-surface transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--foreground)]">
           {image && (
             <div className="flex items-center gap-2 px-3 pt-3">
               <div className="relative">
@@ -216,7 +307,7 @@ export default function ChatView({
               <textarea
                 ref={areaRef}
                 value={text}
-                rows={footer ? 2 : 1}
+                rows={1}
                 onChange={(e) => {
                   setText(e.target.value);
                   autosize();
@@ -230,7 +321,7 @@ export default function ChatView({
                 }}
                 placeholder={disabledReason ?? placeholder}
                 disabled={!!disabledReason}
-                className={`max-h-[140px] w-full resize-none bg-transparent focus-visible:outline-none! px-2 py-2.5 text-[14px] leading-relaxed placeholder:text-faint disabled:cursor-not-allowed ${footer ? "min-h-[64px]" : ""}`}
+                className="max-h-[140px] w-full resize-none bg-transparent focus-visible:outline-none! px-2 py-2.5 text-[14px] leading-relaxed placeholder:text-faint disabled:cursor-not-allowed"
               />
             </label>
             <button
@@ -242,7 +333,6 @@ export default function ChatView({
               <SendHorizontal size={18} strokeWidth={1.9} />
             </button>
           </div>
-          {footer && <div className="px-3 pb-3">{footer}</div>}
         </div>
         {imageError && (
           <p role="alert" className="mt-2 text-xs text-danger">

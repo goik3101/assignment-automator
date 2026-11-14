@@ -80,7 +80,7 @@ export default function HomeChat({ onNew }: { onNew?: (prefill?: NewPrefill) => 
         onClick={() => setPickerOpen((v) => !v)}
         aria-expanded={pickerOpen}
         aria-haspopup="listbox"
-        className="inline-flex h-8 max-w-[260px] items-center gap-1.5 rounded-full border border-border-strong px-3 text-[12.5px] font-medium transition-colors hover:bg-raised"
+        className="inline-flex h-9 max-w-[260px] items-center gap-1.5 rounded-full border border-border-strong px-3.5 text-[13px] font-medium transition-colors hover:bg-raised"
       >
         {target ? (
           target.ref.kind === "learning" ? <BookOpen size={13} strokeWidth={1.8} className="shrink-0" /> : <Sparkles size={13} strokeWidth={1.8} className="shrink-0" />
@@ -148,9 +148,10 @@ export default function HomeChat({ onNew }: { onNew?: (prefill?: NewPrefill) => 
   );
 
   const pill =
-    "inline-flex h-8 items-center gap-1.5 rounded-full border border-border-strong px-3 text-[12.5px] font-medium transition-colors hover:bg-raised";
+    "inline-flex h-9 items-center gap-1.5 rounded-full border border-border-strong px-3.5 text-[13px] font-medium transition-colors hover:bg-raised";
+  // ChatView가 이 버튼들과 보내기 버튼을 한 줄에 같이 흘리므로 감싸는 상자 없이 조각으로 넘긴다.
   const footer = (
-    <div className="flex flex-wrap items-center gap-2">
+    <>
       {onNew && (
         <>
           <button onClick={() => onNew({ kind: "image" })} className={pill}>
@@ -164,7 +165,7 @@ export default function HomeChat({ onNew }: { onNew?: (prefill?: NewPrefill) => 
         </>
       )}
       {picker}
-    </div>
+    </>
   );
 
   return (
