@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SITE_ALT_NAMES, SITE_DESCRIPTION, SITE_NAME, SITE_URL, jsonLdString } from "@/lib/seo/site";
+import { CONTACT_EMAIL, SITE_ALT_NAMES, SITE_DESCRIPTION, SITE_NAME, SITE_URL, SOCIAL_LINKS, jsonLdString } from "@/lib/seo/site";
 
 export const metadata: Metadata = {
   title: "수행평가 AI 서비스 소개와 자주 묻는 질문",
@@ -38,6 +38,15 @@ const FAQ: { q: string; a: string }[] = [
     q: "로그인해야 하나요? 올린 안내문은 어떻게 다뤄지나요?",
     a: "로그인하면 만든 결과물이 계정에 모여 나중에 다시 볼 수 있어요. 올린 안내문과 결과물의 보관·삭제 방식은 개인정보처리방침에서 자세히 확인할 수 있어요.",
   },
+];
+
+const FEATURES: { name: string; text: string }[] = [
+  { name: "안내문 분석", text: "수행평가 안내문 사진이나 텍스트를 올리면 평가 기준, 분량, 형식 조건을 읽어 어떤 결과물을 만들어야 하는지 정리해요." },
+  { name: "완성 원고와 실행 계획", text: "글로 제출하는 과제는 완성 원고를, PPT처럼 외부 도구로 만드는 과제는 실행 계획을 만들어요." },
+  { name: "실제 검색 출처", text: "글을 쓰는 시점에 검색해서 찾은 자료를 출처로 달고, 링크가 열리는지도 확인해요." },
+  { name: "겹치지 않는 결과물", text: "같은 안내문으로 요청한 다른 학생의 결과물과 소재가 쏠리지 않게 조절하고, AI 특유의 말투를 다듬어요." },
+  { name: "요약·플래시카드·퀴즈·가상 시험", text: "만든 결과물로 공부할 수 있는 요약, 플래시카드, 퀴즈, 가상 시험을 만들어요." },
+  { name: "AI 튜터와 AI 채팅", text: "직접 쓰고 싶을 때는 튜터가 필요한 것만 물어보며 근거와 개요를 같이 짜고, 궁금한 점은 AI 채팅으로 물어볼 수 있어요." },
 ];
 
 const jsonLd = [
@@ -90,6 +99,16 @@ export default function AboutPage() {
       </section>
 
       <section className="mt-10 space-y-6">
+        <h2 className="text-base font-semibold">주요 기능</h2>
+        {FEATURES.map(({ name, text }) => (
+          <div key={name} className="space-y-1">
+            <h3 className="font-semibold">{name}</h3>
+            <p className="text-muted">{text}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="mt-10 space-y-6">
         <h2 className="text-base font-semibold">자주 묻는 질문</h2>
         {FAQ.map(({ q, a }) => (
           <div key={q} className="space-y-1">
@@ -97,6 +116,21 @@ export default function AboutPage() {
             <p className="text-muted">{a}</p>
           </div>
         ))}
+      </section>
+
+      <section className="mt-10 space-y-2">
+        <h2 className="text-base font-semibold">문의와 공식 채널</h2>
+        <ul className="space-y-1 text-muted">
+          <li>
+            이메일: <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2 hover:text-foreground">{CONTACT_EMAIL}</a>
+          </li>
+          {SOCIAL_LINKS.map((href) => (
+            <li key={href}>
+              {new URL(href).hostname.replace(/^www\./, "").split(".")[0]}:{" "}
+              <a href={href} target="_blank" rel="noopener noreferrer me" className="underline underline-offset-2 hover:text-foreground">{href}</a>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <p className="mt-12 text-xs text-faint">STUDED AI는 베타 버전이에요. 이상한 결과를 발견하면 앱 안의 피드백으로 알려 주세요.</p>
