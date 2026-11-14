@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Minus, Plus, Search, Send, Settings, Sparkles, UserRound, X, ShieldCheck, type LucideIcon } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
+import { CONTACT_EMAIL } from "@/lib/seo/site";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useAdminStatus } from "@/lib/admin/use-admin-status";
 import type { SettingsTab } from "@/lib/settings/open";
@@ -577,6 +578,10 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
         <Group title={t("문의·피드백")}>
           <div className="space-y-3 py-4">
             <p className="text-xs leading-relaxed text-muted">{t("불편한 점이나 바라는 기능을 알려 주세요. 보내 주신 내용은 서비스 개선에만 써요.")}</p>
+            <p className="text-xs leading-relaxed text-muted">
+              {t("이메일로 문의하셔도 돼요.")}{" "}
+              <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2 hover:text-foreground">{CONTACT_EMAIL}</a>
+            </p>
             <textarea
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}

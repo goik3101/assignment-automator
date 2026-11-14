@@ -120,6 +120,7 @@ export const shell: Record<string, string> = {
   "횟수": "limit",
   "피드백": "Feedback",
   "문의": "Contact",
+  "이메일로 문의하셔도 돼요.": "You can also reach us by email.",
   "불편한 점이나 바라는 기능을 알려 주세요. 보내 주신 내용은 서비스 개선에만 써요.": "Tell us what's inconvenient or what you'd like. We only use it to improve the service.",
   "이 기기의 AI 설정을 기본값으로 되돌립니다.": "Reset the AI settings on this device to their defaults.",
   "기본 설정 사용": "Use defaults",
