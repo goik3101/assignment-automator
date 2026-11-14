@@ -72,6 +72,7 @@ import { tableSpecs, tableFormBlock, tableStepLine, tableFormRepairText } from "
 import { stripAdminLeak, isScoringStep } from "@/lib/essay/admin-leak";
 import { leanWritePrompt } from "@/lib/essay/lean-write";
 import { isInterviewStep, reportLikeAnswers, interviewVoiceRepairText, interviewVoiceOn } from "@/lib/essay/interview-voice";
+import { stripLabelEcho, labelEchoOn } from "@/lib/essay/label-echo";
 import { looksLikeAskingPermission, JSON_ONLY_REMINDER, researchRetryOn } from "@/lib/essay/research-retry";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
@@ -3619,6 +3620,21 @@ export async function generateEssay(
   // 안내문의 **수업 운영·배점 안내**가 글에 섞여 나왔으면 코드가 지운다(admin-leak.ts — 모델 호출 0).
   // 실측(2026-11-11): 분석 10종 중 6종에서 차시·시험 대형·배점이 core_task_info로 들어오고,
   // 과제 3종 중 2종이 글에 적었다("(총 30점, 기본점수 10점 포함)", "## 1차시 멸치해부실험").
+  // 모델이 **자기 칸을 설명한 줄**("분석적 채점 기준표: 배점 열과 합계 칸: … 총 30점으로 제시하였고")을 뗀다.
+  // 제출할 글이 아니고, 그 줄이 선생님 총점을 글 안으로 끌고 들어온다(2026-11-14 수학 10/12).
+  if (labelEchoOn()) {
+    const dropped: string[] = [];
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((sec) => {
+        const r = stripLabelEcho(sec.content, sec.label);
+        dropped.push(...r.removed);
+        return r.removed.length ? { ...sec, content: r.content } : sec;
+      }),
+    };
+    if (dropped.length) console.warn(`[generateEssay] 칸 이름으로 시작하는 설명 ${dropped.length}줄 지움: ${JSON.stringify(dropped.slice(0, 2))}`);
+  }
+
   if (adminLeakOn()) {
     const dropped: string[] = [];
     attempt = {

@@ -27,6 +27,7 @@ const PS = await import("@/lib/essay/paste-slot");
 const EG = await import("@/lib/essay/english-grammar");
 const RF = await import("@/lib/essay/refusal");
 const AL = await import("@/lib/essay/admin-leak");
+const LE = await import("@/lib/essay/label-echo");
 
 /** 사슬에 실제로 도는 순서대로. `content`만 꺼내 문자열 → 문자열로 맞춘다. */
 const take = (r: unknown): string => (typeof r === "string" ? r : ((r as { content?: string })?.content ?? ""));
@@ -67,6 +68,8 @@ const STEPS: { name: string; run: (t: string) => string; when?: (label: string, 
   { name: "제작 참고 떼기(글 칸)", run: (t) => D.splitProductionNotes(t).body, when: (l) => !isPanelLabel(l) },
   { name: "제작 참고 라벨만 떼기(그림 칸)", run: (t) => take(D.dropProductionNotesHeading(t)), when: (l) => isPanelLabel(l) },
   // 운영·배점 안내 제거는 **채점 기준을 만드는 칸에서는 배점을 남긴다** — 그 조건까지 함께 적는다.
+  // 칸 이름으로 시작하는 설명 제거는 **그 칸 이름을 알아야** 돌릴 수 있다 — 감사에서는 라벨을 넣어 부른다.
+  { name: "칸 이름 설명 제거", run: (t) => LE.stripLabelEcho(t, "분석적 채점 기준표").content },
   { name: "운영·배점 안내 제거", run: (t) => AL.stripAdminLeak(t).content, when: (l) => !AL.isScoringStep(l) },
   { name: "운영 안내만 제거(채점 칸)", run: (t) => AL.stripAdminLeak(t, { keepScoring: true }).content, when: (l) => AL.isScoringStep(l) },
 ];
