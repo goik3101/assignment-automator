@@ -31,3 +31,13 @@ test("멀쩡한 공공·언론·학술이 '일반'으로 떨어지지 않는다 
   // or.kr을 통째로 넣지 않았다 — 시민단체·사설 기관은 '일반'으로 남는다
   assert.equal(classifySourceTier("https://opennet.or.kr/12345"), "general");
 });
+
+test("2026-11-14 점검: 외국 정부·통계·조사기관은 공식, 자료 판매·쇼핑몰은 근거로 못 쓴다", () => {
+  assert.equal(classifySourceTier("https://www.stat.go.jp/english/data/handbook/"), "official");
+  assert.equal(classifySourceTier("https://ourworldindata.org/population"), "official");
+  assert.equal(classifySourceTier("https://www.pewresearch.org/short-reads/"), "official");
+  assert.equal(classifySourceTier("https://kosis.kr/statHtml/statHtml.do"), "official");
+  assert.equal(classifySourceTier("https://www.coupang.com/vp/products/1"), "weak");
+  // 서점 판매 페이지는 책 서지 확인에 쓰이므로 그대로 둔다
+  assert.equal(classifySourceTier("https://www.yes24.com/product/goods/1"), "general");
+});

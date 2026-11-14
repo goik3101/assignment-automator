@@ -62,6 +62,7 @@ import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-slot";
 import { blankUnverifiedReferenceBook } from "@/lib/essay/reference-slot";
 import { restoreHeadingBreaks } from "@/lib/essay/heading-breaks";
+import { blankSelfEvaluationScores, stripCalculationCitations } from "@/lib/essay/self-evaluation";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { adminLeakOn, dedupeOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
@@ -2289,12 +2290,16 @@ export async function generateEssay(
           guide: input.coreTaskInfo.writing_guide,
           labels: elements.map((e) => e.label),
         });
+        const boxMin = taskBoxLengths(elements, input.coreTaskInfo).find((x) => x.label === el.label)?.min ?? 0;
         // 바닥은 역할 목표 최소값의 절반, 천장은 **최대값의 1.4배**(그 아래는 손대지 않는다 — 점수가 길이를
         // 따라가지 않으므로 어설픈 줄이기는 시간만 쓴다). 줄일 때 말해 줄 목표는 역할 최대값 그대로다.
         return [
           el.label,
           {
-            floor: Math.round(plan.min * 0.5),
+            // 칸 크기를 읽은 단계는 **바닥만** 칸에서 낸다 — 역할 표 바닥이 칸보다 훨씬 크면 짧게 쓴 답이 부풀려진다.
+            // 실측(2026-11-14, 과학-02 5줄 칸=113~195자): 역할 표 바닥 500자 때문에 190자 답이 570자로 불었다.
+            // 천장은 칸에서 내지 않는다 — 칸 크기 추정이 작은 단계(수학-01: 상한 600자)에서 완성된 1,461자 글을 735자로 깎아 항목이 빠졌다.
+            floor: Math.round((boxMin > 0 ? Math.min(boxMin, plan.min) : plan.min) * 0.5),
             planned: plan.min,
             ceiling: Math.round(plan.max * 1.4),
             planned2x: plan.max,
@@ -3462,6 +3467,19 @@ export async function generateEssay(
               console.warn(`[generateEssay] 밑줄을 코드가 직접 그음 ${JSON.stringify(u.added)} label="${s.label}"`);
               content = u.content;
             }
+          }
+        }
+        // 학생이 스스로 매기는 자기 평가표의 점수를 비우고, 모델이 직접 계산한 값에 붙은 검색 각주를 뗀다(self-evaluation.ts).
+        {
+          const selfEval = blankSelfEvaluationScores(content);
+          if (selfEval.blanked > 0) {
+            console.warn(`[generateEssay] 자기 평가 점수 ${selfEval.blanked}개를 비움 label="${s.label}"`);
+            content = selfEval.content;
+          }
+          const calc = stripCalculationCitations(content);
+          if (calc.stripped > 0) {
+            console.warn(`[generateEssay] 직접 계산한 값에 붙은 각주 ${calc.stripped}개 제거 label="${s.label}"`);
+            content = calc.content;
           }
         }
         // 참고 도서 칸(제목·저자)에 학생 지침이나 검색 출처에서 확인되지 않은 책이 들어갔으면 빈칸으로 되돌린다 — 없는 책을 참고했다고 적어 내게 되므로(reference-slot.ts).
@@ -4818,6 +4836,7 @@ async function repairLocally(
 아래는 수행평가 한 단계의 원고다. 지적된 문제만 고쳐서 이 단계 본문 전체를 다시 써줘.
 - 지적되지 않은 문장과 사실(연도·이름·수치), [n] 각주 표기는 그대로 둘 것. 각주 번호를 새로 만들거나 바꾸지 말 것.
 - 새로 쓰는 문장은 이 글과 [같은 과제의 다른 단계]에 이미 있는 사실만 바탕으로 쓰고, 새 연도·수치·고유명·인용문을 만들지 말 것. 다른 단계의 문장에 붙은 [n]은 같은 사실을 쓸 때 그대로 붙여도 된다.
+- **분량을 늘리지 말 것** — 원고는 지금 약 ${sec.content.length}자다. 지적된 것을 채우는 데 꼭 필요한 만큼만 짧게 보태고(많아야 1~2문장), 다른 곳은 그대로 둘 것.
 - 소제목(###)·표·"(학생 감상 초안 …)" 표시 등 기존 형식은 유지하고, 설명·머리말 없이 본문만 출력할 것.
 ${el ? `- 이 단계가 다뤄야 할 내용: ${el.description}\n` : ""}
 [고칠 문제]
@@ -4837,7 +4856,8 @@ ${sec.content}`.trim(),
       if (nextMarkers.some((m) => !allMarkers.has(m))) return sec; // 없는 각주 번호를 만들었다
       const origMarkers = markersOf(sec.content);
       if (origMarkers.length > 0 && nextMarkers.length < origMarkers.length * 0.7) return sec; // 각주가 눈에 띄게 사라졌다
-      if (next.length < sec.content.length * 0.7 || next.length > sec.content.length * 1.8) return sec;
+      // 실측(2026-11-14, 과학-01): 안내문 조건 보완이 2,732자 글을 3,417자로 불려 목표 상한(2,500자)을 넘겼다 — 25% 넘게 늘면 채택하지 않는다.
+      if (next.length < sec.content.length * 0.7 || next.length > sec.content.length * 1.25) return sec;
       console.log(`[generateEssay] 부분 보완 적용 label="${sec.label}" (${sec.content.length}→${next.length}자) ${issues.length}건`);
       return { ...sec, content: next };
     } catch (err) {

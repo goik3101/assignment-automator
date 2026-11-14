@@ -165,6 +165,9 @@ for (const c of CASES) {
     const score = `${truth.length - bad.length}/${truth.length}`;
     console.log(`  채점 ${score}${r.length !== truth.length ? ` (판정 ${r.length}개 — 채점 누락 있음)` : ""}`);
     for (const x of bad) console.log(`   ✗ ${truth[x.i - 1] ?? `#${x.i}`}\n       → ${x.why.slice(0, 120)}`);
+    // 호출별 시간(조사·글쓰기·보완이 어디서 시간을 쓰는지) — 30초 목표를 못 맞춘 과제의 원인을 보려는 것.
+    const byLabel = Object.entries(usage.byLabel).sort((x, y) => y[1].ms - x[1].ms);
+    console.log(`  호출 ${usage.calls}건 | ` + byLabel.slice(0, 6).map(([l, v]) => `${l.replace("generateEssay:", "")} ${(v.ms / 1000).toFixed(1)}초×${v.calls}`).join(" · "));
     console.log(`  생성 ${genSec.toFixed(1)}초 $${usage.estimatedCostUsd.toFixed(4)} | 분량 ${totalLen}자 (${lens}) | 출처 ${sources.length}개 ${JSON.stringify(tiers)} 무효링크 ${badLinks} 첫화면 ${landing} | 날조 ${own} 빈칸 ${blanks} 금지자료 ${banned} 무각주수치 ${uncited} 되풀이 ${repeated} 경고 ${warns}`);
 
     const all = loadResults();
@@ -174,6 +177,7 @@ for (const c of CASES) {
       analyzeSec,
       genSec,
       costUsd: usage.estimatedCostUsd,
+      calls: Object.fromEntries(Object.entries(usage.byLabel).map(([l, v]) => [l, { sec: +(v.ms / 1000).toFixed(1), n: v.calls }])),
       textSteps: textEls.map((e) => e.label),
       externalSteps: extEls.map((e) => e.label),
       score,

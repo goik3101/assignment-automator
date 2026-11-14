@@ -17,7 +17,7 @@ export type SourceTier = "official" | "reliable" | "reference" | "general" | "we
 // 보이므로("일반 사이트"), 목록이 좁은 것이 곧 **멀쩡한 출처를 못 믿게 만드는 것**이다.
 // 거짓 경고를 걷어낸 것과 같은 이유로 넓힌다 — 단, `or.kr`을 통째로 넣지는 않는다(시민단체·사설 기관도 쓴다).
 const OFFICIAL =
-  /(^|\.)(go\.kr|gov|gov\.[a-z]{2}|mil|ac\.kr|re\.kr|edu|edu\.[a-z]{2}|ac\.[a-z]{2}|un\.org|europa\.eu|who\.int|icrc\.org|oecd\.org|unesco\.org|worldbank\.org|nobelprize\.org|si\.edu|korea\.kr|korea\.net|kocw\.or\.kr|airkorea\.or\.kr|nps\.or\.kr|kdemo\.or\.kr|nahf\.or\.kr|bok\.or\.kr|kiri\.or\.kr|ebsi\.co\.kr|ebs\.co\.kr|nature\.com|science\.org|sciencedirect\.com|springer\.com|wiley\.com|jstor\.org|ssrn\.com|dbpia\.co\.kr|refworld\.org|freedomhouse\.org|carnegieendowment\.org)$/i;
+  /(^|\.)(go\.kr|go\.(?:jp|th|id|tz|ke|ug)|gov|gov\.[a-z]{2}|kosis\.kr|riss\.kr|kiss\.kstudy\.com|mil|ac\.kr|re\.kr|edu|edu\.[a-z]{2}|ac\.[a-z]{2}|un\.org|europa\.eu|who\.int|icrc\.org|oecd\.org|unesco\.org|worldbank\.org|nobelprize\.org|si\.edu|korea\.kr|korea\.net|kocw\.or\.kr|airkorea\.or\.kr|nps\.or\.kr|kdemo\.or\.kr|nahf\.or\.kr|bok\.or\.kr|kiri\.or\.kr|ebsi\.co\.kr|ebs\.co\.kr|nature\.com|science\.org|sciencedirect\.com|springer\.com|wiley\.com|jstor\.org|ssrn\.com|dbpia\.co\.kr|refworld\.org|freedomhouse\.org|carnegieendowment\.org|ourworldindata\.org|pewresearch\.org)$/i;
 
 const RELIABLE = new RegExp(
   "(^|\\.)(" +
@@ -46,7 +46,7 @@ const RELIABLE = new RegExp(
 const REFERENCE = /(^|\.)(wikipedia\.org|wikimedia\.org|namu\.wiki|namuwiki\.com|namu\.moe|namu\.la|wikiwand\.com)$/i;
 
 const WEAK =
-  /(^|\.)(blogspot\.[a-z.]+|tistory\.com|blog\.naver\.com|m\.blog\.naver\.com|cafe\.naver\.com|kin\.naver\.com|brunch\.co\.kr|velog\.io|medium\.com|wordpress\.com|wixsite\.com|youtube\.com|youtu\.be|reddit\.com|tiktok\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|dcinside\.com|ruliweb\.com|fmkorea\.com|theqoo\.net|quora\.com|blog\.daum\.net|cafe\.daum\.net|postype\.com|pages\.dev|netlify\.app|github\.io|vercel\.app|workers\.dev|herokuapp\.com|glitch\.me|allreport\.co\.kr|happycampus\.com|reportworld\.co\.kr|report\.co\.kr|orbi\.kr|instiz\.net|clien\.net|ppomppu\.co\.kr|inven\.co\.kr|mlbpark\.donga\.com)$/i;
+  /(^|\.)(blogspot\.[a-z.]+|tistory\.com|blog\.naver\.com|m\.blog\.naver\.com|cafe\.naver\.com|kin\.naver\.com|brunch\.co\.kr|velog\.io|medium\.com|wordpress\.com|wixsite\.com|youtube\.com|youtu\.be|reddit\.com|tiktok\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|dcinside\.com|ruliweb\.com|fmkorea\.com|theqoo\.net|quora\.com|blog\.daum\.net|cafe\.daum\.net|postype\.com|pages\.dev|netlify\.app|github\.io|vercel\.app|workers\.dev|herokuapp\.com|glitch\.me|allreport\.co\.kr|happycampus\.com|coupang\.com|11st\.co\.kr|gmarket\.co\.kr|auction\.co\.kr|danawa\.com|smartstore\.naver\.com|reportworld\.co\.kr|report\.co\.kr|orbi\.kr|instiz\.net|clien\.net|ppomppu\.co\.kr|inven\.co\.kr|mlbpark\.donga\.com)$/i;
 
 export function classifySourceTier(url: string): SourceTier {
   let host = "";
