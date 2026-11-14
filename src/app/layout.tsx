@@ -11,10 +11,11 @@ const PRETENDARD_CSS = "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.
 
 // 검색엔진·AI 검색이 사이트가 무엇인지 확실히 알도록 사이트와 운영 주체를 알린다.
 const SITE_JSON_LD = [
-  { "@context": "https://schema.org", "@type": "WebSite", name: SITE_TITLE, alternateName: SITE_ALT_NAMES, url: SITE_URL, inLanguage: "ko", description: SITE_DESCRIPTION },
+  { "@context": "https://schema.org", "@type": "WebSite", "@id": `${SITE_URL}#website`, publisher: { "@id": `${SITE_URL}#organization` }, name: SITE_TITLE, alternateName: SITE_ALT_NAMES, url: SITE_URL, inLanguage: "ko", description: SITE_DESCRIPTION },
   {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${SITE_URL}#organization`,
     name: SITE_TITLE,
     alternateName: SITE_ALT_NAMES,
     url: SITE_URL,

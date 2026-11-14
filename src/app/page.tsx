@@ -14,6 +14,8 @@ export const metadata: Metadata = {
 const APP_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "WebApplication",
+  "@id": `${SITE_URL}#webapp`,
+  publisher: { "@id": `${SITE_URL}#organization` },
   name: SITE_NAME,
   alternateName: SITE_ALT_NAMES,
   url: SITE_URL,
