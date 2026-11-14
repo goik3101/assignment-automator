@@ -117,7 +117,7 @@ export default function AboutPage() {
       </section>
 
       <section className="mt-10 space-y-2">
-        <h2 className="text-base font-semibold">문의와 공식 채널</h2>
+        <h2 id="contact" className="text-base font-semibold">문의와 공식 채널</h2>
         <ul className="space-y-1 text-muted">
           <li>
             이메일: <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2 hover:text-foreground">{CONTACT_EMAIL}</a>
@@ -129,6 +129,9 @@ export default function AboutPage() {
             </li>
           ))}
         </ul>
+        <p className="text-muted">
+          자세한 문의 방법은 <Link href="/contact" className="underline underline-offset-2 hover:text-foreground">연락처 페이지</Link>에서 확인할 수 있어요.
+        </p>
       </section>
 
       <p className="mt-12 text-xs text-faint">STUDED AI는 베타 버전이에요. 이상한 결과를 발견하면 앱 안의 피드백으로 알려 주세요.</p>

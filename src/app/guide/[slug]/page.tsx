@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LEGAL } from "@/lib/legal/info";
 import { GUIDES, getGuide } from "@/lib/seo/guides";
 import { SITE_NAME, SITE_URL, jsonLdString, pageOpenGraph } from "@/lib/seo/site";
 
@@ -36,6 +37,7 @@ export default async function GuidePage({ params }: Props) {
       dateModified: guide.dateModified,
       inLanguage: "ko",
       mainEntityOfPage: url,
+      ...(guide.references && { citation: guide.references.map((r) => r.url) }),
       author: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
       publisher: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
     },
@@ -62,7 +64,8 @@ export default async function GuidePage({ params }: Props) {
       </nav>
       <h1 className="text-[24px] font-bold leading-snug tracking-tight">{guide.title}</h1>
       <p className="mt-1 text-xs text-faint">
-        <time dateTime={guide.dateModified}>{guide.dateModified} 업데이트</time> · {SITE_NAME}
+        작성: <Link href="/about" className="hover:text-foreground">{LEGAL.operator}</Link> · 게시 <time dateTime={guide.datePublished}>{guide.datePublished}</time> · 업데이트{" "}
+        <time dateTime={guide.dateModified}>{guide.dateModified}</time>
       </p>
       <p className="mt-6 text-muted">{guide.intro}</p>
 
@@ -81,6 +84,20 @@ export default async function GuidePage({ params }: Props) {
           </section>
         ))}
       </div>
+
+      {guide.references && (
+        <section className="mt-12 space-y-2">
+          <h2 className="text-base font-semibold">참고 자료</h2>
+          <ul className="list-disc space-y-2 pl-5 text-muted">
+            {guide.references.map((r) => (
+              <li key={r.url}>
+                <a href={r.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">{r.title}</a>
+                <span className="block text-xs text-faint">{r.note}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {related.length > 0 && (
         <section className="mt-12 space-y-2">

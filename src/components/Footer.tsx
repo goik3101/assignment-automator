@@ -16,7 +16,7 @@ export default async function Footer() {
           <Link href="/guide" className="hover:text-foreground">수행평가 가이드</Link>
           <Link href="/terms" className="hover:text-foreground">이용약관</Link>
           <Link href="/privacy" className="hover:text-foreground">개인정보처리방침</Link>
-          <span>studed</span>
+          <Link href="/about" className="hover:text-foreground">서비스 소개</Link>
         </span>
       </div>
     </footer>
