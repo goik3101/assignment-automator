@@ -36,7 +36,7 @@ export default function Sidebar() {
       collapsed ? "md:justify-center md:px-0" : "",
       active
         ? "bg-raised text-foreground before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-foreground"
-        : "text-muted hover:bg-raised hover:text-foreground",
+        : "text-foreground hover:bg-raised",
     ].join(" ");
 
   function startNew() {
@@ -136,7 +136,7 @@ export default function Sidebar() {
           <SidebarWorklist onNavigate={() => setOpen(false)} />
         )}
 
-        <div className="border-t border-border p-3">
+        <div className="p-3">
           <SidebarQuickActions collapsed={collapsed} onNavigate={() => setOpen(false)} />
           {!collapsed && <AuthBar />}
         </div>

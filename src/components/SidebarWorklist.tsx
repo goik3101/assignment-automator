@@ -71,7 +71,7 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
 
   return (
     <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
-      <p className="mb-2 px-3 text-xs font-semibold tracking-wide text-muted">{t("최근")}</p>
+      <p className="mb-1.5 px-3 text-xs font-medium text-faint">{t("최근")}</p>
       <ul className="min-h-0 space-y-0.5 overflow-y-auto">
         {items.map((it) => {
           const Icon = KIND_ICON[it.kind];
@@ -83,13 +83,13 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
                 title={it.title}
                 aria-current={pathname === it.href ? "page" : undefined}
                 className={[
-                  "relative flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] transition-colors",
+                  "relative flex h-9 items-center gap-3 rounded-lg px-3 text-[13.5px] transition-colors",
                   pathname === it.href
                     ? "bg-raised font-semibold text-foreground before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-foreground"
-                    : "text-foreground/85 hover:bg-raised hover:text-foreground",
+                    : "text-foreground hover:bg-raised",
                 ].join(" ")}
               >
-                <Icon size={14} strokeWidth={1.8} className="shrink-0 text-muted" aria-label={t(TASK_KIND_LABEL[it.kind])} />
+                <Icon size={17} strokeWidth={1.7} className="shrink-0 text-muted" aria-label={t(TASK_KIND_LABEL[it.kind])} />
                 <span className="truncate">{it.title}</span>
               </Link>
             </li>

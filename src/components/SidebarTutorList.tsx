@@ -47,7 +47,7 @@ export default function SidebarTutorList({ onNavigate }: { onNavigate?: () => vo
 
   return (
     <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
-      <p className="mb-1.5 px-3 text-xs font-semibold text-faint">{t("최근")}</p>
+      <p className="mb-1.5 px-3 text-xs font-medium text-faint">{t("최근")}</p>
       {items && items.length === 0 && <p className="px-3 text-xs leading-relaxed text-faint">{t("AI 튜터와 나눈 대화가 여기에 쌓여요")}</p>}
       <ul className="min-h-0 space-y-0.5 overflow-y-auto">
         {(items ?? []).map((c) => {
@@ -61,11 +61,11 @@ export default function SidebarTutorList({ onNavigate }: { onNavigate?: () => vo
                 title={c.title}
                 aria-current={active ? "page" : undefined}
                 className={[
-                  "flex h-9 items-center gap-2.5 rounded-lg pl-3 pr-8 text-[13px] transition-colors",
-                  active ? "bg-raised text-foreground" : "text-muted hover:bg-raised hover:text-foreground",
+                  "flex h-9 items-center gap-3 rounded-lg pl-3 pr-8 text-[13.5px] transition-colors",
+                  active ? "bg-raised text-foreground" : "text-foreground hover:bg-raised",
                 ].join(" ")}
               >
-                <MessageSquare size={14} strokeWidth={1.8} className="shrink-0" aria-hidden />
+                <MessageSquare size={17} strokeWidth={1.7} className="shrink-0 text-muted" aria-hidden />
                 <span className="truncate">{c.title}</span>
               </Link>
               <button

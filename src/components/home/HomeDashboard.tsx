@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Ellipsis, FileText, ImagePlus, Plus, Search, Settings, Sparkles, Trash2, Type, Wrench } from "lucide-react";
+import { BookOpen, Ellipsis, FileText, ImagePlus, Plus, Search, Settings, Trash2, Type, Wrench } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
 import { useAuth } from "@/lib/supabase/use-auth";
 import HomeChat from "@/components/chat/HomeChat";
@@ -74,7 +74,7 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
         aria-label={t("새 창작물 만들기")}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="group/new flex aspect-[5/4] w-full flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border-strong text-muted transition-colors hover:bg-surface hover:text-foreground"
+        className="group/new flex h-full min-h-[132px] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-strong text-muted transition-colors hover:bg-surface hover:text-foreground"
       >
         <span className="grid h-11 w-11 place-items-center rounded-full border border-current transition-transform group-hover/new:scale-105">
           <Plus size={20} strokeWidth={1.6} />
@@ -112,68 +112,34 @@ const dateFmts = {
 function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void }) {
   const { lang, t } = useLang();
   const [menu, setMenu] = useState(false);
-  const pct = c.kind === "learning" && c.total ? Math.round((c.done / c.total) * 100) : 0;
+  const Icon = c.kind === "learning" ? BookOpen : FileText;
+  const kindText = c.kind === "learning" ? `${c.done} / ${c.total}` : c.output === "essay" ? t("완성 원고") : t("실행 계획");
   return (
     <div className="group/card relative">
-      <Link href={c.href} className="block">
-        {/* 종이 한 장 같은 카드: 위쪽엔 과목·모드, 가운데는 내용 미리보기, 아래는 날짜(또는 진행률) */}
-        <div
-          className="flex aspect-[5/4] flex-col rounded-3xl bg-surface p-5 ring-1 ring-transparent transition-all duration-200 group-hover/card:-translate-y-0.5 group-hover/card:bg-raised group-hover/card:ring-border-strong"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="max-w-[70%] truncate rounded-full bg-background px-2.5 py-0.5 text-[11px] font-semibold text-foreground/80">
-              {c.subject}
-            </span>
-            {c.kind === "learning" ? (
-              <BookOpen size={15} strokeWidth={1.8} className="shrink-0 text-muted" aria-label={t("학습 모드")} />
-            ) : (
-              <Sparkles size={15} strokeWidth={1.8} className="shrink-0 text-muted" aria-label={t("AI 모드")} />
-            )}
-          </div>
-          {c.kind === "auto" ? (
-            <p className="mt-3 flex-1 overflow-hidden whitespace-pre-line break-words text-[12px] leading-[1.65] text-foreground/70 [mask-image:linear-gradient(to_bottom,black_65%,transparent)]">
-              {c.preview || t("내용이 없어요.")}
-            </p>
-          ) : (
-            <div className="mt-3 flex flex-1 flex-col justify-end">
-              <p className="text-2xl font-bold tabular-nums">
-                {c.done}
-                <span className="text-base font-medium text-faint"> / {c.total}</span>
-              </p>
-              <p className="mt-0.5 text-[11px] text-muted">{t("항목 작성 완료")}</p>
-            </div>
-          )}
-          {c.kind === "learning" ? (
-            <div
-              className="mt-3 h-1 overflow-hidden rounded-full bg-raised"
-              role="progressbar"
-              aria-label={t("진행률")}
-              aria-valuenow={pct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${pct}%` }} />
-            </div>
-          ) : (
-            <p className="mt-3 text-[11px] font-semibold text-muted">{c.output === "essay" ? t("완성 원고") : t("실행 계획")}</p>
-          )}
+      <Link href={c.href} className="block overflow-hidden rounded-2xl bg-surface transition-colors group-hover/card:bg-raised">
+        {/* 윗부분: 과목을 크게 — 결과물에 이미지가 없으니 "무슨 과목인가"가 가장 먼저 읽히는 표지가 된다 */}
+        <div className="flex h-[84px] flex-col justify-between bg-raised/70 p-3">
+          <Icon size={16} strokeWidth={1.7} className="text-muted" aria-hidden />
+          <span className="truncate text-[20px] font-bold leading-none tracking-tight text-foreground/80">{c.subject}</span>
         </div>
-        <div className="mt-2.5 flex items-baseline justify-between gap-2 pr-7">
-          <p className="truncate text-[15px] font-bold">{c.title}</p>
-          <p className="shrink-0 text-[11px] text-faint">{dateFmts[lang].format(new Date(c.at))}</p>
+        <div className="p-3">
+          <p className="truncate text-[14px] font-semibold">{c.title}</p>
+          <p className="mt-0.5 truncate text-[12px] text-muted">
+            {kindText} · {c.subject} · {dateFmts[lang].format(new Date(c.at))}
+          </p>
         </div>
       </Link>
-      <div className="absolute bottom-0 right-0">
+      <div className="absolute right-2 top-2">
         <button
           onClick={() => setMenu((v) => !v)}
           aria-label={t("더보기")}
           aria-expanded={menu}
-          className="grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-raised hover:text-foreground"
+          className="grid h-7 w-7 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-background hover:text-foreground focus:opacity-100 group-hover/card:opacity-100"
         >
           <Ellipsis size={16} strokeWidth={1.8} />
         </button>
         {menu && (
-          <div className="absolute bottom-9 right-0 z-10 w-36 rounded-xl border border-border-strong bg-surface p-1 shadow-xl">
+          <div className="absolute right-0 top-9 z-10 w-36 rounded-xl border border-border-strong bg-surface p-1 shadow-xl">
             <button
               onClick={() => {
                 setMenu(false);
@@ -318,7 +284,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         {user && cards.length > 0 && (
           <div className="mx-auto mb-7 flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-bold tracking-tight">{t("내 창작물")}</h2>
-            <div role="tablist" aria-label={t("보기 분류")} className="flex gap-0.5 rounded-full bg-surface p-1">
+            <div role="tablist" aria-label={t("보기 분류")} className="flex gap-1">
               {FILTERS.map((f) => (
                 <button
                   key={f.id}
@@ -326,8 +292,8 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
                   aria-selected={filter === f.id}
                   onClick={() => setFilter(f.id)}
                   className={[
-                    "h-8 rounded-full px-3.5 text-[13px] font-semibold transition-colors",
-                    filter === f.id ? "bg-background text-foreground shadow-sm" : "text-muted hover:text-foreground",
+                    "h-8 rounded-full px-3 text-[13px] font-medium transition-colors",
+                    filter === f.id ? "bg-surface text-foreground" : "text-muted hover:text-foreground",
                   ].join(" ")}
                 >
                   {t(f.label)}
@@ -343,7 +309,7 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
           </p>
         )}
 
-        <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-4 gap-y-7 sm:grid-cols-[repeat(auto-fill,minmax(230px,1fr))] sm:gap-x-5 sm:gap-y-8">
+        <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-4 gap-y-7 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] sm:gap-4">
           <NewCard onNew={onNew} />
           {visible.map((c) => (
             <Card key={`${c.kind}-${c.id}`} c={c} onDelete={handleDelete} />
