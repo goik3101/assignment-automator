@@ -5,12 +5,22 @@ import Footer from "@/components/Footer";
 import { LangProvider } from "@/lib/i18n";
 import { getLang } from "@/lib/i18n/server";
 import VisitBeacon from "@/components/VisitBeacon";
-import { SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_ALT_NAMES, SITE_URL, jsonLdString } from "@/lib/seo/site";
+import { CONTACT_EMAIL, SITE_DESCRIPTION, SITE_NAME as SITE_TITLE, SITE_ALT_NAMES, SITE_URL, SOCIAL_LINKS, jsonLdString } from "@/lib/seo/site";
 
 // 검색엔진·AI 검색이 사이트가 무엇인지 확실히 알도록 사이트와 운영 주체를 알린다.
 const SITE_JSON_LD = [
   { "@context": "https://schema.org", "@type": "WebSite", name: SITE_TITLE, alternateName: SITE_ALT_NAMES, url: SITE_URL, inLanguage: "ko", description: SITE_DESCRIPTION },
-  { "@context": "https://schema.org", "@type": "Organization", name: SITE_TITLE, url: SITE_URL, logo: `${SITE_URL}/icon.png` },
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: SITE_TITLE,
+    alternateName: SITE_ALT_NAMES,
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon.png`,
+    email: CONTACT_EMAIL,
+    contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: CONTACT_EMAIL, availableLanguage: ["Korean", "English"] },
+    ...(SOCIAL_LINKS.length > 0 && { sameAs: SOCIAL_LINKS }),
+  },
 ];
 
 export const metadata: Metadata = {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { FlaskConical } from "lucide-react";
 import OpenSettingsButton from "@/components/settings/OpenSettingsButton";
 import { getT } from "@/lib/i18n/server";
+import { CONTACT_EMAIL, SOCIAL_LINKS } from "@/lib/seo/site";
 
 export default async function Footer() {
   const { t } = await getT();
@@ -13,6 +14,12 @@ export default async function Footer() {
           <span>{t("베타 버전이에요. 이상한 결과를 발견하면 알려 주세요.")}</span>
         </OpenSettingsButton>
         <span className="flex items-center gap-3">
+          <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-foreground">{CONTACT_EMAIL}</a>
+          {SOCIAL_LINKS.map((href) => (
+            <a key={href} href={href} target="_blank" rel="noopener noreferrer me" className="hover:text-foreground">
+              {new URL(href).hostname.replace(/^www\./, "").split(".")[0]}
+            </a>
+          ))}
           <Link href="/guide" className="hover:text-foreground">수행평가 가이드</Link>
           <Link href="/terms" className="hover:text-foreground">이용약관</Link>
           <Link href="/privacy" className="hover:text-foreground">개인정보처리방침</Link>
