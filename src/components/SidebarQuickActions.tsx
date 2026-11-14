@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Languages, MessageSquareText, Moon, Settings, Sun, Trash2 } from "lucide-react";
+import { Gamepad2, Languages, MessageSquareText, Moon, Settings, Sun, Trash2 } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
 import { useLang } from "@/lib/i18n";
 import { LANGS } from "@/lib/i18n/core";
 
 const STORAGE_KEY = "studed-theme";
+// 공식 디스코드 서버 초대 링크(질문·피드백·소식).
+const DISCORD_URL = "https://discord.gg/CTsBVscrvJ";
 
 // 사이드바 하단 "도움말 및 도구": 휴지통 / 피드백·문의 / 테마 변경 / 화면 언어. 모두 메뉴 글줄과 같은 모양이다.
 // 테마 전환은 설정 창과 같은 저장 키·data-theme 속성을 쓰므로 어디서 바꿔도 동일하게 동작한다.
@@ -58,6 +60,10 @@ export default function SidebarQuickActions({
         <MessageSquareText {...iconProps} className="shrink-0 text-muted" />
         {!collapsed && t("피드백/문의")}
       </button>
+      <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className={item} title={t("Discord 서버")}>
+        <Gamepad2 {...iconProps} className="shrink-0 text-muted" />
+        {!collapsed && t("Discord 서버")}
+      </a>
       <button onClick={toggleTheme} className={item} title={t("테마 변경")}>
         <Sun {...iconProps} className="hidden shrink-0 text-muted dark:block" />
         <Moon {...iconProps} className="shrink-0 text-muted dark:hidden" />
