@@ -323,12 +323,12 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         {(empty || !user) && (
           <section aria-label={t("시작하기")} className="mx-auto mt-12 w-full max-w-[1200px] [&>*]:max-w-2xl">
             <h2 className="text-base font-bold">
-              {user ? t("아직 만든 결과물이 없어요") : t("과제 안내문을 올려 보세요")}
+              {user ? t("아직 만든 결과물이 없어요") : t("수행평가 안내문 사진만 올리면, AI가 원고와 출처까지 만들어 줘요")}
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-muted">
               {user
                 ? t("사진이나 텍스트로 안내문을 올리면 요구사항을 정리해 주고, AI가 만들거나 직접 쓰는 방식을 고를 수 있어요.")
-                : t("안내문 사진이나 주제만 있으면 돼요. 로그인하면 만든 결과물이 여기에 모여요.")}
+                : t("안내문 사진이나 주제만 있으면 돼요. 요약·퀴즈·가상 시험으로 공부까지 이어가고, 로그인하면 만든 결과물이 여기에 모여요.")}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {STARTERS.map(({ icon: Icon, label, topic }) => (

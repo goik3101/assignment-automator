@@ -39,11 +39,11 @@ export const home: Record<string, string> = {
   "조건에 맞는 결과물이 없어요.": "No creations match.",
   "시작하기": "Get started",
   "아직 만든 결과물이 없어요": "You haven't made anything yet",
-  "과제 안내문을 올려 보세요": "Upload an assignment brief",
+  "수행평가 안내문 사진만 올리면, AI가 원고와 출처까지 만들어 줘요": "Upload a photo of your assignment brief and AI writes the draft, sources included",
   "사진이나 텍스트로 안내문을 올리면 요구사항을 정리해 주고, AI가 만들거나 직접 쓰는 방식을 고를 수 있어요.":
     "Upload the brief as a photo or text and we'll sum up the requirements. Then choose to have AI make it or write it yourself.",
-  "안내문 사진이나 주제만 있으면 돼요. 로그인하면 만든 결과물이 여기에 모여요.":
-    "All you need is a photo of the brief or a topic. Sign in and everything you make will be collected here.",
+  "안내문 사진이나 주제만 있으면 돼요. 요약·퀴즈·가상 시험으로 공부까지 이어가고, 로그인하면 만든 결과물이 여기에 모여요.":
+    "All you need is a photo of the brief or a topic. Keep studying with summaries, quizzes and mock exams, and sign in to keep everything you make in one place.",
   "사진으로 시작": "Start with a photo",
 
   // 홈 채팅 / ChatView / useChat
