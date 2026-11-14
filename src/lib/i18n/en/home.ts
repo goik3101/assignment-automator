@@ -38,13 +38,12 @@ export const home: Record<string, string> = {
   "보기 분류": "Filter",
   "조건에 맞는 결과물이 없어요.": "No creations match.",
   "시작하기": "Get started",
+  "눌러서 시작": "Tap to start",
+  "독서": "Reading",
+  "과학": "Science",
+  "영어": "English",
+  "진로": "Career",
   "아직 만든 결과물이 없어요": "You haven't made anything yet",
-  "수행평가 안내문 사진만 올리면, AI가 원고와 출처까지 만들어 줘요": "Upload a photo of your assignment brief and AI writes the draft, sources included",
-  "사진이나 텍스트로 안내문을 올리면 요구사항을 정리해 주고, AI가 만들거나 직접 쓰는 방식을 고를 수 있어요.":
-    "Upload the brief as a photo or text and we'll sum up the requirements. Then choose to have AI make it or write it yourself.",
-  "안내문 사진이나 주제만 있으면 돼요. 요약·퀴즈·가상 시험으로 공부까지 이어가고, 로그인하면 만든 결과물이 여기에 모여요.":
-    "All you need is a photo of the brief or a topic. Keep studying with summaries, quizzes and mock exams, and sign in to keep everything you make in one place.",
-  "사진으로 시작": "Start with a photo",
 
   // 홈 채팅 / ChatView / useChat
   "새 안내문으로 질문": "Ask about a new brief",

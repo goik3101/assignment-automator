@@ -36,10 +36,10 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 const STARTERS = [
-  { icon: BookOpen, label: "독서 감상문", topic: "책 한 권을 읽고 느낀 점을 정리하는 독서 감상문" },
-  { icon: FileText, label: "과학 탐구 보고서", topic: "실험을 설계하고 결과를 분석하는 과학 탐구 보고서" },
-  { icon: Type, label: "영어 발표", topic: "관심 주제로 3분 동안 발표하는 영어 스피치 대본" },
-  { icon: Wrench, label: "진로 발표 PPT", topic: "희망 직업을 탐색하고 발표하는 진로 발표 PPT" },
+  { icon: BookOpen, cover: "독서", label: "독서 감상문", topic: "책 한 권을 읽고 느낀 점을 정리하는 독서 감상문" },
+  { icon: FileText, cover: "과학", label: "과학 탐구 보고서", topic: "실험을 설계하고 결과를 분석하는 과학 탐구 보고서" },
+  { icon: Type, cover: "영어", label: "영어 발표", topic: "관심 주제로 3분 동안 발표하는 영어 스피치 대본" },
+  { icon: Wrench, cover: "진로", label: "진로 발표 PPT", topic: "희망 직업을 탐색하고 발표하는 진로 발표 PPT" },
 ];
 
 export interface NewPrefill {
@@ -101,6 +101,27 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
         </ul>
       )}
     </div>
+  );
+}
+
+/** 아직 만든 결과물이 없을 때(비로그인 포함) 격자에 놓이는 시작 카드 — 결과물 카드와 같은 모양이고, 누르면 그 주제로 새 창작물 창이 열린다. */
+function StarterCard({ starter, onNew }: { starter: (typeof STARTERS)[number]; onNew: (prefill?: NewPrefill) => void }) {
+  const t = useT();
+  const Icon = starter.icon;
+  return (
+    <button
+      onClick={() => onNew({ topic: starter.topic })}
+      className="block w-full overflow-hidden rounded-2xl bg-surface text-left transition-colors hover:bg-raised"
+    >
+      <div className="flex h-[84px] flex-col justify-between bg-raised/70 p-3">
+        <Icon size={16} strokeWidth={1.7} className="text-muted" aria-hidden />
+        <span className="truncate text-[20px] font-bold leading-none tracking-tight text-foreground/80">{t(starter.cover)}</span>
+      </div>
+      <div className="p-3">
+        <p className="truncate text-[14px] font-semibold">{t(starter.label)}</p>
+        <p className="mt-0.5 truncate text-[12px] text-muted">{t("눌러서 시작")}</p>
+      </div>
+    </button>
   );
 }
 
@@ -281,6 +302,12 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
           <HomeChat onNew={onNew} />
         </section>
 
+        {(empty || !user) && (
+          <div className="mx-auto mb-7 w-full max-w-[1200px]">
+            <h2 className="text-lg font-bold tracking-tight">{t("시작하기")}</h2>
+          </div>
+        )}
+
         {user && cards.length > 0 && (
           <div className="mx-auto mb-7 flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-bold tracking-tight">{t("내 창작물")}</h2>
@@ -309,48 +336,24 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
           </p>
         )}
 
-        <div className="mx-auto grid w-full max-w-[1200px] grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-4 gap-y-7 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] sm:gap-4">
+        {/* 시작 화면(카드 5장)은 한 줄에 다 들어가도록 카드를 조금 좁힌다 */}
+        <div
+          className={[
+            "mx-auto grid w-full max-w-[1200px] grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-4 gap-y-7 sm:gap-4",
+            empty || !user ? "sm:grid-cols-[repeat(auto-fill,minmax(190px,1fr))]" : "sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]",
+          ].join(" ")}
+        >
           <NewCard onNew={onNew} />
           {visible.map((c) => (
             <Card key={`${c.kind}-${c.id}`} c={c} onDelete={handleDelete} />
           ))}
+          {(empty || !user) && STARTERS.map((st) => <StarterCard key={st.label} starter={st} onNew={onNew} />)}
         </div>
 
         {user && cards.length > 0 && visible.length === 0 && (
           <p className="mx-auto mt-10 w-full max-w-[1200px] text-sm text-muted">{t("조건에 맞는 결과물이 없어요.")}</p>
         )}
 
-        {(empty || !user) && (
-          <section aria-label={t("시작하기")} className="mx-auto mt-12 w-full max-w-[1200px] [&>*]:max-w-2xl">
-            <h2 className="text-base font-bold">
-              {user ? t("아직 만든 결과물이 없어요") : t("수행평가 안내문 사진만 올리면, AI가 원고와 출처까지 만들어 줘요")}
-            </h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-muted">
-              {user
-                ? t("사진이나 텍스트로 안내문을 올리면 요구사항을 정리해 주고, AI가 만들거나 직접 쓰는 방식을 고를 수 있어요.")
-                : t("안내문 사진이나 주제만 있으면 돼요. 요약·퀴즈·가상 시험으로 공부까지 이어가고, 로그인하면 만든 결과물이 여기에 모여요.")}
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              {STARTERS.map(({ icon: Icon, label, topic }) => (
-                <button
-                  key={label}
-                  onClick={() => onNew({ topic })}
-                  className="inline-flex h-10 items-center gap-2 rounded-full bg-surface px-5 text-[13px] font-semibold transition-colors hover:bg-raised"
-                >
-                  <Icon size={15} strokeWidth={1.7} className="text-muted" />
-                  {t(label)}
-                </button>
-              ))}
-              <button
-                onClick={() => onNew()}
-                className="inline-flex h-10 items-center gap-2 rounded-xl px-3 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
-              >
-                <ImagePlus size={15} strokeWidth={1.7} />
-                {t("사진으로 시작")}
-              </button>
-            </div>
-          </section>
-        )}
       </div>
 
     </div>
