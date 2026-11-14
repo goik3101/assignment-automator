@@ -87,3 +87,56 @@ test("단계 설명에 외부 제작 신호가 있으면 제목과 무관하게 
   const el = { type: "external_production", label: "홍보물", description: "캔바로 포스터를 제작한다." };
   assert.equal(force(el, "우리 반 캠페인").type, "external_production");
 });
+
+import { ensureQuestionSteps, questionGroupsFromMaterials } from "./analysis-normalize.ts";
+
+const QUIZ = [
+  "유전체 분석 기술 의견 자료: 유전체 분석 기술이란 …",
+  "탐구 확인 문제 1: 옳은 것은 ○, 옳지 않은 것은 X로 표시하시오. (1) … (2) …",
+  "탐구 확인 문제 2: 옳은 것만 보기에서 고르시오. 보기 ㄱ. … ㄴ. …",
+];
+
+test("문항 자료는 번호를 뗀 이름으로 한 묶음이 된다(지문 자료는 제외)", () => {
+  assert.deepEqual(questionGroupsFromMaterials(QUIZ), ["탐구 확인 문제"]);
+  assert.deepEqual(questionGroupsFromMaterials(["사례1(뉴스): 청년 근로자들의 …", "통계표: 12% 40%"]), []);
+});
+test("문항에 답할 단계가 없으면 글 단계를 붙이고, 있으면 건드리지 않는다", () => {
+  const els = [{ type: "text_submission", label: "입장 정하기", description: "입장을 정한다" }];
+  const r = ensureQuestionSteps(els, QUIZ);
+  assert.deepEqual(r.added, ["탐구 확인 문제"]);
+  assert.equal(r.steps.length, 2);
+  assert.equal(r.steps[1].type, "text_submission");
+  const had = [...els, { type: "text_submission", label: "탐구 확인 문제", description: "○×로 답한다" }];
+  assert.equal(ensureQuestionSteps(had, QUIZ).added.length, 0);
+  // 설명에만 이름이 있어도 이미 다루는 것으로 본다(띄어쓰기 무시)
+  const inDesc = [{ type: "text_submission", label: "마무리", description: "탐구확인문제에 답한다" }];
+  assert.equal(ensureQuestionSteps(inDesc, QUIZ).added.length, 0);
+});
+
+import { dropNonSubmissionActivities, dropNote, isOptionalActivity, isTranscriptionStep } from "./analysis-normalize.ts";
+
+test("희망자만 하는 활동은 필수 결과물이 아니다(정보-01 발표 자료 60초 사례) — '희망 진로'는 해당 없음", () => {
+  assert.equal(isOptionalActivity({ label: "발표 자료", description: "희망자만 발표한다. 슬라이드 5~10장" }), true);
+  // 설명엔 없어도 요구사항 한 줄이 그 단계 이름("발표")과 함께 "희망자만"이라고 하면 선택 활동이다(실제 정보-01 분석)
+  assert.equal(isOptionalActivity({ label: "발표 자료", description: "슬라이드 5~10장" }, ["발표는 희망자만 참여하며 팀당 5분"]), true);
+  // 요구사항의 "희망자만"이 다른 단계 얘기면 보지 않는다
+  assert.equal(isOptionalActivity({ label: "탐구 보고서", description: "보고서를 쓴다" }, ["발표는 희망자만 참여하며 팀당 5분"]), false);
+  assert.equal(isOptionalActivity({ label: "발표", description: "발표 준비" }, ["발표는 희망자만 참여한다"]), true);
+  assert.equal(isOptionalActivity({ label: "진로 탐색 보고서", description: "희망 진로를 조사한다" }), false);
+  assert.equal(isOptionalActivity({ label: "탐구 보고서", description: "쉬운 언어로 쓴다" }), false);
+});
+test("앞 단계 글을 옮겨 입력하는 단계는 새 결과물이 아니다(과학-08 PPT 65초 사례)", () => {
+  assert.equal(isTranscriptionStep({ label: "3차시 PPT 슬라이드", description: "작성한 포트폴리오를 토대로 PPT슬라이드에 입력" }), true);
+  assert.equal(isTranscriptionStep({ label: "3차시 입력", description: "작성한 포트폴리오를 토대로 슈퍼스쿨에 입력" }), true);
+  assert.equal(isTranscriptionStep({ label: "발표 PPT", description: "슬라이드 10장을 새로 만든다" }), false);
+});
+test("뺄 단계가 있으면 이유를 남기고, 그것밖에 없으면 그대로 둔다", () => {
+  const els = [
+    { label: "탐구 보고서", description: "쉬운 언어로 보고서를 쓴다" },
+    { label: "발표 자료", description: "희망자만 발표한다." },
+  ];
+  const r = dropNonSubmissionActivities(els, []);
+  assert.deepEqual(r.kept.map((e) => e.label), ["탐구 보고서"]);
+  assert.match(dropNote(r.dropped[0]), /선택 활동\(희망자만\)/);
+  assert.equal(dropNonSubmissionActivities([els[1]], []).kept.length, 1);
+});

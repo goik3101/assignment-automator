@@ -4,7 +4,7 @@ import { normalizeSubject } from "./normalize-subject";
 import { recoverFormFields } from "@/lib/essay/notice-form";
 import { noticeFormOn } from "@/lib/essay/quality-flags";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
-import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
+import { dropInterrogativeItems, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import { lengthFromAnalyzeOn, sanitizeLengthEstimate } from "@/lib/essay/length-estimate";
@@ -159,6 +159,10 @@ export const ANALYZE_SCHEMA: Schema = {
           items: { type: Type.STRING },
           description:
             "안내문에 **학생이 읽고 쓰라고 실어 준 자료**가 있으면 그 내용을 그대로 옮긴다 — 신문 기사, 지문, 제시문, 통계표, 그래프 설명, 대화문 등. " +
+            "**학생이 답을 고르거나 ○/×로 표시하는 문항(객관식·참거짓·보기 ㄱㄴㄷ·①②③)은 문제 문장과 보기 전체를 문항 번호와 함께 그대로 옮긴다**" +
+            "(예: \"탐구 확인 문제 1-(1): 과학 기술을 …이다. / 1-(2): … / 2번 보기: ㄱ. … ㄴ. … ㄷ. …\"). " +
+            "문항 문장을 옮기지 않으면 생성 단계가 없는 문항을 지어내 답하게 된다 — **정답은 적지 말고** 문항 문장만 옮길 것. " +
+            "(이렇게 옮겨도 그 문항에 **답하는 단계는 task_elements에서 빼지 말 것** — 자료로 옮기는 것과 답할 단계를 두는 것은 둘 다 해야 한다.) " +
             "자료마다 한 칸으로 넣고 앞에 그 자료의 이름을 붙인다(예: \"사례1(《뉴스케이프》 2026.04.09): 청년 근로자들의 …\"). " +
             "숫자·날짜·출처 표기는 **빠짐없이 그대로** 옮길 것 — 학생이 그 숫자로 표를 채운다. " +
             "**이것은 과제 설명이 아니라 과제의 재료다.** 할 일(요구사항)과 섞지 말 것. " +
@@ -210,6 +214,10 @@ const BASE_SYSTEM_INSTRUCTION = `
   안내문에 적힌 차시 수만큼 각각 별도의 task_element로 나열할 것. 대부분의
   과제는 1~2개지만, 그건 결과일 뿐 목표가 아니다 — 안내문에 몇 개가 적혀
   있는지가 유일한 기준이다.
+- **단, 학기 전체 평가 영역을 표로 나열한 공지문은 다르다.** "수행평가 영역·반영 비율·시기" 표에 영역이 여럿(탐구주제선정·인물인터뷰·독서·수업과정평가 등)
+  나열되어 있어도 **시행 방법·양식·채점 기준이 구체적으로 안내된 영역만 이번 과제**다. 나머지 영역은 "5월 중 실시 예정"·"학기 말까지"처럼
+  일정만 있고 방법이 없다 — 그것들은 task_elements로 만들지 말고 requirements에 "다른 영역(이번 과제 아님): …" 한 줄로만 적을 것.
+  어느 영역이 이번 과제인지 알 수 없으면 가장 구체적으로 안내된 하나를 고른다.
 - **하나의 글 안에 들어갈 "항목/구성 요소" 목록을 별개의 task_element로 쪼개지 말 것 — 매우 중요.**
   판단 기준: 그 항목들이 학생 입장에서 서로 독립적으로 완성되는 별개의 결과물(예: 신문의
   기사 5편 각각, 발표 자료와 보고서처럼 형식 자체가 다른 산출물)이면 각각 별도의
@@ -463,10 +471,13 @@ export async function analyzeAssignment(
   );
   // 수업 중 작성하는 기록지는 만들 결과물에서 빼고, 왜 없는지 학생이 볼 수 있게 요구사항에 한 줄 남긴다.
   const { kept: keptSteps, dropped: droppedSheets } = formRequirementsOn() ? dropNonSubmissionActivities(distributed, [...parsed.core_task_info.requirements, parsed.core_task_info.writing_guide ?? "", parsed.administrative_info?.other_notes ?? ""]) : { kept: distributed, dropped: [] };
+  // 안내문에 실린 문항(객관식·○×)에 답할 단계가 빠졌으면 붙인다(analysis-normalize.ts ensureQuestionSteps).
+  const { steps: stepsWithQuestions, added: addedQuestionSteps } = ensureQuestionSteps(keptSteps, parsed.core_task_info.provided_materials);
+  if (addedQuestionSteps.length > 0) console.warn(`[analyzeAssignment] 문항 자료에 답할 단계가 없어 추가: ${addedQuestionSteps.join(", ")}`);
   // 글 단계가 0개로 끝나면 학생은 아무 글도 못 받는다 — 쓸 거리가 있으면 하나는 글 단계로 올린다.
-  const task_elements = ensureSomeTextStep(keptSteps);
-  if (task_elements.some((e, i) => e.type !== keptSteps[i]?.type))
-    console.warn(`[analyzeAssignment] 글 단계가 하나도 없어 "${task_elements.find((e, i) => e.type !== keptSteps[i]?.type)?.label}"을(를) 글 단계로 올림`);
+  const task_elements = ensureSomeTextStep(stepsWithQuestions);
+  if (task_elements.some((e, i) => e.type !== stepsWithQuestions[i]?.type))
+    console.warn(`[analyzeAssignment] 글 단계가 하나도 없어 "${task_elements.find((e, i) => e.type !== stepsWithQuestions[i]?.type)?.label}"을(를) 글 단계로 올림`);
   if (droppedSheets.length > 0) console.warn(`[analyzeAssignment] 수업 중 작성 기록지·대본 없는 발표는 만들 결과물에서 제외: ${droppedSheets.map((d) => d.label).join(", ")}`);
 
   // 최종 안전장치: 프롬프트로 "빈 문자열 금지"를 지시해도(위 스키마 설명 참고)

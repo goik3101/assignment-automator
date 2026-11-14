@@ -100,3 +100,10 @@ test("인쇄가 과제 주제일 수 있다 — 단독 '인쇄'를 날조로 잡
   assert.equal(isOwnActivitySentence("기사 제목과 날짜가 보이게 출력했다."), true);
   assert.equal(isOwnActivitySentence("지도를 인쇄해 오려 붙였다."), true);
 });
+
+test("사진·도구를 준비했다고 쓴 문장도 학생 행동을 지어낸 것이다(준비한다·준비할 것은 계획이라 제외)", () => {
+  assert.equal(isOwnActivitySentence("논술용 사진과 제작용 사진은 각 유물마다 한 장씩 총 4장을 준비했다."), true);
+  assert.equal(isOwnActivitySentence("채색 도구는 가정에서 준비했다."), true);
+  assert.equal(isOwnActivitySentence("사진은 학생이 가정에서 출력해 준비한다."), false);
+  assert.equal(isOwnActivitySentence("준비물은 사진 두 장이다."), false);
+});

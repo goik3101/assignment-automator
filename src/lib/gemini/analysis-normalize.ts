@@ -144,17 +144,39 @@ export function isCollectedArtifact(el: { label: string; description: string; re
   return (ARTIFACT_LABEL.test(el.label) || ARTIFACT_DESC.test(text)) && ARTIFACT_DESC.test(text) && !WRITE_DESC.test(el.description);
 }
 
+// 희망자만 하는 활동("발표는 희망자만", "원하는 학생만 제출")은 **필수 결과물이 아니다** — 만들면 대부분의 학생에게는 쓸모없는 호출이고,
+// 실측(2026-11-14, 거대 안내문 점검 정보-01): "발표(희망자만)"의 발표 자료 계획까지 생성해 한 과제가 60.3초가 됐다(글 보고서만이면 약 36초).
+// "희망 진로"처럼 다른 뜻의 '희망'은 보지 않도록 사람을 가리키는 꼴(희망자·희망하는 학생·원하는 학생)만 본다.
+const OPTIONAL_MARK = /희망자(?:만|에\s*한|는)|희망하는\s*(?:학생|사람)|원하는\s*학생|희망\s*시|자율\s*참여|선택\s*(?:과제|사항|활동)/;
+
+export function isOptionalActivity(el: { label: string; description: string }, context: string[] = []): boolean {
+  if (OPTIONAL_MARK.test(`${el.label} ${el.description}`)) return true;
+  // 설명에는 없고 요구사항 한 줄에만 "발표는 희망자만"이 있는 경우 — 그 단계 이름이 문장에 함께 있을 때만 본다.
+  const key = el.label.replace(/\s+/g, "").replace(/자료$/, "");
+  return key.length >= 2 && context.some((c) => OPTIONAL_MARK.test(c) && c.replace(/\s+/g, "").includes(key));
+}
+
+// 앞 단계에서 쓴 글을 **그대로 옮겨 입력**하는 단계("작성한 포트폴리오를 토대로 슈퍼스쿨에 입력")는 새로 만들 결과물이 아니다.
+// 실측(2026-11-14, 과학-08): 분석이 이 단계를 "3차시 PPT 슬라이드"로 읽어 PPT 제작 계획을 만들었다(65.1초·$0.141 — 이번 점검에서 가장 비싼 생성).
+const TRANSCRIBE_STEP = /(?:작성한|쓴|앞에서\s*쓴)[^.\n]{0,30}(?:토대로|바탕으로|그대로)[^.\n]{0,30}(?:입력|옮겨\s*적|옮겨\s*쓰|옮겨\s*입력)/;
+
+export function isTranscriptionStep(el: { label: string; description: string }): boolean {
+  return TRANSCRIBE_STEP.test(`${el.label} ${el.description}`);
+}
+
 /** 만들 결과물에서 뺀 이유를 학생이 볼 수 있게 요구사항에 남기는 한 줄. */
 export function dropNote(el: { label: string; description: string; required_items?: string[] }): string {
   if (isObservationSheet(el)) return `수업 중 직접 작성: ${el.label} (AI가 만들지 않음)`;
   if (isCollectedArtifact(el)) return `직접 준비: ${el.label} (학생이 실제 자료를 찾아 붙이는 활동 — AI가 만들지 않음)`;
   if (isListeningTest(el)) return `수업 중 직접 수행: ${el.label} (듣고 파악하는 평가 — AI가 만들지 않음)`;
+  if (isTranscriptionStep(el)) return `직접 수행: ${el.label} (앞 단계에서 쓴 글을 옮겨 입력하는 활동 — AI가 따로 만들지 않음)`;
+  if (isOptionalActivity(el)) return `선택 활동(희망자만): ${el.label} (필수 결과물이 아니라 AI가 만들지 않음)`;
   return `직접 수행: ${el.label} (대본 없이 말하기 — AI가 만들지 않음)`;
 }
 
 /** 수업 중 작성하는 기록지, 대본 없는 발표, 학생이 실물을 구해 붙이는 단계를 만들 결과물에서 뺀다. 그것밖에 없는 과제면 그대로 둔다. */
 export function dropNonSubmissionActivities<T extends { label: string; description: string; required_items?: string[] }>(els: T[], context: string[] = []): { kept: T[]; dropped: T[] } {
-  const skip = (e: T) => isObservationSheet(e) || isScriptlessSpeech(e, context) || isCollectedArtifact(e) || isListeningTest(e);
+  const skip = (e: T) => isObservationSheet(e) || isScriptlessSpeech(e, context) || isCollectedArtifact(e) || isListeningTest(e) || isTranscriptionStep(e) || isOptionalActivity(e, context);
   const kept = els.filter((e) => !skip(e));
   if (kept.length === 0) return { kept: els, dropped: [] };
   return { kept, dropped: els.filter(skip) };
@@ -189,4 +211,50 @@ export function dropInterrogativeItems<T extends { label: string; required_items
   if (kept.length >= 2) return { ...el, required_items: kept };
   const { required_items: _dropped, ...rest } = el;
   return rest as T;
+}
+
+/**
+ * 안내문에 실린 **문항**(객관식·○×·보기 고르기)에 답하는 글 단계가 분석에서 빠졌으면 하나 붙인다.
+ *
+ * 왜(2026-11-14, 거대 안내문 점검 사회-05): 문항 원문을 provided_materials로 옮기게 하자(analyze 스키마 설명),
+ * 분석이 "자료로 옮겼으니 단계는 필요 없다"고 보고 확인 문제 단계를 **같은 안내문 3회 중 1회** 뺐다.
+ * 프롬프트 문구로는 못 잡았다(문구를 보강해도 1/3) — 코드가 보정한다. 문항을 자료로만 갖고 답할 단계가 없으면
+ * 학생은 그 문항의 답을 받지 못한다.
+ * 자료 이름은 "<이름>: <본문>"이고, 이름에 문제·문항·퀴즈·확인이 들어 있고 본문이 "고르시오·표시하시오…"로 시킬 때만 본다.
+ */
+const QUESTION_MATERIAL_LABEL = /문제|문항|퀴즈|물음|확인/;
+const QUESTION_MATERIAL_BODY = /고르시오|표시하시오|쓰시오|구하시오|답하시오|서술하시오|옳은\s*것|옳지\s*않은|○|보기/;
+const stripSpaces = (s: string) => s.replace(/\s+/g, "");
+
+export function questionGroupsFromMaterials(materials: string[] | undefined): string[] {
+  const groups: string[] = [];
+  for (const m of materials ?? []) {
+    const idx = m.indexOf(":");
+    if (idx < 2 || idx > 30) continue;
+    const label = m.slice(0, idx).trim();
+    const body = m.slice(idx + 1);
+    if (!QUESTION_MATERIAL_LABEL.test(label) || !QUESTION_MATERIAL_BODY.test(body)) continue;
+    const group = label.replace(/\s*\d+\s*(?:번)?\s*$/, "").trim(); // "탐구 확인 문제 1" → "탐구 확인 문제"
+    if (group && !groups.includes(group)) groups.push(group);
+  }
+  return groups;
+}
+
+export function ensureQuestionSteps<T extends { type: string; label: string; description: string; required_items?: string[] }>(
+  els: T[],
+  materials: string[] | undefined
+): { steps: T[]; added: string[] } {
+  const added: string[] = [];
+  const out = [...els];
+  for (const group of questionGroupsFromMaterials(materials)) {
+    const key = stripSpaces(group);
+    if (out.some((e) => stripSpaces(`${e.label} ${e.description}`).includes(key))) continue;
+    out.push({
+      type: "text_submission",
+      label: group,
+      description: `안내문에 실린 ${group}의 문항(문항 원문은 자료에 있다)에 문항마다 답하고 그 이유를 짧게 쓴다.`,
+    } as T);
+    added.push(group);
+  }
+  return { steps: out, added };
 }

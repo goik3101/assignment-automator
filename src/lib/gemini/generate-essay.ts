@@ -60,6 +60,8 @@ import { mergeGuideFields } from "@/lib/essay/guide-fields";
 import { bookForm, bookFormBlock, bookThreadBlock, isReadingActivity } from "@/lib/essay/book-form";
 import { residualsAfterRepair } from "@/lib/essay/repair-check";
 import { blankPastedMetadata, normalizeAttachmentSlot } from "@/lib/essay/paste-slot";
+import { blankUnverifiedReferenceBook } from "@/lib/essay/reference-slot";
+import { restoreHeadingBreaks } from "@/lib/essay/heading-breaks";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { adminLeakOn, dedupeOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
@@ -3462,6 +3464,14 @@ export async function generateEssay(
             }
           }
         }
+        // 참고 도서 칸(제목·저자)에 학생 지침이나 검색 출처에서 확인되지 않은 책이 들어갔으면 빈칸으로 되돌린다 — 없는 책을 참고했다고 적어 내게 되므로(reference-slot.ts).
+        {
+          const ref = blankUnverifiedReferenceBook(content, { instructions: input.instructions, sourceTitles: (attempt.sources ?? []).map((src) => src.title) });
+          if (ref.blanked.length > 0) {
+            console.warn(`[generateEssay] 확인되지 않은 참고 도서 ${JSON.stringify(ref.blanked)} 를 빈칸으로 되돌림 label="${s.label}"`);
+            content = ref.content;
+          }
+        }
         // 학생이 실물을 붙이는 칸의 날짜·신문사를 지어냈으면 빈칸으로 되돌린다 — 그대로 내면 거짓 기록이다(paste-slot.ts).
         // 그림으로 내는 칸(만평·광고·삽화)에는 각주를 달 수 없다 — 그림에 출처를 붙일 수는 없고,
         // 각주가 붙으면 "조사한 글"처럼 보인다. 역할 지시에 이미 적혀 있지만 모델이 지키지 않는다(picture-panel.ts).
@@ -4819,8 +4829,10 @@ ${others || "(없음)"}
 [이 단계 원고]
 ${sec.content}`.trim(),
       });
-      const next = res.text.trim();
-      if (!next) return sec;
+      const rawNext = res.text.trim();
+      if (!rawNext) return sec;
+      // 보완이 소제목 줄바꿈을 지우고 돌려주는 일이 있다(수학-01) — 줄 처음으로 되돌린다(heading-breaks.ts).
+      const next = restoreHeadingBreaks(sec.content, rawNext).content;
       const nextMarkers = markersOf(next);
       if (nextMarkers.some((m) => !allMarkers.has(m))) return sec; // 없는 각주 번호를 만들었다
       const origMarkers = markersOf(sec.content);
