@@ -74,6 +74,7 @@ export const results: Record<string, string> = {
   "가상 시험": "Mock exam",
   "빈 종이에 써 보기": "Write it on a blank sheet",
   "공부 도구": "Study tools",
+  "결과물": "Result",
   "만들기": "Create",
   "AI 채팅": "AI chat",
   "빈칸": "blank",

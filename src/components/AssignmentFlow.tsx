@@ -14,6 +14,7 @@ import type {
 } from "@/types/task";
 import { EssayPanel, PlanPanel } from "./ResultPanel";
 import StudyRail from "./study/StudyRail";
+import { StudyTabs, StudyToolsProvider } from "./study/StudyTools";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useT } from "@/lib/i18n";
 import HomeDashboard, { type NewPrefill } from "./home/HomeDashboard";
@@ -317,6 +318,7 @@ export default function AssignmentFlow() {
   const submissionId = items.flatMap((i) => (i.status === "done" && i.result.submissionId ? [i.result.submissionId] : []))[0];
 
   return (
+    <StudyToolsProvider>
     <div className="mx-auto w-full max-w-[1200px] px-6 py-8 md:px-10 md:py-10">
       <header className="mb-8">
         <Breadcrumb title={info?.topic ?? t("새 창작물")} onHome={() => setStep("home")} />
@@ -329,6 +331,8 @@ export default function AssignmentFlow() {
           </p>
         )}
       </header>
+
+      <StudyTabs locked={!submissionId} />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
       <div className="min-w-0 space-y-6">
@@ -414,5 +418,6 @@ export default function AssignmentFlow() {
 
       {modal}
     </div>
+    </StudyToolsProvider>
   );
 }

@@ -1,18 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import {
-  ChevronRight,
-  CircleHelp,
-  GraduationCap,
-  Layers,
-  MessageCircle,
-  NotebookText,
-  PanelRightClose,
-  PanelRightOpen,
-  SquarePen,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronRight, MessageCircle, PanelRightClose, PanelRightOpen, SquarePen } from "lucide-react";
 import ChatView from "@/components/chat/ChatView";
 import { useChat } from "@/components/chat/useChat";
 import SummaryModal from "./SummaryModal";
@@ -20,17 +9,10 @@ import FlashcardsModal from "./FlashcardsModal";
 import QuizModal from "./QuizModal";
 import ExamModal from "./ExamModal";
 import { listSavedStudy, type StudyRef } from "./useStudyData";
+import { STUDY_TOOLS as TOOLS, useSharedStudyTool, type ActiveStudyTool, type StudyToolId } from "./StudyTools";
 import { useLang, useT } from "@/lib/i18n";
 
-type Tool = "summary" | "flashcards" | "quiz" | "exam";
-
-const TOOLS: { id: Tool; label: string; hint: string; icon: LucideIcon }[] = [
-  // 설명에 **무엇이 들어 있는지**를 적는다 — 개념이 들어가는 도구는 "개념"이라고 밝힌다(2026-11-13).
-  { id: "summary", label: "요약", hint: "핵심 + 개념 정리", icon: NotebookText },
-  { id: "flashcards", label: "플래시카드", hint: "개념 카드 뒤집기", icon: Layers },
-  { id: "quiz", label: "퀴즈", hint: "빈칸·단답 퀴즈", icon: CircleHelp },
-  { id: "exam", label: "가상 시험", hint: "빈 종이에 써 보기", icon: GraduationCap },
-];
+type Tool = StudyToolId;
 
 const COLLAPSED_KEY = "studed-ui:study-rail-collapsed";
 
@@ -57,7 +39,11 @@ export default function StudyRail({
 }) {
   const t = useT();
   const { lang } = useLang();
-  const [tool, setTool] = useState<{ id: Tool; reuse: boolean } | null>(null);
+  // 위쪽 탭(StudyTabs)이 같은 화면에 있으면 "지금 열린 도구"를 그것과 함께 쓴다.
+  const shared = useSharedStudyTool();
+  const [localTool, setLocalTool] = useState<ActiveStudyTool | null>(null);
+  const tool = shared ? shared.tool : localTool;
+  const setTool = shared ? shared.setTool : setLocalTool;
   const [collapsed, setCollapsed] = useState(false);
   const [saved, setSaved] = useState<{ tool: string; at: number }[]>([]);
   const [pinTop, setPinTop] = useState<number | null>(null);
