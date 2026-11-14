@@ -30,6 +30,7 @@ export const shell: Record<string, string> = {
   "관리자": "Admin",
   "사용자": "User",
   "로그아웃": "Sign out",
+  "로그인": "Sign in",
   "{email}로 로그인 링크를 보냈어요. 메일함을 확인해 주세요.": "We sent a sign-in link to {email}. Check your inbox.",
   "로그인하면 작업이 저장돼요": "Sign in to save your work",
   "이메일 주소": "Email address",

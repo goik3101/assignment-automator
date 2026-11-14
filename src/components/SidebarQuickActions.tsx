@@ -64,11 +64,13 @@ export default function SidebarQuickActions({
         <Gamepad2 {...iconProps} className="shrink-0 text-muted" />
         {!collapsed && t("Discord 서버")}
       </a>
-      <button onClick={toggleTheme} className={item} title={t("테마 변경")}>
-        <Sun {...iconProps} className="hidden shrink-0 text-muted dark:block" />
-        <Moon {...iconProps} className="shrink-0 text-muted dark:hidden" />
-        {!collapsed && t("테마 변경")}
-      </button>
+      {/* 펼친 사이드바에서는 계정 메뉴(AuthBar)의 "다크 모드" 스위치로 바꾼다 — 계정 칸이 없는 접힌 상태에서만 여기 둔다 */}
+      {collapsed && (
+        <button onClick={toggleTheme} className={item} title={t("테마 변경")}>
+          <Sun {...iconProps} className="hidden shrink-0 text-muted dark:block" />
+          <Moon {...iconProps} className="shrink-0 text-muted dark:hidden" />
+        </button>
+      )}
       <button onClick={nextLang} className={item} title={t("화면 언어")}>
         <Languages {...iconProps} className="shrink-0 text-muted" />
         {!collapsed && (
