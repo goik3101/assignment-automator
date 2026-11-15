@@ -85,6 +85,13 @@ export function dropEmptyNumberedHeading(content: string): { content: string; dr
     if (numbered(lines[i])) {
       let j = i + 1;
       while (j < lines.length && !lines[j].trim()) j++;
+      // 자리표시 번호 소제목("문항 1"·"컷 2")은 뒤에 어떤 소제목이 와도, 또는 글 끝이어도 내용이 없으면 지운다(2026-11-16 가정-03: "### 문항 1" 바로 아래 "### 의사소통의 종류").
+      const placeholder = /^#{2,4}\s+(?:칸|컷|장면|문항|문제)\s*\d+\s*$/.test(lines[i]);
+      const nextIsHeading = j < lines.length && /^#{2,4}\s/.test(lines[j]);
+      if (placeholder && (nextIsHeading || j >= lines.length)) {
+        dropped.push(lines[i].replace(/^#+\s*/, ""));
+        continue;
+      }
       if (j < lines.length && numbered(lines[j]) && lines[j].match(/^#+/)![0] === lines[i].match(/^#+/)![0]) {
         dropped.push(lines[i].replace(/^#+\s*/, ""));
         continue;

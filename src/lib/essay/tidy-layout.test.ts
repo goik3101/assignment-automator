@@ -44,3 +44,12 @@ test("채점 문구를 괄호로 베낀 꼬리를 뗀다(역사-03 '(출토지·
   assert.deepEqual(r.removed, ["출토지·형태 설명"]);
   assert.equal(stripCriterionParens("1971년 발굴(발굴 설명 1)").removed.length, 0);
 });
+
+test("자리표시 번호 소제목은 뒤에 일반 소제목이 와도, 글 끝이어도 지운다(가정-03)", async () => {
+  const { dropEmptyNumberedHeading } = await import("./tidy-layout.ts");
+  const r = dropEmptyNumberedHeading("### 문항 1\n### 의사소통의 종류\n답이다.\n\n### 문항 2\n### 구성요소\n답.\n\n### 문항 3");
+  assert.equal(r.content.includes("문항"), false);
+  assert.match(r.content, /### 의사소통의 종류\n답이다\./);
+  // 내용이 있는 번호 소제목은 그대로
+  assert.equal(dropEmptyNumberedHeading("### 문항 1\n답이다.\n### 문항 2\n답.").dropped.length, 0);
+});
