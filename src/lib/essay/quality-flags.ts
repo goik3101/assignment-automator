@@ -90,9 +90,11 @@ export function unverifiedMarkOn(): boolean {
  * 그건 등급이 "required"여서 시간 예산에 밀렸기 때문이다(생성만으로 21~39초, 예산 22초).
  * 안내문이 요구한 것을 했는가는 품질 다듬기가 아니라 우리 서비스의 약속 자체라, 예산을 보지 않는 critical로 올렸다.
  * 글만 봐서 알 수 없는 조건(배점·기한·수업 운영)은 NOT_IN_TEXT가 체크리스트에서 뺀다 — 안 빼면 보완이 그 안내를 글에 적어 버린다.
- * RUBRIC_CHECK=off로 되돌린다. */
+ * **2026-11-16 기본 꺼짐으로 바꿈**: 같은 안내문 10종을 켠 채/끈 채 돌려 같은 체크리스트로 채점하니 **115/131(끔) 대 116/131(켬)** — 차이가 오차 안이었고,
+ * 생성 시간은 합계 267초 대 322초, 긴 꼬리(46.7·51초)가 31.8초 이하로 줄었다(표본 10종 1회씩 — 작다). 켜서 얻는 점수가 안 보이고 시간만 먹어 끈다.
+ * 체크리스트가 분석의 요약에서 나와 분석이 흘린 조건은 못 보는 한계도 그대로다. 다시 켜려면 RUBRIC_CHECK=on. */
 export function rubricCheckOn(): boolean {
-  return process.env.RUBRIC_CHECK !== "off";
+  return process.env.RUBRIC_CHECK === "on";
 }
 
 /**
