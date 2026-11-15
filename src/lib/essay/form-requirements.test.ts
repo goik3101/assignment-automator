@@ -386,3 +386,11 @@ test("'제목·내용 2칸'은 양식지의 칸 수라 번호 붙인 장면 조�
   const card = { label: "카드뉴스", description: "6개의 칸으로 구성한다.", required_items: ["a", "b", "c", "d", "e", "f"] };
   assert.equal(requirementsForElement(card, [], "", ["카드뉴스"]).some((r) => r.word === "칸" && r.min === 6), true);
 });
+
+test("안내문에 실린 '예시 분량'(각 예시는 1~2문장)은 학생 글의 문장 수 조건이 아니다(국어-01 거짓 경고)", async () => {
+  const { requirementsForElement } = await import("./form-requirements.ts");
+  const el = { label: "글쓰기 양식", description: "읽은 책을 바탕으로 양식 칸을 채운다.", required_items: ["주제", "구성"] };
+  const guide = "양식 칸 분량: 주제 약 6줄. 예시 형식: 항목마다 짧은 사례 문장. 예시 분량: 각 예시는 대체로 1~2문장. 예시의 소재를 베끼지 말 것.";
+  const reqs = requirementsForElement(el, [], guide, ["글쓰기 양식"]);
+  assert.equal(reqs.some((r) => r.unit === "sentence"), false);
+});

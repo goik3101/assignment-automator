@@ -18,7 +18,16 @@ const STRONG_FACT_PATTERN = /\d{3,4}\s*년|\d+(?:\.\d+)?\s*(?:%|퍼센트)|\d{1,
  * sceneList(스토리보드 같은 장면 단계)는 대사·화면 설명이 따옴표와 일반 낱말을 자연스럽게 쓰는 글이라 소제목을 뺀 본문에서
  * 책 제목이나 구체적 수치·연도가 있을 때만 true다 — 그렇지 않으면 사실 주장이 없는 장면 묘사에 "검증되지 않았어요" 배너가 뜬다(실측 2026-10-28).
  */
-export function hasVerifiableClaimText(content: string, opts: { sceneList?: boolean } = {}): boolean {
+export function hasVerifiableClaimText(content: string, opts: { sceneList?: boolean; strongOnly?: boolean } = {}): boolean {
+  // 학생 본인의 활동 기록 단계: 기록하는 영화·책 제목이나 "자료·사례" 같은 낱말은 사실 주장이 아니다 — 연도·수치 같은 강한 사실만 본다.
+  if (opts.strongOnly) {
+    return STRONG_FACT_PATTERN.test(
+      content
+        .split("\n")
+        .filter((l) => !/^\s*#{1,6}\s/.test(l))
+        .join("\n")
+    );
+  }
   if (opts.sceneList) {
     const body = content
       .split("\n")

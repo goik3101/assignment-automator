@@ -69,7 +69,7 @@ import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
 import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
 import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading } from "@/lib/essay/tidy-layout";
 import { trimToCeiling } from "@/lib/essay/hard-trim";
-import { trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
+import { findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
 import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
@@ -2149,6 +2149,54 @@ async function confirmCoverageGaps(sections: RawSection[]): Promise<CoverageGap[
   }
 }
 
+const FIELD_VALUE_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    values: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: { i: { type: Type.INTEGER }, value: { type: Type.STRING, description: "그 칸에 적을 값만. 설명·문장 금지." } },
+        required: ["i", "value"],
+      },
+    },
+  },
+  required: ["values"],
+};
+
+/**
+ * "책 이름·지은이·출판사·정책 명칭"처럼 **값만 적는 칸**에 설명문이 들어갔을 때, 글에 이미 있는 말에서 값만 뽑는다(bibliographic-fields.ts의 설명 참고).
+ * 값을 새로 지어내지 않는다 — 글에 없으면 빈칸 표시를 돌려받는다. 실패하면 원문 그대로 둔다.
+ */
+async function extractFieldValues(items: { name: string; text: string }[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (items.length === 0) return out;
+  try {
+    const res = await generate({
+      label: "generateEssay:fieldValue",
+      role: "lite",
+      prompt:
+        "아래는 시험지·활동지의 **값만 적는 칸**이다. 각 칸에 적힐 값만 뽑아 줘. 칸 이름이 책 이름이면 책 제목만, 지은이면 사람 이름만(옮긴이가 없다고 했으면 지은이 이름만), " +
+        "출판사면 출판사 이름만, 정책 명칭이면 정책 이름만 적는다. 문장·설명·각주 번호는 쓰지 말고, 글에 있는 말만 쓴다. 글에 그 값이 없으면 \"[직접 작성: 칸 이름]\"이라고 적는다.\n\n" +
+        items.map((it, i) => `${i}. [칸 이름] ${it.name}\n[지금 적힌 글] ${it.text}`).join("\n\n"),
+      schema: FIELD_VALUE_SCHEMA,
+    });
+    const parsed = JSON.parse(res.text ?? "{}") as { values?: { i: number; value: string }[] };
+    for (const v of parsed.values ?? []) {
+      const it = items[v.i];
+      const val = (v.value ?? "").replace(/\s+/g, " ").trim();
+      // 너무 길거나 서술문으로 돌아오면 쓰지 않는다(값을 못 뽑은 것).
+      // 값은 **지금 글에 이미 있는 말**이어야 한다(없는 출판사·제목을 새로 지어내지 않는다). 글에 없다고 한 빈칸 표시는 그대로 받는다.
+      const compact = (t: string) => t.replace(/[\s『』《》"'“”‘’·.,]/g, "");
+      const grounded = /^\[직접\s*작성/.test(val) || (it && compact(it.text).includes(compact(val)));
+      if (it && val && grounded && val.length <= 40 && !/[가-힣]다[.。]\s*$/.test(val)) out.set(it.name, val);
+    }
+  } catch (err) {
+    console.warn("[generateEssay] 값 칸 추출 실패(원문 유지)", err);
+  }
+  return out;
+}
+
 const RUBRIC_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -3769,6 +3817,24 @@ async function generateEssayImpl(
 
   attempt = { ...attempt, sections: attempt.sections.map((s) => ({ ...s, content: tidyOutputText(s.content) })) };
 
+  // 값만 적는 칸(책 이름·지은이·출판사·정책 명칭)에 설명문이 남았으면 값만 뽑는다. 호출은 해당 칸이 있을 때만(보통 0회, 독서·정책 과제에서 1회 ~2초).
+  if (fixes && process.env.VALUE_FIELDS !== "off") {
+    const found = attempt.sections.flatMap((s) => findValueFieldOverflows(s.content).map((f) => ({ ...f, label: s.label })));
+    if (found.length > 0) {
+      const values = await extractFieldValues(found.map(({ name, text }) => ({ name, text })));
+      if (values.size > 0) {
+        console.warn(`[generateEssay] 값 칸 ${values.size}개를 값만 남김 ${JSON.stringify([...values.entries()].slice(0, 4))}`);
+        attempt = {
+          ...attempt,
+          sections: attempt.sections.map((s) => {
+            const mine = new Map([...values].filter(([name]) => found.some((f) => f.label === s.label && f.name === name)));
+            return mine.size > 0 ? { ...s, content: replaceValueFields(s.content, mine) } : s;
+          }),
+        };
+      }
+    }
+  }
+
   // 안내문의 **수업 운영·배점 안내**가 글에 섞여 나왔으면 코드가 지운다(admin-leak.ts — 모델 호출 0).
   // 실측(2026-11-11): 분석 10종 중 6종에서 차시·시험 대형·배점이 core_task_info로 들어오고,
   // 과제 3종 중 2종이 글에 적었다("(총 30점, 기본점수 10점 포함)", "## 1차시 멸치해부실험").
@@ -3930,7 +3996,11 @@ async function generateEssayImpl(
   console.log(`[generateEssay] latency_ms=${Date.now() - start}`);
 
   // 스토리보드 같은 장면 단계는 대사·화면 설명 때문에 "검증 안 됨" 배너가 불필요하게 뜨지 않게 따로 판정한다(verifiable-claims.ts).
+  // 학생 본인의 활동·사용 기록 단계(행동 기록·AI 협업 과정 기록)도 같은 기준(연도·수치 같은 강한 사실만)으로 본다 —
+  // 그 글은 학생 자신의 과정을 적는 곳이라 "자료·사례·조사" 같은 일반 낱말에 "검색으로 검증되지 않았어요"가 뜨면 거짓 경고다(2026-11-16 정보-02 행동 기록).
   const sceneListLabels = new Set(formOn ? elements.filter(isSceneLikeElement).map((e) => e.label) : []);
+  const ownRecordLabels = new Set(elements.filter(isOwnRecordStep).map((e) => e.label));
+  const claimMode = (label: string): boolean | "own" => (ownRecordLabels.has(label) ? "own" : sceneListLabels.has(label));
   // 출처 0개로 끝났으면 로그에 크게 남긴다 — 이 상태가 조용히 지나가서 제출용 글이 근거 없이 나간 적이 있다
   // (2026-11-01, 인권 저널: 각주 0개인데 "우리는 기계가 아니다" 인용까지 들어 있었다). 측정도 이 줄로 센다.
   // **안내문이 자료를 실어 준 과제는 출처 0개가 정상이다**(2026-11-14): 사회 "경제적 유인"은 기사 두 개가
@@ -3950,7 +4020,7 @@ async function generateEssayImpl(
     attempt.sources.length === 0 &&
     !materialsGiven &&
     !noSearchTool &&
-    attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)))
+    attempt.sections.some((s) => sectionHasVerifiableClaim(s, claimMode(s.label)))
   )
     console.error(`[generateEssay] ⚠ 출처 0개로 끝남 — 확인할 사실 주장이 있는데 근거가 하나도 없다 (단계 ${attempt.sections.length}개)`);
   else if (attempt.sources.length === 0 && materialsGiven)
@@ -3985,7 +4055,7 @@ async function generateEssayImpl(
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
         // 그림 칸(만평·광고)은 "그릴 그림"이라 각주를 달 수 없게 해 둔 칸이다 — 출처가 없는 것이 정상이라 배너를 띄우지 않는다(2026-11-16 결과물34).
         noSourcesWarning:
-          !noSearchTool && renumberedSources.length === 0 && !isPicturePanel(s.label) && sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)),
+          !noSearchTool && renumberedSources.length === 0 && !isPicturePanel(s.label) && sectionHasVerifiableClaim(s, claimMode(s.label)),
         structureWarning:
           structureWarningByLabel.get(s.label) ??
           (fixes && !s.content.trim() ? "이 단계의 글을 만들지 못했어요. 이 단계만 다시 생성해 주세요." : undefined),
@@ -4005,7 +4075,7 @@ async function generateEssayImpl(
     noSourcesWarning:
       !noSearchTool &&
       attempt.sources.every((s) => s.url_valid === false || s.tier === "weak") &&
-      attempt.sections.some((s) => sectionHasVerifiableClaim(s, sceneListLabels.has(s.label))),
+      attempt.sections.some((s) => sectionHasVerifiableClaim(s, claimMode(s.label))),
     // 추천 다양성 시스템(recommendation-diversity.ts)이 이 생성에서 실제로
     // 어떤 책이 최종 확정됐는지 기록할 수 있도록 노출한다. 책이 정확히 1권일
     // 때만 채운다(여러 권이면 어느 책을 "그 과제의 추천 항목"으로 기록해야
@@ -4541,9 +4611,10 @@ function stripFakeReferenceListFromSections(
  * 등 사실 주장 힌트(FACTUAL_CLAIM_HINT_PATTERN) 중 하나라도 있으면
  * "검증이 필요한 사실 주장이 있다"고 본다.
  */
-function sectionHasVerifiableClaim(s: RawSection, sceneList = false): boolean {
+function sectionHasVerifiableClaim(s: RawSection, mode: boolean | "own" = false): boolean {
+  if (mode === "own") return hasVerifiableClaimText(s.content, { strongOnly: true });
   if (mentionedBookTitle(s)) return true;
-  return hasVerifiableClaimText(s.content, { sceneList });
+  return hasVerifiableClaimText(s.content, { sceneList: mode });
 }
 
 

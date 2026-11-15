@@ -127,6 +127,15 @@ export function extractCountRequirements(texts: string[]): CountReq[] {
 
 const norm = (s: string) => s.replace(/[\s()\[\]{}<>"'`·・,.:;!?~\-–—/]/g, "").toLowerCase();
 
+// 2026-11-16 국어-01 3회 중 1회: 작성 기준의 "예시 분량: 각 예시는 대체로 1~2문장"이 이 단계의 문장 수 조건으로 읽혀 "문장 조건 1~2개, 실제 41개" 거짓 경고가 찍혔다.
+const EXAMPLE_SENTENCE = /예시|예문|예\)|샘플/;
+function withoutExampleSentences(text: string | undefined): string {
+  return (text ?? "")
+    .split(/(?<=[.。!?])\s+|\n+/)
+    .filter((x) => !EXAMPLE_SENTENCE.test(x))
+    .join(" ");
+}
+
 function splitSentences(text: string): string[] {
   return text.split(/(?<=[.。!?])\s+|\n+|;/).map((s) => s.trim()).filter(Boolean);
 }
@@ -171,13 +180,15 @@ export function requirementsForElement(el: FormElement, requirements: string[], 
   const add = (r: CountReq) => {
     if (!out.some((o) => o.unit === r.unit && o.min === r.min && o.max === r.max)) out.push(r);
   };
-  extractCountRequirements([el.description]).forEach(add);
+  extractCountRequirements([withoutExampleSentences(el.description)]).forEach(add);
   const sceneOwner = labels.length <= 1 || SCENE_OWNER.test(`${el.label} ${el.description}`);
   const addFromSentence = (r: CountReq) => {
     if (r.unit === "scene" && !sceneOwner) return;
     add(r);
   };
   for (const sentence of [...requirements, ...splitSentences(guide ?? "")]) {
+    // 안내문에 실린 **예시 문장의 분량**("각 예시는 대체로 1~2문장")은 학생 글의 조건이 아니다.
+    if (EXAMPLE_SENTENCE.test(sentence)) continue;
     if (labels.length <= 1) {
       extractPositionedRequirements(sentence).map(withoutIndex).forEach(addFromSentence);
       continue;

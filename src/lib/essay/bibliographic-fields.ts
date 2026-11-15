@@ -54,3 +54,57 @@ export function trimBibliographicFields(content: string): { content: string; tri
   }
   return { content: out.join("\n").replace(/\n{3,}/g, "\n\n"), trimmed };
 }
+
+// ── 값 칸: "이름·제목·명칭"만 적는 칸에 설명문이 들어갔을 때 ──────────────────────────────────────────────
+//
+// 왜(2026-11-16, 거대 안내문 8종을 화면 그대로 읽어 본 것): 위 `trimBibliographicFields`는 "두 문장 이상이거나 110자 초과"일 때 **첫 문장**으로 줄인다.
+// 그런데 국어-01은 "『하늘과 바람과 별과 시』는 윤동주의 시들을 모은 시집으로, 책장을 넘길 때마다 …"처럼 **문장 하나**로 설명해서 그대로 통과했다.
+// 가정-01의 "정책 명칭" 칸은 "효과적인 정책으로 육아휴직을 선택했다. 육아휴직은 …"이 세 문장이었다. 어제 이 규칙을 만든 바로 그 안내문에서 오늘 또 샜다 —
+// 규칙이 **관찰한 모양(두 문장)** 에 맞춰져 있었고 "값만 적는다"는 계약에는 맞춰져 있지 않았다.
+// 그래서 모양을 더 세는 대신 값만 뽑는다: 칸 이름이 값 칸이고 본문이 값처럼 안 보이면(길거나 서술어로 끝남) 그 칸만 값으로 줄인다(모델 호출은 generate-essay에서).
+const VALUE_HEAD =
+  /^(?:책\s*(?:이름|제목)|도서\s*(?:명|제목|이름)|서명|저자|지은이(?:\s*\([^)]*\))?|글쓴이|작가|출판사|출판\s*사항|.{0,20}(?:정책|제도|사업)\s*(?:의\s*)?(?:명칭|이름)(?:\s*\([^)]*\))?)$/;
+
+/** 값처럼 안 보이는 칸 본문: 28자를 넘거나 서술하는 문장으로 끝난다. */
+function looksLikeDescription(text: string): boolean {
+  const t = text.replace(/\[\d+(?:,\s*\d+)*\]/g, "").trim();
+  if (!t || /^\[직접\s*작성/.test(t)) return false;
+  return t.length > 28 || /[가-힣]다[.。]\s*$/.test(t) || /(?:이며|이고|입니다|습니다)[.。]?\s*$/.test(t);
+}
+
+export function findValueFieldOverflows(content: string): { name: string; text: string }[] {
+  const lines = content.split("\n");
+  const out: { name: string; text: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const head = lines[i].match(HEAD_LINE);
+    const name = head?.[2].replace(/\*\*/g, "").trim() ?? "";
+    if (!head || !VALUE_HEAD.test(name)) continue;
+    let j = i + 1;
+    const body: string[] = [];
+    while (j < lines.length && !HEAD_LINE.test(lines[j])) body.push(lines[j++]);
+    const text = body.join(" ").replace(/\s+/g, " ").trim();
+    if (looksLikeDescription(text)) out.push({ name, text });
+  }
+  return out;
+}
+
+/** 값 칸 본문을 바꾼다(소제목 줄은 그대로). values: 칸 이름 → 새 본문. */
+export function replaceValueFields(content: string, values: Map<string, string>): string {
+  const lines = content.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const head = lines[i].match(HEAD_LINE);
+    const name = head?.[2].replace(/\*\*/g, "").trim() ?? "";
+    out.push(lines[i]);
+    if (!head || !VALUE_HEAD.test(name) || !values.has(name)) {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < lines.length && !HEAD_LINE.test(lines[j])) j++;
+    out.push("", values.get(name)!, "");
+    i = j;
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}

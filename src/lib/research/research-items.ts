@@ -94,19 +94,27 @@ function tableHeadings(content: string): string[] {
   return out;
 }
 
+// 이름·제목·명칭을 적는 칸은 한두 낱말이 정상이다 — 12자 미만이라고 비었다고 하면 거짓 경고다(2026-11-16, 값 칸을 값만 남기게 한 뒤 가정-01에서 드러남).
+const SHORT_VALUE_ITEM = /명칭|이름|제목|저자|지은이|출판사|서명|도서/;
+
 export function findMissingItems(content: string, requiredItems: string[]): string[] {
   const blocks = splitByH3(content);
   const heads = tableHeadings(content);
   const inline = inlineLabelBodies(content, requiredItems);
   return requiredItems.filter((item) => {
     if (heads.some((h) => itemMatchesHeading(item, h))) return false;
-    const block = blocks.find((b) => itemMatchesHeading(item, b.heading));
+    const minChars = SHORT_VALUE_ITEM.test(item) ? 1 : MIN_ITEM_BODY_CHARS;
+    // 이름이 정확히 같은 소제목을 먼저 본다. 낱말 겹침만으로 맞추면 "효과적인 정책 설명"이 "효과적인 정책 명칭" 칸(짧은 값)에 걸려
+    // 멀쩡한 칸이 비었다고 나온다. 겹침으로만 맞는 칸이 여럿이면 본문이 가장 긴 것을 쓴다.
+    const exact = blocks.find((b) => normalizeKey(b.heading) === normalizeKey(item));
+    const fuzzy = blocks.filter((b) => itemMatchesHeading(item, b.heading)).sort((x, y) => y.body.length - x.body.length)[0];
+    const block = exact ?? fuzzy;
     if (!block) {
       // 소제목 대신 "질문1: …" 꼴로 칸 이름을 글 안에 적은 경우도 채운 것이다.
       const body = inline.get(item);
-      return body === undefined || visibleLength(body) < MIN_ITEM_BODY_CHARS;
+      return body === undefined || visibleLength(body) < minChars;
     }
-    return visibleLength(block.body) < MIN_ITEM_BODY_CHARS;
+    return visibleLength(block.body) < minChars;
   });
 }
 
