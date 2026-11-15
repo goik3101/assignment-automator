@@ -181,7 +181,7 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
     }
     case "qa_list": {
       const n = Math.max(items, 2);
-      return { role, min: n * 110, max: n * 240, basis: `문항 ${n}개 × 문항당 2~3문장` };
+      return { role, min: n * 70, max: n * 170, basis: `문항 ${n}개 × 문항당 2~3문장(짧게)` };
     }
     case "report_sections": {
       // 항목당 250~450자는 학교 평가지 칸(보통 기준선 5~6줄)보다 훨씬 길다 — 실측(2026-10-30): 항목 7개 평가지가 1,900~2,300자로 나와
@@ -205,7 +205,8 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
           basis: `칸 ${cells}개 × 칸마다 짧게(각 1~2문장)`,
         };
       }
-      return { role, min: n * 160, max: n * 300, basis: `보고서 항목 ${n}개 × 항목당 대여섯 문장` };
+      // 항목이 많이 펼쳐진 한 단계(사회-02 합쳐진 제안서 3,597자, 과학-09 등)는 항목 수에 비례해 목표가 끝없이 커진다 — 학생이 제출할 한 단계의 상한을 둔다(2026-11-15).
+      return { role, min: Math.min(n * 160, 1500), max: Math.min(n * 300, 2400), basis: `보고서 항목 ${n}개 × 항목당 대여섯 문장(한 단계 최대 2,400자)` };
     }
     case "table": {
       const cols = Math.max(2, tableColumns(el, ctx?.guide).length);

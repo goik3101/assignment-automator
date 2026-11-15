@@ -149,16 +149,15 @@ export default function NewCreationModal({
       let imageBase64: string | undefined;
       let imageMimeType: string | undefined;
       let extraImages: { base64: string; mimeType: string }[] | undefined;
+      let keptImages: { base64: string; mimeType: string }[] = [];
       if (kind === "image" && imageFiles.length > 0) {
         // 보내기 전에 줄인다(요청 본문 한도) — 첫 장은 imageBase64, 나머지는 extraImages.
         const encoded = await imagesToUploadBase64(imageFiles); // 합계를 요청 한도 안으로 맞춘다
         imageBase64 = encoded[0].data;
         imageMimeType = encoded[0].mimeType;
         if (encoded.length > 1) extraImages = encoded.slice(1).map((e) => ({ base64: e.data, mimeType: e.mimeType }));
-        // 생성에도 같은 사진을 쓴다(작성자가 안내문을 직접 읽게). 이미 요청 한도 안으로 줄어 있다.
-        setNoticeImages(encoded.map((e) => ({ base64: e.data, mimeType: e.mimeType })));
-      } else {
-        setNoticeImages([]);
+        // 생성에도 같은 사진을 쓸 수 있다(작성자가 안내문을 직접 읽게) — 서버가 그 경로를 켰을 때만 보관한다(아래 wantsNoticeImages).
+        keptImages = encoded.map((e) => ({ base64: e.data, mimeType: e.mimeType }));
       }
       const res = await fetch("/api/tasks/analyze", {
         method: "POST",
@@ -176,7 +175,9 @@ export default function NewCreationModal({
               : t("분석에 실패했어요.");
         throw new Error((data as { error?: string }).error ?? fallback);
       }
-      const result = data as AnalyzeResult;
+      const result = data as AnalyzeResult & { wantsNoticeImages?: boolean };
+      // 서버가 사진 직접 읽기를 끄고 있으면 사진을 들고 있지도, 생성 요청에 싣지도 않는다(요청이 3MB 이상 커지는 것을 막는다).
+      setNoticeImages(result.wantsNoticeImages ? keptImages : []);
       if (result.insufficient_data) {
         throw new Error(
           result.insufficient_reason ??
