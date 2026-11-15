@@ -134,3 +134,46 @@ export function removeOwnActivitySentences(content: string): { content: string; 
   }
   return { content: next.replace(/[ \t]+$/gm, ""), removed };
 }
+
+// ── AI 챗봇 사용 기록: 대화 내용은 학생만 안다 ───────────────────────────────────────────────────────────
+// 2026-11-16 정보-02(화면 덤프): 학생이 "도움은 ChatGPT에게 받았어"라고만 했는데 협업 기록 단계가
+// 입력했다는 질문 문장을 따옴표로 지어내고 "ChatGPT는 … 짚었다.[1]"처럼 **ChatGPT가 한 답변을 지어낸 뒤 조사 출처 각주까지** 붙였다.
+// 학생이 그대로 내면 있지도 않은 대화 기록을 제출하는 것이다. 프롬프트의 "하지 않은 일을 했다고 쓰지 말 것"이 이 모양은 못 막았다.
+// 그래서 이 단계(AI 챗봇 사용 기록)에서는 코드가 ① 챗봇이 답한 내용을 서술한 문장 ② 따옴표로 적은 입력 질문을 빈칸으로 바꾼다.
+const AI_RECORD_LABEL = /(?:AI|챗봇|챗지피티|ChatGPT|인공지능)[^\n]{0,20}(?:기록|과정|협업|활용)|(?:협업|활용)\s*과정\s*기록/i;
+export function isAiChatRecordLabel(label: string): boolean {
+  return AI_RECORD_LABEL.test(label);
+}
+const CHAT_ANSWER = /(?:ChatGPT|챗\s*GPT|챗봇|AI)(?:는|가|도|에게서)?[^.!?\n]{0,60}?(?:제안했|답했|답변했|설명했|짚었|알려\s*(?:줬|주었)|추천했|말했|정리해\s*(?:줬|주었)|제시했|보여\s*(?:줬|주었))/;
+const CHAT_PROMPT = /[“"]([^”"\n]{8,200})[”"](?=\s*(?:라고|고)\s*(?:물었|질문했|요청했|입력했|부탁했))/;
+
+export function blankInventedChatLog(content: string): { content: string; blanked: number } {
+  let blanked = 0;
+  let answerBlankPlaced = false;
+  let promptBlankPlaced = false;
+  const lines = content.split("\n").map((line) => {
+    if (/^\s*#{1,6}\s/.test(line) || !line.trim()) return line;
+    const parts = line.split(/(?<=[.!?。](?:\[\d+(?:,\s*\d+)*\])*)\s+/);
+    const kept: string[] = [];
+    for (let part of parts) {
+      if (CHAT_PROMPT.test(part)) {
+        part = part.replace(CHAT_PROMPT, () => {
+          blanked++;
+          return promptBlankPlaced ? "" : ((promptBlankPlaced = true), "[직접 작성: 실제로 입력한 질문]");
+        });
+        if (/^\s*(?:라고|고)\s/.test(part)) part = part.replace(/^\s*(?:라고|고)\s*/, "");
+      }
+      if (CHAT_ANSWER.test(part)) {
+        blanked++;
+        if (!answerBlankPlaced) {
+          answerBlankPlaced = true;
+          kept.push("[직접 작성: ChatGPT가 실제로 준 답변]");
+        }
+        continue;
+      }
+      kept.push(part);
+    }
+    return kept.join(" ");
+  });
+  return { content: lines.join("\n"), blanked };
+}

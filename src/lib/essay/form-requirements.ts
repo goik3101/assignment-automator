@@ -204,7 +204,9 @@ export function requirementsForElement(el: FormElement, requirements: string[], 
       if (rivals.every((o) => nearest(text, o, at) >= dMine)) addFromSentence(withoutIndex(pr));
     }
   }
-  return out.filter((r) => !isStepCountRequirement(r, labels.length) && !isOwnFormBoxCount(r, el));
+  // 같은 단위의 개수 조건이 여럿이면 가장 큰 것만 단계 전체 개수다("하나의 문장에서 2문제" 같은 비율은 전체가 아니다 — 한문-01 "문제 조건 2개, 실제 20개").
+  const biggest = (r: CountReq) => out.some((o) => o !== r && o.unit === "scene" && o.word === r.word && o.min > r.min && !o.perItem);
+  return out.filter((r) => !isStepCountRequirement(r, labels.length) && !isOwnFormBoxCount(r, el) && !(r.unit === "scene" && biggest(r)));
 }
 
 // "제목·내용 2칸"의 "2칸"은 **양식지의 칸 수**(= 이 단계의 필수 항목 수)이지 번호를 붙여 반복할 장면이 아니다.
@@ -254,7 +256,10 @@ export function isSceneLikeElement(el: { label: string; description?: string; re
  * 원래 항목(화면 설명·대사 같은 장면마다 쓸 칸 이름)은 단계 설명으로 옮겨 장면마다 쓰게 한다. 개수 N은 2~20일 때만, 하한이 있는 조건("N 이상" 포함)만 다룬다.
  */
 export function expandSceneUnits<T extends FormElement>(el: T, reqs: CountReq[]): T {
-  const scene = reqs.find((r) => r.unit === "scene" && r.min >= 2 && r.min <= 20 && (r.max === 0 || r.max === r.min));
+  // 같은 글에 장면·문제 개수 조건이 여럿이면 **가장 큰 것**이 전체 개수다("하나의 문장에서 2문제"는 문장당 비율이고 "총 20문제"가 전체 — 한문-01에서 2를 집어 항목이 2개가 됐다, 2026-11-16).
+  const scene = reqs
+    .filter((r) => r.unit === "scene" && r.min >= 2 && r.min <= 20 && (r.max === 0 || r.max === r.min))
+    .sort((a, b) => b.min - a.min)[0];
   if (!scene) return el;
   const existing = el.required_items ?? [];
   if (isSceneListElement(el) || existing.length >= scene.min) return el;
@@ -281,6 +286,11 @@ export function countScenes(content: string, word?: string): number {
     if (m) nums.add(Number(m[1]));
     m = new RegExp(`^(\\d{1,2})\\s*(?:번\\s*)?(?:${unit})\\b`).exec(t);
     if (m) nums.add(Number(m[1]));
+    // 문제 목록은 "### 문제 1" 아래에 "1. …" "2. …"로 번호만 매겨 이어 쓰기도 한다(한문-01에서 20문제가 2개로 세어졌다).
+    if (word && /^(?:문제|문항)$/.test(word)) {
+      m = /^(\d{1,2})[.)]\s/.exec(t);
+      if (m) nums.add(Number(m[1]));
+    }
     m = /^([①-⑳])/.exec(t);
     if (m) nums.add(m[1].charCodeAt(0) - 0x2460 + 1);
     m = /^\|\s*(\d{1,2})\s*\|/.exec(line.trim());

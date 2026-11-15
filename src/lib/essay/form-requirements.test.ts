@@ -394,3 +394,19 @@ test("안내문에 실린 '예시 분량'(각 예시는 1~2문장)은 학생 글
   const reqs = requirementsForElement(el, [], guide, ["글쓰기 양식"]);
   assert.equal(reqs.some((r) => r.unit === "sentence"), false);
 });
+
+test("문제 목록: '총 20문제'를 가장 큰 개수로 읽고, 번호 줄도 문제로 센다(한문-01)", async () => {
+  const { expandSceneUnits, extractCountRequirements, countScenes } = await import("./form-requirements.ts");
+  const reqs = extractCountRequirements(["하나의 문장에서 2문제 출제", "총 20문제"]);
+  const el = expandSceneUnits({ label: "한문 수행평가", description: "번역, 독음, 한자쓰기", required_items: [] as string[] }, reqs);
+  assert.equal(el.required_items?.length, 20);
+  const body = "### 문제 1\n" + Array.from({ length: 10 }, (_, i) => `${i + 1}. 一切 — 뜻`).join("\n") + "\n### 문제 2\n" + Array.from({ length: 10 }, (_, i) => `${i + 11}. 一切 — 뜻`).join("\n");
+  assert.equal(countScenes(body, "문제"), 20);
+});
+
+test("같은 단위의 개수 조건이 둘이면 큰 쪽만 남긴다(한문-01 '문제 조건 2개, 실제 20개')", async () => {
+  const { requirementsForElement } = await import("./form-requirements.ts");
+  const el = { label: "한문 수행평가", description: "번역, 독음, 한자쓰기", required_items: [] as string[] };
+  const reqs = requirementsForElement(el, ["하나의 문장에서 2문제 출제", "총 20문제"], "", ["한문 수행평가"]);
+  assert.deepEqual(reqs.filter((r) => r.unit === "scene").map((r) => r.min), [20]);
+});

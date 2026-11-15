@@ -717,3 +717,23 @@ export function placeSourceList(content: string, item: string, sectionMd: string
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
 }
+
+// ── 본문 안에 소제목 없이 끼어든 "제작 참고: …" 줄 ───────────────────────────────────────────────
+// 2026-11-16 역사-03: 논술 본문 한가운데에 "제작 참고: 논술 양식에 붙일 사진 1: …" 줄이 그대로 들어가 학생이 옮겨 적는 글이 됐다.
+// "### 제작 참고" 소제목만 찾던 `splitProductionNotes`가 이 모양을 못 봤다. 줄이 이 말로 시작하면 본문에서 떼어 제작 참고로 보낸다.
+const INLINE_NOTE_LINE = /^\s*(?:[-*•]\s*)?(?:\*\*)?제작\s*참고(?:\*\*)?\s*[:：]\s*(.+)$/;
+
+export function splitInlineProductionNotes(content: string): { body: string; notes: string | null } {
+  const kept: string[] = [];
+  const notes: string[] = [];
+  for (const line of content.split("\n")) {
+    const m = INLINE_NOTE_LINE.exec(line);
+    if (m) notes.push(m[1].trim());
+    else kept.push(line);
+  }
+  if (notes.length === 0) return { body: content, notes: null };
+  const body = kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  // 떼면 칸이 비는 경우에는 떼지 않는다(위와 같은 이유).
+  if (body.replace(/^\s*#{1,6}\s.*$/gm, "").replace(/\s/g, "").length < 10) return { body: content, notes: null };
+  return { body, notes: notes.join("\n") };
+}

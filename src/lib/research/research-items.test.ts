@@ -32,3 +32,9 @@ test("짧은 값 칸(명칭)이 있어도 이름이 비슷한 다른 칸을 비�
   // 값 칸 자체가 비면 여전히 누락
   assert.deepEqual(findMissingItems("### 효과적인 정책 명칭\n\n### 효과적인 정책 설명\n육아휴직의 대상은 만 8세 이하 자녀를 양육하는 근로자이며 신청하면 쉴 수 있다.", items), ["효과적인 정책 명칭"]);
 });
+
+test("문항 번호 소제목으로 짠 글은 주제 항목이 소제목에 없어도 비었다고 하지 않는다 판정에 쓸 수 있다", async () => {
+  const { isOrganizedByQuestionNumbers } = await import("./research-items.ts");
+  assert.equal(isOrganizedByQuestionNumbers("### 문항 1\n답\n### 문항 2\n답"), true);
+  assert.equal(isOrganizedByQuestionNumbers("### 의사소통의 종류\n답\n### 문항 2\n답"), false);
+});

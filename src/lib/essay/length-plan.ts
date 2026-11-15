@@ -114,6 +114,8 @@ export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
   if (/계획|개요|설계|구상|기획/.test(label) && !/보고서|논설|논술|에세이|소논문/.test(label)) return "plan";
   // 문항마다 답하는 단계("문항 1~8에 각각 답한다")는 항목당 2~3문장이다 — 보고서 항목(대여섯 문장)으로 재면 11문항이 4,200자가 된다(2026-11-15 정보-03).
   if (/문항[^.\n]{0,14}각각\s*(?:답|작성|설명)|각\s*문항(?:에|마다)/.test(text) && (el.required_items?.length ?? 0) >= 4) return "qa_list";
+  // 항목이 전부 "문제 N"·"문항 N"이면 문제 목록이다 — 항목당 대여섯 문장(보고서)이 아니다(한문-01 문제 20개가 1,500~2,400자 기준을 받았다, 2026-11-16).
+  if ((el.required_items?.length ?? 0) >= 4 && (el.required_items ?? []).every((i) => /^(?:문제|문항)\s*\d+$/.test(i.trim()))) return "qa_list";
   if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return qualityFixesOn() && !isResearchMaterialStep(el) ? "report_sections" : "material";
   if (/소감|느낀\s*점|후기|성찰|반성|다짐/.test(label)) return "reflection";
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
@@ -181,7 +183,7 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
     }
     case "qa_list": {
       const n = Math.max(items, 2);
-      return { role, min: n * 70, max: n * 170, basis: `문항 ${n}개 × 문항당 2~3문장(짧게)` };
+      return { role, min: n * 50, max: n * 170, basis: `문항 ${n}개 × 문항당 2~3문장(짧게)` };
     }
     case "report_sections": {
       // 항목당 250~450자는 학교 평가지 칸(보통 기준선 5~6줄)보다 훨씬 길다 — 실측(2026-10-30): 항목 7개 평가지가 1,900~2,300자로 나와

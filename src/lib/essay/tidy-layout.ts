@@ -94,3 +94,19 @@ export function dropEmptyNumberedHeading(content: string): { content: string; dr
   }
   return { content: out.join("\n"), dropped };
 }
+
+/**
+ * 채점 문구를 괄호로 베껴 쓴 꼬리("… 결과물이다(출토지·형태 설명).")를 뗀다.
+ *
+ * 왜(2026-11-16 역사-03): 논술 본문에 "(출토지·형태 설명)"처럼 **안내문의 작성 요령을 그대로 괄호에 단 말**이 남았다.
+ * 학생 글이 아니라 모델이 "이 칸은 이 요령에 따라 썼다"고 표시한 것이다. 괄호 안이 '설명·근거·서술·제시'로 끝나고
+ * 숫자·각주가 없는 짧은 말일 때만 뗀다("(투조: 뚫어 만든 무늬)" 같은 뜻풀이는 그대로 둔다).
+ */
+export function stripCriterionParens(content: string): { content: string; removed: string[] } {
+  const removed: string[] = [];
+  const out = content.replace(/[ \t]*\(([^()\n\d\[\]:：]{2,24}?(?:설명|근거|서술|제시))\)/g, (_m, inner: string) => {
+    removed.push(inner);
+    return "";
+  });
+  return { content: out, removed };
+}

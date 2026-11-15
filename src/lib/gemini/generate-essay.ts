@@ -24,7 +24,7 @@ import {
   NO_STEP_REPETITION_RULE,
   sourceEconomyRule,
 } from "./prompts";
-import { findMissingItems, parseResearchItems } from "@/lib/research/research-items";
+import { findMissingItems, isOrganizedByQuestionNumbers, parseResearchItems } from "@/lib/research/research-items";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
 import { validateSources, getCachedPageText } from "@/lib/links/validate-sources";
 import {
@@ -39,6 +39,7 @@ import {
   isUrlOnlyItem,
   placeSourceList,
   splitProductionNotes,
+  splitInlineProductionNotes,
   stripInlineUrls,
   stripWorkNotes,
   reduceReportedSpeech,
@@ -67,7 +68,7 @@ import { restoreHeadingBreaks } from "@/lib/essay/heading-breaks";
 import { blankSelfEvaluationScores, stripCalculationCitations } from "@/lib/essay/self-evaluation";
 import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
 import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
-import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading } from "@/lib/essay/tidy-layout";
+import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stripCriterionParens } from "@/lib/essay/tidy-layout";
 import { trimToCeiling } from "@/lib/essay/hard-trim";
 import { findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
@@ -77,7 +78,7 @@ import { wantsExtraMaterial, ensureExtraMaterialSlot, extraMaterialKind } from "
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { adminLeakOn, dedupeOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
-import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
+import { blankInventedChatLog, isAiChatRecordLabel, blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
@@ -295,6 +296,8 @@ function detectMissingRequiredItems(sections: RawSection[]): { label: string; mi
     if (!s.requiredItems) continue;
     const hasBook = qualityFixesOn() && /[『《][^』》]{1,60}[』》]/.test(s.content);
     const missing = findMissingItems(s.content, s.requiredItems).filter((m) => !(hasBook && BIBLIO_ITEM.test(m)) && !FORM_FIELD_ITEM.test(m));
+    // 문항 번호 소제목으로 짠 글(지필 범위 공지 등)에서는 주제 항목이 소제목에 없는 것이 정상이다 — 전부 누락으로 나오면 구조 차이이지 빈 칸이 아니다.
+    if (missing.length > 0 && missing.length === s.requiredItems.length && isOrganizedByQuestionNumbers(s.content)) continue;
     if (missing.length > 0) result.push({ label: s.label, missing });
   }
   return result;
@@ -3789,9 +3792,13 @@ async function generateEssayImpl(
       // "제작 참고"(화면에 "제출하는 글이 아니에요"로 표시)로 넘어가 있었다. 글을 쓰는 칸은 예전대로 뗀다.
       // 그림 칸은 "무엇을 그릴지"가 곧 칸 내용이라 떼지 않는다. 다만 **라벨 줄은 뗀다** —
       // 안 떼면 학생 칸에 "제작 참고"라고 적힌 줄이 그대로 남는다(사슬 감사가 저장된 3편에서 찾았다).
-      const { body, notes } = isPicturePanel(s.label)
-        ? { body: dropProductionNotesHeading(s.content).content, notes: null }
+      const split1 = isPicturePanel(s.label)
+        ? { body: dropProductionNotesHeading(s.content).content, notes: null as string | null }
         : splitProductionNotes(s.content);
+      // 소제목 없이 본문 줄로 끼어든 "제작 참고: …"도 뗀다(그림 칸은 제외).
+      const split2 = isPicturePanel(s.label) ? { body: split1.body, notes: null as string | null } : splitInlineProductionNotes(split1.body);
+      const body = split2.body;
+      const notes = [split1.notes, split2.notes].filter(Boolean).join("\n") || null;
       // `body`는 **항상** 쓴다. 예전에는 `notes`가 없으면 원본 섹션을 그대로 돌려줘서, 떼어 낸 결과를 버렸다 —
       // 그래서 그림 칸의 "제작 참고" 라벨 제거가 조용히 무효가 됐다(2026-11-10, 생성 1회로 확인).
       const sec = notes ? { ...s, content: body, productionNotes: notes } : { ...s, content: body };
@@ -3889,6 +3896,9 @@ async function generateEssayImpl(
         const en = dropEmptyNumberedHeading(d.content);
         droppedHeads.push(...en.dropped);
         c = en.content;
+        const cp = stripCriterionParens(c);
+        droppedHeads.push(...cp.removed.map((r) => `(${r})`));
+        c = cp.content;
         return c !== sec.content ? { ...sec, content: c } : sec;
       }),
     };
@@ -3924,6 +3934,18 @@ async function generateEssayImpl(
       }),
     };
     if (goneAll.length) console.warn(`[generateEssay] 보완 뒤에도 남은 지어낸 행동 문장 ${goneAll.length}개를 코드가 지움: ${goneAll.slice(0, 3).map((d) => `"${d.slice(0, 40)}"`).join(", ")}`);
+  }
+  // AI 챗봇 사용 기록 단계: 학생만 아는 입력 질문·챗봇 답변을 지어냈으면 빈칸으로 바꾼다(own-activity.ts blankInventedChatLog).
+  if (process.env.HONESTY_REMOVE !== "off") {
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((sec) => {
+        if (!isAiChatRecordLabel(sec.label)) return sec;
+        const r = blankInventedChatLog(sec.content);
+        if (r.blanked > 0) console.warn(`[generateEssay] AI 대화 기록 ${r.blanked}곳을 학생이 채울 빈칸으로 바꿈 label="${sec.label}"`);
+        return r.blanked > 0 ? { ...sec, content: r.content } : sec;
+      }),
+    };
   }
   if (adminLeakOn()) {
     const dropped: string[] = [];

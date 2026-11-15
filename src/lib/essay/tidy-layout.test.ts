@@ -36,3 +36,11 @@ test("번호 없는 소제목·내용이 있는 소제목은 건드리지 않는
   const s = "### 제목\n### 내용\n본문\n\n### 컷 1\n설명\n### 컷 2\n설명";
   assert.equal(dropEmptyNumberedHeading(s).content, s);
 });
+
+test("채점 문구를 괄호로 베낀 꼬리를 뗀다(역사-03 '(출토지·형태 설명)')", async () => {
+  const { stripCriterionParens } = await import("./tidy-layout.ts");
+  const r = stripCriterionParens("금동대향로는 대형 금속 향로로 백제의 예술을 보여 준다(출토지·형태 설명). 투조(뚫어 만든 무늬)는 기법이다.");
+  assert.equal(r.content, "금동대향로는 대형 금속 향로로 백제의 예술을 보여 준다. 투조(뚫어 만든 무늬)는 기법이다.");
+  assert.deepEqual(r.removed, ["출토지·형태 설명"]);
+  assert.equal(stripCriterionParens("1971년 발굴(발굴 설명 1)").removed.length, 0);
+});

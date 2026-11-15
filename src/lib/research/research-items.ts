@@ -173,3 +173,13 @@ export function yearsMissingFromResearch(candidateText: string, researchText: st
   if (known.size === 0) return [];
   return extractYears(candidateText).filter((y) => !known.has(y));
 }
+
+/**
+ * 글이 "### 문항 1 … ### 문항 4"처럼 **번호 붙은 문항 소제목**으로 짜여 있는가.
+ *
+ * 왜(2026-11-16 가정-03, 지필 범위 공지): 안내문이 "총 4문항"과 범위 주제 6개를 함께 말해 필수 항목(주제 6개)이 소제목으로 안 나오고
+ * 문항 번호 소제목 4개로 나왔다. 글은 멀쩡한데 "항목 6개가 비어 있어요"가 찍혔다 — 이 모양에서 항목은 소제목이 아니라 문항 안에서 다룰 주제다.
+ */
+export function isOrganizedByQuestionNumbers(content: string): boolean {
+  return splitByH3(content).filter((b) => /^(?:문항|문제|질문)\s*\d+/.test(b.heading.replace(/\*+/g, "").trim())).length >= 2;
+}

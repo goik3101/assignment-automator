@@ -107,3 +107,16 @@ test("사진·도구를 준비했다고 쓴 문장도 학생 행동을 지어낸
   assert.equal(isOwnActivitySentence("사진은 학생이 가정에서 출력해 준비한다."), false);
   assert.equal(isOwnActivitySentence("준비물은 사진 두 장이다."), false);
 });
+
+test("AI 챗봇 사용 기록: 지어낸 질문·답변을 빈칸으로 바꾼다(정보-02)", async () => {
+  const { blankInventedChatLog, isAiChatRecordLabel } = await import("./own-activity.ts");
+  assert.equal(isAiChatRecordLabel("AI챗봇(ChatGPT 등) 협업 과정 기록"), true);
+  assert.equal(isAiChatRecordLabel("영화 메시지와 AI 시대의 나를 연결한 글"), false);
+  const c = "### 질문 내용\n“《히든 피겨스》가 기술 발전에 관해 전하는 메시지를 연결해 줘”라고 물었다. 계산과 과학 지식이 왜 중요한지도 질문했다. ChatGPT는 영화의 계산이 기술적 도전을 보여 준다는 점을 짚었다.[1] 나는 그 답을 그대로 쓰지 않았다.";
+  const r = blankInventedChatLog(c);
+  assert.match(r.content, /\[직접 작성: 실제로 입력한 질문\]라고 물었다/);
+  assert.match(r.content, /\[직접 작성: ChatGPT가 실제로 준 답변\]/);
+  assert.doesNotMatch(r.content, /\[1\]/);
+  assert.match(r.content, /나는 그 답을 그대로 쓰지 않았다/);
+  assert.equal(r.blanked, 2);
+});
