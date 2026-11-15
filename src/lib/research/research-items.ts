@@ -112,7 +112,14 @@ export function findMissingItems(content: string, requiredItems: string[]): stri
     if (!block) {
       // 소제목 대신 "질문1: …" 꼴로 칸 이름을 글 안에 적은 경우도 채운 것이다.
       const body = inline.get(item);
-      return body === undefined || visibleLength(body) < minChars;
+      if (body !== undefined && visibleLength(body) >= minChars) return false;
+      // "부정적 영향·문제점"처럼 가운뎃점으로 묶인 항목은 "부정적 영향: … 문제점: …"으로 나눠 써도 채운 것이다(정보-01).
+      const parts = item.split(/[·ㆍ]/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const partBodies = inlineLabelBodies(content, parts);
+        return !parts.every((p) => (partBodies.get(p)?.replace(/\s/g, "").length ?? 0) >= minChars);
+      }
+      return true;
     }
     return visibleLength(block.body) < minChars;
   });

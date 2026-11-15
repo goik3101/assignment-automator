@@ -19,6 +19,14 @@ const STRONG_FACT_PATTERN = /\d{3,4}\s*년|\d+(?:\.\d+)?\s*(?:%|퍼센트)|\d{1,
  * 책 제목이나 구체적 수치·연도가 있을 때만 true다 — 그렇지 않으면 사실 주장이 없는 장면 묘사에 "검증되지 않았어요" 배너가 뜬다(실측 2026-10-28).
  */
 export function hasVerifiableClaimText(content: string, opts: { sceneList?: boolean; strongOnly?: boolean } = {}): boolean {
+  // 소제목과 "[직접 작성: …]" 빈칸을 빼면 거의 남는 글이 없는 칸(빈 출처 목록 양식 등)에는 검증할 사실이 없다(2026-11-16 역사-05 "2단계 참고 문헌·출처").
+  const visible = content
+    .split("\n")
+    .filter((l) => !/^\s*#{1,6}\s/.test(l))
+    .join("")
+    .replace(/\[직접\s*작성[^\]]*\]/g, "")
+    .replace(/\s/g, "");
+  if (visible.length === 0 || (/\[직접\s*작성/.test(content) && visible.length < 30)) return false;
   // 학생 본인의 활동 기록 단계: 기록하는 영화·책 제목이나 "자료·사례" 같은 낱말은 사실 주장이 아니다 — 연도·수치 같은 강한 사실만 본다.
   if (opts.strongOnly) {
     return STRONG_FACT_PATTERN.test(

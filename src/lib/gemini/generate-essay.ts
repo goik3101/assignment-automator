@@ -289,7 +289,8 @@ function isStructuredElement(el: CoreTaskInfo["task_elements"][number]): boolean
 const BIBLIO_ITEM = /^\s*(?:책\s*)?(?:제목|저자|지은이|작가|출판사|서지\s*(?:정보)?)\s*$/;
 // 양식지 칸 이름(제목·내용·본문)은 소제목이 없어도 글 안에 있으면 채운 것이다 — 기사 제목을 "### 제목" 대신
 // 바로 쓰는 것이 더 자연스럽다. 항목으로는 남겨 프롬프트가 칸을 알려 주되, 누락 경고는 내지 않는다(analysis-items.ts).
-const FORM_FIELD_ITEM = /^\s*(?:제목|내용|본문|글|작성란|기사\s*(?:제목|내용))\s*$/;
+// 반·번호·학번·성명 같은 **머리 기입란**은 학생이 종이에 따로 적는다 — 글에 없다고 "비었다"고 하면 거짓 경고다(2026-11-16 가정-02 "반 번호").
+const FORM_FIELD_ITEM = /^\s*(?:제목|내용|본문|글|작성란|기사\s*(?:제목|내용)|(?:학년\s*)?반\s*번호?|학번|성명)\s*$/;
 function detectMissingRequiredItems(sections: RawSection[]): { label: string; missing: string[] }[] {
   const result: { label: string; missing: string[] }[] = [];
   for (const s of sections) {
@@ -3488,7 +3489,8 @@ async function generateEssayImpl(
   }
   const lengthWarningByLabel = new Map(
     // 안내문에 없는 상한(예시에서 유추한 것)만 넘은 경우는 경고하지 않는다 — 학생이 지키지 않은 조건이 아니다.
-    finalLengthIssues.filter((issue) => !issue.softOnly).map((issue) => [
+    // 안내문이 분량을 말하지 않은 단계가 우리가 추정한 상한을 넘은 경우(ceilingOnly)도 경고하지 않는다 — 학생이 어긴 조건이 없다(한문-01·국어 신문 칸에서 "목표: 최대 1100자"가 거짓 경고로 떴다, 2026-11-16).
+    finalLengthIssues.filter((issue) => !issue.softOnly && !issue.ceilingOnly).map((issue) => [
       issue.label,
       `분량 기준을 완전히 맞추지 못했습니다. 목표: ${lengthRangeText(issue)}, 실제 ${issue.unit === "words" ? "단어 수" : "글자수"}: ${issue.actual}${unitWord(issue.unit)}${issue.unit === "words" ? "" : `(${issue.countsSpaces ? "공백 포함" : "공백 제외"})`}.`,
     ])

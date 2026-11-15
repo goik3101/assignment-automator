@@ -18,7 +18,7 @@ const { summarizeTrace } = await import("@/lib/llm/usage");
 const { CASES } = await import("./giant-cases.ts");
 
 const ROOT = path.join(REPO, "수행평가 안내문", "거대 수행평가 안내문");
-const OUT = path.join(REPO, "scratchpad", "measure", "screen");
+const OUT = path.join(REPO, "scratchpad", "measure", process.env.SD_DIR ?? "screen");
 fs.mkdirSync(OUT, { recursive: true });
 
 function imagesFor(id: string): string[] {

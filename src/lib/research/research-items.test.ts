@@ -38,3 +38,9 @@ test("문항 번호 소제목으로 짠 글은 주제 항목이 소제목에 없
   assert.equal(isOrganizedByQuestionNumbers("### 문항 1\n답\n### 문항 2\n답"), true);
   assert.equal(isOrganizedByQuestionNumbers("### 의사소통의 종류\n답\n### 문항 2\n답"), false);
 });
+
+test("가운뎃점으로 묶인 항목은 '부정적 영향: … 문제점: …'으로 나눠 써도 채운 것이다(정보-01)", () => {
+  const c = "### 기술의 정의·사회적 영향\n긍정적 영향: 영상 제작이 쉬워졌다.\n부정적 영향: 허위 정보와 사기에 쓰일 수 있어 피해가 크다.\n문제점: 동의 없는 합성은 피해자의 평판을 망가뜨린다.";
+  assert.deepEqual(findMissingItems(c, ["부정적 영향·문제점"]), []);
+  assert.deepEqual(findMissingItems("### 기술의 정의\n긍정적 영향: 영상 제작이 쉬워졌다.", ["부정적 영향·문제점"]), ["부정적 영향·문제점"]);
+});

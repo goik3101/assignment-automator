@@ -65,3 +65,9 @@ test("스토리보드·카드뉴스 같은 단계는 장면 단계로 본다", (
   assert.equal(isSceneLikeElement({ label: "영상 기획", description: "", required_items: ["장면 1", "장면 2"] }), true);
   assert.equal(isSceneLikeElement({ label: "개요", description: "글의 목적을 정한다" }), false);
 });
+
+test("소제목과 빈칸만 남은 칸에는 검증 배너를 띄우지 않는다(역사-05 참고 문헌 양식)", async () => {
+  const { hasVerifiableClaimText } = await import("./verifiable-claims.ts");
+  assert.equal(hasVerifiableClaimText("### 제목\n\n[직접 작성: 참고한 도서 제목]\n\n### 저자(지은이)\n\n[직접 작성: 참고한 도서의 저자]"), false);
+  assert.equal(hasVerifiableClaimText("2023년 통계에 따르면 사용률은 34.7%였고 자료에 따라 조사한 사례가 있다.한 줄 더 길게 써서 서른 자를 넘긴다."), true);
+});
