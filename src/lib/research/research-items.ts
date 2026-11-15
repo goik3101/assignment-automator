@@ -97,12 +97,43 @@ function tableHeadings(content: string): string[] {
 export function findMissingItems(content: string, requiredItems: string[]): string[] {
   const blocks = splitByH3(content);
   const heads = tableHeadings(content);
+  const inline = inlineLabelBodies(content, requiredItems);
   return requiredItems.filter((item) => {
     if (heads.some((h) => itemMatchesHeading(item, h))) return false;
     const block = blocks.find((b) => itemMatchesHeading(item, b.heading));
-    if (!block) return true;
+    if (!block) {
+      // 소제목 대신 "질문1: …" 꼴로 칸 이름을 글 안에 적은 경우도 채운 것이다.
+      const body = inline.get(item);
+      return body === undefined || visibleLength(body) < MIN_ITEM_BODY_CHARS;
+    }
     return visibleLength(block.body) < MIN_ITEM_BODY_CHARS;
   });
+}
+
+/**
+ * "질문1: …  답변1: …"처럼 **소제목 없이 칸 이름 + 쌍점**으로 쓴 항목의 본문을 찾는다.
+ *
+ * 왜(2026-11-16, 사용자가 쓴 한국사 신문 결과물34): 양식지 그대로 "질문1: … 답변1: …"을 한 문단에 이어 썼는데
+ * 소제목(###)만 찾는 검사가 항목 5개를 전부 "비어 있어요"로 경고했다. 질문·답변이 다 있는 글에 붙는 거짓 경고라
+ * 학생이 멀쩡한 글을 의심하게 된다. 칸 이름 뒤 쌍점이 있는 곳부터 다음 칸 이름 앞까지를 그 항목의 본문으로 본다.
+ */
+function inlineLabelBodies(content: string, items: string[]): Map<string, string> {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const labelRe = (item: string) =>
+    new RegExp(`(?:^|[\\s>*_(])${[...item.replace(/\s+/g, "")].map(esc).join("\\s*")}[*_]*\\s*[:：]`, "m");
+  const found = items
+    .flatMap((item) => item.split(/\s+(?:또는|혹은)\s+/).map((alt) => ({ item, alt })))
+    .map(({ item, alt }) => {
+      const m = labelRe(alt).exec(content);
+      return m ? { item, start: m.index, end: m.index + m[0].length } : null;
+    })
+    .filter((x): x is { item: string; start: number; end: number } => x !== null)
+    .sort((a, b) => a.start - b.start);
+  const out = new Map<string, string>();
+  found.forEach((f, i) => {
+    if (!out.has(f.item)) out.set(f.item, content.slice(f.end, i + 1 < found.length ? found[i + 1].start : content.length));
+  });
+  return out;
 }
 
 /** 조사 자료 markdown을 항목(### 소제목)별 사실 줄 목록으로 분해한다. */

@@ -55,7 +55,7 @@ interface Case {
 const CASES: Case[] = [
   { id: "국어(발표)", images: ["국어 -1/KakaoTalk_20260526_213359166.jpg"], instructions: "인터넷 실명제 도입에 반대하는 입장으로 발표할게." },
   { id: "카드뉴스(역사)", images: ["역사-2/photo_2026-10-21_01-03-10 - 복사본.jpg"], instructions: "책: 윤태호 작가의 《사일구》(4·19혁명)를 읽었다." },
-  { id: "신문(역사)", images: ["역사-1 - 복사본/KakaoTalk_20261021_232340155_02.jpg", "역사-1 - 복사본/KakaoTalk_20261021_232340155_01.jpg"] },
+  { id: "신문(역사)", images: ["역사-1 - 복사본/KakaoTalk_20261021_232340155_02.jpg", "역사-1 - 복사본/KakaoTalk_20261021_232340155_01.jpg"], instructions: process.env.FC_INSTR },
   { id: "영어(발명품)", images: ["영어-1 - 복사본/KakaoTalk_20261021_232340155_08.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_06.jpg", "영어-1 - 복사본/KakaoTalk_20261021_232340155_07.jpg"] },
   { id: "과학(산·염기)", images: ["KakaoTalk_20260928_165015557_01 - 복사본.jpg"] },
   { id: "사회 평가지", analysisFile: "social-analysis.json", instructions: "주제는 노인 빈곤과 기초연금 문제로 할게." },

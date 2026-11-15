@@ -376,3 +376,13 @@ test("제목 칸: LINE_LENGTH 켜짐일 때만, 제목·이름 기입란만 한 
     delete process.env.LINE_LENGTH;
   }
 });
+
+test("'제목·내용 2칸'은 양식지의 칸 수라 번호 붙인 장면 조건이 아니다(결과물34 '칸 1·칸 2' 버그)", async () => {
+  const { requirementsForElement } = await import("./form-requirements.ts");
+  const el = { label: "머리기사", description: "제목과 내용 2칸을 채우고 사진·그림을 준비한다.", required_items: ["제목", "내용"], items_format: "sections" as const };
+  const labels = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"];
+  assert.deepEqual(requirementsForElement(el, [], "머리기사: 2칸", labels), []);
+  // 카드뉴스처럼 장면 산출물이면 그대로 읽는다
+  const card = { label: "카드뉴스", description: "6개의 칸으로 구성한다.", required_items: ["a", "b", "c", "d", "e", "f"] };
+  assert.equal(requirementsForElement(card, [], "", ["카드뉴스"]).some((r) => r.word === "칸" && r.min === 6), true);
+});

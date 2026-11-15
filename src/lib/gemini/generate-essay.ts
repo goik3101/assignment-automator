@@ -52,7 +52,7 @@ import {
   stripFormLead,
   stripOtherAreaSubsections,
   dropProductionNotesHeading,
-  studentPreparedVisuals,
+  studentPreparedVisualsForStep,
   newspaperSectionLabels,} from "@/lib/essay/deliverable";
 import { stripAsciiArt, stripImageMarkup } from "@/lib/essay/ascii-art";
 import { boxLengthBlock, boxLengths, boxOverflowRepairText, boxOverflows } from "@/lib/essay/box-lines";
@@ -680,7 +680,13 @@ ${input.previousOutputText}
             materialLabels,
             sectionOfMany: newspaperEls.length > 1,
             isBackgroundOwner: el.label === backgroundOwnerLabel && i >= 0,
-            studentVisuals: studentPreparedVisuals([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, el.description]),
+            studentVisuals: studentPreparedVisualsForStep(
+              el.label,
+              elements.map((e) => e.label),
+              [...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide],
+              el.description,
+              input.coreTaskInfo.writing_guide
+            ),
           })
         )
         .join("\n\n") +
@@ -3746,7 +3752,15 @@ async function generateEssayImpl(
       // 어떤 사진인지는 지어내지 않고, 안내문이 말한 종류와 이 칸의 주제만 말한다.
       if (sec.productionNotes) return sec;
       const el = elements.find((e) => e.label === s.label);
-      const vis = studentPreparedVisuals([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, el?.description]);
+      // 그림으로 내는 칸(만평·광고)은 그 칸이 곧 그림이라 "옆에 넣을 사진"이 없다. 나머지 칸은 안내문이 **그 칸을 말한** 경우에만 안내한다.
+      if (isPicturePanel(s.label)) return sec;
+      const vis = studentPreparedVisualsForStep(
+        s.label,
+        elements.map((e) => e.label),
+        [...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide],
+        el?.description,
+        input.coreTaskInfo.writing_guide
+      );
       if (vis.length === 0 || !el) return sec;
       const headline = (s.content.match(/^###\s*(.+)$/m)?.[1] ?? input.coreTaskInfo.topic).replace(/[*_]/g, "").slice(0, 40);
       return { ...sec, productionNotes: `"${s.label}" 칸 옆에 넣을 ${vis.join("·")} 중 하나를 직접 준비하세요 — "${headline}"의 내용이 드러나는 자료면 됩니다.` };
@@ -3969,7 +3983,9 @@ async function generateEssayImpl(
         sources: renumberedSources,
         lengthWarning: [lengthWarningByLabel.get(s.label), formWarningByLabel.get(s.label)].filter(Boolean).join(" ") || undefined,
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
-        noSourcesWarning: !noSearchTool && renumberedSources.length === 0 && sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)),
+        // 그림 칸(만평·광고)은 "그릴 그림"이라 각주를 달 수 없게 해 둔 칸이다 — 출처가 없는 것이 정상이라 배너를 띄우지 않는다(2026-11-16 결과물34).
+        noSourcesWarning:
+          !noSearchTool && renumberedSources.length === 0 && !isPicturePanel(s.label) && sectionHasVerifiableClaim(s, sceneListLabels.has(s.label)),
         structureWarning:
           structureWarningByLabel.get(s.label) ??
           (fixes && !s.content.trim() ? "이 단계의 글을 만들지 못했어요. 이 단계만 다시 생성해 주세요." : undefined),

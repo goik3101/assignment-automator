@@ -193,7 +193,16 @@ export function requirementsForElement(el: FormElement, requirements: string[], 
       if (rivals.every((o) => nearest(text, o, at) >= dMine)) addFromSentence(withoutIndex(pr));
     }
   }
-  return out.filter((r) => !isStepCountRequirement(r, labels.length));
+  return out.filter((r) => !isStepCountRequirement(r, labels.length) && !isOwnFormBoxCount(r, el));
+}
+
+// "제목·내용 2칸"의 "2칸"은 **양식지의 칸 수**(= 이 단계의 필수 항목 수)이지 번호를 붙여 반복할 장면이 아니다.
+// 실측(2026-11-16, 사용자 결과물34 한국사 신문): 분석이 머리기사에 "2칸"을 적자 expandSceneUnits가 "칸 1·칸 2" 소제목을 만들어
+// 머리기사에 빈 "칸 2"가 생겼고 "칸 조건 2개, 실제 0개" 경고가 찍혔다. 단계가 장면 산출물(카드뉴스·스토리보드)이면 그대로 둔다.
+function isOwnFormBoxCount(r: CountReq, el: FormElement): boolean {
+  if (r.word !== "칸" || r.min !== r.max) return false;
+  const items = (el.required_items ?? []).filter((i) => i.trim());
+  return items.length === r.min && !isSceneListElement(el) && !SCENE_LABEL.test(el.label);
 }
 
 /** 문장·줄·문단에 상한이 있는가(있으면 기본 분량 가이드를 주지 않는다 — 충돌). */

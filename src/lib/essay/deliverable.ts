@@ -205,7 +205,7 @@ export interface NewspaperBlockInput {
 export function newspaperSectionRole(label: string, isBackgroundOwner: boolean): string {
   const l = (label ?? "").replace(/\s/g, "");
   if (/인터뷰|대담/.test(l))
-    return "이 영역의 역할은 **그 일을 겪은 사람의 말**이다. 사건의 배경을 설명하지 말고(다른 영역이 한다), 그 사람이 직접 보고 겪은 일·그때의 판단·바라는 것을 말하게 할 것. 연표나 제도 설명을 답변에 넣지 말 것.";
+    return "이 영역의 역할은 **그 일을 겪은 사람의 말**이다. 사건의 배경을 설명하지 말고(다른 영역이 한다), 그 사람이 직접 보고 겪은 일·그때의 판단·바라는 것을 말하게 할 것. 연표나 제도 설명을 답변에 넣지 말 것. 인터뷰 대상은 \"○○ 사건 때 …를 겪은 김 모씨\"처럼 **성+모씨와 그 일에서의 처지**를 한 줄로 쓰고(\"가상 인물이다\"라는 설명은 쓰지 말 것), 답변은 그 사람이 \"저는 …\"처럼 1인칭으로 말하게 쓸 것. 질문과 답변은 \"### 질문1\"·\"### 답변1\" 소제목으로 나눌 것.";
   if (/사설|칼럼|논설/.test(l))
     return "이 영역의 역할은 **주장**이다. 사실을 다시 늘어놓지 말고(다른 영역이 한다), 그 일이 왜 문제인지·무엇을 해야 하는지를 근거를 들어 밝힐 것. 배경 설명은 한 문장을 넘기지 말 것.";
   if (/만평|광고|만화|풍자/.test(l))
@@ -554,6 +554,59 @@ export function stripOrdinalEnumerators(content: string): { content: string; cha
 const VISUAL_NAME = /사진|그림|지도|삽화|도표|그래프|인포그래픽/g;
 const PREPARE = /준비|마련|구해|가져오|붙일|활용할\s*수\s*있/;
 const FORBID = /없|불가|금지|말\s*것|×|x\b/i;
+
+/**
+ * 안내문이 **어느 칸에** 사진·그림을 준비하라고 했는지까지 가려 읽는다.
+ *
+ * 왜(2026-11-16, 사용자가 쓴 한국사 신문 결과물34): "머리기사에 사진·그림·지도는 미리 준비할 것"이라는 **전체 요구사항**
+ * 한 문장이 모든 단계에 똑같이 적용돼 인터뷰·사설·만평 칸마다 "이 칸 옆에 넣을 사진·그림·지도를 준비하세요"가
+ * 붙었다. 양식지에 사진 자리가 있는 칸은 머리기사 하나뿐이다.
+ *
+ * 규칙: ① 그 칸 자신의 설명(ownText)은 그대로 읽는다 ② 전체 문장은 **칸 이름을 하나라도 말하면** 그 칸들에만,
+ * 칸 이름을 아무것도 말하지 않으면(칸이 하나뿐인 과제의 "사진은 미리 준비") 예전처럼 모든 칸에 적용한다.
+ */
+function labelTokens(label: string): string[] {
+  return label
+    .split(/[\s/·,()]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+}
+
+/** 작성 기준 글("머리기사: …. 인터뷰: …")에서 이 칸 이름으로 시작하는 토막만 잘라 낸다. 없으면 빈 글. */
+function guideSegmentFor(guide: string | undefined, ownLabel: string, allLabels: string[]): string {
+  if (!guide) return "";
+  const names = [ownLabel, ...allLabels.filter((l) => l !== ownLabel)].map((l) => l.replace(/\s+/g, "\\s*").replace(/[/·]/g, "[/·]?"));
+  const start = new RegExp(`(?:^|[.\\s])${names[0]}\\s*[:：]`).exec(guide);
+  if (!start) return "";
+  const from = start.index + start[0].length;
+  const rest = guide.slice(from);
+  const next = names.slice(1).map((n) => new RegExp(`(?:^|[.\\s])${n}\\s*[:：]`).exec(rest)?.index ?? Infinity);
+  return rest.slice(0, Math.min(...next, rest.length));
+}
+
+export function studentPreparedVisualsForStep(
+  ownLabel: string,
+  allLabels: string[],
+  sharedTexts: (string | undefined)[],
+  ownText?: string,
+  guide?: string
+): string[] {
+  const found = new Set(studentPreparedVisuals([ownText]));
+  const tokensByLabel = allLabels.map((l) => ({ label: l, tokens: labelTokens(l) }));
+  // 칸 이름을 말하지 않는 문장("사진·그림·지도는 미리 준비할 것")은, 칸이 여럿이면 **자기 칸 설명이 시각 자료를 말하는 칸**에만 건다.
+  // (분석 실행마다 안내문 문장에 칸 이름이 있기도 없기도 했다 — 2026-11-16 신문 두 번째 재현에서 인터뷰·사설에 다시 붙었다.)
+  const ownMentionsVisual = new RegExp(VISUAL_NAME.source).test(`${ownText ?? ""} ${guideSegmentFor(guide, ownLabel, allLabels)}`);
+  for (const t of sharedTexts) {
+    if (!t) continue;
+    for (const sentence of t.split(/(?<=[.。!?])\s*|\n+/)) {
+      const named = tokensByLabel.filter((x) => x.tokens.some((tok) => sentence.includes(tok)));
+      if (named.length > 0 && !named.some((x) => x.label === ownLabel)) continue;
+      if (named.length === 0 && allLabels.length >= 2 && !ownMentionsVisual) continue;
+      for (const v of studentPreparedVisuals([sentence])) found.add(v);
+    }
+  }
+  return [...found];
+}
 
 export function studentPreparedVisuals(texts: (string | undefined)[]): string[] {
   const found = new Set<string>();

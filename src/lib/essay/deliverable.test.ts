@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, splitProductionNotes, stripFormLead, studentPreparedVisuals, stripOtherAreaSubsections, dropProductionNotesHeading } from "./deliverable.ts";
+import { buildNewspaperBlock, newspaperSectionLabels, newspaperSectionRole, splitProductionNotes, stripFormLead, studentPreparedVisuals, studentPreparedVisualsForStep, stripOtherAreaSubsections, dropProductionNotesHeading } from "./deliverable.ts";
 
 test("신문 영역이 각각 별개 단계면 그 칸 하나만 쓰게 한다", () => {
   // 실측(결과물.10): "이 단계는 신문 그 자체다"라는 지시 때문에 머리기사 안에 인터뷰·사설·만평이 다 들어갔다.
@@ -152,4 +152,25 @@ test("그림 칸에 남는 '제작 참고' 라벨만 떼고 내용은 칸에 남
   // 라벨이 없으면 아무것도 바꾸지 않는다
   const plain = "### 만평 — 지도 위의 선\n줄다리기를 그린다.";
   assert.deepEqual(dropProductionNotesHeading(plain), { content: plain, dropped: false });
+});
+
+test("사진 준비 안내는 안내문이 말한 칸에만 붙는다(전체 요구사항 한 문장이 모든 칸에 번지지 않는다)", () => {
+  const labels = ["머리기사", "인터뷰", "사설 / 칼럼", "만평 / 광고"];
+  const shared = ["머리기사에 사진, 그림, 지도는 미리 준비할 것.", "5반 손글씨 안내: B4용지, 분량제한 X."];
+  assert.deepEqual(studentPreparedVisualsForStep("머리기사", labels, shared).sort(), ["그림", "사진", "지도"]);
+  assert.deepEqual(studentPreparedVisualsForStep("인터뷰", labels, shared), []);
+  assert.deepEqual(studentPreparedVisualsForStep("사설 / 칼럼", labels, shared), []);
+  // 칸 자신의 설명에 있으면 그대로 읽는다
+  assert.deepEqual(studentPreparedVisualsForStep("인터뷰", labels, shared, "인터뷰 사진을 준비한다").sort(), ["사진"]);
+  // 칸 이름을 말하지 않는 문장은 예전처럼 모든 칸에 적용(칸이 하나뿐인 과제)
+  assert.deepEqual(studentPreparedVisualsForStep("보고서", ["보고서"], ["사진은 미리 준비할 것."]), ["사진"]);
+});
+
+test("칸 이름이 없는 '사진은 미리 준비' 문장은 자기 설명에 시각 자료가 있는 칸에만 걸린다", () => {
+  const labels = ["머리기사", "인터뷰", "사설/칼럼", "만평/광고"];
+  const shared = ["사진·그림·지도는 미리 준비하고 못 하면 수행평가 시간에 그릴 수 있음."];
+  const guide = "머리기사: 양식 칸은 제목·내용이며 사진/그림/지도 자리도 있다. 제목 약 1줄. 인터뷰: 인터뷰 대상 기입란, 질문1·답변1 칸. 사설/칼럼: 제목 약 1줄, 내용 약 5줄.";
+  assert.deepEqual(studentPreparedVisualsForStep("머리기사", labels, shared, "기사를 쓴다", guide).sort(), ["그림", "사진", "지도"]);
+  assert.deepEqual(studentPreparedVisualsForStep("인터뷰", labels, shared, "인터뷰를 구성한다", guide), []);
+  assert.deepEqual(studentPreparedVisualsForStep("사설/칼럼", labels, shared, "사설을 쓴다", guide), []);
 });
