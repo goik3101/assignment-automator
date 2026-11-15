@@ -40,7 +40,7 @@ for (const c of CASES) {
     const extEls = core.task_elements.filter((e) => e.type !== "text_submission");
     const g0 = Date.now();
     const { essay, plan, usage } = await withLlmTrace(`screen:${c.id}`, async (trace) => {
-      const essay = textEls.length ? await generateEssay({ subject: a.subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] } }) : null;
+      const essay = textEls.length ? await generateEssay({ subject: a.subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] }, ...(process.env.NOTICE_IMAGES === "on" ? { noticeImages: imgs } : {}) }) : null;
       const plan = extEls.length ? await generatePlan({ subject: a.subject, coreTaskInfo: { ...core, task_elements: extEls }, instructions: c.instructions }) : null;
       return { essay, plan, usage: summarizeTrace(trace) };
     });

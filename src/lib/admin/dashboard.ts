@@ -1,3 +1,4 @@
+import { PRICES_PER_MILLION } from "@/lib/llm/usage";
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { ADMIN_ACCOUNT_EMAIL } from "./session";
 import { getLockoutConfig } from "./lockout";
@@ -94,6 +95,10 @@ export interface AiSection {
   /** 최근 요청이 실제로 쓴 모델 이름(많이 쓴 순). 운영 환경변수가 빠지면 여기서 바로 보인다 —
    * OPENAI_MODEL_ANALYZE가 없으면 분석이 조용히 gpt-5-mini로 내려가고 안내문 조건을 절반만 읽는다. */
   models: { name: string; requests: number }[];
+  /** 측정·테스트 스크립트가 쓴 비용(서비스 비용과 따로). 이번 달/최근 30일 합계. */
+  test: { costMonth: number; cost30: number; runs: number };
+  /** 가격표(usage.ts)에 없는 모델 — 이 모델의 비용은 0으로 세어져 실제보다 작게 나온다. */
+  unpricedModels: string[];
   truncated: boolean;
 }
 
@@ -173,9 +178,16 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
   }
 
   // ── AI 사용량·비용·오류 ──
-  const measured = !aiRows.missing && aiRows.rows.length > 0;
+  // 측정·테스트 스크립트의 호출(route가 "script:"로 시작, script-ledger.ts)은 서비스 요청과 섞지 않고 따로 센다 —
+  // 섞으면 서비스 단가·오류율·월말 예상이 테스트 때문에 흔들린다.
+  const svcRows = aiRows.rows.filter((r) => !String(r.route).startsWith("script:"));
+  const scriptRows = aiRows.rows.filter((r) => String(r.route).startsWith("script:"));
+  const monthKey = kstDayKey(now).slice(0, 7);
+  const testCostMonth = scriptRows.filter((r) => kstDayKey(new Date(r.created_at)).startsWith(monthKey)).reduce((sum, r) => sum + num(r.cost_usd), 0);
+  const testCost30 = scriptRows.reduce((sum, r) => sum + num(r.cost_usd), 0);
+  const measured = !aiRows.missing && svcRows.length > 0;
   const aiDays: DayPoint[] = measured
-    ? seriesByDay(aiRows.rows, days, (r) => r.created_at, (r) => ({
+    ? seriesByDay(svcRows, days, (r) => r.created_at, (r) => ({
         requests: 1,
         errors: r.ok ? 0 : 1,
         limited: r.status === 429 ? 1 : 0,
@@ -188,7 +200,7 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
 
   const routeMap = new Map<string, { requests: number; errors: number; limited: number; failedCalls: number; cost: number; ms: number[] }>();
   if (measured) {
-    for (const r of aiRows.rows) {
+    for (const r of svcRows) {
       const m = routeMap.get(r.route) ?? { requests: 0, errors: 0, limited: 0, failedCalls: 0, cost: 0, ms: [] };
       m.requests++;
       if (!r.ok) m.errors++;
@@ -231,17 +243,24 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     budgetUsd: Number.isFinite(budget) && budget > 0 ? budget : null,
     models: (() => {
       const count = new Map<string, number>();
-      for (const r of aiRows.rows as { models?: string | null }[])
+      for (const r of svcRows as { models?: string | null }[])
         for (const m of String(r.models ?? "").split(",").map((x) => x.trim()).filter(Boolean)) count.set(m, (count.get(m) ?? 0) + 1);
       return [...count.entries()].map(([name, requests]) => ({ name, requests })).sort((a, b) => b.requests - a.requests);
     })(),
     byRoute,
     recentErrors: measured
-      ? aiRows.rows
+      ? svcRows
           .filter((r) => !r.ok)
           .slice(0, 15)
           .map((r) => ({ at: r.created_at, route: r.route, status: r.status, seconds: Math.round(r.wall_ms / 100) / 10 }))
       : [],
+    test: { costMonth: testCostMonth, cost30: testCost30, runs: scriptRows.length },
+    unpricedModels: (() => {
+      const known = new Set(Object.keys(PRICES_PER_MILLION));
+      const names = new Set<string>();
+      for (const r of aiRows.rows as { models?: string | null }[]) for (const m of String(r.models ?? "").split(",").map((x) => x.trim()).filter(Boolean)) if (!known.has(m)) names.add(m);
+      return [...names];
+    })(),
     truncated: aiRows.truncated,
   };
 

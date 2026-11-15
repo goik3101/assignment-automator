@@ -140,11 +140,23 @@ export default async function AdminDashboardPage() {
             />
           </dl>
           <p className="mt-3 text-[11px] leading-relaxed text-faint">
-            예상 = 지금까지 + 최근 7일 하루 평균 × 남은 날. 가격표 기준 추정이라 실제 청구액은 OpenAI 대시보드로 확인하세요. 사이트에서 들어온 AI 요청만 센 값이라 측정 스크립트·임베딩·응답 없이 시간 초과로 끊긴 호출의 비용은 빠져 있어요(그래서 청구액이 더 클 수 있어요).
+            예상 = 지금까지 + 최근 7일 하루 평균 × 남은 날. 위 숫자는 **사이트에서 들어온 서비스 요청만** 센 값이에요(측정 스크립트 비용은 아래에 따로). 가격표 기준 추정이라 실제 청구액은 OpenAI 대시보드로 확인하세요. 임베딩과 응답 없이 시간 초과로 끊긴 호출의 비용은 빠져 있어요.
             {ai.totals30.limited > 0 && ` 최근 30일 횟수 제한에 걸린 요청 ${ai.totals30.limited}건.`}
           </p>
         </div>
 
+        <div className="rounded-2xl border border-border bg-surface px-5 py-4">
+          <p className="text-sm font-semibold">테스트·측정 비용 (서비스 비용과 따로)</p>
+          <p className="mt-1 text-xs text-muted">
+            이번 달 <strong>{usd(ai.test.costMonth)}</strong> · 최근 30일 {usd(ai.test.cost30)} ({ai.test.runs}회 실행). 개발 중 측정 스크립트가 쓴 모델 호출이에요 — 서비스 단가·월말 예상에는 섞지 않았어요.
+            이 기록은 2026-11-16부터 쌓여요. OpenAI 청구액 ≈ 서비스 비용 + 테스트·측정 비용 + 임베딩 정도로 맞춰 보세요.
+          </p>
+        </div>
+        {ai.unpricedModels.length > 0 && (
+          <Notice>
+            가격표에 없는 모델이 쓰였어요: <b>{ai.unpricedModels.join(", ")}</b>. 이 모델의 비용은 0으로 세어져 위 숫자가 실제보다 작아요 — src/lib/llm/usage.ts의 가격표에 단가를 추가하세요.
+          </Notice>
+        )}
         {ai.models.length > 0 && (
           <div className="rounded-2xl border border-border px-5 py-4">
             <p className="text-sm font-semibold">최근 30일에 실제로 쓴 모델</p>

@@ -4,3 +4,7 @@
 import { register } from "node:module";
 
 register("./hooks.mjs", import.meta.url);
+
+// 측정 스크립트가 쓴 모델 비용을 대시보드에 "테스트·측정" 줄로 남긴다(src/lib/llm/trace.ts, src/lib/admin/script-ledger.ts).
+// SUPABASE 환경변수가 없으면(단위 테스트 등) 기록하지 않는다.
+process.env.LLM_LEDGER ??= "script";
