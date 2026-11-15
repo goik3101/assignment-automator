@@ -44,6 +44,8 @@ interface GenerationContext {
   adminInfo: AdministrativeInfo | null;
   instructions: string;
   turnstileToken: string | null;
+  /** 안내문 사진 — 완성 원고 생성에만 실어 보낸다(저장하지 않는다). */
+  noticeImages?: { base64: string; mimeType: string }[];
 }
 
 export default function AssignmentFlow() {
@@ -169,6 +171,7 @@ export default function AssignmentFlow() {
           instructions: c.instructions,
           turnstileToken: c.turnstileToken,
           sourceScope: getSourceScope(),
+          noticeImages: c.noticeImages,
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? t("생성에 실패했어요."));

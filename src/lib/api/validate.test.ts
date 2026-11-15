@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isUuid, validateAnalyzeInput, validateCoreTaskInfo, IMAGE_MIME_PATTERN } from "./validate.ts";
+import { isUuid, validateAnalyzeInput, validateCoreTaskInfo, validateNoticeImages, IMAGE_MIME_PATTERN } from "./validate.ts";
 
 test("입력 크기·형식 검증", () => {
   assert.equal(validateAnalyzeInput({ topicText: "가".repeat(9000) })?.includes("너무 깁니다"), true);
@@ -36,4 +36,13 @@ test("이미지 MIME: image/* 형식만, data URL을 깨는 문자는 거절", (
   assert.ok(validateAnalyzeInput({ imageBase64: "AAA", imageMimeType: "image/png;x=1", topicText: "t" }));
   assert.equal(validateAnalyzeInput({ imageBase64: "AAA", imageMimeType: "image/jpeg" }), null);
   assert.equal(validateAnalyzeInput({ imageBase64: "AAA", imageMimeType: "" }), null);
+});
+
+test("생성에 실린 안내문 사진: 없으면 통과, 형식·장수·합계 한도는 거절", () => {
+  assert.equal(validateNoticeImages(undefined), null);
+  assert.equal(validateNoticeImages([{ base64: "AAA", mimeType: "image/jpeg" }]), null);
+  assert.ok(validateNoticeImages("not-an-array"));
+  assert.ok(validateNoticeImages(Array.from({ length: 5 }, () => ({ base64: "A", mimeType: "image/png" }))));
+  assert.ok(validateNoticeImages([{ base64: "A", mimeType: "text/html" }]));
+  assert.ok(validateNoticeImages([{ base64: "A".repeat(5_000_000), mimeType: "image/jpeg" }]));
 });

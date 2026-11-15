@@ -643,7 +643,9 @@ export function placeSourceList(content: string, item: string, sectionMd: string
   const lines = content.replace(/\s+$/, "").split("\n");
   const isHead = (l: string) => /^#{2,4}\s+\S/.test(l);
   const heads = lines.map((l, i) => (isHead(l) && isSourceListItem(l.replace(/^#+\s*/, "").trim()) ? i : -1)).filter((i) => i >= 0);
-  if (heads.length === 0) return `${stripTrailingItemHeading(content, item)}\n\n${sectionMd}`;
+  // 모델이 목록 대신 "출처: 본문 각주[1][2]" 같은 한 줄만 적어 둔 경우 그 줄을 떼고 목록을 붙인다(2026-11-15 과학-12: 이 줄과 목록이 함께 나왔다).
+  const withoutNote = content.replace(/\s+$/, "").replace(/\n+\s*(?:출처|참고\s*문헌|참고\s*자료)\s*[:：][^\n]*(?:\[\d+\])+[^\n]*\s*$/, "");
+  if (heads.length === 0) return `${stripTrailingItemHeading(withoutNote, item)}\n\n${sectionMd}`;
   const out: string[] = [];
   let i = 0;
   let placed = false;

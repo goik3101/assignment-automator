@@ -14,6 +14,7 @@ import { newspaperSectionLabels } from "./deliverable.ts";
 
 export type LengthRole =
   | "material" // 항목별 조사 자료(소제목 구조)
+  | "qa_list" // 문항(질문)마다 답을 쓰는 단계 — 문항당 2~3문장
   | "report_sections" // 항목 소제목이 있는 제출용 보고서(항목마다 문단)
   | "newspaper"
   | "form_box" // 신문·양식의 **영역 한 칸**(머리기사·인터뷰·사설처럼 한 지면을 나눠 맡은 칸)
@@ -61,6 +62,8 @@ export interface RoleCtx {
   requirements?: string[];
   guide?: string;
   labels?: string[];
+  /** 안내문 전사(core_task_info.notice_text) — 손글씨 예산 관문만 읽는다. */
+  notice?: string;
 }
 
 /**
@@ -109,6 +112,8 @@ export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
   // 개요·계획은 항목이 여럿이어도 보고서가 아니다 — 항목 수로만 정하면 "개요"에 보고서 분량(항목 7개 × 250~450 = 1,750~3,150자)이 붙어
   // 실제로 2,000~2,700자짜리 개요가 나왔다(실측 2026-10-29, 26회 중앙 2,481자). 라벨이 개요·계획이면 계획 분량을 먼저 적용한다.
   if (/계획|개요|설계|구상|기획/.test(label) && !/보고서|논설|논술|에세이|소논문/.test(label)) return "plan";
+  // 문항마다 답하는 단계("문항 1~8에 각각 답한다")는 항목당 2~3문장이다 — 보고서 항목(대여섯 문장)으로 재면 11문항이 4,200자가 된다(2026-11-15 정보-03).
+  if (/문항[^.\n]{0,14}각각\s*(?:답|작성|설명)|각\s*문항(?:에|마다)/.test(text) && (el.required_items?.length ?? 0) >= 4) return "qa_list";
   if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return qualityFixesOn() && !isResearchMaterialStep(el) ? "report_sections" : "material";
   if (/소감|느낀\s*점|후기|성찰|반성|다짐/.test(label)) return "reflection";
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
@@ -137,7 +142,7 @@ export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   // **교실에서 손으로 쓰는 평가면 쓸 수 있는 시간이 상한이다**(handwrite-budget.ts).
   // 사용자 실사용(2026-11-12): 과학 탐구보고서가 2,181자로 나왔는데 그 과제는 "2차시 개별 평가, 시험 대형"이다 —
   // 40~50분에 손으로 옮겨 적을 수 없는 양이다. 만점 실측(1,307~1,501자)이 바로 "한 차시에 쓸 수 있는 양"이었다.
-  const budget = handwriteBudget([ctx?.guide, ...(ctx?.requirements ?? []), el.description]);
+  const budget = handwriteBudget([ctx?.guide, ...(ctx?.requirements ?? []), el.description, ctx?.notice]);
   // **한 지면을 나눠 맡은 칸들은 예산도 나눠 쓴다.** 실측(2026-11-12, length-standard 표): 신문은 네 칸을
   // 한 차시에 쓰는데 상한 1,350자가 칸마다 따로 걸려 총합이 2,400자가 됐다 — 한 차시에 쓸 수 없는 양이다.
   // 만점 실행의 칸이 167~300자였던 것이 "네 칸이 한 차시를 나눠 쓴 결과"다.
@@ -173,6 +178,10 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
     case "material": {
       const n = Math.max(items, 2);
       return { role, min: n * 160, max: n * 380, basis: `조사 항목 ${n}개 × 항목당 사실 2~4문장` };
+    }
+    case "qa_list": {
+      const n = Math.max(items, 2);
+      return { role, min: n * 110, max: n * 240, basis: `문항 ${n}개 × 문항당 2~3문장` };
     }
     case "report_sections": {
       // 항목당 250~450자는 학교 평가지 칸(보통 기준선 5~6줄)보다 훨씬 길다 — 실측(2026-10-30): 항목 7개 평가지가 1,900~2,300자로 나와
@@ -317,10 +326,11 @@ export type GuideCtx = {
   /** 역할 분류에 필요한 과제 전체 정보(한 지면을 나눠 맡은 칸인지 알려면 형제 단계를 봐야 한다). */
   topic?: string;
   siblings?: { label: string; description: string }[];
+  notice?: string;
 };
 
 const roleCtx = (ctx?: GuideCtx): RoleCtx | undefined =>
-  ctx ? { topic: ctx.topic, siblings: ctx.siblings, requirements: ctx.requirements, guide: ctx.guide, labels: ctx.labels } : undefined;
+  ctx ? { topic: ctx.topic, siblings: ctx.siblings, requirements: ctx.requirements, guide: ctx.guide, labels: ctx.labels, notice: ctx.notice } : undefined;
 
 /**
  * 안내문이 이 단계의 **양식 칸 줄 수**를 알려 줬는가(box-lines.ts). 알려 줬으면 그 칸이 기준이고,

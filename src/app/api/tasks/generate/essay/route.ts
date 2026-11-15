@@ -1,4 +1,4 @@
-import { validateCoreTaskInfo, validateGenerationFields } from "@/lib/api/validate";
+import { validateCoreTaskInfo, validateGenerationFields, validateNoticeImages } from "@/lib/api/validate";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { withSourceScope } from "@/lib/llm/scope";
 import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
@@ -35,7 +35,9 @@ export const POST = routeUsage("essay", withUiLangRoute(async function POST(req:
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
-    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, sourceScope } = body as {
+    const { subject, coreTaskInfo, adminInfo, instructions, turnstileToken, sourceScope, noticeImages } = body as {
+      /** 안내문 사진(분석 때 올린 것을 줄인 것). 있으면 작성자 모델이 안내문을 직접 읽는다 — 저장하지 않는다. */
+      noticeImages?: { base64: string; mimeType: string }[];
       /** AI 설정의 출처 범위("domestic" = 국내 출처만). 없거나 다른 값이면 국내·해외 모두. */
       sourceScope?: unknown;
       subject: string;
@@ -52,6 +54,8 @@ export const POST = routeUsage("essay", withUiLangRoute(async function POST(req:
     if (invalidInfo) return NextResponse.json({ error: invalidInfo }, { status: 400 });
     const invalidFields = validateGenerationFields({ subject });
     if (invalidFields) return NextResponse.json({ error: invalidFields }, { status: 400 });
+    const invalidImages = validateNoticeImages(noticeImages);
+    if (invalidImages) return NextResponse.json({ error: invalidImages }, { status: 400 });
 
     const { identity, supabase } = await resolveIdentity(req);
     const admin = isLimitExempt(req, identity.email); // 11-6: 관리자는 모든 제한에서 예외
@@ -106,6 +110,7 @@ export const POST = routeUsage("essay", withUiLangRoute(async function POST(req:
       instructions,
       // undefined면 generateEssay가 직접 조사한다(그 구분이 1567~1568줄에 있다).
       ...(prefetched ? { researchNotes: prefetched } : {}),
+      ...(noticeImages?.length ? { noticeImages } : {}),
       avoidanceInstruction: avoidanceInstruction ?? undefined,
       recentBookGuidance: bookGuidance?.instructionText,
       recentSubjectGuidance: subjectGuidance?.instructionText,

@@ -335,3 +335,29 @@ export function soloDefault<T extends { required_items?: string[] }>(
     : core.writing_guide;
   return { requirements, writing_guide, elements, dropped };
 }
+
+/**
+ * 앞 단계와 **같은 칸 목록**을 다시 갖는 뒤 단계의 중복 칸을 뺀다.
+ *
+ * 왜(2026-11-15, 10종 직접 대조 사회-02): 안내문은 "정책 평가: 실천 가능성·윤리성·경제성·파급성 네 가지로 평가"하고 "위 4가지 내용을 포함하여 기대효과를 작성"이라고 했다.
+ * 분석이 두 단계("정책 평가", "정책 기대효과")를 만들면서 **두 단계 모두에 네 칸을 넣어** 같은 네 항목이 두 번 쓰였다(총 5,063자).
+ * 뒤 단계의 칸 중 앞 단계와 같은 것을 빼고, 남는 것이 둘 미만이면 칸 목록 없이 하나의 글로 쓰게 한다.
+ */
+export function dropRepeatedSiblingItems<T extends { label: string; required_items?: string[]; items_format?: "sections" | "flowing" }>(els: T[]): T[] {
+  const flat = (s: string) => s.replace(/[\s·・:：()（）'"‘’“”\-_,.]/g, "");
+  const seen = new Set<string>();
+  return els.map((el) => {
+    const items = (el.required_items ?? []).filter((i) => (i ?? "").trim());
+    if (items.length < 3) {
+      for (const i of items) seen.add(flat(i));
+      return el;
+    }
+    const shared = items.filter((i) => seen.has(flat(i)));
+    for (const i of items) seen.add(flat(i));
+    if (shared.length < 3 || shared.length / items.length < 0.75) return el;
+    const keep = items.filter((i) => !seen.has("__never__") && !shared.includes(i));
+    const { required_items: _r, ...rest } = el;
+    void _r;
+    return (keep.length >= 2 ? { ...rest, required_items: keep } : { ...rest, items_format: "flowing" as const }) as T;
+  });
+}

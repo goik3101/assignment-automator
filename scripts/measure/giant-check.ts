@@ -105,7 +105,7 @@ for (const c of CASES) {
           researchSec = (Date.now() - r0) / 1000;
         }
         g0 = Date.now();
-        essay = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] }, ...(prefetched ? { researchNotes: prefetched } : {}) });
+        essay = await generateEssay({ subject, coreTaskInfo: core, instructions: c.instructions, selection: { history: [] }, ...(prefetched ? { researchNotes: prefetched } : {}), ...(process.env.NOTICE_IMAGES === "on" ? { noticeImages: imgs } : {}) });
       }
       if (extEls.length) {
         const planCore = { ...core, task_elements: extEls };

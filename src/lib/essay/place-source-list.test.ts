@@ -22,3 +22,10 @@ test("목록 소제목이 없으면 맨 끝에 붙인다", () => {
   const r = placeSourceList("본문이다.", "참고문헌", LIST);
   assert.equal(r, `본문이다.\n\n${LIST}`);
 });
+
+test("모델이 적은 '출처: 본문 각주[1][2]' 한 줄은 떼고 목록을 붙인다 (과학-12)", () => {
+  const t = "본문이다.[1][2]\n\n출처: 본문 각주[1][2].";
+  const r = placeSourceList(t, "출처", buildSourceListSection("출처", [{ title: "정책브리핑", url: "https://www.korea.kr/a" }]));
+  assert.ok(!/본문 각주/.test(r));
+  assert.match(r, /### 출처\n- 정책브리핑/);
+});

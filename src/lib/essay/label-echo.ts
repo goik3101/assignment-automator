@@ -25,6 +25,9 @@ export function echoesLabel(line: string, label: string): boolean {
   if (name.length < 3 || head.length < 3) return false;
   // 머리말이 칸 이름이거나, 칸 이름으로 시작하는 경우("분석적 채점 기준표", "분석적 채점 기준표 작성")
   if (!head.startsWith(name) && !name.startsWith(head)) return false;
+  // 칸 이름 뒤에 붙은 말이 **작성·표·칸 같은 군더더기**일 때만 메아리다. 그 밖의 말("인터뷰 대상", "머리기사 제목")은 그 칸 안의 **진짜 항목**이다 —
+  // 2026-11-15 역사 신문: 인터뷰 칸의 "인터뷰 대상: 서울에 사는 가상의 시민입니다…"가 메아리로 지워져 인터뷰 대상 칸이 비었다.
+  if (head.startsWith(name) && head.length > name.length && !/^(?:작성|표|칸|내용|설명|기준)+$/.test(head.slice(name.length))) return false;
   // 뒤에 내용이 있어야 설명이다 — "제목:"처럼 비어 있으면 학생이 채울 기입란이다.
   return m[2].trim().length > 0;
 }
@@ -42,4 +45,28 @@ export function stripLabelEcho(content: string, label: string): { content: strin
 
 export function labelEchoOn(): boolean {
   return process.env.LABEL_ECHO !== "off";
+}
+
+/**
+ * 소제목 바로 아래 줄이 **그 소제목을 다시 말하며** 시작하면("### 질문1" 다음 "질문 1: …") 반복된 머리말만 뗀다.
+ * 2026-11-15 역사 신문 재생성에서 인터뷰 칸 네 곳이 전부 이렇게 나왔다 — 학생이 옮겨 적으면 "질문1 / 질문 1:"이 두 번 적힌다.
+ */
+export function stripHeadingEcho(content: string): { content: string; fixed: number } {
+  const lines = (content ?? "").split("\n");
+  let fixed = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const h = /^#{2,4}\s+(.+?)\s*$/.exec(lines[i]);
+    if (!h) continue;
+    const name = flat(h[1].replace(/\*\*/g, ""));
+    if (name.length < 2) continue;
+    // 소제목 아래 **그 칸 안의 모든 줄**을 본다("### 정책 명칭" 아래 둘째 줄의 "정책 명칭: 돌봄교실이다."도 같은 되풀이다).
+    for (let j = i + 1; j < lines.length && !/^#{2,4}\s/.test(lines[j]); j++) {
+      const m = /^(\s*(?:\*\*)?)([^:：\n]{2,30}?)(?:\*\*)?\s*[:：]\s+(\S[\s\S]*)$/.exec(lines[j] ?? "");
+      if (m && flat(m[2]) === name) {
+        lines[j] = m[3];
+        fixed++;
+      }
+    }
+  }
+  return { content: lines.join("\n"), fixed };
 }

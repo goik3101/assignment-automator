@@ -4,8 +4,9 @@ import { normalizeSubject } from "./normalize-subject";
 import { recoverFormFields } from "@/lib/essay/notice-form";
 import { noticeFormOn } from "@/lib/essay/quality-flags";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
-import { dropInterrogativeItems, foldSkeletonItems, soloDefault, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
+import { dropInterrogativeItems, dropRepeatedSiblingItems, foldSkeletonItems, soloDefault, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
+import { reconcileItemLabels } from "@/lib/essay/item-reconcile";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import { lengthFromAnalyzeOn, sanitizeLengthEstimate } from "@/lib/essay/length-estimate";
 import type { AnalyzeResult } from "@/types/task";
@@ -486,9 +487,11 @@ export async function analyzeAssignment(
   // 채점 기준의 "누가·언제·어디서…"는 칸 목록이 아니라 글에 담길 내용 안내다 — 소제목 구조로 쓰이지 않게 뺀다.
   // 칸이 있는 제작물(카드뉴스·신문 등)은 글 단계로 올린다 — 칸에 들어갈 말은 학생이 써야 하고,
   // 산출물 이름만 보고 external_production에 두면 같은 안내문인데 실행마다 글을 받았다 못 받았다 한다.
-  const distributed = distributeSharedLength(task_elements_raw).map((e) =>
+  const distributedRaw = distributeSharedLength(task_elements_raw).map((e) =>
     foldSkeletonItems(dropInterrogativeItems(textWhenBoxesToFill(forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic))))
   );
+  // 앞 단계와 같은 칸 목록을 또 가진 뒤 단계의 중복 칸을 뺀다(analysis-normalize.ts dropRepeatedSiblingItems).
+  const distributed = dropRepeatedSiblingItems(distributedRaw);
   // 수업 중 작성하는 기록지는 만들 결과물에서 빼고, 왜 없는지 학생이 볼 수 있게 요구사항에 한 줄 남긴다.
   const { kept: keptSteps, dropped: droppedSheets } = formRequirementsOn() ? dropNonSubmissionActivities(distributed, [...parsed.core_task_info.requirements, parsed.core_task_info.writing_guide ?? "", parsed.administrative_info?.other_notes ?? ""]) : { kept: distributed, dropped: [] };
   // 안내문에 실린 문항(객관식·○×)에 답할 단계가 빠졌으면 붙인다(analysis-normalize.ts ensureQuestionSteps).
@@ -536,19 +539,25 @@ export async function analyzeAssignment(
         console.warn(`[analyzeAssignment] 안내문 원문에서 양식 칸 되찾음 label="${el.label}": ${el.required_items?.slice(before).join(", ")}`);
     });
 
+  // 분석이 사진에서 잘못 읽은 칸 이름("행정 구역"→"형성 구역")을 원문 전사와 맞춰 바로잡는다(essay/item-reconcile.ts). NOTICE_RECONCILE=off로 끈다.
+  const reconciled = process.env.NOTICE_RECONCILE !== "on" ? withRecovered : withRecovered.map((el) => {
+    const r = reconcileItemLabels(el.required_items ?? [], noticeText);
+    if (r.changed.length > 0) console.warn(`[analyzeAssignment] 칸 이름을 원문 전사에 맞춰 고침 label="${el.label}": ${r.changed.map((c) => `"${c.from}"→"${c.to}"`).join(", ")}`);
+    return r.changed.length > 0 ? { ...el, required_items: r.items } : el;
+  });
   const writingGuide = fixes ? [parsed.core_task_info.writing_guide?.trim(), ...guideExtras].filter(Boolean).join("\n").slice(0, 1500) : "";
   const { writing_guide: _rawGuide, ...coreRest } = parsed.core_task_info;
   void _rawGuide;
 
   // 팀으로 할 때만 해당하는 칸·문장은 혼자 하는 학생에게서 뺀다(analysis-normalize.ts soloDefault).
-  const solo = soloDefault({ requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], writing_guide: writingGuide, elements: withRecovered }, [input.instructions, input.topicText].filter(Boolean).join(" "));
+  const solo = soloDefault({ requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], writing_guide: writingGuide, elements: reconciled }, [input.instructions, input.topicText].filter(Boolean).join(" "));
   if (solo.dropped.length > 0) console.warn(`[analyzeAssignment] 팀 진행 전용 칸을 뺌(학생 지침에 팀 언급 없음): ${solo.dropped.join(", ")}`);
   return {
     ...parsed,
     // 병렬 전사는 분석 JSON 밖에서 왔으므로, 순차 모드와 같은 모양이 되게 결과에 얹는다(측정 도구·되찾기가 읽는다).
     ...(parallelTranscript && noticeText ? { notice_text: noticeText } : {}),
     subject,
-    core_task_info: { ...coreRest, requirements: solo.requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
+    core_task_info: { ...coreRest, ...(noticeText ? { notice_text: noticeText } : {}), requirements: solo.requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }

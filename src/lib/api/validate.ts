@@ -63,6 +63,23 @@ export function validateAnalyzeInput(b: { imageBase64?: unknown; imageMimeType?:
   return null;
 }
 
+/**
+ * 생성 요청에 실린 안내문 사진 검증(작성자 모델에 사진을 직접 주는 경로). 없으면 통과 — 사진 없이도 생성은 된다.
+ * 합계 상한은 Vercel 요청 본문 한도(4.5MB)보다 아래로 둔다(coreTaskInfo·지침 여유 포함). 한도를 넘으면 플랫폼이 먼저 거절한다.
+ */
+export const MAX_NOTICE_IMAGES_BASE64 = 4.0 * 1024 * 1024;
+export function validateNoticeImages(images: unknown): string | null {
+  if (images === undefined || images === null) return null;
+  if (!Array.isArray(images) || images.length > 4) return "안내문 사진은 최대 4장까지 보낼 수 있습니다.";
+  let total = 0;
+  for (const img of images as { base64?: unknown; mimeType?: unknown }[]) {
+    if (!img || typeof img.base64 !== "string" || typeof img.mimeType !== "string" || !IMAGE_MIME_PATTERN.test(img.mimeType)) return "안내문 사진 형식이 올바르지 않습니다.";
+    total += img.base64.length;
+  }
+  if (total > MAX_NOTICE_IMAGES_BASE64) return "안내문 사진 용량이 너무 큽니다.";
+  return null;
+}
+
 /** 생성 요청의 coreTaskInfo 검증: 요소가 하나도 없거나 형식이 깨졌으면 모델을 부르지 않는다. */
 export function validateCoreTaskInfo(info: unknown, instructions?: unknown): string | null {
   const c = info as { topic?: unknown; task_elements?: unknown } | null;

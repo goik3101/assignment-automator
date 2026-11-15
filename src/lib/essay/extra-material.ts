@@ -11,17 +11,25 @@ const SLOT = "[붙일 자료: 본문 내용을 뒷받침하는 그림·표·그�
 
 /** "추가 자료 1개 이상 포함" 꼴 요구인가. 종류를 한정·금지한 문장은 다른 규칙(data-visual)이 읽는다. */
 const EXTRA =
-  /(?:추가|보조|참고|시각)\s*자료[^.\n]{0,25}(?:\d+|한|하나|두|세)\s*(?:개|가지|장|건)?\s*이상[^.\n]{0,15}(?:포함|첨부|삽입|넣|사용|활용)|(?:이미지|사진|그림|그래프|도표)(?:\([^)]{0,30}\))?\s*(?:를|을|도)?\s*(?:\d+|한|하나)\s*(?:개|장)?\s*이상[^.\n]{0,12}(?:포함|첨부|삽입|넣)|(?:이미지|사진|그림)(?:\([^)]{0,30}\))?\s*(?:를|을)\s*(?:(?:\d+|한|하나)\s*(?:개|장)?\s*)?(?:삽입|첨부|포함|넣)/;
+  /(?:추가|보조|참고|시각)\s*자료[^.\n]{0,25}(?:\d+|한|하나|두|세)\s*(?:개|가지|장|건)?\s*이상[^.\n]{0,15}(?:포함|첨부|삽입|넣|사용|활용)|(?:이미지|사진|그림|그래프|도표)(?:\([^)]{0,30}\))?\s*(?:를|을|도)?\s*(?:\d+|한|하나)\s*(?:개|장)?\s*이상[^.\n]{0,12}(?:포함|첨부|삽입|넣)|(?:이미지|사진|그림)(?:\([^)]{0,30}\))?\s*(?:를|을)\s*(?:(?:\d+|한|하나)\s*(?:개|장)?\s*)?(?:삽입|첨부|포함)/;
 
 export function wantsExtraMaterial(texts: string[]): boolean {
-  return texts.some((t) => (t ?? "").split(/(?<=[.。!?])\s+|\n+/).some((s) => EXTRA.test(s) && !/금지|없이|사용할\s*수\s*없|쓰지\s*말/.test(s)));
+  return texts.some((t) => (t ?? "").split(/(?<=[.。!?])\s+|\n+/).some((s) => EXTRA.test(s) && !/금지|없이|사용할\s*수\s*없|쓰지\s*말|그림\s*칸/.test(s)));
+}
+
+const PHOTO_SLOT = "[붙일 자료: 사진 1장 이상 — 직접 준비해 붙일 것]";
+
+/** 요구 문장이 사진을 말하는가(사진이면 자리 표시도 사진으로). */
+export function extraMaterialKind(texts: string[]): "photo" | "material" {
+  const hit = texts.flatMap((t) => (t ?? "").split(/(?<=[.。!?])\s+|\n+/)).find((x) => EXTRA.test(x));
+  return hit && /사진/.test(hit) ? "photo" : "material";
 }
 
 const HAS_SLOT = /\[붙일\s*자료[^\]]*\]|\[(?:그림|그래프|표|이미지|사진)[^\]]*\]/;
 const HAS_TABLE = /^\|.*\|\s*\n\|[\s:|-]+\|/m;
 
 /** 글에 추가 자료(표·붙일 자료 표시)가 하나도 없으면 본론 끝(없으면 결론·요약·참고문헌 앞, 그것도 없으면 맨 끝)에 자리를 둔다. */
-export function ensureExtraMaterialSlot(content: string): { content: string; added: boolean } {
+export function ensureExtraMaterialSlot(content: string, kind: "photo" | "material" = "material"): { content: string; added: boolean } {
   if (HAS_SLOT.test(content) || HAS_TABLE.test(content)) return { content, added: false };
   const lines = content.replace(/\s+$/, "").split("\n");
   const headIdx = lines.map((l, i) => (/^#{2,4}\s/.test(l) ? i : -1)).filter((i) => i >= 0);
@@ -38,6 +46,6 @@ export function ensureExtraMaterialSlot(content: string): { content: string; add
   const before = lines.slice(0, at);
   while (before.length && !before[before.length - 1].trim()) before.pop();
   const after = lines.slice(at);
-  const out = [...before, "", SLOT, ...(after.length ? ["", ...after] : [])].join("\n");
+  const out = [...before, "", kind === "photo" ? PHOTO_SLOT : SLOT, ...(after.length ? ["", ...after] : [])].join("\n");
   return { content: out, added: true };
 }

@@ -36,6 +36,8 @@ export interface AiStartPayload {
   adminInfo: AdministrativeInfo | null;
   instructions: string;
   turnstileToken: string | null;
+  /** 분석 때 올린 안내문 사진(줄인 것). 있으면 생성이 안내문을 직접 읽는다. 기록에서 불러온 과제엔 없다. */
+  noticeImages?: { base64: string; mimeType: string }[];
 }
 
 interface LatestHistory {
@@ -91,6 +93,7 @@ export default function NewCreationModal({
   const [core, setCore] = useState<CoreTaskInfo | null>(null);
   const [admin, setAdmin] = useState<AdministrativeInfo | null>(null);
   const [editing, setEditing] = useState(false);
+  const [noticeImages, setNoticeImages] = useState<{ base64: string; mimeType: string }[]>([]);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [latest, setLatest] = useState<LatestHistory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +155,10 @@ export default function NewCreationModal({
         imageBase64 = encoded[0].data;
         imageMimeType = encoded[0].mimeType;
         if (encoded.length > 1) extraImages = encoded.slice(1).map((e) => ({ base64: e.data, mimeType: e.mimeType }));
+        // 생성에도 같은 사진을 쓴다(작성자가 안내문을 직접 읽게). 이미 요청 한도 안으로 줄어 있다.
+        setNoticeImages(encoded.map((e) => ({ base64: e.data, mimeType: e.mimeType })));
+      } else {
+        setNoticeImages([]);
       }
       const res = await fetch("/api/tasks/analyze", {
         method: "POST",
@@ -194,6 +201,7 @@ export default function NewCreationModal({
     setCore(latest.core_task_info);
     setAdmin(latest.admin_info);
     setInstructions(latest.instructions ?? "");
+    setNoticeImages([]); // 기록에서 불러온 과제는 사진이 없다
     setStage("choose");
   }
 
@@ -229,6 +237,7 @@ export default function NewCreationModal({
       adminInfo: admin,
       instructions: mergeInstructions(instructions, answers),
       turnstileToken,
+      ...(noticeImages.length > 0 ? { noticeImages } : {}),
     });
   }
 

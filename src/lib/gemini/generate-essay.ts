@@ -66,12 +66,14 @@ import { blankUnverifiedReferenceBook } from "@/lib/essay/reference-slot";
 import { restoreHeadingBreaks } from "@/lib/essay/heading-breaks";
 import { blankSelfEvaluationScores, stripCalculationCitations } from "@/lib/essay/self-evaluation";
 import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
-import { stripFlowingItemLabels } from "@/lib/essay/item-label";
+import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
+import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading } from "@/lib/essay/tidy-layout";
+import { trimToCeiling } from "@/lib/essay/hard-trim";
 import { trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
 import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
-import { wantsExtraMaterial, ensureExtraMaterialSlot } from "@/lib/essay/extra-material";
+import { wantsExtraMaterial, ensureExtraMaterialSlot, extraMaterialKind } from "@/lib/essay/extra-material";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { adminLeakOn, dedupeOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
@@ -84,7 +86,7 @@ import { tableSpecs, tableFormBlock, tableStepLine, tableFormRepairText } from "
 import { stripAdminLeak, isScoringStep } from "@/lib/essay/admin-leak";
 import { leanWritePrompt } from "@/lib/essay/lean-write";
 import { isInterviewStep, reportLikeAnswers, interviewVoiceRepairText, interviewVoiceOn } from "@/lib/essay/interview-voice";
-import { stripLabelEcho, labelEchoOn } from "@/lib/essay/label-echo";
+import { stripLabelEcho, labelEchoOn, stripHeadingEcho } from "@/lib/essay/label-echo";
 import { looksLikeAskingPermission, JSON_ONLY_REMINDER, researchRetryOn } from "@/lib/essay/research-retry";
 import { findSourceVoiceSentences, sourceVoiceRepairText } from "@/lib/essay/source-voice";
 import { findOutOfRange, findTimeRange, outOfRangeRepairText, timeRangeBlock } from "@/lib/essay/time-range";
@@ -734,6 +736,7 @@ ${input.previousOutputText}
     // 역할 분류가 "이 단계가 한 지면의 칸인지"를 알려면 과제 주제와 형제 단계를 봐야 한다(length-plan.ts의 RoleCtx).
     topic: input.coreTaskInfo.topic,
     siblings: input.coreTaskInfo.task_elements.map((e) => ({ label: e.label, description: e.description })),
+    notice: input.coreTaskInfo.notice_text,
   };
   // 안내문이 칸의 줄 수를 알려 준 단계는 그 칸 크기가 기준이다 — 학생은 이 글을 그 칸에 옮겨 적는다(box-lines.ts).
   // 실측(2026-11-07, 역사 신문): "내용 약 5줄" 칸에 1102자·949자를 썼고 사설은 308자와 2286자로 7배 갈렸다.
@@ -1638,6 +1641,7 @@ async function generateOnce(
           labels: elements.map((e) => e.label),
           topic: input.coreTaskInfo.topic,
           siblings: elements.map((e) => ({ label: e.label, description: e.description })),
+          notice: input.coreTaskInfo.notice_text,
         }),
       })
     : buildPrompt(input, elements, notes);
@@ -2325,6 +2329,7 @@ async function generateEssayImpl(
           requirements: input.coreTaskInfo.requirements,
           guide: input.coreTaskInfo.writing_guide,
           labels: elements.map((e) => e.label),
+          notice: input.coreTaskInfo.notice_text,
         });
         const boxMin = taskBoxLengths(elements, input.coreTaskInfo).find((x) => x.label === el.label)?.min ?? 0;
         // 바닥은 역할 목표 최소값의 절반, 천장은 **최대값의 1.4배**(그 아래는 손대지 않는다 — 점수가 길이를
@@ -3554,11 +3559,14 @@ async function generateEssayImpl(
           }
         }
         // 안내문이 "추가 자료 1개 이상 포함"을 요구했는데 표나 자리가 없으면 학생이 채울 자리를 둔다(extra-material.ts). 글 단계가 하나인 과제만.
+        // 단계가 여럿이면 **그 단계의 설명이 직접** 사진·자료를 요구할 때만 그 단계에 둔다(과학-06: 1차시 설명에 "사진을 1장 이상 포함").
+        const ownDesc = (input.coreTaskInfo.task_elements ?? []).find((e) => e.label === s.label)?.description ?? "";
+        const extraTexts = [...(input.coreTaskInfo.requirements ?? []), input.coreTaskInfo.writing_guide ?? "", ...(input.coreTaskInfo.task_elements ?? []).map((e) => e.description)];
         if (
-          (input.coreTaskInfo.task_elements ?? []).filter((e) => e.type === "text_submission").length === 1 &&
-          wantsExtraMaterial([...(input.coreTaskInfo.requirements ?? []), input.coreTaskInfo.writing_guide ?? "", ...(input.coreTaskInfo.task_elements ?? []).map((e) => e.description)])
+          ((input.coreTaskInfo.task_elements ?? []).filter((e) => e.type === "text_submission").length === 1 && wantsExtraMaterial(extraTexts)) ||
+          wantsExtraMaterial([ownDesc])
         ) {
-          const extra = ensureExtraMaterialSlot(content);
+          const extra = ensureExtraMaterialSlot(content, extraMaterialKind(wantsExtraMaterial([ownDesc]) ? [ownDesc] : extraTexts));
           if (extra.added) {
             console.warn(`[generateEssay] 추가 자료 자리 표시를 넣음 label="${s.label}"`);
             content = extra.content;
@@ -3763,8 +3771,67 @@ async function generateEssayImpl(
       }),
     };
     if (dropped.length) console.warn(`[generateEssay] 칸 이름으로 시작하는 설명 ${dropped.length}줄 지움: ${JSON.stringify(dropped.slice(0, 2))}`);
+    // 소제목을 되풀이하는 머리말("### 질문1" 아래 "질문 1: …")을 뗀다.
+    let headEcho = 0;
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((sec) => {
+        const r = stripHeadingEcho(sec.content);
+        headEcho += r.fixed;
+        return r.fixed ? { ...sec, content: r.content } : sec;
+      }),
+    };
+    if (headEcho) console.warn(`[generateEssay] 소제목을 되풀이한 머리말 ${headEcho}곳 정리`);
+    // 안내문(채점 기준·작성 요령) 문구를 라벨처럼 베낀 머리말을 뗀다(item-label.ts stripNoticeEcho).
+    const noticeVocab = [
+      ...(input.coreTaskInfo.requirements ?? []),
+      input.coreTaskInfo.writing_guide ?? "",
+      ...(input.coreTaskInfo.task_elements ?? []).flatMap((e) => [e.label, e.description, ...(e.required_items ?? [])]),
+    ].join(" ");
+    const echoed: string[] = [];
+    let unwrapped = 0;
+    const droppedHeads: string[] = [];
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((sec) => {
+        let c = sec.content;
+        const e = stripNoticeEcho(c, noticeVocab);
+        echoed.push(...e.stripped);
+        c = e.content;
+        const ei = stripInlineNoticeEcho(c, noticeVocab);
+        echoed.push(...ei.stripped);
+        c = ei.content;
+        const u = unwrapHardBreaks(c);
+        unwrapped += u.joined;
+        c = u.content;
+        const d = dropDuplicateHeadings(c);
+        droppedHeads.push(...d.dropped);
+        const en = dropEmptyNumberedHeading(d.content);
+        droppedHeads.push(...en.dropped);
+        c = en.content;
+        return c !== sec.content ? { ...sec, content: c } : sec;
+      }),
+    };
+    if (echoed.length) console.warn(`[generateEssay] 안내문 문구를 베낀 머리말 ${echoed.length}개 뗌: ${JSON.stringify(echoed.slice(0, 3))}`);
+    if (unwrapped) console.warn(`[generateEssay] 문장 중간 줄바꿈 ${unwrapped}곳을 이음`);
+    if (droppedHeads.length) console.warn(`[generateEssay] 중복 소제목 ${droppedHeads.length}개 지움: ${JSON.stringify(droppedHeads.slice(0, 3))}`);
   }
 
+  // 분량이 상한(계획 최대의 1.4배)을 넘었는데 모델 보정이 시간 예산에 밀려 안 돌았으면 코드가 가운데 문단을 덜어 상한 안으로 넣는다(hard-trim.ts). HARD_TRIM=off로 끈다.
+  if (process.env.HARD_TRIM !== "off") {
+    const trimmed: string[] = [];
+    attempt = {
+      ...attempt,
+      sections: attempt.sections.map((sec) => {
+        const f = lengthFloors.get(sec.label);
+        if (!f || f.ceiling <= 0) return sec;
+        const r = trimToCeiling(sec.content, f.ceiling);
+        if (r.removed > 0) trimmed.push(`${sec.label}(${submittedLength(sec.content)}→${submittedLength(r.content)}자, 상한 ${f.ceiling})`);
+        return r.removed > 0 ? { ...sec, content: r.content } : sec;
+      }),
+    };
+    if (trimmed.length) console.warn(`[generateEssay] 분량 상한을 넘어 문단을 코드가 덜어 냄: ${trimmed.join(", ")}`);
+  }
   // 정직성 보완(모델 재작성) 뒤에도 남은 "사진을 준비해 첨부했다·스마트폰으로 검색했다" 류 지어낸 행동 문장은 코드가 지운다(own-activity.ts). HONESTY_REMOVE=off로 끈다.
   if (process.env.HONESTY_REMOVE !== "off") {
     const goneAll: string[] = [];

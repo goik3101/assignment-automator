@@ -72,6 +72,11 @@ export interface CoreTaskInfo {
    * 지문·자료가 실린 과제(국어 지문, 사회 기사, 영어 지문, 실험 데이터)는 흔하므로 구조적 구멍이었다.
    */
   provided_materials?: string[];
+  /**
+   * 안내문 사진을 글자 그대로 옮긴 전사. **분량 예산 관문(handwrite-budget.ts)만** 읽는다 — 분석이 "40분 실시"·"수행평가 시간에만 작성" 같은
+   * 운영 문장을 요구사항에서 빼 버려, 분석 요약만 보면 34종 중 1종만 "현장 작성"으로 읽혔다(2026-11-15). 생성 프롬프트에는 넣지 않는다(배점·일시가 들어 있다).
+   */
+  notice_text?: string;
 }
 
 export interface AnalyzeResult {

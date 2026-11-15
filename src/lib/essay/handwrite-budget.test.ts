@@ -51,3 +51,10 @@ test("역할 범위를 좁히기만 하고 넓히지 않는다", () => {
   // 예산이 없으면 아무것도 바꾸지 않는다
   assert.deepEqual(clampToHandwrite({ min: 960, max: 1800 }, null), { min: 960, max: 1800, clamped: false });
 });
+
+test("손글씨·수행평가 시간·디지털 기기 불가 같은 말도 '그 자리에서 손으로 쓰는 평가'로 읽는다 (2026-11-15 역사 신문)", () => {
+  assert.ok(handwriteBudget(["5반 손글씨 안내: B4용지, 분량제한 X."]));
+  assert.ok(handwriteBudget(["미리 준비하지 못한 경우 수행평가 시간을 할애하여 그리면 인정함."]));
+  assert.ok(handwriteBudget(["교과서, 학습지를 활용할 수 있으나 디지털 기기는 지참 및 사용 불가."]));
+  assert.equal(handwriteBudget(["집에서 보고서를 작성해 파일로 제출한다.", "분량은 A4 2장 이내"]), null);
+});

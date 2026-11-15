@@ -36,3 +36,17 @@ test("떼고 나면 나머지 글은 그대로 남는다", () => {
   assert.equal(none.content, "깨끗한 글입니다.");
   assert.equal(none.removed.length, 0);
 });
+
+test("칸 이름이 항목 이름의 앞부분일 뿐이면 지우지 않는다 (2026-11-15 역사 신문: 인터뷰 대상 칸이 비었다)", () => {
+  assert.equal(echoesLabel("인터뷰 대상: 서울에 사는 가상의 시민입니다. 1948년 중앙청 경축식에 참석했습니다.", "인터뷰"), false);
+  assert.equal(echoesLabel("분석적 채점 기준표 작성: 평가 요소를 적었다", "분석적 채점 기준표"), true);
+});
+
+import { stripHeadingEcho } from "./label-echo.ts";
+test("소제목을 다시 말하며 시작하는 줄의 머리말을 뗀다", () => {
+  const r = stripHeadingEcho("### 질문1\n질문 1: 정부 수립을 어떻게 보십니까?\n\n### 답변1\n답변 1: 기쁩니다.\n\n### 제목\n광복의 날");
+  assert.equal(r.fixed, 2);
+  assert.match(r.content, /### 질문1\n정부 수립을 어떻게 보십니까\?/);
+  assert.match(r.content, /### 답변1\n기쁩니다\./);
+  assert.match(r.content, /### 제목\n광복의 날/);
+});
