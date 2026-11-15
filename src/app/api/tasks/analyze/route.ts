@@ -1,6 +1,7 @@
 import { routeUsage } from "@/lib/llm/route-usage";
 import { NextRequest } from "next/server";
-import { analyzeAssignment } from "@/lib/gemini/analyze";
+import { analyzeAssignment, transcribeNotice } from "@/lib/gemini/analyze";
+import { lookupAnalysis, storeAnalysis } from "@/lib/analysis-cache/cache";
 import { validateAnalyzeInput } from "@/lib/api/validate";
 import { leanWriteOn } from "@/lib/essay/quality-flags";
 import { runStudyRoute, StudyInputError } from "@/lib/study/route";
@@ -30,7 +31,30 @@ export const POST = routeUsage("analyze", async function POST(req: NextRequest) 
       const invalid = validateAnalyzeInput({ imageBase64, imageMimeType, topicText, instructions, extraImages });
       if (invalid) throw new StudyInputError(invalid);
 
-      const analysis = await analyzeAssignment({ imageBase64, imageMimeType, extraImages, topicText, instructions });
+      // 같은 안내문의 분석 재사용(ANALYSIS_CACHE=on, 마이그레이션 0021 적용 뒤). 사진만 있는 분석에만 쓴다 — 학생 지침·주제가 있으면 분석이 학생마다 달라진다.
+      // 캐시 경로의 어떤 실패도 평소 분석으로 이어진다.
+      let cacheSig: number[] | null = null;
+      let knownTranscript: string | undefined;
+      if (process.env.ANALYSIS_CACHE === "on" && imageBase64 && imageMimeType && !instructions?.trim() && !topicText?.trim()) {
+        try {
+          const images = [{ base64: imageBase64, mimeType: imageMimeType }, ...(extraImages ?? [])];
+          knownTranscript = (await transcribeNotice(images)) ?? undefined;
+          if (knownTranscript) {
+            const { hit, sig } = await lookupAnalysis(knownTranscript);
+            cacheSig = sig;
+            if (hit) {
+              console.log(`[analyze] 분석 캐시 적중(유사도 ${hit.similarity.toFixed(2)}) — 분석 호출 생략`);
+              const cached = hit.analysis as { core_task_info?: Record<string, unknown> };
+              const reused = { ...cached, core_task_info: { ...(cached.core_task_info ?? {}), notice_text: knownTranscript } } as unknown as Awaited<ReturnType<typeof analyzeAssignment>>;
+              return { ...reused, wantsNoticeImages: leanWriteOn() && !!imageBase64 };
+            }
+          }
+        } catch (err) {
+          console.warn("[analyze] 분석 캐시 조회 실패(평소 분석으로 진행)", err instanceof Error ? err.message : err);
+        }
+      }
+      const analysis = await analyzeAssignment({ imageBase64, imageMimeType, extraImages, topicText, instructions, ...(knownTranscript ? { knownTranscript } : {}) });
+      if (cacheSig) await storeAnalysis(cacheSig, analysis as unknown as Record<string, unknown>).catch((err) => console.warn("[analyze] 분석 캐시 저장 실패", err instanceof Error ? err.message : err));
       // 화면이 사진을 생성 요청에 실을지 알 수 있게 서버 스위치(ESSAY_LEAN_WRITE)를 알려 준다 — 꺼져 있으면 사진을 보낼 필요가 없다.
       return { ...analysis, wantsNoticeImages: leanWriteOn() && !!imageBase64 };
     }

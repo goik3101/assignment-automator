@@ -354,6 +354,27 @@ export interface AnalyzeInput {
   topicText?: string;
   /** 이번 과제 한정 지침 (F2) */
   instructions?: string;
+  /** 이미 전사해 둔 안내문 글(분석 캐시가 먼저 전사했을 때) — 있으면 분석 안의 전사 호출을 건너뛴다. */
+  knownTranscript?: string;
+}
+
+const TRANSCRIBE_PROMPT =
+  "사진에 적힌 글을 **요약하지 말고 그대로 옮겨 써라**(OCR처럼). 사진이 여러 장이면 순서대로 이어 붙인다. 표는 칸 내용을 '|'로 구분해 한 줄씩 옮긴다. 학생이 채울 빈 칸은 칸 이름만 옮기고(빈 줄은 '___'), 손글씨 예시·도장·학교 로고처럼 글이 아닌 것은 건너뛴다. 읽을 수 없는 글자는 '?'로 둔다. 네가 판단하거나 보충한 말은 한 글자도 넣지 말고, 글이 많으면 2,000자까지만 쓴다. 옮긴 글만 출력한다.";
+
+/** 안내문 사진을 글로 옮긴다(값싼 모델). 분석과 분석 캐시가 함께 쓴다. 실패하면 null. */
+export async function transcribeNotice(images: { base64: string; mimeType: string }[]): Promise<string | null> {
+  try {
+    const r = await generate({
+      label: "analyze:transcribe",
+      role: "lite",
+      effort: "low",
+      prompt: [...images.map((img) => ({ image: { base64: img.base64, mimeType: img.mimeType } })), { text: TRANSCRIBE_PROMPT }],
+    });
+    return (r.text ?? "").trim().slice(0, 2500) || null;
+  } catch (err) {
+    console.warn("[analyzeAssignment] 전사 호출 실패(전사 없이 진행)", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 export async function analyzeAssignment(
@@ -388,7 +409,9 @@ export async function analyzeAssignment(
     });
   // 전사를 분석과 **동시에** 돌린다. 실패하면 null(전사 없이 진행 — 양식 칸 되찾기만 못 한다).
   const parallelTranscript = process.env.NOTICE_TEXT !== "off" && process.env.NOTICE_TEXT_PARALLEL !== "off" && !!input.imageBase64;
-  const transcriptPromise: Promise<string | null> = parallelTranscript
+  const transcriptPromise: Promise<string | null> = input.knownTranscript && parallelTranscript
+    ? Promise.resolve(input.knownTranscript)
+    : parallelTranscript
     ? generate({
         label: "analyze:transcribe",
         role: "lite",
