@@ -12,6 +12,7 @@ import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
 import { SOURCE_TIER_LABEL } from "@/lib/links/source-quality";
 import Button from "@/components/ui/Button";
 import { ClaimCheckNote, MD_COMPONENTS, ProductionNotes } from "@/components/result/ResultExtras";
+import { ResultRating, ratingContextFrom } from "@/components/result/ResultRating";
 import { useT } from "@/lib/i18n";
 
 // 결과 카드 위쪽의 경고 배너. 조용히 최종본인 척 내보내지 않고 정직하게 알리기 위한 것들이다.
@@ -350,6 +351,7 @@ export function EssayPanel({
         checks={[...(result.claimCheck ? [result.claimCheck] : []), ...(result.sections ?? []).flatMap((x) => (x.claimCheck ? [x.claimCheck] : []))]}
       />
       <SourceList sources={result.sources} />
+      {onRegenerate && <ResultRating context={ratingContextFrom("essay", result)} />}
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
       {result.submissionId && <ShareButton submissionId={result.submissionId} />}
       {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.markdown} />}
@@ -409,6 +411,7 @@ export function PlanPanel({
           </ol>
         </div>
       )}
+      {onRegenerate && <ResultRating context={ratingContextFrom("plan", result)} />}
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
       {result.submissionId && <ShareButton submissionId={result.submissionId} />}
       {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.content} />}
