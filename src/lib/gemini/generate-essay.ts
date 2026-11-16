@@ -69,7 +69,7 @@ import { blankSelfEvaluationScores, stripCalculationCitations } from "@/lib/essa
 import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
 import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
 import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stripCriterionParens } from "@/lib/essay/tidy-layout";
-import { trimToCeiling } from "@/lib/essay/hard-trim";
+import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
@@ -2377,7 +2377,7 @@ async function generateEssayImpl(
   // 안내문이 분량을 말하지 않은 단계의 **바닥**(역할 목표 최소값의 절반). 상한은 보지 않는다.
   // 왜: 분량 검사는 `target_length`(안내문이 말한 분량)가 있을 때만 돌아서, 분량이 안 적힌 안내문에서는
   // 하한 검사가 아예 없었다 — 616자·0자 칸이 그대로 나갔다(2026-11-12 실측).
-  const lengthFloors = new Map<string, { floor: number; planned: number; ceiling: number; planned2x: number }>(
+  const lengthFloors = new Map<string, { floor: number; planned: number; ceiling: number; planned2x: number; handCeiling: number }>(
     elements
       .filter((el) => !el.target_length)
       .map((el) => {
@@ -2402,6 +2402,8 @@ async function generateEssayImpl(
             planned: plan.min,
             ceiling: Math.round(plan.max * 1.4),
             planned2x: plan.max,
+            // 손으로 쓸 시간이 상한인 단계(handwrite-budget)만 값이 있다 — 그 상한의 1.1배를 넘으면 문장 단위로 줄인다(hard-trim.ts trimItemSentences).
+            handCeiling: plan.basis.includes("손으로 쓸 시간에 맞춤") ? Math.round(plan.max * 1.1) : 0,
           },
         ] as const;
       })
@@ -3934,6 +3936,14 @@ async function generateEssayImpl(
       sections: attempt.sections.map((sec) => {
         const f = lengthFloors.get(sec.label);
         if (!f || f.ceiling <= 0) return sec;
+        // 손글씨 시간이 상한인 단계는 항목이 여럿이어도 문장 단위로 줄인다(항목은 지우지 않는다). HAND_TRIM=off로 끈다.
+        if (f.handCeiling > 0 && process.env.HAND_TRIM !== "off") {
+          const h = trimItemSentences(sec.content, f.handCeiling);
+          if (h.removed > 0) {
+            trimmed.push(`${sec.label}(${submittedLength(sec.content)}→${submittedLength(h.content)}자, 손글씨 상한 ${f.handCeiling}, 문장 ${h.removed}개)`);
+            return { ...sec, content: h.content };
+          }
+        }
         const r = trimToCeiling(sec.content, f.ceiling);
         if (r.removed > 0) trimmed.push(`${sec.label}(${submittedLength(sec.content)}→${submittedLength(r.content)}자, 상한 ${f.ceiling})`);
         return r.removed > 0 ? { ...sec, content: r.content } : sec;

@@ -41,3 +41,48 @@ export function trimToCeiling(content: string, ceiling: number): { content: stri
   }
   return { content: text, removed: dropped.size };
 }
+
+/**
+ * **항목 소제목이 여럿인 글**(위 `trimToCeiling`이 손대지 않는 모양)을 **문장 단위로** 줄인다 — 항목은 하나도 지우지 않는다.
+ *
+ * 왜(2026-11-16 사용자 테스트, 과학 3차시 포트폴리오): "매 차시 나눠주는 종이에만 작성"인 손글씨 과제의 1차시가 약 2,000자로 나왔다.
+ * 한 차시에 손으로 쓸 수 있는 양(≈1,350자)의 1.5배다. 목표를 줘도 모델이 1.5배로 쓰는데, 줄이는 쪽 `trimToCeiling`은
+ * 소제목이 셋 이상이면 "항목이 빈다"며 **아예 안 돌아서** 아무도 줄이지 못했다.
+ * 방법: 가장 긴 항목의 **마지막 문장**부터 한 문장씩 뺀다. 항목마다 앞 두 문장은 지키고, 각주가 글 전체에서 하나도 안 남게 되면 그 문장은 남긴다.
+ * 손으로 쓸 시간이라는 **물리적 한계**가 있는 단계에만 쓴다(추정 칸 크기로는 쓰지 않는다 — FIELD_FIT은 점수를 떨어뜨려 기각).
+ */
+export function trimItemSentences(content: string, ceiling: number): { content: string; removed: number } {
+  if (ceiling <= 0 || submittedLength(content) <= ceiling) return { content, removed: 0 };
+  const lines = content.split("\n");
+  // 본문 줄(소제목·빈 줄 제외)마다 문장 목록
+  const isBodyLine = (l: string) => l.trim() !== "" && !/^\s*#{1,6}\s/.test(l) && !/^\s*[|>]/.test(l);
+  const sentencesOf = (l: string) => l.split(/(?<=[.!?。](?:\[\d+(?:,\s*\d+)*\])*)\s+/).filter(Boolean);
+  const bodies = lines.map((l) => (isBodyLine(l) ? sentencesOf(l) : null));
+  const total = () => submittedLength(lines.map((l, i) => (bodies[i] ? bodies[i]!.join(" ") : l)).join("\n"));
+  const allText = () => lines.map((l, i) => (bodies[i] ? bodies[i]!.join(" ") : l)).join("\n");
+  let removed = 0;
+  for (let guard = 0; guard < 400 && total() > ceiling; guard++) {
+    // 이어 붙인 한 항목(소제목 다음 본문 줄들) 중 가장 긴 줄을 고른다. 문장이 3개 이상이어야 뺄 수 있다(앞 두 문장 보호).
+    let pick = -1;
+    let best = 0;
+    bodies.forEach((b, i) => {
+      if (b && b.length >= 3) {
+        const len = b.join(" ").length;
+        if (len > best) {
+          best = len;
+          pick = i;
+        }
+      }
+    });
+    if (pick < 0) break;
+    const last = bodies[pick]!.pop()!;
+    // 이 문장이 글 전체의 마지막 각주 문장이면 되돌려 놓고 그 줄은 더 줄이지 않는다.
+    if (notes(allText()) === 0 && notes(last) > 0) {
+      bodies[pick]!.push(last);
+      bodies[pick] = bodies[pick]!.slice(0, 2).concat(bodies[pick]!.slice(2)); // 변화 없음
+      break;
+    }
+    removed++;
+  }
+  return { content: allText(), removed };
+}

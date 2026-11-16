@@ -36,3 +36,19 @@ test("상한 안이면 그대로", () => {
   const text = "짧은 글이다.\n\n둘째 문단이다.\n\n셋째 문단이다.";
   assert.equal(trimToCeiling(text, 1000).content, text);
 });
+
+test("항목 소제목이 여럿인 글도 문장 단위로 줄이고 항목은 하나도 지우지 않는다(과학 3차시 포트폴리오)", async () => {
+  const { trimItemSentences } = await import("./hard-trim.ts");
+  const para = (k: string) => Array.from({ length: 6 }, (_, i) => `${k}의 ${i + 1}번째 설명 문장은 이렇게 길게 이어진다.${i === 0 ? "[1]" : ""}`).join(" ");
+  const c = ["### 현상", para("현상"), "", "### 이유", para("이유"), "", "### 예시", para("예시"), "", "### 사례", para("사례")].join("\n");
+  const before = submittedLength(c);
+  const r = trimItemSentences(c, Math.round(before * 0.6));
+  assert.ok(r.removed > 0);
+  assert.ok(submittedLength(r.content) <= before * 0.65);
+  for (const h of ["### 현상", "### 이유", "### 예시", "### 사례"]) assert.ok(r.content.includes(h));
+  // 항목마다 앞 두 문장은 남는다
+  assert.ok(r.content.includes("현상의 2번째 설명 문장"));
+  assert.ok(r.content.includes("[1]"));
+  // 상한 이내면 그대로
+  assert.equal(trimItemSentences(c, before + 10).removed, 0);
+});
