@@ -31,8 +31,8 @@ export default function Home() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdString(APP_JSON_LD) }} />
-      <AssignmentFlow />
       <AnnouncementBanner />
+      <AssignmentFlow />
     </>
   );
 }

@@ -47,6 +47,8 @@ export const shell: Record<string, string> = {
   // 푸터·공지·체크리스트
   "베타 버전이에요. 이상한 결과를 발견하면 알려 주세요.": "This is a beta. If you spot odd results, please let us know.",
   "공지": "Notice",
+  "공지 닫기": "Dismiss notice",
+  "접기": "Show less",
   "안내문 업로드 또는 주제 입력": "Upload a brief or enter a topic",
   "지침 작성 (선택)": "Add instructions (optional)",
   "분석하기": "Analyze",
