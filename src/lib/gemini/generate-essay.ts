@@ -2328,7 +2328,8 @@ async function generateEssayImpl(
   // 30초를 넘기면 학생이 "그냥 ChatGPT가 낫다"고 느낀다 — 필수 경로(조사·글쓰기)는 끝까지 하되,
   // 품질 교정용 추가 모델 호출(재생성·부분 보완·분량 보정·형식 보완·한국어 재작성·항목 재판정)은 예산을 넘기면 건너뛴다.
   // 건너뛴 것은 로그와 화면 경고로 남는다. ESSAY_TIME_BUDGET_MS=0이면 예전처럼 전부 실행.
-  const timeBudgetMs = process.env.ESSAY_TIME_BUDGET_MS === undefined ? 22000 : Number(process.env.ESSAY_TIME_BUDGET_MS);
+  // 2026-11-17 기본값을 1ms로 낮춤(선택 보완은 건너뛰고 필수 보완만 돈다): 같은 10종에서 점수 121/131 대 115/131, 시간 합계 233초 대 267초, 최대 30.5초 대 37.1초. 예전 값으로: ESSAY_TIME_BUDGET_MS=22000, ESSAY_TOTAL_MS=30000.
+  const timeBudgetMs = process.env.ESSAY_TIME_BUDGET_MS === undefined ? 1 : Number(process.env.ESSAY_TIME_BUDGET_MS);
   // 안내문이 요구한 것을 채우는 보완(필수 항목·표·형식 조건·날조 문장 수정)은 예산을 조금 넘겨도 한 번은 한다 — 요구사항 미충족이 더 큰 손해다.
   // "critical"은 예산을 보지 않는다 — 안 지키면 그 항목이 0점이 되는 조건(지정 언어, 필수 어법·밑줄)이다.
   // 실측(2026-11-01 전수): 영어 과제가 30.5초라 언어 조건 검사와 어법 보완이 모두 건너뛰어져
@@ -2344,7 +2345,7 @@ async function generateEssayImpl(
    */
   const MIN_ROOM_MS = 7000;
   /** 전체 목표 시간. 예전 고정선(22초)과 달리 **보완까지 끝난 총 시간**의 목표다. */
-  const totalBudgetMs = Number(process.env.ESSAY_TOTAL_MS ?? 30000);
+  const totalBudgetMs = Number(process.env.ESSAY_TOTAL_MS ?? 1);
   const legacyBudget = process.env.ESSAY_BUDGET_MODE === "legacy";
   /**
    * 이 보완을 **하고 나면** 전체 목표를 넘는가.
