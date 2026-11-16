@@ -108,3 +108,49 @@ export function replaceValueFields(content: string, values: Map<string, string>)
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
+
+// ── 같은 결과물의 다른 단계에 이미 나온 책으로 서지 빈칸을 채운다 ─────────────────────────────────────────
+// 2026-11-16 사용자 테스트(국어 책 처방전): "책 처방전" 칸의 책 제목·저자가 "[직접 작성: 참고한 도서 제목]"으로 비어 있는데,
+// 같은 결과물의 요약과 편지에는 "수전 케인의 『콰이어트: …』"가 이미 적혀 있었다. 책 처방전 칸이 거의 빈 채(인용구 한 줄)로 나가 "뒤지게 짧다"가 됐다.
+// 책을 새로 정하지 않는다 — **이 결과물 안에 이미 있는 책**을 칸으로 옮길 뿐이다.
+export function findBookInTexts(texts: string[]): { title: string; author?: string } | null {
+  const joined = texts.join("\n");
+  const withAuthor = /([가-힣A-Za-z·]{2,12}(?:\s[가-힣A-Za-z·]{1,8})?)(?:의|이\s*쓴|가\s*쓴)\s*[『《]([^』》\n]{2,60})[』》]/.exec(joined);
+  if (withAuthor) return { author: withAuthor[1].trim(), title: withAuthor[2].trim() };
+  const only = /[『《]([^』》\n]{2,60})[』》]/.exec(joined);
+  return only ? { title: only[1].trim() } : null;
+}
+
+const BOOK_TITLE_HEAD = /^(?:책\s*(?:이름|제목)|도서\s*(?:명|제목|이름)|서명)$/;
+const BOOK_AUTHOR_HEAD = /^(?:저자|지은이(?:\s*\([^)]*\))?|글쓴이|작가)$/;
+
+export function fillBookBlanks(content: string, book: { title: string; author?: string }): { content: string; filled: string[] } {
+  const lines = content.split("\n");
+  const out: string[] = [];
+  const filled: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const head = lines[i].match(HEAD_LINE);
+    const name = head?.[2].replace(/\*\*/g, "").trim() ?? "";
+    out.push(lines[i]);
+    const isTitle = !!head && BOOK_TITLE_HEAD.test(name);
+    const isAuthor = !!head && BOOK_AUTHOR_HEAD.test(name);
+    if (!isTitle && !isAuthor) {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    const body: string[] = [];
+    while (j < lines.length && !HEAD_LINE.test(lines[j])) body.push(lines[j++]);
+    const text = body.join(" ").trim();
+    const value = isTitle ? `『${book.title}』` : book.author;
+    if (/\[직접\s*작성/.test(text) && value) {
+      out.push("", value, "");
+      filled.push(name);
+    } else {
+      out.push(...body);
+    }
+    i = j;
+  }
+  return { content: out.join("\n").replace(/\n{3,}/g, "\n\n"), filled };
+}

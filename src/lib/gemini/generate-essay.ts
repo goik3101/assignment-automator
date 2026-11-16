@@ -70,7 +70,7 @@ import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
 import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
 import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stripCriterionParens } from "@/lib/essay/tidy-layout";
 import { trimToCeiling } from "@/lib/essay/hard-trim";
-import { findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
+import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
 import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
@@ -3841,6 +3841,23 @@ async function generateEssayImpl(
           }),
         };
       }
+    }
+  }
+
+  // 서지 칸(책 제목·저자)이 빈칸인데 **같은 결과물의 다른 단계·요약에 그 책이 이미 있으면** 칸에 옮긴다(bibliographic-fields.ts fillBookBlanks, 모델 호출 0).
+  if (fixes && process.env.VALUE_FIELDS !== "off" && attempt.sections.some((s) => /\[직접\s*작성/.test(s.content))) {
+    const book = findBookInTexts([...attempt.sections.map((s) => s.content), ...attempt.summaryLines]);
+    if (book) {
+      const filledAll: string[] = [];
+      attempt = {
+        ...attempt,
+        sections: attempt.sections.map((s) => {
+          const r = fillBookBlanks(s.content, book);
+          filledAll.push(...r.filled);
+          return r.filled.length ? { ...s, content: r.content } : s;
+        }),
+      };
+      if (filledAll.length) console.warn(`[generateEssay] 서지 빈칸 ${filledAll.length}개를 같은 결과물의 책으로 채움: ${filledAll.join(", ")} ← 『${book.title}』`);
     }
   }
 

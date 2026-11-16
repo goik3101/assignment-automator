@@ -37,3 +37,17 @@ test("값 칸: 문장 하나로 설명한 책 이름 칸도 값이 아닌 것으
   assert.deepEqual(findValueFieldOverflows("### 효과적인 정책의 정책 명칭\n육아휴직").length, 0);
   assert.equal(findValueFieldOverflows("### 효과적인 정책의 정책 명칭\n효과적인 정책으로 육아휴직을 선택했다. 육아휴직은 …").length, 1);
 });
+
+test("같은 결과물에 이미 나온 책으로 서지 빈칸을 채운다(국어 책 처방전 사용자 테스트)", async () => {
+  const { findBookInTexts, fillBookBlanks } = await import("./bibliographic-fields.ts");
+  const book = findBookInTexts(["친구의 고민에는 수전 케인의 『콰이어트: 시끄러운 세상에서 조용히 세상을 움직이는 힘』을 소개한다.", "편지 …"]);
+  assert.deepEqual(book, { author: "수전 케인", title: "콰이어트: 시끄러운 세상에서 조용히 세상을 움직이는 힘" });
+  const c = "### 책 제목\n\n[직접 작성: 참고한 도서 제목]\n\n### 저자\n\n[직접 작성: 참고한 도서의 저자]\n\n### 인상적인 구절\n\n“…”[1]";
+  const r = fillBookBlanks(c, book!);
+  assert.match(r.content, /### 책 제목\n\n『콰이어트: 시끄러운 세상에서 조용히 세상을 움직이는 힘』/);
+  assert.match(r.content, /### 저자\n\n수전 케인/);
+  assert.match(r.content, /### 인상적인 구절\n\n“…”\[1\]/);
+  // 이미 값이 있으면 건드리지 않는다
+  assert.equal(fillBookBlanks("### 책 제목\n\n『다른 책』", book!).filled.length, 0);
+  assert.equal(findBookInTexts(["책 이야기 없음"]), null);
+});
