@@ -88,6 +88,53 @@ function describeTask(subject: string, info: CoreTaskInfo, instructions: string)
   ].join("\n");
 }
 
+const TOPIC_OPTIONS_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: { options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "서로 다른 후보 5개. 한 줄(60자 이내)." } },
+  required: ["options"],
+};
+
+/**
+ * 주제(대상)가 미정인 선정 과제의 첫 질문 — **후보를 AI가 찾아 보기로 주고 학생이 고른다**(직접 입력·AI에게 맡김은 화면이 항상 따로 준다).
+ *
+ * 왜(2026-11-16, 사용자 화면): 보기 없이 빈 입력칸만 뜨는 질문이 나왔다. 후보를 만드는 일을 "다음 질문이 필요한가" 판단과 한 호출에 묶어 두니,
+ * 모델이 보기를 못 채우면 코드가 보기 없는 질문으로 바꿔 끼웠다. 후보 제안만 하는 호출로 떼어 (최대 2번) 확실히 받는다.
+ * 후보가 모두에게 같으면 전국 학생이 같은 소재로 쏠리므로(이 서비스의 핵심 가치와 충돌) 흔한 것과 덜 알려진 것을 섞고 보기 순서를 섞는다.
+ * 되돌리기: QUESTION_TOPIC_OPTIONS=off.
+ */
+async function proposeTopicQuestion(params: { subject: string; info: CoreTaskInfo; instructions: string; answers: PreAnswer[] }, word: string): Promise<PreQuestion | null> {
+  if (process.env.QUESTION_TOPIC_OPTIONS === "off") return null;
+  const base = buildTopicQuestion(params.info, params.answers);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { data } = await generateJson<{ options: string[] }>({
+        label: "questions:topicOptions",
+        role: "lite",
+        schema: TOPIC_OPTIONS_SCHEMA,
+        effort: "low",
+        prompt: [
+          describeTask(params.subject, params.info, params.instructions),
+          "",
+          `이 과제는 학생이 다룰 ${word}을(를) 직접 골라야 한다. 학생이 고를 **후보 5개**를 제시해라.`,
+          "- 안내문의 범위·조건 안에서만(시기·범위를 벗어나는 후보 금지), 서로 다른 갈래(시기·분야·관점)로.",
+          "- 후보마다 **구체적인 이름**(사건·인물·작품·현상·개념 등)을 넣고 한 줄(60자 이내)로 쓴다. 막연한 분야 이름만 쓰지 말 것.",
+          "- 학생들이 가장 많이 고르는 뻔한 후보 2~3개와, 덜 알려졌지만 충분히 쓸 수 있는 후보 2~3개를 섞는다.",
+          '- "직접 입력"·"AI가 정해 주세요" 같은 항목은 넣지 말 것.',
+        ].join("\n"),
+      });
+      const q = sanitizeQuestion({ text: base.text, kind: "choice", options: data.options, allow_other: true, decision_key: "task_subject", why: base.why }, params.answers);
+      if (q && q.options.length >= 3 && isTopicQuestion(q.text)) {
+        // 전국 학생에게 같은 순서로 보이지 않게 섞는다.
+        const shuffled = [...q.options].sort(() => Math.random() - 0.5);
+        return { ...q, options: shuffled };
+      }
+    } catch (err) {
+      console.warn("[questions] 주제 후보 생성 실패", err instanceof Error ? err.message : err);
+    }
+  }
+  return null;
+}
+
 export async function nextQuestion(params: {
   subject: string;
   info: CoreTaskInfo;
@@ -111,6 +158,12 @@ export async function nextQuestion(params: {
   const force = topicOpen
     ? `\n\n[이번 질문은 반드시 이것 — 다른 질문을 만들지 말 것]\n이 과제는 학생이 다룰 ${word}을(를) 직접 골라야 하는 과제인데 아직 정해지지 않았다.\n이번 질문은 **결과물 전체에서 무엇을 다룰지**(그 ${word})를 묻고, 안내문 조건에 맞는 서로 다른 후보 2~5개를 보기로 제시해라.\n한 영역의 세부 선택(인터뷰 대상, 만평이냐 광고냐, 장면 구성, 매체·형식 등)은 **지금 묻지 않는다** — 전체 주제가 정해진 다음 일이다.\ndecision_key는 task_subject로 한다.`
     : "";
+
+  // 주제가 미정이면 후보 제안 전용 호출로 보기를 확실히 받는다(실패하면 아래 기존 경로·코드 질문으로 이어진다).
+  if (topicOpen) {
+    const proposed = await proposeTopicQuestion(params, word);
+    if (proposed) return { question: proposed, remaining: left - 1 };
+  }
 
   const { data } = await generateJson<{ needed: boolean; reason: string; question?: unknown }>({
     label: "questions:next",
