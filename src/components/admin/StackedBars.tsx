@@ -15,6 +15,7 @@ export default function StackedBars({
   height = 112,
   labelOf = (key) => key.slice(5).replace("-", "/"),
   unit = "일별",
+  showValues = false,
 }: {
   data: DayPoint[];
   series: BarSeries[];
@@ -24,6 +25,8 @@ export default function StackedBars({
   labelOf?: (key: string) => string;
   /** 접근성 설명에 쓰는 구분("일별", "시간대별"). */
   unit?: string;
+  /** 막대 위에 정확한 숫자를, 아래에 막대마다 눈금을 적는다(시간대별 방문자처럼 칸이 적은 그래프용). */
+  showValues?: boolean;
 }) {
   const totals = data.map((p) => series.reduce((s, x) => s + (p.values[x.key] ?? 0), 0));
   const max = Math.max(...totals, 0);
@@ -37,8 +40,9 @@ export default function StackedBars({
           const tip = `${label(p.day)} — ` + (parts.length ? parts.map((x) => `${x.s.label} ${format(x.v)}`).join(", ") : "기록 없음");
           return (
             <div key={p.day} title={tip} className="flex h-full flex-1 flex-col justify-end">
+              {showValues && totals[i] > 0 && <span className="mb-0.5 text-center text-[9px] font-medium leading-none tabular-nums text-muted">{format(totals[i])}</span>}
               {max > 0 && totals[i] > 0 ? (
-                <div className="flex w-full flex-col-reverse overflow-hidden rounded-[2px]" style={{ height: `${Math.max(4, (totals[i] / max) * 100)}%` }}>
+                <div className="flex w-full flex-col-reverse overflow-hidden rounded-[2px]" style={{ height: `${Math.max(4, (totals[i] / max) * (showValues ? 82 : 100))}%` }}>
                   {parts.map((x) => (
                     <div key={x.s.key} className={x.s.className} style={{ height: `${(x.v / totals[i]) * 100}%` }} />
                   ))}
@@ -50,11 +54,21 @@ export default function StackedBars({
           );
         })}
       </div>
-      <div className="mt-1.5 flex justify-between text-[10px] text-faint tabular-nums">
-        <span>{data[0] ? label(data[0].day) : ""}</span>
-        <span>{data[Math.floor(data.length / 2)] ? label(data[Math.floor(data.length / 2)].day) : ""}</span>
-        <span>{data.length ? label(data[data.length - 1].day) : ""}</span>
-      </div>
+      {showValues ? (
+        <div className="mt-1.5 flex gap-[3px] text-[9px] text-faint tabular-nums">
+          {data.map((p) => (
+            <span key={p.day} className="flex-1 text-center">
+              {label(p.day).replace("시", "")}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-1.5 flex justify-between text-[10px] text-faint tabular-nums">
+          <span>{data[0] ? label(data[0].day) : ""}</span>
+          <span>{data[Math.floor(data.length / 2)] ? label(data[Math.floor(data.length / 2)].day) : ""}</span>
+          <span>{data.length ? label(data[data.length - 1].day) : ""}</span>
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
         {series.map((s) => (
           <span key={s.key} className="inline-flex items-center gap-1.5">

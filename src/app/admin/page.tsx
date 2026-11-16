@@ -157,6 +157,45 @@ export default async function AdminDashboardPage() {
             가격표에 없는 모델이 쓰였어요: <b>{ai.unpricedModels.join(", ")}</b>. 이 모델의 비용은 0으로 세어져 위 숫자가 실제보다 작아요 — src/lib/llm/usage.ts의 가격표에 단가를 추가하세요.
           </Notice>
         )}
+        <div className="rounded-2xl border border-border bg-surface px-5 py-4">
+          <p className="text-sm font-semibold">결과물 평가 (수행평가 종류별 · 월별)</p>
+          <p className="mt-1 text-xs text-muted">결과물 아래 &quot;좋아요/아쉬워요&quot;와 &quot;분량(길다·적당·짧다)&quot; 버튼을 누른 수예요. 종류는 결과물의 칸 이름으로 가른 대략의 분류이고, 개인정보는 없어요.</p>
+          {d.ratings === null ? (
+            <p className="mt-3 text-xs text-muted">평가 기록 표(마이그레이션 0022)가 아직 적용되지 않았어요.</p>
+          ) : d.ratings.length === 0 ? (
+            <p className="mt-3 text-xs text-muted">아직 평가가 없어요.</p>
+          ) : (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[520px] text-left text-xs tabular-nums">
+                <thead className="text-faint">
+                  <tr>
+                    <th className="py-1.5 pr-3 font-medium">월</th>
+                    <th className="py-1.5 pr-3 font-medium">종류</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">좋아요</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">아쉬워요</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">너무 길어요</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">적당해요</th>
+                    <th className="py-1.5 text-right font-medium">너무 짧아요</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.ratings.map((r) => (
+                    <tr key={`${r.month}-${r.group}`} className="border-t border-border">
+                      <td className="py-1.5 pr-3">{r.month}</td>
+                      <td className="py-1.5 pr-3">{r.group}</td>
+                      <td className="py-1.5 pr-3 text-right">{r.good}</td>
+                      <td className="py-1.5 pr-3 text-right">{r.bad}</td>
+                      <td className="py-1.5 pr-3 text-right">{r.long}</td>
+                      <td className="py-1.5 pr-3 text-right">{r.ok}</td>
+                      <td className="py-1.5 text-right">{r.short}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
         {ai.models.length > 0 && (
           <div className="rounded-2xl border border-border px-5 py-4">
             <p className="text-sm font-semibold">최근 30일에 실제로 쓴 모델</p>

@@ -11,6 +11,8 @@ import {
   percentile,
   seriesByDay,
   sumSeries,
+  summarizeRatings,
+  type RatingRow,
   type ConfigCheck,
   type CostForecast,
   type DayPoint,
@@ -117,6 +119,8 @@ export interface SecuritySection {
 }
 
 export interface DashboardData {
+  /** 사용자 평가(결과물 아래 좋아요/아쉬워요·분량)를 수행평가 종류·월별로 묶은 것. 표가 없으면 null. */
+  ratings: RatingRow[] | null;
   generatedAt: string;
   users: { total: number; signups7d: number; signups30d: number; active7d: number; active30d: number; signupDays: DayPoint[] };
   generations: { days: DayPoint[]; truncated: boolean }; // values: login, guest, regen
@@ -264,6 +268,16 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     truncated: aiRows.truncated,
   };
 
+  // ── 사용자 평가(마이그레이션 0022) ──
+  let ratings: RatingRow[] | null = null;
+  try {
+    const since12 = new Date(now.getTime() - 366 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: rr, error: rerr } = await supabase.from("result_ratings").select("created_at, quality, length, context").gte("created_at", since12).limit(20000);
+    if (!rerr) ratings = summarizeRatings((rr ?? []) as Parameters<typeof summarizeRatings>[0]);
+  } catch {
+    ratings = null;
+  }
+
   // ── 보안 ──
   const lockout = getLockoutConfig();
   const attemptRows = (attempts.data ?? []) as { created_at: string; ip: string | null; success: boolean }[];
@@ -301,6 +315,7 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     generations: { days: genDays, truncated: events.truncated },
     study,
     ai,
+    ratings,
     security,
   };
 }

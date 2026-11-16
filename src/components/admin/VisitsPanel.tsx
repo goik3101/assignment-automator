@@ -71,7 +71,7 @@ export default function VisitsPanel({ today, minDay }: { today: string; minDay: 
         <p className="rounded-xl border border-border bg-raised px-4 py-3 text-xs leading-relaxed text-muted">방문 기록 표(마이그레이션 0020)가 아직 적용되지 않았어요. 적용하면 그 시점부터 방문이 쌓여요.</p>
       ) : (
         <>
-          <StackedBars data={data.hours} series={SERIES} labelOf={(h) => `${Number(h)}시`} unit="시간대별" />
+          <StackedBars data={data.hours} series={SERIES} labelOf={(h) => `${Number(h)}시`} unit="시간대별" showValues />
           <p className="mt-3 text-xs text-muted tabular-nums">
             {data.total === 0 ? "이 날은 방문 기록이 없어요." : `방문자 ${data.total}명 · 가장 붐빈 시간 ${data.peak!.hour}시 (${data.peak!.count}명)`}
             <span className="text-faint"> · 봇·관리자 본인 제외, 같은 사람은 하루 한 번만 세요.</span>

@@ -104,3 +104,18 @@ test("시간대별 집계: 한국 시간 기준으로 0~23시에 넣고 다른 �
   // 잘못된 시각은 버린다
   assert.equal(hourlyByDay([{ at: "not-a-date", k: "login" }], "2026-10-30", (r) => r.at, (r) => ({ [r.k]: 1 })).every((p) => Object.keys(p.values).length === 0), true);
 });
+
+test("평가를 수행평가 종류·월별로 묶는다", async () => {
+  const { ratingGroupOf, summarizeRatings } = await import("./dashboard-pure.ts");
+  assert.equal(ratingGroupOf(["머리기사", "인터뷰"]), "신문");
+  assert.equal(ratingGroupOf(["고민 쓰기", "책 처방전"]), "독서·편지");
+  assert.equal(ratingGroupOf(["탐구 보고서"]), "보고서·탐구");
+  assert.equal(ratingGroupOf(["알 수 없음"]), "기타");
+  const rows = summarizeRatings([
+    { created_at: "2026-11-16T03:00:00Z", quality: "good", length: "short", context: { steps: [{ label: "머리기사" }] } },
+    { created_at: "2026-11-17T03:00:00Z", quality: "bad", length: "long", context: { steps: [{ label: "인터뷰" }] } },
+    { created_at: "2026-10-30T03:00:00Z", quality: null, length: "ok", context: { steps: [] } },
+  ]);
+  assert.deepEqual(rows[0], { month: "2026-11", group: "신문", good: 1, bad: 1, long: 1, ok: 0, short: 1 });
+  assert.equal(rows[1].month, "2026-10");
+});

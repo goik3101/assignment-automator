@@ -170,3 +170,46 @@ export function evaluateSecurityConfig(env: Record<string, string | undefined>):
     },
   ];
 }
+
+// ── 사용자 평가(result_ratings)를 수행평가 종류·월별로 묶는다 ───────────────────────────────────────────
+export const RATING_GROUPS = ["신문", "보고서·탐구", "발표·영상", "카드뉴스", "독서·편지", "논술·의견", "기타"] as const;
+export type RatingGroup = (typeof RATING_GROUPS)[number];
+
+/** 결과물의 칸 이름들로 수행평가 종류를 대충 가른다(칸 이름은 개인정보가 아니다). 못 가르면 기타. */
+export function ratingGroupOf(labels: string[]): RatingGroup {
+  const t = labels.join(" ");
+  if (/머리기사|인터뷰|사설|만평|신문/.test(t)) return "신문";
+  if (/카드\s*뉴스/.test(t)) return "카드뉴스";
+  if (/발표|대본|스토리보드|영상|PPT/i.test(t)) return "발표·영상";
+  if (/독서|책|처방|편지|감상/.test(t)) return "독서·편지";
+  if (/보고서|탐구|실험|포트폴리오|활동지/.test(t)) return "보고서·탐구";
+  if (/논술|의견|주장|칼럼|에세이/.test(t)) return "논술·의견";
+  return "기타";
+}
+
+export interface RatingRow {
+  month: string;
+  group: RatingGroup;
+  good: number;
+  bad: number;
+  long: number;
+  ok: number;
+  short: number;
+}
+
+export function summarizeRatings(rows: { created_at: string; quality: string | null; length: string | null; context: { steps?: { label?: string }[] } | null }[]): RatingRow[] {
+  const map = new Map<string, RatingRow>();
+  for (const r of rows) {
+    const month = kstDayKey(new Date(r.created_at)).slice(0, 7);
+    const group = ratingGroupOf((r.context?.steps ?? []).map((s) => s.label ?? ""));
+    const key = `${month}|${group}`;
+    const row = map.get(key) ?? { month, group, good: 0, bad: 0, long: 0, ok: 0, short: 0 };
+    if (r.quality === "good") row.good++;
+    else if (r.quality === "bad") row.bad++;
+    if (r.length === "long") row.long++;
+    else if (r.length === "ok") row.ok++;
+    else if (r.length === "short") row.short++;
+    map.set(key, row);
+  }
+  return [...map.values()].sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : RATING_GROUPS.indexOf(a.group) - RATING_GROUPS.indexOf(b.group)));
+}
