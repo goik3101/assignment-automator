@@ -70,13 +70,14 @@ import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
 import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
 import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stripCriterionParens } from "@/lib/essay/tidy-layout";
 import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
+import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
 import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
 import { wantsExtraMaterial, ensureExtraMaterialSlot, extraMaterialKind } from "@/lib/essay/extra-material";
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
-import { adminLeakOn, dedupeOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
+import { adminLeakOn, dedupeOn, finalReviewOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankInventedChatLog, isAiChatRecordLabel, blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
@@ -2201,6 +2202,67 @@ async function extractFieldValues(items: { name: string; text: string }[]): Prom
   return out;
 }
 
+const REVIEW_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    results: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: { i: { type: Type.INTEGER }, changed: { type: Type.BOOLEAN }, why: { type: Type.STRING }, content: { type: Type.STRING } },
+        required: ["i", "changed"],
+      },
+    },
+  },
+  required: ["results"],
+};
+
+/**
+ * 안내문 **사진을 직접 보고** 결과물이 어긴 것만 고친다(FINAL_REVIEW=on). 글을 쓴 모델도 지금까지의 검수도 안내문 원본을 못 봤다 — 분석 요약이 흘린 조건을 여기서 처음 본다.
+ * 모델의 수정은 믿지 않는다: acceptReviewedSection(새 각주·새 수치·새 소제목·큰 길이 변화)을 통과한 단계만 바꾼다.
+ */
+async function noticeGroundedReview(
+  images: { base64: string; mimeType: string }[],
+  sections: { label: string; content: string }[]
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  try {
+    const res = await generate({
+      label: "generateEssay:finalReview",
+      role: "write",
+      effort: "low",
+      schema: REVIEW_SCHEMA,
+      prompt: [
+        ...images.map((im) => ({ image: im })),
+        {
+          text: [
+            "위 사진은 학생이 받은 수행평가 안내문이다. 아래는 AI가 쓴 결과물의 단계별 글이다. 안내문과 직접 대조해 **어긴 부분만** 고쳐라. 확인할 것:",
+            "1) 안내문이 교실에서 손으로 쓰는 평가(시험 대형·종이에만 작성·한 차시·시간 제한)면 한 차시에 손으로 쓸 수 있는 양(공백 포함 약 1,350자)을 넘지 않는가. 넘으면 덜 중요한 문장을 뺀다.",
+            "2) 안내문에 없는 항목·칸·소제목을 만들었는가 → 그 부분을 뺀다.",
+            "3) 안내문이 요구한 칸·항목이 비었거나 빠졌는가 → 아는 것만 짧게 채운다(새 사실·수치는 만들지 말 것).",
+            "4) \"[직접 작성: …]\" 빈칸인데 같은 결과물 다른 곳에 이미 그 값이 있는가 → 채운다.",
+            "5) 안내문이 금지·제한한 자료·형식을 썼는가.",
+            "어긴 게 없는 단계는 changed=false로 두고 content는 비운다. 고칠 때는 소제목 구조와 문장 끝 각주 번호([1] 등)를 그대로 두고, 새 각주·새 수치·새 소제목을 만들지 말며, 고친 단계의 **전체 글**을 content에 적는다.",
+            "",
+            ...sections.map((s, i) => `[단계 ${i}] ${s.label}\n${s.content}`),
+          ].join("\n"),
+        },
+      ] as never,
+    });
+    const parsed = JSON.parse(res.text ?? "{}") as { results?: { i: number; changed: boolean; why?: string; content?: string }[] };
+    for (const r of parsed.results ?? []) {
+      const sec = sections[r.i];
+      if (!sec || !r.changed || !r.content) continue;
+      const verdict = acceptReviewedSection(sec.content, r.content);
+      console.warn(`[generateEssay] 사진 대조 수정 "${sec.label}": ${verdict.ok ? "받음" : "버림(" + verdict.why + ")"} — ${(r.why ?? "").slice(0, 80)}`);
+      if (verdict.ok) out.set(r.i, r.content.trim());
+    }
+  } catch (err) {
+    console.warn("[generateEssay] 사진 대조 실패(원문 유지)", err instanceof Error ? err.message : err);
+  }
+  return out;
+}
+
 const RUBRIC_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -4043,6 +4105,12 @@ async function generateEssayImpl(
   }
   // 요약 줄에서 각주를 지운 자리에 남는 "…되었다 ." 공백도 정리한다(본문은 tidyOutputText가 이미 정리).
   if (fixes) attempt = { ...attempt, summaryLines: attempt.summaryLines.map((l) => l.replace(/[ \t]+([.,!?])/g, "$1").trim()) };
+  // 안내문 사진이 왔고 시간이 남았으면, 사진과 직접 대조해 어긴 것만 고친다(FINAL_REVIEW=on, 기본 꺼짐).
+  if (fixes && finalReviewOn() && (input.noticeImages?.length ?? 0) > 0 && Date.now() - start < 42_000) {
+    console.log(`[generateEssay] 안내문 사진 대조 시작(사진 ${input.noticeImages!.length}장, 단계 ${attempt.sections.length}개, 지금까지 ${((Date.now() - start) / 1000).toFixed(1)}초)`);
+    const changed = await noticeGroundedReview(input.noticeImages!, attempt.sections.map((s) => ({ label: s.label, content: s.content })));
+    if (changed.size > 0) attempt = { ...attempt, sections: attempt.sections.map((s, i) => (changed.has(i) ? { ...s, content: changed.get(i)! } : s)) };
+  }
   const markdown = attempt.sections.map((s) => `## ${s.label}\n\n${s.content}`).join("\n\n");
   console.log(`[generateEssay] latency_ms=${Date.now() - start}`);
 

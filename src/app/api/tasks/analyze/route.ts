@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { analyzeAssignment, transcribeNotice } from "@/lib/gemini/analyze";
 import { lookupAnalysis, storeAnalysis } from "@/lib/analysis-cache/cache";
 import { validateAnalyzeInput } from "@/lib/api/validate";
-import { leanWriteOn } from "@/lib/essay/quality-flags";
+import { finalReviewOn, leanWriteOn } from "@/lib/essay/quality-flags";
 import { runStudyRoute, StudyInputError } from "@/lib/study/route";
 
 // 사진이 여러 장이면 분석이 길어진다(같은 사진 1장 12.7초, 4장 20.9초 — 2026-11-04 실측). 다른 AI 경로처럼 실행 시간 상한을 명시해 플랫폼 기본값에 기대지 않는다.
@@ -46,7 +46,7 @@ export const POST = routeUsage("analyze", async function POST(req: NextRequest) 
               console.log(`[analyze] 분석 캐시 적중(유사도 ${hit.similarity.toFixed(2)}) — 분석 호출 생략`);
               const cached = hit.analysis as { core_task_info?: Record<string, unknown> };
               const reused = { ...cached, core_task_info: { ...(cached.core_task_info ?? {}), notice_text: knownTranscript } } as unknown as Awaited<ReturnType<typeof analyzeAssignment>>;
-              return { ...reused, wantsNoticeImages: leanWriteOn() && !!imageBase64 };
+              return { ...reused, wantsNoticeImages: (leanWriteOn() || finalReviewOn()) && !!imageBase64 };
             }
           }
         } catch (err) {
@@ -56,7 +56,7 @@ export const POST = routeUsage("analyze", async function POST(req: NextRequest) 
       const analysis = await analyzeAssignment({ imageBase64, imageMimeType, extraImages, topicText, instructions, ...(knownTranscript ? { knownTranscript } : {}) });
       if (cacheSig) await storeAnalysis(cacheSig, analysis as unknown as Record<string, unknown>).catch((err) => console.warn("[analyze] 분석 캐시 저장 실패", err instanceof Error ? err.message : err));
       // 화면이 사진을 생성 요청에 실을지 알 수 있게 서버 스위치(ESSAY_LEAN_WRITE)를 알려 준다 — 꺼져 있으면 사진을 보낼 필요가 없다.
-      return { ...analysis, wantsNoticeImages: leanWriteOn() && !!imageBase64 };
+      return { ...analysis, wantsNoticeImages: (leanWriteOn() || finalReviewOn()) && !!imageBase64 };
     }
   );
 });

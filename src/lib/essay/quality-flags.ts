@@ -195,3 +195,12 @@ export function noticeFormOn(): boolean {
 export function leanWriteOn(): boolean {
   return process.env.ESSAY_LEAN_WRITE === "on";
 }
+
+/**
+ * **안내문 사진을 보고 결과물을 마지막에 한 번 대조해 어긴 것만 고치는 단계**(generate-essay.ts `noticeGroundedReview`). FINAL_REVIEW=on일 때만(기본 꺼짐).
+ * 왜: 글을 쓰는 모델도, 지금까지의 검수도 **안내문 원본을 못 본다**(분석 요약만 본다) — 요약이 흘린 조건("종이에만 작성"·칸 크기)은 어떤 규칙도 못 잡았다.
+ * 켜면 화면이 안내문 사진을 생성 요청에 실어 보낸다(analyze 응답의 wantsNoticeImages).
+ */
+export function finalReviewOn(): boolean {
+  return process.env.FINAL_REVIEW === "on";
+}
