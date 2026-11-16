@@ -1,5 +1,14 @@
 // results 영역 영어 사전 (키 = 화면에 보이는 한국어 원문 그대로).
 export const results: Record<string, string> = {
+  // 결과물 평가 (ResultRating)
+  "결과물 평가": "Rate this result",
+  "이 결과물 어땠나요?": "How was this result?",
+  "분량은요?": "How was the length?",
+  "좋아요": "Good",
+  "너무 길어요": "Too long",
+  "적당해요": "Just right",
+  "너무 짧아요": "Too short",
+  "의견 고마워요. 더 나은 결과물을 만드는 데 쓸게요.": "Thanks for the feedback. We'll use it to improve.",
   // 결과 카드 (ResultPanel)
   "이 내용은 검색으로 검증되지 않았어요": "This content was not verified by search",
   "책 제목·저자·인용구 같은 구체적 사실이 있다면, 실제로 존재하는 내용인지 직접 검색해서 확인한 뒤 제출하세요.":

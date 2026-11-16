@@ -38,7 +38,7 @@ test("LINE_LENGTH 꺼짐이면 기본 분량 가이드 그대로, 켜지면 쪽 
   const ctx = { requirements: ["A4 1장 이내로 작성한다"], guide: "", labels: ["소감"] };
   delete process.env.LINE_LENGTH;
   // 역할 기본값(소감 250~600자)이 LENGTH_TARGET으로 목표 하나(약 450자)로 좁혀졌다.
-  assert.match(lengthGuideLines(els, ctx)[0], /450자|250~600자/);
+  assert.match(lengthGuideLines(els, ctx)[0], /650자|500~800자/); // 소감 기본값이 LENGTH_RAISE로 올라가 숫자가 바뀐다
   process.env.LINE_LENGTH = "on";
   try {
     const g = lengthGuideLines(els, ctx)[0];

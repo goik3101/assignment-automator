@@ -5,8 +5,8 @@ import { narrowTarget, planLength, lengthGuideLines, lengthRoleOf, effectiveTarg
 // ── 목표 하나로 좁히기 (LENGTH_TARGET) ─────────────────────
 test("범위 대신 목표 하나 ±20%로 좁힌다", () => {
   const t = narrowTarget({ label: "스토리보드", description: "", required_items: ["화면", "대사"] });
-  assert.equal(t.target, 800); // general 500~1100의 중앙값
-  assert.deepEqual([t.min, t.max], [640, 960]);
+  assert.equal(t.target, 1200); // general 800~1600의 중앙값(2026-11-16 상향, LENGTH_RAISE)
+  assert.deepEqual([t.min, t.max], [960, 1440]);
 });
 
 test("항목이 많은 개요는 항목당 150자를 바닥으로 둔다", () => {
@@ -26,7 +26,7 @@ test("항목이 정한 바닥은 역할 상한으로 깎지 않는다", () => {
 
 test("항목이 둘 이하면 바닥을 적용하지 않는다", () => {
   const t = narrowTarget({ label: "소감", description: "", required_items: ["느낀 점"] });
-  assert.equal(t.target, 425); // reflection 250~600의 중앙값
+  assert.equal(t.target, 715); // reflection 400+40n~900+90n의 중앙값(2026-11-16 상향)
 });
 
 test("목표는 역할 하한보다 작지 않다(상한은 항목이 많으면 넘을 수 있다)", () => {

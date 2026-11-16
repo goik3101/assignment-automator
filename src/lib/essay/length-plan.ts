@@ -162,6 +162,11 @@ export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   };
 }
 
+/** 문서형 역할(보고서 항목·일반 글·성찰·개요)의 기본 분량을 올린 값을 쓸지. 손글씨 시간·칸 줄 수·안내문이 말한 분량이 있으면 그쪽이 먼저라 영향이 없다. */
+export function lengthRaiseOn(): boolean {
+  return process.env.LENGTH_RAISE !== "off";
+}
+
 function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   const role = lengthRoleOf(el, ctx);
   const items = el.required_items?.length ?? 0;
@@ -208,6 +213,9 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
         };
       }
       // 항목이 많이 펼쳐진 한 단계(사회-02 합쳐진 제안서 3,597자, 과학-09 등)는 항목 수에 비례해 목표가 끝없이 커진다 — 학생이 제출할 한 단계의 상한을 둔다(2026-11-15).
+      // 2026-11-16: 사용자가 "전체적으로 너무 짧다"고 했다. 같은 안내문을 ChatGPT식(사진 + 한 줄)으로 쓰면 우리 계획 최대의 1.5~3배가 나왔다
+      // (과학-01 3,200 대 계획 800~1,500, 사회-03 1,985 대 960~1,800). 문서형 단계는 항목당 분량을 올린다. LENGTH_RAISE=off로 되돌린다.
+      if (lengthRaiseOn()) return { role, min: Math.min(n * 230, 2000), max: Math.min(n * 420, 3200), basis: `보고서 항목 ${n}개 × 항목당 대여섯~여덟 문장(한 단계 최대 3,200자)` };
       return { role, min: Math.min(n * 160, 1500), max: Math.min(n * 300, 2400), basis: `보고서 항목 ${n}개 × 항목당 대여섯 문장(한 단계 최대 2,400자)` };
     }
     case "table": {
@@ -231,6 +239,7 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
       // 만점 결과물 실측 170·202자(붙일 자료가 본체이고 글은 제목·날짜·출처와 짧은 설명이다).
       return { role, min: 100, max: 300, basis: "붙일 자료의 제목·출처와 짧은 설명" };
     case "reflection":
+      if (lengthRaiseOn()) return { role, min: 400 + items * 40, max: 900 + items * 90, basis: "본인 경험·생각 중심의 글(항목이 많으면 항목마다 두세 문장)" };
       return { role, min: 250, max: 600, basis: "본인 경험·생각 중심의 짧은 글" };
     case "reason":
       return { role, min: 200, max: 500, basis: "선정 이유와 근거 한두 가지" };
@@ -247,12 +256,14 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
       // 다만 상한은 1,800자로 막는다: 2026-10-29에 개요를 보고서로 보아 항목 7개 × 250~450을 줬더니
       // 2,000~2,700자(26회 중앙 2,481자)짜리 개요가 나왔다. 그 사고를 되풀이하지 않는다.
       if (items >= 3) {
+        if (lengthRaiseOn()) return { role, min: Math.min(items * 260, 1500), max: Math.min(items * 450, 2200), basis: `개요 항목 ${items}개 × 항목당 서너~다섯 문장` };
         const lo = items * 210;
         return { role, min: Math.min(lo, 1200), max: Math.min(items * 350, 1800), basis: `개요 항목 ${items}개 × 항목당 서너 문장` };
       }
       return { role, min: 400, max: 900 + itemBoost, basis: "실행 가능한 단계와 근거" };
     }
     default:
+      if (lengthRaiseOn()) return { role, min: 800 + itemBoost, max: 1600 + itemBoost, basis: "요구 내용을 충분히 설명하는 글" };
       return { role, min: 500 + itemBoost, max: 1100 + itemBoost, basis: "요구 내용을 충분히 설명하는 글" };
   }
 }
