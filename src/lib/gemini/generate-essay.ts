@@ -2465,7 +2465,8 @@ async function generateEssayImpl(
             // 천장은 칸에서 내지 않는다 — 칸 크기 추정이 작은 단계(수학-01: 상한 600자)에서 완성된 1,461자 글을 735자로 깎아 항목이 빠졌다.
             floor: Math.round((boxMin > 0 ? Math.min(boxMin, plan.min) : plan.min) * 0.5),
             planned: plan.min,
-            ceiling: Math.round(plan.max * 1.4),
+            // 천장 1.4배에서 1.25배로 낮춤(2026-11-18): 사용자 역사 논술이 계획 상한(3,050)을 넘지 않은 3,256자로 나와 1.4배 천장 아래라 아무것도 안 줄었다. HARD_TRIM_RATIO=1.4로 되돌림.
+            ceiling: Math.round(plan.max * (Number(process.env.HARD_TRIM_RATIO) || 1.25)),
             planned2x: plan.max,
             // 손으로 쓸 시간이 상한인 단계(handwrite-budget)만 값이 있다 — 그 상한의 1.1배를 넘으면 문장 단위로 줄인다(hard-trim.ts trimItemSentences).
             handCeiling: plan.basis.includes("손으로 쓸 시간에 맞춤") ? Math.round(plan.max * 1.1) : 0,
