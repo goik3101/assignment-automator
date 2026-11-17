@@ -248,6 +248,8 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
     case "script":
       return { role, min: 900 + itemBoost, max: 1700 + itemBoost, basis: "말로 전하는 발표 3분 안팎" };
     case "report":
+      // 2026-11-18 사용자 비교(역사 논술, ChatGPT 2,189자 대 우리 3,256자): 항목 수에 비례한 가산이 상한을 3,050까지 올려 ChatGPT식의 1.5배가 나왔다. 항목이 많아도 이 역할은 한 편의 글이라 상한 2,400자(LENGTH_RAISE=off면 예전).
+      if (lengthRaiseOn()) return { role, min: Math.min(1000 + itemBoost, 1600), max: Math.min(2000 + itemBoost * 1.5, 2400), basis: "주장·근거·해석·결론을 갖춘 글(한 편 최대 2,400자)" };
       return { role, min: 1000 + itemBoost, max: 2000 + itemBoost * 1.5, basis: "주장·근거·해석·결론을 갖춘 글" };
     case "plan": {
       // 항목이 여럿인 개요는 **항목마다 쓸 것이 있다**. 채점된 실측(2026-11-10, 국어 발표 9회,
