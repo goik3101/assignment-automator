@@ -2,6 +2,8 @@ import { PRICES_PER_MILLION } from "@/lib/llm/usage";
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { ADMIN_ACCOUNT_EMAIL } from "./session";
 import { getLockoutConfig } from "./lockout";
+import { getExcludePatterns, getExcludedUserIds } from "./exclude";
+import { isExcludedEmail } from "./exclude-pure";
 import {
   evaluateSecurityConfig,
   forecastMonthCost,
@@ -65,6 +67,7 @@ async function listAllUsers(): Promise<{ created_at: string; last_sign_in_at: st
     if (error) throw new Error(`사용자 조회 실패: ${error.message}`);
     for (const u of data.users) {
       if (u.email === ADMIN_ACCOUNT_EMAIL) continue; // 관리자 예약 계정은 실사용자가 아니다
+      if (isExcludedEmail(u.email, getExcludePatterns())) continue; // 운영자·테스트 계정(STATS_EXCLUDE_EMAILS)
       out.push({ created_at: u.created_at, last_sign_in_at: u.last_sign_in_at ?? null });
     }
     if (data.users.length < 1000) break;
@@ -146,8 +149,8 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     fetchAll<{ created_at: string; event_type: string; user_id: string | null }>((a, b) =>
       supabase.from("usage_events").select("created_at, event_type, user_id").gte("created_at", since).order("created_at", { ascending: false }).range(a, b)
     ),
-    fetchAll<{ created_at: string; kind: string }>((a, b) =>
-      supabase.from("study_usage_events").select("created_at, kind").gte("created_at", since).order("created_at", { ascending: false }).range(a, b)
+    fetchAll<{ created_at: string; kind: string; actor_key: string }>((a, b) =>
+      supabase.from("study_usage_events").select("created_at, kind, actor_key").gte("created_at", since).order("created_at", { ascending: false }).range(a, b)
     ),
     fetchAll<{ created_at: string; route: string; status: number; ok: boolean; failed_calls: number; cost_usd: number | string; wall_ms: number }>((a, b) =>
       supabase.from("ai_usage_log").select("created_at, route, status, ok, failed_calls, cost_usd, wall_ms, models").gte("created_at", since).order("created_at", { ascending: false }).range(a, b)
@@ -155,6 +158,13 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     supabase.from("admin_login_attempts").select("created_at, ip, success").gte("created_at", since7).order("created_at", { ascending: false }).limit(1000),
   ]);
   if (attempts.error) throw new Error(`로그인 기록 조회 실패: ${attempts.error.message}`);
+
+  // 운영자·테스트 계정의 사용 기록은 모든 집계(생성 그래프·재방문·공부 도구·오늘 생성 수)에서 뺀다. 사용자 수는 listAllUsers에서 이미 뺐다.
+  const excluded = await getExcludedUserIds();
+  if (excluded.size > 0) {
+    events.rows = events.rows.filter((r) => !r.user_id || !excluded.has(r.user_id));
+    studyRows.rows = studyRows.rows.filter((r) => !(r.actor_key?.startsWith("user:") && excluded.has(r.actor_key.slice(5))));
+  }
 
   // ── 사용자 ──
   const t7 = now.getTime() - 7 * 24 * 60 * 60 * 1000;

@@ -1,4 +1,5 @@
 import { getServiceClient } from "@/lib/supabase/service-client";
+import { getExcludedUserIds } from "./exclude";
 
 export interface AdminStats {
   generations: { today: number; last7Days: number; last30Days: number };
@@ -31,6 +32,13 @@ export async function getAdminStats(): Promise<AdminStats> {
   const days7 = isoDaysAgo(7);
   const days30 = isoDaysAgo(30);
   const events = supabase.from("usage_events");
+  // 운영자·테스트 계정(STATS_EXCLUDE_EMAILS)의 사용 기록은 센 수에서 뺀다. 비로그인(user_id가 비어 있음)은 그대로 센다.
+  const excluded = [...(await getExcludedUserIds())];
+  const notTest = excluded.length > 0 ? `user_id.is.null,user_id.not.in.(${excluded.join(",")})` : null;
+  const ev = () => {
+    const b = events.select("id", { count: "exact", head: true });
+    return notTest ? b.or(notTest) : b;
+  };
   const validations = supabase.from("source_validations");
 
   const [
@@ -45,23 +53,20 @@ export async function getAdminStats(): Promise<AdminStats> {
     validationsTotal30,
     validationsFailed30,
   ] = await Promise.all([
-    events.select("id", { count: "exact", head: true }).eq("event_type", "generate").gte("created_at", todayStart),
-    events.select("id", { count: "exact", head: true }).eq("event_type", "generate").gte("created_at", days7),
-    events.select("id", { count: "exact", head: true }).eq("event_type", "generate").gte("created_at", days30),
-    events.select("id", { count: "exact", head: true }).eq("event_type", "regenerate").gte("created_at", todayStart),
-    events.select("id", { count: "exact", head: true }).eq("event_type", "regenerate").gte("created_at", days30),
-    events
-      .select("id", { count: "exact", head: true })
+    ev().eq("event_type", "generate").gte("created_at", todayStart),
+    ev().eq("event_type", "generate").gte("created_at", days7),
+    ev().eq("event_type", "generate").gte("created_at", days30),
+    ev().eq("event_type", "regenerate").gte("created_at", todayStart),
+    ev().eq("event_type", "regenerate").gte("created_at", days30),
+    ev()
       .eq("event_type", "generate")
       .not("user_id", "is", null)
       .gte("created_at", days30),
-    events
-      .select("id", { count: "exact", head: true })
+    ev()
       .eq("event_type", "generate")
       .not("guest_id", "is", null)
       .gte("created_at", days30),
-    events
-      .select("id", { count: "exact", head: true })
+    ev()
       .eq("event_type", "generate")
       .eq("avoidance_triggered", true)
       .gte("created_at", days30),

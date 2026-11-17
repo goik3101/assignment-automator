@@ -1,5 +1,6 @@
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { hourlyByDay, kstDayRange, type DayPoint } from "./dashboard-pure";
+import { getExcludedUserIds } from "./exclude";
 
 // 선택한 날(한국 시간)의 생성 횟수를 시간대(0~23시)별로 센다. 관리자 대시보드의 "시간대별 생성" 그래프용 — 개인 식별 정보는 읽지 않고 시각과 종류만 쓴다.
 const PAGE = 1000;
@@ -36,6 +37,13 @@ export async function getHourlyGenerations(day: string): Promise<HourlyGeneratio
     if (error) throw new Error(`시간대별 조회 실패: ${error.message}`);
     rows.push(...(data ?? []));
     if (!data || data.length < PAGE) break;
+  }
+  // 운영자·테스트 계정의 생성은 시간대별 그래프에서도 뺀다(STATS_EXCLUDE_EMAILS).
+  const excluded = await getExcludedUserIds();
+  if (excluded.size > 0) {
+    const kept = rows.filter((r) => !r.user_id || !excluded.has(r.user_id));
+    rows.length = 0;
+    rows.push(...kept);
   }
 
   const hours = hourlyByDay(rows, day, (r) => r.created_at, (r): Record<string, number> =>
