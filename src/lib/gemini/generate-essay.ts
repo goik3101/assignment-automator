@@ -70,6 +70,7 @@ import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
 import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
 import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stripCriterionParens } from "@/lib/essay/tidy-layout";
 import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
+import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
@@ -850,6 +851,7 @@ ${input.previousOutputText}
   // 이 규칙들은 전부 "안내문 문장에 이 낱말이 있나"로 판정하므로 엉뚱하게 걸려도 결과물만 봐서는 알 수 없다 —
   // 실측(2026-10-31): "설정하고"가 대상 선정을, "그림·그래프·표만 가능"이 표 요구를 켰고 둘 다 글을 망가뜨렸다.
   console.log(
+    `[generateEssay] 손글씨 한도 진단: 전사=${(input.coreTaskInfo.notice_text ?? "").length}자 한도=${JSON.stringify(handwriteBudget([input.coreTaskInfo.writing_guide, ...input.coreTaskInfo.requirements, input.coreTaskInfo.notice_text]))} 질문답=${input.instructions ? "있음" : "없음"}\n` +
     `[generateEssay] 안내문 규칙: 대상=${input.presetSubject ? `"${input.presetSubject.name}"` : "없음"}` +
       ` 표요구=[${elements.filter((el) => needsDataTable(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.length === 1, elements)).map((e) => e.label).join(",")}]` +
       ` 자료제한=허용[${visuals.allowed.join("·")}]` +
