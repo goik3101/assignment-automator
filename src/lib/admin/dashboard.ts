@@ -160,6 +160,7 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
   if (attempts.error) throw new Error(`로그인 기록 조회 실패: ${attempts.error.message}`);
 
   // 운영자·테스트 계정의 사용 기록은 모든 집계(생성 그래프·재방문·공부 도구·오늘 생성 수)에서 뺀다. 사용자 수는 listAllUsers에서 이미 뺐다.
+  const allEventRows = events.rows; // 전체 상한 게이지는 실제 제한(throttle)과 같게 테스트 계정까지 센다
   const excluded = await getExcludedUserIds();
   if (excluded.size > 0) {
     events.rows = events.rows.filter((r) => !r.user_id || !excluded.has(r.user_id));
@@ -317,7 +318,7 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     lockout,
     lastSuccessAt: attemptRows.find((a) => a.success)?.created_at ?? null,
     throttle: {
-      today: events.rows.filter((r) => new Date(r.created_at).getTime() >= throttleStart.getTime()).length,
+      today: allEventRows.filter((r) => new Date(r.created_at).getTime() >= throttleStart.getTime()).length,
       soft,
       hard: soft * Number(process.env.THROTTLE_GLOBAL_HARD_MULTIPLIER ?? 5),
     },
