@@ -2,6 +2,7 @@
 export const results: Record<string, string> = {
   // 결과물 평가 (ResultRating)
   "결과물 평가": "Rate this result",
+  "지금은 베타 버전이라 부족한 점이 있을 수 있어요. 남겨 주신 의견은 다음 업데이트에 바로 반영돼요.": "This is a beta, so some things may fall short. Your feedback goes straight into the next update.",
   "이 결과물 어땠나요?": "How was this result?",
   "분량은요?": "How was the length?",
   "좋아요": "Good",

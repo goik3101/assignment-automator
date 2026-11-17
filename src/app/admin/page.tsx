@@ -278,6 +278,36 @@ export default async function AdminDashboardPage() {
                 { key: "regen", label: "재생성", className: "bg-muted" },
               ]}
             />
+            {/* 날짜별 정확한 숫자(비로그인=게스트 포함). 게스트는 개인정보 때문에 사람 단위로는 추적하지 않고, 하루에 몇 번 만들었는지만 센다. */}
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[320px] text-left text-xs tabular-nums">
+                <thead className="text-faint">
+                  <tr>
+                    <th className="py-1 pr-3 font-medium">날짜</th>
+                    <th className="py-1 pr-3 text-right font-medium">비로그인</th>
+                    <th className="py-1 pr-3 text-right font-medium">로그인</th>
+                    <th className="py-1 pr-3 text-right font-medium">재생성</th>
+                    <th className="py-1 text-right font-medium">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...d.generations.days].slice(-14).reverse().map((p) => {
+                    const g = p.values.guest ?? 0;
+                    const l = p.values.login ?? 0;
+                    const r = p.values.regen ?? 0;
+                    return (
+                      <tr key={p.day} className="border-t border-border">
+                        <td className="py-1 pr-3">{p.day.slice(5).replace("-", "/")}</td>
+                        <td className="py-1 pr-3 text-right">{g}</td>
+                        <td className="py-1 pr-3 text-right">{l}</td>
+                        <td className="py-1 pr-3 text-right">{r}</td>
+                        <td className="py-1 text-right font-medium">{g + l + r}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             {d.generations.truncated && <p className="mt-2 text-[11px] text-faint">기록이 많아 일부(최근 2만 건)만 집계했어요.</p>}
           </Panel>
           {/* 오른쪽: 날짜를 골라 그날 몇 시에 생성이 몇 건 있었는지 본다 */}

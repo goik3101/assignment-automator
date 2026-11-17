@@ -13,6 +13,7 @@ import type {
   TaskElement,
 } from "@/types/task";
 import { EssayPanel, PlanPanel } from "./ResultPanel";
+import { ResultRatingBar, mergeRatingContexts, ratingContextFrom } from "./result/ResultRating";
 import StudyRail from "./study/StudyRail";
 import { StudyTabs, StudyToolsProvider } from "./study/StudyTools";
 import { useAuth } from "@/lib/supabase/use-auth";
@@ -317,8 +318,12 @@ export default function AssignmentFlow() {
 
   const info = ctx?.coreTaskInfo ?? null;
   const loadingCount = items.filter((i) => i.status === "loading").length;
+  // 평가 바용: 완성된 카드의 구조 정보만 모은다(본문 제외). 결과가 바뀌면 키가 바뀌어 다시 묻는다.
+  const doneItems = items.flatMap((i) => (i.status === "done" ? [i] : []));
+  const ratingContexts = doneItems.map((i) => ratingContextFrom(i.result.type === "essay" ? "essay" : "plan", i.element.label, i.result as never));
   // 학습 도구(요약·카드·퀴즈·시험·채팅)는 저장된 결과물(submissionId)이 있어야 쓸 수 있다 — 로그인 사용자만 저장된다.
   const submissionId = items.flatMap((i) => (i.status === "done" && i.result.submissionId ? [i.result.submissionId] : []))[0];
+  const ratingKey = submissionId ?? doneItems.map((i) => i.element.label).join("|");
 
   return (
     <StudyToolsProvider>
@@ -406,6 +411,7 @@ export default function AssignmentFlow() {
           );
         })}
       </div>
+        {ratingContexts.length > 0 && loadingCount === 0 && <ResultRatingBar context={mergeRatingContexts(ratingContexts)} resultKey={ratingKey} />}
         <StudyRail
           studyRef={submissionId ? { kind: "submission", id: submissionId, key: `work:${submissionId}` } : null}
           title={info?.topic ?? t("이 과제")}
