@@ -3,6 +3,7 @@ import { requireAdminOrRedirect } from "@/lib/admin/session";
 import { getAdminStats } from "@/lib/admin/stats";
 import { getDashboardData } from "@/lib/admin/dashboard";
 import StackedBars from "@/components/admin/StackedBars";
+import DonutChart from "@/components/admin/DonutChart";
 import HourlyGenerations from "@/components/admin/HourlyGenerations";
 import VisitsPanel from "@/components/admin/VisitsPanel";
 import { kstDayKey } from "@/lib/admin/dashboard-pure";
@@ -264,6 +265,110 @@ export default async function AdminDashboardPage() {
           </div>
         )}
       </section>
+
+      {/* ── 한눈에: 구성(도넛) · 재방문 ── */}
+      {(() => {
+        const sum = (k: string) => d.generations.days.reduce((n, p) => n + (p.values[k] ?? 0), 0);
+        const gen = { login: sum("login"), guest: sum("guest"), regen: sum("regen") };
+        const rv = d.revisit;
+        const routes = ai.byRoute.filter((r) => r.costUsd > 0).slice(0, 5);
+        const ratingSum = (d.ratings ?? []).reduce((a, r) => ({ good: a.good + r.good, bad: a.bad + r.bad, long: a.long + r.long, ok: a.ok + r.ok, short: a.short + r.short }), { good: 0, bad: 0, long: 0, ok: 0, short: 0 });
+        const strokes = ["stroke-foreground", "stroke-muted", "stroke-faint", "stroke-border-strong", "stroke-danger"];
+        const dots = ["bg-foreground", "bg-muted", "bg-faint", "bg-border-strong", "bg-danger"];
+        return (
+          <section className="space-y-4">
+            <h2 className="text-sm font-medium text-muted">한눈에 보기 (최근 30일)</h2>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <StatCard label="결과물 생성 (30일)" value={(gen.login + gen.guest + gen.regen).toLocaleString("ko-KR")} sub={`로그인 ${gen.login} · 비로그인 ${gen.guest} · 재생성 ${gen.regen}`} />
+              <StatCard label="재방문율 (로그인)" value={pct(rv.rate)} sub={`${rv.totalUsers}명 중 ${rv.returningUsers}명이 2일 이상 사용`} />
+              <StatCard label="만든 로그인 사용자" value={`${rv.totalUsers}명`} sub="게스트는 사람 단위로 추적하지 않아요" />
+              <StatCard label="재방문 사용자" value={`${rv.returningUsers}명`} sub="서로 다른 날 다시 만든 사람" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Panel title="생성 구성">
+                <DonutChart
+                  center={{ value: String(gen.login + gen.guest + gen.regen), label: "생성" }}
+                  slices={[
+                    { label: "로그인", value: gen.login, stroke: strokes[0], dot: dots[0] },
+                    { label: "비로그인", value: gen.guest, stroke: strokes[2], dot: dots[2] },
+                    { label: "재생성", value: gen.regen, stroke: strokes[1], dot: dots[1] },
+                  ]}
+                />
+              </Panel>
+              <Panel title="사용자: 새로 온 사람 vs 다시 온 사람 (로그인)">
+                <DonutChart
+                  center={{ value: pct(rv.rate), label: "재방문율" }}
+                  slices={[
+                    { label: "다시 온 사용자", value: rv.returningUsers, stroke: strokes[0], dot: dots[0] },
+                    { label: "한 번만 쓴 사용자", value: Math.max(0, rv.totalUsers - rv.returningUsers), stroke: strokes[2], dot: dots[2] },
+                  ]}
+                />
+              </Panel>
+              <Panel title="AI 비용: 어디에 쓰였나 (경로별)">
+                {routes.length === 0 ? (
+                  <p className="text-xs text-muted">기록이 없어요.</p>
+                ) : (
+                  <DonutChart
+                    format={usd}
+                    center={{ value: usd(routes.reduce((n, r) => n + r.costUsd, 0)), label: "합계" }}
+                    slices={routes.map((r, i) => ({ label: r.route, value: r.costUsd, stroke: strokes[i], dot: dots[i] }))}
+                  />
+                )}
+              </Panel>
+              <Panel title="결과물 평가 (좋아요·분량)">
+                {ratingSum.good + ratingSum.bad + ratingSum.long + ratingSum.ok + ratingSum.short === 0 ? (
+                  <p className="text-xs text-muted">아직 평가가 없어요. 결과 아래에 뜨는 평가 바에서 눌러야 쌓여요.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-6">
+                    <DonutChart
+                      size={96}
+                      center={{ value: String(ratingSum.good + ratingSum.bad), label: "품질" }}
+                      slices={[
+                        { label: "좋아요", value: ratingSum.good, stroke: strokes[0], dot: dots[0] },
+                        { label: "아쉬워요", value: ratingSum.bad, stroke: strokes[4], dot: dots[4] },
+                      ]}
+                    />
+                    <DonutChart
+                      size={96}
+                      center={{ value: String(ratingSum.long + ratingSum.ok + ratingSum.short), label: "분량" }}
+                      slices={[
+                        { label: "너무 길어요", value: ratingSum.long, stroke: strokes[1], dot: dots[1] },
+                        { label: "적당해요", value: ratingSum.ok, stroke: strokes[0], dot: dots[0] },
+                        { label: "너무 짧아요", value: ratingSum.short, stroke: strokes[2], dot: dots[2] },
+                      ]}
+                    />
+                  </div>
+                )}
+              </Panel>
+            </div>
+            <Panel title="날짜별 로그인 사용자와 재방문 (최근 14일)">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[360px] text-left text-xs tabular-nums">
+                  <thead className="text-faint">
+                    <tr>
+                      <th className="py-1 pr-3 font-medium">날짜</th>
+                      <th className="py-1 pr-3 text-right font-medium">만든 사용자</th>
+                      <th className="py-1 pr-3 text-right font-medium">새 사용자</th>
+                      <th className="py-1 text-right font-medium">다시 온 사용자</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...rv.days].slice(-14).reverse().map((p) => (
+                      <tr key={p.day} className="border-t border-border">
+                        <td className="py-1 pr-3">{p.day.slice(5).replace("-", "/")}</td>
+                        <td className="py-1 pr-3 text-right">{p.users}명</td>
+                        <td className="py-1 pr-3 text-right">{p.newUsers}명</td>
+                        <td className="py-1 text-right font-medium">{p.returning}명</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-[11px] text-faint">재방문 = 이전 날에도 만든 적이 있는 로그인 사용자. 기록은 최근 30일 범위예요.</p>
+            </Panel>
+          </section>
+        );
+      })()}
 
       {/* ── 사용자 · 생성 ── */}
       <section className="space-y-4">

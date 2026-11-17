@@ -12,6 +12,8 @@ import {
   seriesByDay,
   sumSeries,
   summarizeRatings,
+  summarizeRevisits,
+  type RevisitSummary,
   type RatingRow,
   type ConfigCheck,
   type CostForecast,
@@ -119,6 +121,8 @@ export interface SecuritySection {
 }
 
 export interface DashboardData {
+  /** 로그인 사용자의 날짜별 생성 사용자 수와 재방문(서로 다른 2일 이상 만든 사용자). 게스트는 사람 단위로 추적하지 않는다. */
+  revisit: RevisitSummary;
   /** 사용자 평가(결과물 아래 좋아요/아쉬워요·분량)를 수행평가 종류·월별로 묶은 것. 표가 없으면 null. */
   ratings: RatingRow[] | null;
   generatedAt: string;
@@ -268,6 +272,8 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     truncated: aiRows.truncated,
   };
 
+  const revisit = summarizeRevisits(events.rows, days);
+
   // ── 사용자 평가(마이그레이션 0022) ──
   let ratings: RatingRow[] | null = null;
   try {
@@ -316,6 +322,7 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     study,
     ai,
     ratings,
+    revisit,
     security,
   };
 }

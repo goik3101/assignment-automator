@@ -119,3 +119,23 @@ test("평가를 수행평가 종류·월별로 묶는다", async () => {
   assert.deepEqual(rows[0], { month: "2026-11", group: "신문", good: 1, bad: 1, long: 1, ok: 0, short: 1 });
   assert.equal(rows[1].month, "2026-10");
 });
+
+test("재방문: 이전 날에도 만든 로그인 사용자를 센다(게스트 제외)", async () => {
+  const { summarizeRevisits } = await import("./dashboard-pure.ts");
+  const r = summarizeRevisits(
+    [
+      { created_at: "2026-11-16T03:00:00Z", user_id: "a" },
+      { created_at: "2026-11-17T03:00:00Z", user_id: "a" },
+      { created_at: "2026-11-17T04:00:00Z", user_id: "b" },
+      { created_at: "2026-11-17T05:00:00Z", user_id: null },
+    ],
+    ["2026-11-16", "2026-11-17"]
+  );
+  assert.deepEqual(r.days, [
+    { day: "2026-11-16", users: 1, returning: 0, newUsers: 1 },
+    { day: "2026-11-17", users: 2, returning: 1, newUsers: 1 },
+  ]);
+  assert.equal(r.totalUsers, 2);
+  assert.equal(r.returningUsers, 1);
+  assert.equal(r.rate, 0.5);
+});

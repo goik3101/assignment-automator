@@ -213,3 +213,45 @@ export function summarizeRatings(rows: { created_at: string; quality: string | n
   }
   return [...map.values()].sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : RATING_GROUPS.indexOf(a.group) - RATING_GROUPS.indexOf(b.group)));
 }
+
+// ── 재방문: 로그인 사용자가 서로 다른 날에 다시 생성했는가(게스트는 개인정보 때문에 사람 단위로 추적하지 않는다) ─────────────
+export interface RevisitDay {
+  day: string;
+  /** 그날 로그인해서 만든 서로 다른 사용자 수 */
+  users: number;
+  /** 그중 이전 날에도 만든 적이 있는 사용자 수(재방문) */
+  returning: number;
+  /** 그날 처음 만든 사용자 수 */
+  newUsers: number;
+}
+export interface RevisitSummary {
+  days: RevisitDay[];
+  totalUsers: number;
+  /** 서로 다른 2일 이상 만든 사용자 수 */
+  returningUsers: number;
+  /** returningUsers / totalUsers (0~1) */
+  rate: number;
+}
+
+export function summarizeRevisits(events: { created_at: string; user_id: string | null }[], dayKeys: string[]): RevisitSummary {
+  const daysOf = new Map<string, Set<string>>();
+  for (const e of events) {
+    if (!e.user_id) continue;
+    const s = daysOf.get(e.user_id) ?? new Set<string>();
+    s.add(kstDayKey(new Date(e.created_at)));
+    daysOf.set(e.user_id, s);
+  }
+  const days: RevisitDay[] = dayKeys.map((day) => {
+    let users = 0;
+    let returning = 0;
+    for (const s of daysOf.values()) {
+      if (!s.has(day)) continue;
+      users++;
+      if ([...s].some((d) => d < day)) returning++;
+    }
+    return { day, users, returning, newUsers: users - returning };
+  });
+  const totalUsers = daysOf.size;
+  const returningUsers = [...daysOf.values()].filter((s) => s.size >= 2).length;
+  return { days, totalUsers, returningUsers, rate: totalUsers ? returningUsers / totalUsers : 0 };
+}
