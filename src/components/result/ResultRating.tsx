@@ -18,6 +18,7 @@ const visibleChars = (md: string) => md.replace(/\[\d+(?:,\s*\d+)*\]/g, "").repl
 /** 결과물에서 구조 정보만 뽑는다(본문 제외). */
 export function ratingContextFrom(
   kind: "essay" | "plan",
+  label: string | undefined,
   result: {
     markdown?: string;
     content?: string;
@@ -31,7 +32,7 @@ export function ratingContextFrom(
 ): RatingContext {
   const steps = result.sections?.length
     ? result.sections.map((s) => ({ label: s.label, chars: visibleChars(s.markdown) }))
-    : [{ label: kind === "plan" ? "실행 계획" : "원고", chars: visibleChars(result.markdown ?? result.content ?? "") }];
+    : [{ label: label?.trim() || (kind === "plan" ? "실행 계획" : "원고"), chars: visibleChars(result.markdown ?? result.content ?? "") }];
   return {
     kind,
     steps,

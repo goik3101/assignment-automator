@@ -351,7 +351,7 @@ export function EssayPanel({
         checks={[...(result.claimCheck ? [result.claimCheck] : []), ...(result.sections ?? []).flatMap((x) => (x.claimCheck ? [x.claimCheck] : []))]}
       />
       <SourceList sources={result.sources} />
-      {onRegenerate && <ResultRating context={ratingContextFrom("essay", result)} />}
+      {onRegenerate && <ResultRating context={ratingContextFrom("essay", label, result)} />}
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
       {result.submissionId && <ShareButton submissionId={result.submissionId} />}
       {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.markdown} />}
@@ -411,7 +411,7 @@ export function PlanPanel({
           </ol>
         </div>
       )}
-      {onRegenerate && <ResultRating context={ratingContextFrom("plan", result)} />}
+      {onRegenerate && <ResultRating context={ratingContextFrom("plan", label, result)} />}
       {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
       {result.submissionId && <ShareButton submissionId={result.submissionId} />}
       {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.content} />}
