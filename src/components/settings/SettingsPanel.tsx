@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Minus, Plus, Search, Send, Settings, Sparkles, UserRound, X, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Check, MessageSquareText, Minus, Plus, Search, Settings, Sparkles, UserRound, X, ShieldCheck, type LucideIcon } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser-client";
 import { CONTACT_EMAIL } from "@/lib/seo/site";
 import { useAuth } from "@/lib/supabase/use-auth";
@@ -35,7 +35,7 @@ const TABS: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "account", label: "계정", icon: UserRound },
   { id: "personal", label: "개인화 설정", icon: ShieldCheck },
   { id: "ai", label: "AI 설정", icon: Sparkles },
-  { id: "feedback", label: "개선 요청", icon: Send },
+  { id: "feedback", label: "피드백/문의", icon: MessageSquareText },
 ];
 
 const fieldCls = "w-full resize-none rounded-xl bg-background px-3.5 text-sm outline-none placeholder:text-faint focus:ring-1 focus:ring-foreground";
@@ -187,6 +187,8 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
 
   const [feedback, setFeedback] = useState("");
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -253,15 +255,25 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
   }
 
   async function handleFeedbackSubmit() {
-    if (!feedback.trim()) return;
-    await fetch("/api/feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: feedback }),
-    });
-    setFeedback("");
-    setFeedbackSent(true);
-    setTimeout(() => setFeedbackSent(false), 3000);
+    if (!feedback.trim() || feedbackSending) return;
+    setFeedbackSending(true);
+    setFeedbackError(null);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: feedback }),
+      });
+      // 서버가 받지 못했는데 "전달했어요"를 띄우고 글을 지우면 사용자가 쓴 내용이 사라진다 — 실패하면 글을 남기고 알린다.
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? t("전달하지 못했어요. 잠시 후 다시 시도해주세요."));
+      setFeedback("");
+      setFeedbackSent(true);
+      setTimeout(() => setFeedbackSent(false), 3000);
+    } catch (err) {
+      setFeedbackError(err instanceof Error ? err.message : t("전달하지 못했어요. 잠시 후 다시 시도해주세요."));
+    } finally {
+      setFeedbackSending(false);
+    }
   }
 
   async function handleLogout() {
@@ -602,30 +614,44 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
       keywords: [t("개선 요청"), t("피드백"), t("문의")],
       node: (
         <Group title={t("문의·피드백")}>
-          <div className="space-y-3 py-4">
-            <p className="text-xs leading-relaxed text-muted">{t("불편한 점이나 바라는 기능을 알려 주세요. 보내 주신 내용은 서비스 개선에만 써요.")}</p>
-            <p className="text-xs leading-relaxed text-muted">
-              {t("이메일로 문의하셔도 돼요.")}{" "}
-              <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2 hover:text-foreground">{CONTACT_EMAIL}</a>
-            </p>
+          <div className="space-y-3 py-5">
+            <p className="text-[13px] leading-relaxed text-muted">{t("불편한 점이나 바라는 기능을 알려 주세요. 보내 주신 내용은 서비스 개선에만 써요.")}</p>
             <textarea
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               maxLength={2000}
-              rows={5}
+              rows={6}
+              aria-label={t("문의·피드백")}
               placeholder={t("불편한 점이나 제안해주실 내용을 적어주세요")}
-              className={`${fieldCls} py-2.5`}
+              className={`${fieldCls} py-3`}
             />
-            <div className="flex items-center justify-end gap-3">
-              {feedbackSent && <p className="text-xs text-muted">{t("전달했어요. 감사합니다!")}</p>}
-              <button
-                onClick={handleFeedbackSubmit}
-                disabled={!feedback.trim()}
-                className={`${btnCls} bg-foreground text-background hover:opacity-90 disabled:opacity-40`}
-              >
-                {t("제출")}
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              <span className="text-xs tabular-nums text-faint">{feedback.length.toLocaleString()} / 2,000</span>
+              <div className="flex items-center gap-3">
+                {feedbackSent && (
+                  <p role="status" className="inline-flex items-center gap-1 text-xs text-muted">
+                    <Check size={13} strokeWidth={2} aria-hidden />
+                    {t("전달했어요. 감사합니다!")}
+                  </p>
+                )}
+                {feedbackError && (
+                  <p role="alert" className="text-xs text-danger">
+                    {feedbackError}
+                  </p>
+                )}
+                <button
+                  onClick={handleFeedbackSubmit}
+                  disabled={!feedback.trim() || feedbackSending}
+                  className={`${btnCls} bg-foreground text-background hover:opacity-90 disabled:opacity-40`}
+                >
+                  {t("제출")}
+                </button>
+              </div>
             </div>
+            <p className="border-t border-border pt-3.5 text-xs leading-relaxed text-muted">
+              {t("이메일로 문의하셔도 돼요.")}{" "}
+              <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2 hover:text-foreground">{CONTACT_EMAIL}</a>
+            </p>
           </div>
         </Group>
       ),
