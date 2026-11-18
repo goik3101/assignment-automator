@@ -48,10 +48,10 @@ export default function SidebarTutorList({ onNavigate }: { onNavigate?: () => vo
   if (!user) return <div className="flex-1" />;
 
   return (
-    <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
+    <div className="mt-6 flex min-h-0 flex-1 flex-col px-3 max-md:flex-none md:min-h-[180px]">
       <p className="mb-1.5 px-3 text-xs font-medium text-faint">{t("최근")}</p>
       {items && items.length === 0 && <p className="px-3 text-xs leading-relaxed text-faint">{t("AI 튜터와 나눈 대화가 여기에 쌓여요")}</p>}
-      <ul className="min-h-0 space-y-0.5 overflow-y-auto">
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain max-md:flex-none max-md:overflow-visible">
         {(items ?? []).map((c) => {
           const href = `/tutor/${c.id}`;
           const active = pathname === href;

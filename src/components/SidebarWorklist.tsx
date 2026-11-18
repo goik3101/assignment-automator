@@ -16,6 +16,9 @@ interface WorkItem {
   at: string;
 }
 
+// 목록은 이 개수까지 불러온다(예전엔 8개에서 잘려 아래로 내려가도 더 볼 수 없었다). 서버 조회 한도(/api/worklist)와 맞춘다.
+const WORKLIST_LIMIT = 30;
+
 const KIND_ICON: Record<TaskKind, LucideIcon> = {
   creative: PenLine,
   research: FileSearch,
@@ -59,7 +62,7 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
         })),
       ]
         .sort((x, y) => y.at.localeCompare(x.at))
-        .slice(0, 8);
+        .slice(0, WORKLIST_LIMIT);
       setItems(merged);
     });
     return () => {
@@ -70,9 +73,10 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
   if (!user || items.length === 0) return <div className="flex-1" />;
 
   return (
-    <div className="mt-6 flex min-h-0 flex-1 flex-col px-3">
+    <div className="mt-6 flex min-h-0 flex-1 flex-col px-3 max-md:flex-none md:min-h-[180px]">
       <p className="mb-1.5 px-3 text-xs font-medium text-faint">{t("최근")}</p>
-      <ul className="min-h-0 space-y-0.5 overflow-y-auto">
+      {/* 데스크톱: 남는 높이 안에서 이 목록만 스크롤된다. 모바일: 패널 전체가 스크롤되므로 목록은 끝까지 펼친다. */}
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain max-md:flex-none max-md:overflow-visible">
         {items.map((it) => {
           const Icon = KIND_ICON[it.kind];
           return (
