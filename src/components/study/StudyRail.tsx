@@ -166,19 +166,17 @@ export default function StudyRail({
               <PanelRightClose size={16} strokeWidth={1.8} />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             {TOOLS.map(({ id, label, hint, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setTool({ id, reuse: false })}
                 disabled={locked}
-                className="group flex min-h-[76px] items-center gap-3.5 rounded-2xl bg-surface px-4 py-3.5 text-left transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface"
+                className="group flex flex-col items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3.5 text-left transition-colors hover:border-border-strong hover:bg-raised/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-surface"
               >
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-background text-foreground/80 transition-colors group-hover:text-foreground">
-                  <Icon size={22} strokeWidth={1.6} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[15px] font-bold leading-tight">{t(label)}</span>
+                <Icon size={18} strokeWidth={1.6} className="text-muted transition-colors group-hover:text-foreground" aria-hidden />
+                <span className="min-w-0 max-w-full">
+                  <span className="block text-[14px] font-semibold leading-tight">{t(label)}</span>
                   <span className="mt-1 block truncate text-xs leading-snug text-muted">{t(hint)}</span>
                 </span>
               </button>
@@ -195,11 +193,9 @@ export default function StudyRail({
                 <li key={id}>
                   <button
                     onClick={() => setTool({ id, reuse: true })}
-                    className="group flex w-full items-center gap-3 rounded-xl bg-surface px-3 py-2.5 text-left transition-colors hover:bg-raised"
+                    className="group flex w-full items-center gap-3 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-raised/60"
                   >
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-background text-foreground/80">
-                      <Icon size={16} strokeWidth={1.6} />
-                    </span>
+                    <Icon size={16} strokeWidth={1.6} className="shrink-0 text-muted" aria-hidden />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] font-semibold leading-tight">{t(label)}</span>
                       <span className="mt-0.5 block text-xs text-muted">{t("{date}에 만듦", { date: dateFmt(at) })}</span>
@@ -243,13 +239,24 @@ export default function StudyRail({
             empty={
               // 학습 자료를 하나라도 만들었으면 예시 질문 안내는 접고 "내 학습"에 자리를 내준다.
               savedTools.length > 0 ? undefined : (
-                <div className="rounded-2xl bg-surface p-4 text-[13px] leading-relaxed text-muted">
+                <div className="text-[13px] leading-relaxed text-muted">
                   {t("“{title}”에 대해 궁금한 점을 물어보세요. 예를 들어 이런 질문을 할 수 있어요.", { title })}
-                  <ul className="mt-2 space-y-1 text-foreground/80">
-                    <li>{t("· 발표에서 나올 만한 질문 알려줘")}</li>
-                    <li>{t("· 이 부분을 더 쉽게 설명해 줘")}</li>
-                    <li>{t("· 결론을 어떻게 말하면 좋을까?")}</li>
-                  </ul>
+                  {/* 예시 질문은 글줄이 아니라 눌러서 바로 보내는 버튼이다 */}
+                  <div className="mt-3 flex flex-col items-start gap-2">
+                    {["· 발표에서 나올 만한 질문 알려줘", "· 이 부분을 더 쉽게 설명해 줘", "· 결론을 어떻게 말하면 좋을까?"].map((q) => {
+                      const text = t(q).replace(/^·\s*/, "");
+                      return (
+                        <button
+                          key={q}
+                          onClick={() => void chat.send(text, null)}
+                          disabled={locked || chat.busy}
+                          className="rounded-full border border-border-strong px-3.5 py-1.5 text-left text-[13px] font-medium text-foreground transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {text}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )
             }
