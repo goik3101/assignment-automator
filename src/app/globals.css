@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 @plugin "@tailwindcss/typography";
 
 /* Tailwind v4의 기본 dark: variant는 OS의 prefers-color-scheme만 본다. 이 앱은
@@ -39,6 +41,31 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-danger: var(--danger);
   --font-sans: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+
+  /* shadcn/ui 컴포넌트가 읽는 이름 → 위 우리 토큰으로 연결. 색을 여기서 새로 정하지 말고
+     :root의 우리 토큰만 고칠 것(라이트/다크 둘 다 자동으로 따라온다). */
+  /* 주의: 이름이 겹치지만 뜻이 다른 토큰. shadcn의 bg-muted·bg-accent는 "옅은 배경/호버 면"인데
+     우리 muted는 글자색, accent는 전경색(검정)이다. `npx shadcn add`로 받은 파일은
+     bg-muted→bg-surface, bg-accent→bg-raised, text-accent-foreground→text-foreground 로 바꿔 쓴다. */
+  --color-card: var(--background);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--background);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-foreground);
+  --color-secondary: var(--surface);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted);
+  --color-destructive: var(--danger);
+  --color-input: var(--border-strong);
+  --color-ring: var(--foreground);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
+  --radius-3xl: 22px;
+  --radius-4xl: 26px;
 }
 
 /* 라이트/다크 수동 토글 (ThemeToggle.tsx): layout.tsx의 인라인 스크립트가

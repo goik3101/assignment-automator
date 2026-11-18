@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BookOpen, Ellipsis, FileText, ImagePlus, Plus, Search, Settings, Trash2, Type, Wrench } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
 import { useAuth } from "@/lib/supabase/use-auth";
 import HomeChat from "@/components/chat/HomeChat";
 import { useLang, useT } from "@/lib/i18n";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 
 interface HistoryRow {
   id: string;
@@ -52,55 +56,26 @@ export interface NewPrefill {
 /** 점선 + 카드. 누르면 바로 아래에 "이미지 업로드 / 텍스트 업로드" 메뉴가 열린다. */
 function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
+    <DropdownMenu>
+      <DropdownMenuTrigger
         aria-label={t("새 창작물 만들기")}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="group/new flex h-full min-h-[132px] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-strong text-muted transition-colors hover:bg-surface hover:text-foreground"
+        className="group/new flex h-full min-h-[132px] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-strong text-muted transition-colors hover:bg-surface hover:text-foreground data-popup-open:bg-surface data-popup-open:text-foreground"
       >
         <span className="grid h-11 w-11 place-items-center rounded-full border border-current transition-transform group-hover/new:scale-105">
           <Plus size={20} strokeWidth={1.6} />
         </span>
         <span className="text-[13px] font-semibold">{t("새 창작물")}</span>
-      </button>
-      {open && (
-        <ul role="menu" className="absolute left-0 top-full z-10 mt-2 w-full min-w-[150px] rounded-xl border border-border-strong bg-surface p-1 shadow-xl">
-          {([["image", "이미지 업로드", ImagePlus], ["text", "텍스트 업로드", Type]] as const).map(([kind, label, Icon]) => (
-            <li key={kind}>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  onNew({ kind });
-                }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium transition-colors hover:bg-raised"
-              >
-                <Icon size={15} strokeWidth={1.7} className="text-muted" />
-                {t(label)}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-(--anchor-width) min-w-[150px]">
+        {([["image", "이미지 업로드", ImagePlus], ["text", "텍스트 업로드", Type]] as const).map(([kind, label, Icon]) => (
+          <DropdownMenuItem key={kind} onClick={() => onNew({ kind })}>
+            <Icon size={15} strokeWidth={1.7} />
+            {t(label)}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -132,7 +107,7 @@ const dateFmts = {
 
 function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void }) {
   const { lang, t } = useLang();
-  const [menu, setMenu] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const Icon = c.kind === "learning" ? BookOpen : FileText;
   const kindText = c.kind === "learning" ? `${c.done} / ${c.total}` : c.output === "essay" ? t("완성 원고") : t("실행 계획");
   return (
@@ -151,29 +126,33 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
         </div>
       </Link>
       <div className="absolute right-2 top-2">
-        <button
-          onClick={() => setMenu((v) => !v)}
-          aria-label={t("더보기")}
-          aria-expanded={menu}
-          className="grid h-7 w-7 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-background hover:text-foreground focus:opacity-100 group-hover/card:opacity-100"
-        >
-          <Ellipsis size={16} strokeWidth={1.8} />
-        </button>
-        {menu && (
-          <div className="absolute right-0 top-9 z-10 w-36 rounded-xl border border-border-strong bg-surface p-1 shadow-xl">
-            <button
-              onClick={() => {
-                setMenu(false);
-                if (window.confirm(t("휴지통으로 옮길까요? 휴지통에서 되돌릴 수 있어요."))) onDelete(c);
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-danger transition-colors hover:bg-raised"
-            >
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={t("더보기")}
+            className="grid h-7 w-7 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/card:opacity-100 data-popup-open:bg-background data-popup-open:opacity-100"
+          >
+            <Ellipsis size={16} strokeWidth={1.8} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36 min-w-0">
+            <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
               <Trash2 size={14} strokeWidth={1.7} />
               {t("휴지통으로")}
-            </button>
-          </div>
-        )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("휴지통으로 옮길까요?")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("휴지통에서 되돌릴 수 있어요.")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("취소")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => onDelete(c)}>{t("휴지통으로")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -266,13 +245,13 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
               <label className="sr-only" htmlFor="home-search">
                 {t("결과물 검색")}
               </label>
-              <input
+              <Input
                 id="home-search"
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t("제목이나 과목으로 검색")}
-                className="h-9 w-40 rounded-full bg-surface px-4 text-[13px] placeholder:text-faint sm:w-56"
+                className="w-40 sm:w-56"
               />
             </>
           )}
@@ -311,22 +290,15 @@ export default function HomeDashboard({ onNew }: { onNew: (prefill?: NewPrefill)
         {user && cards.length > 0 && (
           <div className="mx-auto mb-7 flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-bold tracking-tight">{t("내 창작물")}</h2>
-            <div role="tablist" aria-label={t("보기 분류")} className="flex gap-1">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  role="tab"
-                  aria-selected={filter === f.id}
-                  onClick={() => setFilter(f.id)}
-                  className={[
-                    "h-8 rounded-full px-3 text-[13px] font-medium transition-colors",
-                    filter === f.id ? "bg-surface text-foreground" : "text-muted hover:text-foreground",
-                  ].join(" ")}
-                >
-                  {t(f.label)}
-                </button>
-              ))}
-            </div>
+            <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
+              <TabsList aria-label={t("보기 분류")}>
+                {FILTERS.map((f) => (
+                  <TabsTrigger key={f.id} value={f.id}>
+                    {t(f.label)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           </div>
         )}
 
