@@ -28,6 +28,10 @@ const EG = await import("@/lib/essay/english-grammar");
 const RF = await import("@/lib/essay/refusal");
 const AL = await import("@/lib/essay/admin-leak");
 const LE = await import("@/lib/essay/label-echo");
+const OA = await import("@/lib/essay/own-activity");
+const SE = await import("@/lib/essay/self-evaluation");
+const TL = await import("@/lib/essay/tidy-layout");
+const PL = await import("@/lib/essay/prompt-leak");
 
 /** 사슬에 실제로 도는 순서대로. `content`만 꺼내 문자열 → 문자열로 맞춘다. */
 const take = (r: unknown): string => (typeof r === "string" ? r : ((r as { content?: string })?.content ?? ""));
@@ -69,6 +73,16 @@ const STEPS: { name: string; run: (t: string) => string; when?: (label: string, 
   { name: "제작 참고 라벨만 떼기(그림 칸)", run: (t) => take(D.dropProductionNotesHeading(t)), when: (l) => isPanelLabel(l) },
   // 운영·배점 안내 제거는 **채점 기준을 만드는 칸에서는 배점을 남긴다** — 그 조건까지 함께 적는다.
   // 칸 이름으로 시작하는 설명 제거는 **그 칸 이름을 알아야** 돌릴 수 있다 — 감사에서는 라벨을 넣어 부른다.
+  // 2026-11-19: 사슬에 뒤늦게 더해진 단일 인자 함수들(감사가 안 보던 13개 중 문자열만 받는 것).
+  { name: "지어낸 챗봇 기록 비우기", run: (t) => take(OA.blankInventedChatLog(t)), when: (l) => OA.isAiChatRecordLabel(l) || OA.isActionLogLabel(l) },
+  { name: "자기평가 점수 비우기", run: (t) => take(SE.blankSelfEvaluationScores(t)) },
+  { name: "계산식 각주 제거", run: (t) => take(SE.stripCalculationCitations(t)) },
+  { name: "중복 소제목 지우기", run: (t) => take(TL.dropDuplicateHeadings(t)) },
+  { name: "빈 번호 소제목 지우기", run: (t) => take(TL.dropEmptyNumberedHeading(t)) },
+  { name: "채점 기준 괄호 떼기", run: (t) => take(TL.stripCriterionParens(t)) },
+  { name: "소제목 되풀이 머리말 떼기", run: (t) => take(LE.stripHeadingEcho(t)) },
+  { name: "프롬프트 표기 누출 제거", run: (t) => take(PL.stripPromptLeaks(t)) },
+  { name: "줄 안 제작 참고 떼기", run: (t) => D.splitInlineProductionNotes(t).body },
   { name: "칸 이름 설명 제거", run: (t) => LE.stripLabelEcho(t, "분석적 채점 기준표").content },
   { name: "운영·배점 안내 제거", run: (t) => AL.stripAdminLeak(t).content, when: (l) => !AL.isScoringStep(l) },
   { name: "운영 안내만 제거(채점 칸)", run: (t) => AL.stripAdminLeak(t, { keepScoring: true }).content, when: (l) => AL.isScoringStep(l) },

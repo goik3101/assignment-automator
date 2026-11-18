@@ -147,7 +147,9 @@ export function visualPolicy(texts: string[]): VisualPolicy {
   const explicitBan = new Set<string>();
   for (const raw of texts) {
     for (const s of (raw ?? "").split(/(?<=[.。!?])\s+|\n+/)) {
-      for (const clause of s.split(/,\s*|(?<=[가-힣])고\s+/)) {
+      // 괄호도 절 경계다 — "그림이나 표를 반드시 넣는다(사진 출력 금지, …)"에서 금지는 괄호 안 '사진'뿐인데 괄호를 안 가르면 앞의 그림·표까지 금지로 읽어
+      // 프롬프트가 "그림·표·사진은 쓸 수 없다"면서 표는 필수라고 말했다(2026-11-19 prompt-audit, 인권 저널).
+      for (const clause of s.split(/,\s*|[()]|(?<=[가-힣])고\s+/)) {
         const nouns = VISUAL_NOUNS.filter((n) => clause.includes(n));
         if (nouns.length === 0) continue;
         if (BAN_SENTENCE.test(clause)) {
