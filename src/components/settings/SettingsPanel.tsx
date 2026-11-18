@@ -682,7 +682,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("설정 검색")}
-            className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-faint"
+            className="min-w-0 flex-1 bg-transparent text-sm text-foreground placeholder:text-faint focus-visible:outline-none!"
           />
         </label>
         <div className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">

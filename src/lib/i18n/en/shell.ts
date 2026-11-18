@@ -78,6 +78,8 @@ export const shell: Record<string, string> = {
   "설정 검색": "Search settings",
   "검색 결과가 없어요.": "No matching settings.",
   "이용약관": "Terms of service",
+  "수행평가 가이드": "Assignment guide",
+  "서비스 소개": "About",
   "개인정보 처리방침": "Privacy policy",
   "준비 중": "Coming soon",
   "줄이기": "Decrease",
