@@ -13,6 +13,8 @@ import { useLang, useT } from "@/lib/i18n";
 import { LANGS } from "@/lib/i18n/core";
 import { AI_MODE_INFO, getAiMode, getSourceScope, setAiMode, setSourceScope, type SourceScope } from "@/lib/ui/ai-pref";
 import type { AiMode } from "@/lib/questions/questions-pure";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   DEFAULT_STUDY_PREFS,
   FLASHCARD_COUNT,
@@ -25,6 +27,8 @@ import {
 } from "@/lib/study/prefs";
 
 const SCHOOL_TYPES = ["일반고", "특성화고", "특목고", "자율고", "기타"];
+// Select는 빈 문자열을 값으로 못 쓰므로 "선택 안 함"에 따로 이름을 붙인다.
+const NO_SCHOOL = "__none__";
 
 const TABS: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "general", label: "일반 설정", icon: Settings },
@@ -34,7 +38,7 @@ const TABS: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
   { id: "feedback", label: "개선 요청", icon: Send },
 ];
 
-const fieldCls = "w-full rounded-xl bg-background px-3.5 text-sm outline-none placeholder:text-faint focus:ring-1 focus:ring-foreground";
+const fieldCls = "w-full resize-none rounded-xl bg-background px-3.5 text-sm outline-none placeholder:text-faint focus:ring-1 focus:ring-foreground";
 const THEME_KEY = "studed-theme";
 
 // ── 작은 구성 요소 ─────────────────────────────────────────────────────────────
@@ -75,8 +79,13 @@ function Pills<T extends string>({
   label: string;
 }) {
   const multi = Array.isArray(value);
+  // 하나만 고르는 항목은 붙어 있는 분할 버튼(선택된 쪽이 채워짐), 여러 개 고르는 항목은 따로 떨어진 칩으로 보여 둘이 다르게 읽힌다.
   return (
-    <div role={multi ? "group" : "radiogroup"} aria-label={label} className="flex flex-wrap gap-2">
+    <div
+      role={multi ? "group" : "radiogroup"}
+      aria-label={label}
+      className={multi ? "flex flex-wrap gap-2" : "inline-flex max-w-full flex-wrap gap-0.5 rounded-full bg-background p-1"}
+    >
       {options.map((o) => {
         const on = multi ? value.includes(o.id) : value === o.id;
         return (
@@ -87,8 +96,13 @@ function Pills<T extends string>({
             aria-checked={on}
             onClick={() => onChange(o.id)}
             className={[
-              "h-9 rounded-full px-4 text-[13px] font-semibold transition-colors",
-              on ? "bg-foreground text-background" : "bg-background text-foreground hover:bg-raised",
+              "rounded-full px-4 text-[13px] font-semibold transition-colors",
+              multi ? "h-9" : "h-8",
+              on
+                ? "bg-foreground text-background"
+                : multi
+                  ? "bg-background text-foreground hover:bg-raised"
+                  : "text-muted hover:text-foreground",
             ].join(" ")}
           >
             {o.label}
@@ -335,24 +349,31 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
               <h3 className="mb-2.5 px-1 text-[15px] font-bold tracking-tight text-danger">{t("계정 탈퇴")}</h3>
               <div className="rounded-2xl border border-danger/40 px-5">
                 <Row label={t("계정 탈퇴")} desc={t("탈퇴하면 히스토리를 포함한 모든 개인 데이터가 삭제되며 되돌릴 수 없습니다.")}>
-                  {!confirmingDelete ? (
-                    <button onClick={() => setConfirmingDelete(true)} className={`${btnCls} border border-danger/60 text-danger hover:bg-danger/10`}>
-                      {t("계정 탈퇴")}
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button onClick={handleDeleteAccount} disabled={deleting} className={`${btnCls} bg-danger text-white disabled:opacity-40`}>
-                        {deleting ? t("삭제 중...") : t("정말 삭제할게요")}
-                      </button>
-                      <button onClick={() => setConfirmingDelete(false)} className={`${btnCls} bg-surface hover:bg-raised`}>
-                        {t("취소")}
-                      </button>
-                    </div>
-                  )}
+                  <button
+                    onClick={() => setConfirmingDelete(true)}
+                    disabled={deleting}
+                    className={`${btnCls} border border-danger/60 text-danger hover:bg-danger/10 disabled:opacity-40`}
+                  >
+                    {deleting ? t("삭제 중...") : t("계정 탈퇴")}
+                  </button>
                 </Row>
               </div>
             </section>
           )}
+          <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("계정 탈퇴")}</AlertDialogTitle>
+                <AlertDialogDescription>{t("탈퇴하면 히스토리를 포함한 모든 개인 데이터가 삭제되며 되돌릴 수 없습니다.")}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("취소")}</AlertDialogCancel>
+                <AlertDialogAction variant="danger" onClick={() => void handleDeleteAccount()}>
+                  {t("정말 삭제할게요")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       ),
     },
@@ -384,14 +405,19 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             />
           </Row>
           <Row label={t("학교 유형")}>
-            <select value={schoolType} onChange={(e) => setSchoolType(e.target.value)} className={`${fieldCls} h-10 sm:w-56`}>
-              <option value="">{t("선택 안 함")}</option>
-              {SCHOOL_TYPES.map((s) => (
-                <option key={s} value={s}>
-                  {t(s)}
-                </option>
-              ))}
-            </select>
+            <Select value={schoolType || NO_SCHOOL} onValueChange={(v) => setSchoolType(!v || v === NO_SCHOOL ? "" : v)}>
+              <SelectTrigger aria-label={t("학교 유형")} className="sm:w-56">
+                <SelectValue>{(v: string | null) => (!v || v === NO_SCHOOL ? t("선택 안 함") : t(v))}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_SCHOOL}>{t("선택 안 함")}</SelectItem>
+                {SCHOOL_TYPES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {t(s)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Row>
           <div className="flex justify-end py-4">
             <button
@@ -645,8 +671,9 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
                 }}
                 aria-current={active ? "page" : undefined}
                 className={[
-                  "flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
-                  active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground",
+                  // 사이드바 메뉴와 같은 줄 모양
+                  "flex h-9 shrink-0 items-center gap-2.5 rounded-lg px-3 text-[13.5px] font-medium transition-colors",
+                  active ? "bg-raised font-semibold text-foreground" : "text-foreground hover:bg-raised",
                 ].join(" ")}
               >
                 <tb.icon size={17} strokeWidth={1.7} className="shrink-0" />
@@ -655,9 +682,13 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             );
           })}
         </div>
-        <div className="mt-auto hidden space-y-1 px-1 pb-1 text-xs text-faint md:block">
-          <p title={t("준비 중")}>{t("이용약관")}</p>
-          <p title={t("준비 중")}>{t("개인정보 처리방침")}</p>
+        <div className="mt-auto hidden space-y-1 px-3 pb-1 text-xs text-faint md:block">
+          <Link href="/terms" target="_blank" className="block transition-colors hover:text-foreground">
+            {t("이용약관")}
+          </Link>
+          <Link href="/privacy" target="_blank" className="block transition-colors hover:text-foreground">
+            {t("개인정보 처리방침")}
+          </Link>
         </div>
       </nav>
 
