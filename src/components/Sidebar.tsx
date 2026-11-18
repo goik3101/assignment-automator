@@ -50,7 +50,7 @@ export default function Sidebar() {
   return (
     <>
       {/* 모바일: 상단 바 + 메뉴 버튼 */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3 md:hidden">
+      <div className="sticky top-0 z-50 flex items-center justify-between border-b border-border bg-background px-4 py-3 md:hidden">
         <Link href="/" aria-label={t("studed 홈")}>
           <Logo variant="wordmark" height={20} />
         </Link>
@@ -67,7 +67,10 @@ export default function Sidebar() {
       <aside
         className={[
           "shrink-0 flex-col border-r border-border bg-background",
-          "md:sticky md:top-0 md:h-screen",
+          // 모바일: 페이지 흐름 안에 끼어들어 본문을 밀어내던 메뉴를, 상단 바 아래를 덮는 화면 높이의 패널로 바꾼다(패널 전체가 스크롤된다)
+          "max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[61px] max-md:z-40 max-md:overflow-y-auto max-md:overscroll-contain",
+          // 데스크톱: 화면 높이가 모자라면(작은 노트북 등) 목록이 한 줄로 쪼그라드는 대신 사이드바 전체가 스크롤된다
+          "md:sticky md:top-0 md:h-screen md:overflow-y-auto",
           collapsed ? "md:w-[68px]" : "md:w-[256px]",
           open ? "flex" : "hidden md:flex",
         ].join(" ")}

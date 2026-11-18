@@ -41,13 +41,6 @@ export interface AiStartPayload {
   noticeImages?: { base64: string; mimeType: string }[];
 }
 
-interface LatestHistory {
-  subject: string;
-  core_task_info: CoreTaskInfo;
-  admin_info: AdministrativeInfo | null;
-  instructions: string | null;
-}
-
 const PLACEHOLDERS = [
   "예: 발표는 5분 내외로, 개인적인 경험을 넣어서",
   "예: 형식은 편지가 아니라 대화체로 써줘",
@@ -96,7 +89,6 @@ export default function NewCreationModal({
   const [editing, setEditing] = useState(false);
   const [noticeImages, setNoticeImages] = useState<{ base64: string; mimeType: string }[]>([]);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [latest, setLatest] = useState<LatestHistory | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 제작 전 질문(AI가 만들어줘요를 고른 뒤): 질문은 한 번에 하나씩 서버에서 받아 온다.
@@ -110,14 +102,6 @@ export default function NewCreationModal({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPlaceholder(PLACEHOLDERS[Math.floor(Math.random() * PLACEHOLDERS.length)]);
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    fetch("/api/histories/latest")
-      .then((r) => r.json())
-      .then((d) => setLatest(d?.core_task_info ? d : null))
-      .catch(() => setLatest(null));
-  }, [user]);
 
   function addFiles(list: FileList | File[] | null | undefined) {
     const incoming = Array.from(list ?? []);
@@ -195,16 +179,6 @@ export default function NewCreationModal({
     } finally {
       setBusy(false);
     }
-  }
-
-  function useLatest() {
-    if (!latest) return;
-    setSubject(latest.subject);
-    setCore(latest.core_task_info);
-    setAdmin(latest.admin_info);
-    setInstructions(latest.instructions ?? "");
-    setNoticeImages([]); // 기록에서 불러온 과제는 사진이 없다
-    setStage("choose");
   }
 
   function updateElement(i: number, patch: Partial<TaskElement>) {
@@ -498,22 +472,13 @@ export default function NewCreationModal({
   }
 
   /* ───────────── 입력 ───────────── */
-  const latestButton =
-    user && latest ? (
-      <button onClick={useLatest} className="text-xs font-medium text-muted transition-colors hover:text-foreground">
-        {t("최근 안내문 불러오기")}
-      </button>
-    ) : null;
   // 이미지/텍스트 두 입력은 같은 틀(제목·내용·상세 입력·아래 버튼)이고 가운데 내용만 다르다.
   return (
     <Modal title={kind === "image" ? t("이미지 업로드") : t("텍스트 업로드")} onClose={onClose} width={460} compact busy={busy}>
       <div className="space-y-5">
         {kind === "image" ? (
           <div>
-            <div className="mb-2.5 flex items-center justify-between gap-3">
-              <p className="text-[13px] font-semibold">{t("선택된 이미지")}</p>
-              {latestButton}
-            </div>
+            <p className="mb-2.5 text-[13px] font-semibold">{t("선택된 이미지")}</p>
             {/* 사진을 올릴 때마다 오른쪽으로 한 칸씩 늘어나고, 맨 끝의 점선 칸이 다음 사진 자리다 */}
             <div
               onDragOver={(e) => {
@@ -556,11 +521,6 @@ export default function NewCreationModal({
                   </li>
                 )}
               </ul>
-              <p className="mt-2.5 text-xs leading-relaxed text-faint">
-                {previews.length === 0
-                  ? t("눌러서 고르거나, 여기로 끌어다 놓으세요 (최대 {n}장)", { n: MAX_GUIDE_IMAGES })
-                  : t("{n}/{max}장 · 안내문·채점 기준표·예시 답안을 모두 올리면 더 정확해요", { n: previews.length, max: MAX_GUIDE_IMAGES })}
-              </p>
             </div>
             <input
               ref={fileInputRef}
@@ -578,12 +538,9 @@ export default function NewCreationModal({
           </div>
         ) : (
           <label className="block">
-            <span className="mb-2.5 flex items-center justify-between gap-3 text-[13px] font-semibold">
+            <span className="mb-2.5 flex items-center justify-between text-[13px] font-semibold">
               {t("안내문 또는 주제")}
-              <span className="flex items-center gap-2">
-                {topicText.length > 0 && <span className="text-xs font-normal text-faint">{t("{n}자", { n: topicText.length })}</span>}
-                {latestButton}
-              </span>
+              {topicText.length > 0 && <span className="text-xs font-normal text-faint">{t("{n}자", { n: topicText.length })}</span>}
             </span>
             <textarea
               value={topicText}
