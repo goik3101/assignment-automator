@@ -15,7 +15,8 @@ import {
   type SubjectCandidate,
 } from "@/types/learning";
 import { learningApi, STATUS_LABEL } from "./api";
-import { Check, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, TriangleAlert } from "lucide-react";
+import Button from "@/components/ui/Button";
 import StudyRail from "@/components/study/StudyRail";
 import Breadcrumb from "@/components/Breadcrumb";
 import { useT } from "@/lib/i18n";
@@ -54,8 +55,8 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={[
-        "shrink-0 rounded-md px-1.5 py-0.5 text-[11px]",
-        done ? "bg-accent font-bold text-accent-foreground" : "border border-border text-muted",
+        "shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium",
+        done ? "bg-accent text-accent-foreground" : "border border-border text-muted",
       ].join(" ")}
     >
       {t(STATUS_LABEL[status] ?? status)}
@@ -104,8 +105,8 @@ function FeedbackPanel({ fb }: { fb: LearningFeedback }) {
         <p className="text-sm font-medium">{fb.summary}</p>
         <span
           className={[
-            "shrink-0 rounded-md px-2 py-0.5 text-xs",
-            fb.readyToComplete ? "bg-accent font-bold text-accent-foreground" : "border border-border text-muted",
+            "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
+            fb.readyToComplete ? "bg-accent text-accent-foreground" : "border border-border text-muted",
           ].join(" ")}
         >
           {fb.readyToComplete ? t("완료해도 좋아요") : t("조금 더 다듬어봐요")}
@@ -571,9 +572,9 @@ export default function LearningWorkspace({ id }: { id: string }) {
             {usage.unlimited ? t("AI 사용 무제한(관리자)") : t("오늘 AI {used}/{limit}회 사용", { used: usage.used, limit: usage.limit })}
           </span>
           {assembled && (
-            <button onClick={() => setShowAll((v) => !v)} className="inline-flex h-9 items-center rounded-xl border border-border-strong px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-raised">
+            <Button size="sm" onClick={() => setShowAll((v) => !v)}>
               {showAll ? t("작성 화면으로") : t("내가 쓴 내용 모아보기")}
-            </button>
+            </Button>
           )}
         </div>
       </header>
@@ -606,17 +607,13 @@ export default function LearningWorkspace({ id }: { id: string }) {
             {t("자료를 읽고 답변은 직접 작성하게 돼요.")}
           </p>
           <p className="mb-4 text-xs text-muted">{t("AI 사용 횟수를 1회 써요. 조사에 실패하면 차감되지 않아요.")}</p>
-          <button
-            onClick={handleResearch}
-            disabled={researching || usageLeft <= 0}
-            className="inline-flex h-10 items-center justify-center rounded-xl bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
+          <Button variant="primary" onClick={handleResearch} disabled={researching || usageLeft <= 0}>
             {researching
               ? t("자료를 조사하고 있어요... (최대 1분)")
               : session.research_status === "failed"
                 ? t("다시 조사하기")
                 : t("자료 조사 시작")}
-          </button>
+          </Button>
           {usageLeft <= 0 && <p className="mt-2 text-xs text-danger">{t("오늘 사용할 수 있는 횟수를 모두 썼어요.")}</p>}
           <p className="mt-3 text-xs text-muted">{t("자료 없이 바로 작성을 시작해도 돼요. 아래 항목별 칸에 써 내려가면 자동으로 저장돼요.")}</p>
         </section>
@@ -626,12 +623,9 @@ export default function LearningWorkspace({ id }: { id: string }) {
         <section className="rounded-2xl border border-border bg-surface p-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-xl font-bold">{t("내가 쓴 내용")}</h2>
-            <button
-              onClick={() => void navigator.clipboard.writeText(assembled).then(() => setNotice("복사했어요."))}
-              className="rounded-md border border-border px-3 py-1.5 text-xs hover:text-accent"
-            >
+            <Button size="sm" onClick={() => void navigator.clipboard.writeText(assembled).then(() => setNotice("복사했어요."))}>
               {t("전체 복사")}
-            </button>
+            </Button>
           </div>
           <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">{assembled}</pre>
         </section>
@@ -657,19 +651,19 @@ export default function LearningWorkspace({ id }: { id: string }) {
                   </h2>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={s.status} />
-                    <button
-                      onClick={() => void handleComplete(s.id)}
-                      disabled={!draft.trim() || s.status === "completed"}
-                      className="inline-flex h-8 items-center justify-center rounded-lg border border-border-strong px-3 text-xs font-semibold transition-colors hover:bg-raised disabled:opacity-40"
-                    >
+                    <Button size="sm" onClick={() => void handleComplete(s.id)} disabled={!draft.trim() || s.status === "completed"}>
                       {s.status === "completed" ? t("완료됨") : t("이 항목 완료")}
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
                 {researchDone && (
-                  <details className="mb-3 rounded-xl bg-background px-4 py-3">
-                    <summary className="cursor-pointer select-none text-[13px] font-semibold">{t("자료 읽기")}</summary>
+                  <details className="group mb-3 rounded-xl bg-background px-4 py-3">
+                    {/* 브라우저 기본 ▶ 표시 대신 아이콘이 돌아가는 펼침 줄 */}
+                    <summary className="flex cursor-pointer list-none select-none items-center justify-between text-[13px] font-semibold [&::-webkit-details-marker]:hidden">
+                      {t("자료 읽기")}
+                      <ChevronDown size={15} strokeWidth={1.8} className="text-muted transition-transform group-open:rotate-180" aria-hidden />
+                    </summary>
                     <div className="mt-3">
                       {s.research ? (
                         <>
@@ -714,7 +708,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
                   onChange={(e) => onDraftChange(s.id, e.target.value)}
                   rows={6}
                   placeholder={t("자료를 읽고 내 말로 직접 써보세요. 쓰는 대로 자동 저장돼요.")}
-                  className="w-full resize-y rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-[1.8] placeholder:text-faint focus:border-foreground"
+                  className="field-sizing-content min-h-36 w-full resize-none rounded-xl border border-border-strong bg-background px-4 py-3 text-[14.5px] leading-[1.8] placeholder:text-faint focus:border-foreground"
                 />
                 <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                   <span>{t("{n} / {max}자", { n: draft.length.toLocaleString(), max: MAX_DRAFT_CHARS.toLocaleString() })}</span>
@@ -747,13 +741,14 @@ export default function LearningWorkspace({ id }: { id: string }) {
                 )}
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => void handleFeedback(s.id)}
                     disabled={feedbackBusy !== null || draft.trim().length < 10 || usageLeft <= 0}
-                    className="inline-flex h-9 items-center justify-center rounded-xl bg-accent px-4 text-[13px] font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
                   >
                     {feedbackBusy === s.id ? t("살펴보는 중...") : t("AI 피드백 받기")}
-                  </button>
+                  </Button>
                   <button
                     onClick={() => {
                       setQuestion("");
