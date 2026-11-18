@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/input";
 
 export default function AdminLoginPage() {
   const [id, setId] = useState("");
@@ -31,8 +33,8 @@ export default function AdminLoginPage() {
   return (
     <div className="mx-auto max-w-sm px-6 py-24">
       <h1 className="mb-6 text-[22px] font-bold tracking-tight">관리자 로그인</h1>
-      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-      <input
+      {error && <p className="mb-3 text-sm text-danger">{error}</p>}
+      <Input
         type="text"
         value={id}
         onChange={(e) => setId(e.target.value)}
@@ -42,10 +44,10 @@ export default function AdminLoginPage() {
         autoCapitalize="none"
         spellCheck={false}
         maxLength={100}
-        className="mb-3 w-full rounded-full border border-border bg-surface px-3 py-2 text-sm"
+        className="mb-3 h-11"
         autoFocus
       />
-      <input
+      <Input
         type="password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -53,15 +55,11 @@ export default function AdminLoginPage() {
         placeholder="비밀번호"
         autoComplete="current-password"
         maxLength={200}
-        className="mb-3 w-full rounded-full border border-border bg-surface px-3 py-2 text-sm"
+        className="mb-3 h-11"
       />
-      <button
-        onClick={handleSubmit}
-        disabled={!id || !password || loading}
-        className="w-full rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40"
-      >
+      <Button variant="primary" size="lg" onClick={handleSubmit} disabled={!id || !password || loading} className="w-full">
         {loading ? "확인 중..." : "로그인"}
-      </button>
+      </Button>
     </div>
   );
 }
