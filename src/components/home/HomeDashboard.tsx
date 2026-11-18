@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Ellipsis, FileText, ImagePlus, Plus, Search, Settings, Trash2, Type, Wrench } from "lucide-react";
+import { BookOpen, Ellipsis, FileText, ImagePlus, Plus, Search, Settings, Trash2, Type } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
 import { useAuth } from "@/lib/supabase/use-auth";
 import HomeChat from "@/components/chat/HomeChat";
@@ -40,11 +40,15 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 const STARTERS = [
-  { icon: BookOpen, cover: "독서", label: "독서 감상문", topic: "책 한 권을 읽고 느낀 점을 정리하는 독서 감상문" },
-  { icon: FileText, cover: "과학", label: "과학 탐구 보고서", topic: "실험을 설계하고 결과를 분석하는 과학 탐구 보고서" },
-  { icon: Type, cover: "영어", label: "영어 발표", topic: "관심 주제로 3분 동안 발표하는 영어 스피치 대본" },
-  { icon: Wrench, cover: "진로", label: "진로 발표 PPT", topic: "희망 직업을 탐색하고 발표하는 진로 발표 PPT" },
+  { cover: "독서", label: "독서 감상문", hint: "책 한 권을 읽고 느낀 점 정리", topic: "책 한 권을 읽고 느낀 점을 정리하는 독서 감상문" },
+  { cover: "과학", label: "과학 탐구 보고서", hint: "실험 설계부터 결과 분석까지", topic: "실험을 설계하고 결과를 분석하는 과학 탐구 보고서" },
+  { cover: "영어", label: "영어 발표", hint: "3분 영어 스피치 대본", topic: "관심 주제로 3분 동안 발표하는 영어 스피치 대본" },
+  { cover: "진로", label: "진로 발표 PPT", hint: "희망 직업 탐색과 발표 자료", topic: "희망 직업을 탐색하고 발표하는 진로 발표 PPT" },
 ];
+
+// 결과물 카드와 시작 카드가 같이 쓰는 면: 위에 작은 분류, 아래에 제목. 색 띠·큰 아이콘 없이 선과 면만으로.
+const CARD_FACE =
+  "flex min-h-[148px] flex-col justify-between rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-raised/60";
 
 export interface NewPrefill {
   topic?: string;
@@ -60,12 +64,10 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={t("새 창작물 만들기")}
-        className="group/new flex h-full min-h-[132px] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border-strong text-muted transition-colors hover:bg-surface hover:text-foreground data-popup-open:bg-surface data-popup-open:text-foreground"
+        className="flex h-full min-h-[148px] w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-border-strong text-muted transition-colors hover:border-foreground/40 hover:text-foreground data-popup-open:border-foreground/40 data-popup-open:text-foreground"
       >
-        <span className="grid h-11 w-11 place-items-center rounded-full border border-current transition-transform group-hover/new:scale-105">
-          <Plus size={20} strokeWidth={1.6} />
-        </span>
-        <span className="text-[13px] font-semibold">{t("새 창작물")}</span>
+        <Plus size={22} strokeWidth={1.5} aria-hidden />
+        <span className="text-[13px] font-medium">{t("새 창작물")}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--anchor-width) min-w-[150px]">
         {([["image", "이미지 업로드", ImagePlus], ["text", "텍스트 업로드", Type]] as const).map(([kind, label, Icon]) => (
@@ -82,20 +84,13 @@ function NewCard({ onNew }: { onNew: (prefill?: NewPrefill) => void }) {
 /** 아직 만든 결과물이 없을 때(비로그인 포함) 격자에 놓이는 시작 카드 — 결과물 카드와 같은 모양이고, 누르면 그 주제로 새 창작물 창이 열린다. */
 function StarterCard({ starter, onNew }: { starter: (typeof STARTERS)[number]; onNew: (prefill?: NewPrefill) => void }) {
   const t = useT();
-  const Icon = starter.icon;
   return (
-    <button
-      onClick={() => onNew({ topic: starter.topic })}
-      className="block w-full overflow-hidden rounded-2xl bg-surface text-left transition-colors hover:bg-raised"
-    >
-      <div className="flex h-[84px] flex-col justify-between bg-raised/70 p-3">
-        <Icon size={16} strokeWidth={1.7} className="text-muted" aria-hidden />
-        <span className="truncate text-[20px] font-bold leading-none tracking-tight text-foreground/80">{t(starter.cover)}</span>
-      </div>
-      <div className="p-3">
-        <p className="truncate text-[14px] font-semibold">{t(starter.label)}</p>
-        <p className="mt-0.5 truncate text-[12px] text-muted">{t("눌러서 시작")}</p>
-      </div>
+    <button onClick={() => onNew({ topic: starter.topic })} className={`${CARD_FACE} w-full text-left`}>
+      <span className="text-[12px] font-medium text-faint">{t(starter.cover)}</span>
+      <span>
+        <span className="block text-[15px] font-semibold leading-snug">{t(starter.label)}</span>
+        <span className="mt-1 line-clamp-2 block text-[12px] leading-relaxed text-muted">{t(starter.hint)}</span>
+      </span>
     </button>
   );
 }
@@ -112,18 +107,18 @@ function Card({ c, onDelete }: { c: CardItem; onDelete: (c: CardItem) => void })
   const kindText = c.kind === "learning" ? `${c.done} / ${c.total}` : c.output === "essay" ? t("완성 원고") : t("실행 계획");
   return (
     <div className="group/card relative">
-      <Link href={c.href} className="block overflow-hidden rounded-2xl bg-surface transition-colors group-hover/card:bg-raised">
-        {/* 윗부분: 과목을 크게 — 결과물에 이미지가 없으니 "무슨 과목인가"가 가장 먼저 읽히는 표지가 된다 */}
-        <div className="flex h-[84px] flex-col justify-between bg-raised/70 p-3">
-          <Icon size={16} strokeWidth={1.7} className="text-muted" aria-hidden />
-          <span className="truncate text-[20px] font-bold leading-none tracking-tight text-foreground/80">{c.subject}</span>
-        </div>
-        <div className="p-3">
-          <p className="truncate text-[14px] font-semibold">{c.title}</p>
-          <p className="mt-0.5 truncate text-[12px] text-muted">
-            {kindText} · {c.subject} · {dateFmts[lang].format(new Date(c.at))}
-          </p>
-        </div>
+      <Link href={c.href} className={CARD_FACE}>
+        {/* 결과물에는 이미지가 없으니 "무슨 과목인가"를 맨 위에 작게, 제목을 크게 둔다 */}
+        <span className="flex items-center gap-1.5 pr-8 text-[12px] font-medium text-faint">
+          <Icon size={13} strokeWidth={1.7} aria-hidden />
+          <span className="truncate">{c.subject}</span>
+        </span>
+        <span>
+          <span className="line-clamp-2 block text-[15px] font-semibold leading-snug">{c.title}</span>
+          <span className="mt-1 block truncate text-[12px] text-muted">
+            {kindText} · {dateFmts[lang].format(new Date(c.at))}
+          </span>
+        </span>
       </Link>
       <div className="absolute right-2 top-2">
         <DropdownMenu>
