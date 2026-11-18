@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Megaphone, X } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 
@@ -26,19 +26,29 @@ function linkify(text: string) {
   );
 }
 
+/** 공지 첫 줄 앞의 이모지는 떼고 보여 준다(이 앱은 아이콘을 이모지가 아니라 lucide로만 쓴다). */
+function stripLeadingEmoji(line: string) {
+  return line.replace(/^[\s\p{Extended_Pictographic}‍️]+/u, "");
+}
+
+/** 첫 줄은 제목, 나머지는 본문. */
+function splitNotice(message: string) {
+  const lines = message.trim().split("\n");
+  const title = stripLeadingEmoji(lines[0] ?? "").trim();
+  const body = lines.slice(1).join("\n").trim();
+  return { title, body };
+}
+
 /**
- * 메인 화면 맨 위에 놓이는 공지 배너 — 관리자가 올린 최신 글 하나를 보여 준다.
- * 구석에 떠 있다 사라지는 토스트가 아니라, 화면 흐름 안에 머물며 닫기 버튼으로만 닫는 배너다
- * (여러 디자인 시스템이 "전체 공지는 머리 영역 바로 아래에 두고 닫을 수 있게 하라"고 권한다).
- * 글이 길면 네 줄까지만 보이고 "더 보기"로 펼친다. 삭제하면 다음 로드부터 사라진다.
+ * 메인 화면 맨 위에 놓이는 공지 띠 — 관리자가 올린 최신 글 하나를 한 줄로 보여 준다.
+ * 구석에 떠 있다 사라지는 토스트가 아니라 화면 흐름 안에 머물며, 닫기 버튼으로만 닫는다.
+ * 본문이 있으면 "자세히"로 펼친다(첫 화면을 큰 상자가 차지하지 않게 접어 둔다). 삭제하면 다음 로드부터 사라진다.
  */
 export default function AnnouncementBanner() {
   const { lang, t } = useLang();
   const [latest, setLatest] = useState<Latest | null>(null);
   const [hidden, setHidden] = useState(true);
   const [expanded, setExpanded] = useState(false);
-  const [clamped, setClamped] = useState(false);
-  const textRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,13 +74,6 @@ export default function AnnouncementBanner() {
     };
   }, []);
 
-  // 네 줄을 넘겨 잘렸는지 확인해서 "더 보기"를 보여 줄지 정한다.
-  useEffect(() => {
-    const el = textRef.current;
-    if (!el || expanded) return;
-    setClamped(el.scrollHeight > el.clientHeight + 1);
-  }, [latest, expanded, hidden]);
-
   if (!latest || hidden) return null;
 
   function dismiss() {
@@ -82,38 +85,38 @@ export default function AnnouncementBanner() {
     }
   }
 
+  const { title, body } = splitNotice(latest.message);
   const date = new Date(latest.created_at).toLocaleDateString(lang === "en" ? "en-US" : "ko-KR", { month: "long", day: "numeric" });
 
   return (
     <section aria-label={t("공지")} className="px-5 pt-4 md:px-14">
-      <div className="mx-auto flex w-full max-w-[1200px] items-start gap-3.5 rounded-2xl border border-border-strong bg-surface py-4 pl-4 pr-3">
-        <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-foreground text-background">
-          <Megaphone size={17} strokeWidth={1.9} aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="flex items-baseline gap-2">
-            <span className="text-[14px] font-bold">{t("공지")}</span>
-            <span className="text-xs text-faint">{date}</span>
-          </p>
-          <p
-            ref={textRef}
-            className={["mt-1 whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground/90", expanded ? "" : "line-clamp-4"].join(" ")}
-          >
-            {linkify(latest.message)}
-          </p>
-          {(clamped || expanded) && (
-            <button onClick={() => setExpanded((v) => !v)} className="mt-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground">
-              {expanded ? t("접기") : t("더 보기")}
+      <div className="mx-auto w-full max-w-[1200px] rounded-xl bg-surface px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <Megaphone size={15} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden />
+          <p className={["min-w-0 flex-1 text-[13.5px] font-medium", expanded ? "" : "truncate"].join(" ")}>{title}</p>
+          <span className="hidden shrink-0 text-xs text-faint sm:inline">{date}</span>
+          {body && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className="shrink-0 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
+            >
+              {expanded ? t("접기") : t("자세히")}
             </button>
           )}
+          <button
+            onClick={dismiss}
+            aria-label={t("공지 닫기")}
+            className="-mr-1.5 grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-foreground"
+          >
+            <X size={15} strokeWidth={1.8} />
+          </button>
         </div>
-        <button
-          onClick={dismiss}
-          aria-label={t("공지 닫기")}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground"
-        >
-          <X size={17} strokeWidth={1.8} />
-        </button>
+        {body && expanded && (
+          <p className="mt-2 whitespace-pre-wrap break-words border-t border-border pt-2.5 pl-[27px] text-[13.5px] leading-relaxed text-foreground/85">
+            {linkify(body)}
+          </p>
+        )}
       </div>
     </section>
   );
