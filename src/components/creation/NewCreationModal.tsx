@@ -9,6 +9,7 @@ import {
   ImagePlus,
   LoaderCircle,
   PencilLine,
+  Plus,
   Sparkles,
   Type,
   Wrench,
@@ -497,34 +498,23 @@ export default function NewCreationModal({
   }
 
   /* ───────────── 입력 ───────────── */
+  const latestButton =
+    user && latest ? (
+      <button onClick={useLatest} className="text-xs font-medium text-muted transition-colors hover:text-foreground">
+        {t("최근 안내문 불러오기")}
+      </button>
+    ) : null;
+  // 이미지/텍스트 두 입력은 같은 틀(제목·내용·상세 입력·아래 버튼)이고 가운데 내용만 다르다.
   return (
-    <Modal title={t("새 창작물")} onClose={onClose} width={560}>
+    <Modal title={kind === "image" ? t("이미지 업로드") : t("텍스트 업로드")} onClose={onClose} width={460} compact busy={busy}>
       <div className="space-y-5">
-        <div role="tablist" aria-label={t("안내문 입력 방식")} className="grid grid-cols-2 gap-1 rounded-xl bg-raised p-1">
-          {(
-            [
-              ["image", "사진 업로드", ImagePlus],
-              ["text", "텍스트로 붙여넣기", Type],
-            ] as const
-          ).map(([k, label, Icon]) => (
-            <button
-              key={k}
-              role="tab"
-              aria-selected={kind === k}
-              onClick={() => setKind(k)}
-              className={[
-                "flex h-9 items-center justify-center gap-2 rounded-lg text-[13px] font-semibold transition-colors",
-                kind === k ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground",
-              ].join(" ")}
-            >
-              <Icon size={15} strokeWidth={1.8} />
-              {t(label)}
-            </button>
-          ))}
-        </div>
-
         {kind === "image" ? (
           <div>
+            <div className="mb-2.5 flex items-center justify-between gap-3">
+              <p className="text-[13px] font-semibold">{t("선택된 이미지")}</p>
+              {latestButton}
+            </div>
+            {/* 사진을 올릴 때마다 오른쪽으로 한 칸씩 늘어나고, 맨 끝의 점선 칸이 다음 사진 자리다 */}
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -536,96 +526,69 @@ export default function NewCreationModal({
                 setDragging(false);
                 addFiles(e.dataTransfer.files);
               }}
-              className={[
-                "relative grid min-h-[220px] place-items-center rounded-2xl border border-dashed p-4 transition-colors",
-                dragging ? "border-foreground bg-raised" : "border-border-strong hover:border-foreground",
-              ].join(" ")}
             >
-              {previews.length === 1 ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={previews[0]} alt={t("업로드한 안내문 미리보기")} className="max-h-[260px] rounded-lg object-contain" />
-                  <button
-                    onClick={() => removeImage(0)}
-                    aria-label={t("사진 지우기")}
-                    className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-border-strong bg-surface text-muted transition-colors hover:text-foreground"
-                  >
-                    <X size={15} strokeWidth={1.8} />
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    aria-label={t("사진 더 올리기")}
-                    className="absolute bottom-3 right-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-border-strong bg-surface px-3 text-xs font-semibold text-muted transition-colors hover:text-foreground"
-                  >
-                    <ImagePlus size={14} strokeWidth={1.8} />
-                    {t("사진 추가")}
-                  </button>
-                </>
-              ) : previews.length > 1 ? (
-                <div className="w-full">
-                  <ul className="grid grid-cols-2 gap-2" aria-label={t("올린 안내문 사진")}>
-                    {previews.map((src, i) => (
-                      <li key={src} className="relative overflow-hidden rounded-lg border border-border bg-background">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt={t("안내문 사진 {n}", { n: i + 1 })} className="h-[110px] w-full object-contain" />
-                        <span className="absolute left-1.5 top-1.5 rounded-md bg-surface/90 px-1.5 text-[11px] font-semibold text-muted">{i + 1}</span>
-                        <button
-                          onClick={() => removeImage(i)}
-                          aria-label={t("{n}번 사진 지우기", { n: i + 1 })}
-                          className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full border border-border-strong bg-surface text-muted transition-colors hover:text-foreground"
-                        >
-                          <X size={13} strokeWidth={1.8} />
-                        </button>
-                      </li>
-                    ))}
-                    {previews.length < MAX_GUIDE_IMAGES && (
-                      <li>
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="flex h-[110px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border-strong text-muted transition-colors hover:border-foreground hover:text-foreground"
-                        >
-                          <ImagePlus size={20} strokeWidth={1.5} />
-                          <span className="text-xs font-semibold">{t("사진 추가")}</span>
-                        </button>
-                      </li>
-                    )}
-                  </ul>
-                  <p className="mt-2 text-center text-xs text-faint">{t("{n}/{max}장 · 안내문·채점 기준표·예시 답안을 모두 올리면 더 정확해요", { n: previews.length, max: MAX_GUIDE_IMAGES })}</p>
-                </div>
-              ) : (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-center gap-2 text-center"
-                >
-                  <ImagePlus size={30} strokeWidth={1.4} className="text-muted" />
-                  <span className="text-sm font-semibold">{t("안내문 사진을 올려 주세요")}</span>
-                  <span className="text-xs text-muted">{t("눌러서 고르거나, 여기로 끌어다 놓으세요 (최대 {n}장)", { n: MAX_GUIDE_IMAGES })}</span>
-                </button>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="sr-only"
-                aria-label={t("안내문 사진 선택")}
-                onChange={(e) => {
-                  addFiles(e.target.files);
-                  e.target.value = ""; // 같은 사진을 지웠다가 다시 고를 수 있게
-                }}
-              />
+              <ul className="flex flex-wrap gap-3" aria-label={t("올린 안내문 사진")}>
+                {previews.map((src, i) => (
+                  <li key={src} className="relative h-20 w-20 overflow-hidden rounded-xl border border-border bg-background">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={t("안내문 사진 {n}", { n: i + 1 })} className="h-full w-full object-cover" />
+                    <button
+                      onClick={() => removeImage(i)}
+                      aria-label={t("{n}번 사진 지우기", { n: i + 1 })}
+                      className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-background/85 text-foreground transition-colors hover:bg-background"
+                    >
+                      <X size={11} strokeWidth={2.2} />
+                    </button>
+                  </li>
+                ))}
+                {previews.length < MAX_GUIDE_IMAGES && (
+                  <li>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      aria-label={previews.length === 0 ? t("안내문 사진 선택") : t("사진 더 올리기")}
+                      className={[
+                        "grid h-20 w-20 place-items-center rounded-xl border border-dashed text-muted transition-colors hover:border-foreground hover:text-foreground",
+                        dragging ? "border-foreground bg-raised text-foreground" : "border-border-strong",
+                      ].join(" ")}
+                    >
+                      <Plus size={22} strokeWidth={1.5} />
+                    </button>
+                  </li>
+                )}
+              </ul>
+              <p className="mt-2.5 text-xs leading-relaxed text-faint">
+                {previews.length === 0
+                  ? t("눌러서 고르거나, 여기로 끌어다 놓으세요 (최대 {n}장)", { n: MAX_GUIDE_IMAGES })
+                  : t("{n}/{max}장 · 안내문·채점 기준표·예시 답안을 모두 올리면 더 정확해요", { n: previews.length, max: MAX_GUIDE_IMAGES })}
+              </p>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              aria-label={t("안내문 사진 선택")}
+              tabIndex={-1}
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = ""; // 같은 사진을 지웠다가 다시 고를 수 있게
+              }}
+            />
           </div>
         ) : (
           <label className="block">
-            <span className="mb-1.5 flex items-center justify-between text-[13px] font-semibold">
+            <span className="mb-2.5 flex items-center justify-between gap-3 text-[13px] font-semibold">
               {t("안내문 또는 주제")}
-              {topicText.length > 0 && <span className="text-xs font-normal text-faint">{t("{n}자", { n: topicText.length })}</span>}
+              <span className="flex items-center gap-2">
+                {topicText.length > 0 && <span className="text-xs font-normal text-faint">{t("{n}자", { n: topicText.length })}</span>}
+                {latestButton}
+              </span>
             </span>
             <textarea
               value={topicText}
               onChange={(e) => setTopicText(e.target.value)}
-              rows={7}
+              rows={6}
               placeholder={t("안내문 내용을 그대로 붙여넣거나, “어린 왕자 독서감상문”처럼 주제만 적어도 돼요.")}
               className={`${fieldCls} resize-none py-3 leading-relaxed`}
             />
@@ -633,7 +596,7 @@ export default function NewCreationModal({
         )}
 
         <label className="block">
-          <span className="mb-1.5 block text-[13px] font-semibold">
+          <span className="mb-2.5 block text-[13px] font-semibold">
             {t("상세 입력")} <span className="font-normal text-faint">{t("(선택)")}</span>
           </span>
           <input
@@ -650,17 +613,20 @@ export default function NewCreationModal({
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-3">
-          {user && latest ? (
-            <Button variant="ghost" size="sm" onClick={useLatest}>
-              {t("최근 안내문 불러오기")}
-            </Button>
-          ) : (
-            <span />
-          )}
-          <Button variant="primary" size="lg" onClick={analyze} disabled={!hasInput || busy} className="min-w-[140px]">
-            {t("분석하기")}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-1">
+          {/* 입력 방식 바꾸기는 말없는 글자 버튼으로 왼쪽에 둔다 */}
+          <Button variant="ghost" size="sm" onClick={() => setKind(kind === "image" ? "text" : "image")}>
+            {kind === "image" ? <Type size={14} strokeWidth={1.8} /> : <ImagePlus size={14} strokeWidth={1.8} />}
+            {kind === "image" ? t("텍스트로 붙여넣기") : t("사진 업로드")}
           </Button>
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" onClick={onClose} disabled={busy} className="px-4 text-foreground">
+              {t("취소")}
+            </Button>
+            <Button variant="primary" onClick={analyze} disabled={!hasInput || busy}>
+              {t("분석하기")}
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>

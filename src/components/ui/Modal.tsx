@@ -12,6 +12,7 @@ export default function Modal({
   width = 560,
   busy = false,
   hideTitle = false,
+  compact = false,
 }: {
   title: string;
   onClose: () => void;
@@ -20,6 +21,8 @@ export default function Modal({
   /** 작업 중에는 닫기를 막는다. */
   busy?: boolean;
   hideTitle?: boolean;
+  /** 작은 창 모양: 모서리·여백·제목을 줄이고 면(surface) 위에 얇은 테두리를 둔다. */
+  compact?: boolean;
 }) {
   const t = useT();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -52,7 +55,10 @@ export default function Modal({
         aria-modal="true"
         aria-label={title}
         style={{ maxWidth: width }}
-        className="relative max-h-[92vh] w-full animate-[popIn_0.22s_ease-out] overflow-y-auto rounded-3xl bg-background p-6 shadow-[0_24px_80px_rgba(0,0,0,0.25)] sm:p-9"
+        className={[
+          "relative max-h-[92vh] w-full animate-[popIn_0.22s_ease-out] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.25)]",
+          compact ? "rounded-2xl border border-border-strong bg-surface p-6" : "rounded-3xl bg-background p-6 sm:p-9",
+        ].join(" ")}
       >
         <button
           data-modal-close
@@ -63,7 +69,9 @@ export default function Modal({
         >
           <X size={16} strokeWidth={1.8} />
         </button>
-        {!hideTitle && <h2 className="mb-6 pr-8 text-lg font-bold tracking-tight">{title}</h2>}
+        {!hideTitle && (
+          <h2 className={["pr-8 tracking-tight", compact ? "mb-5 text-[17px] font-semibold" : "mb-6 text-lg font-bold"].join(" ")}>{title}</h2>
+        )}
         {children}
       </div>
     </div>

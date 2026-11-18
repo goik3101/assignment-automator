@@ -17,6 +17,7 @@ export const home: Record<string, string> = {
   "새 창작물 만들기": "Create new",
   "새 창작물": "New creation",
   "이미지 업로드": "Upload image",
+  "선택된 이미지": "Selected images",
   "텍스트 업로드": "Upload text",
   "내용이 없어요.": "No content.",
   "항목 작성 완료": "items completed",
