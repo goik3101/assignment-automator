@@ -1,6 +1,6 @@
 "use client";
 
-import { Children } from "react";
+import { Children, cloneElement, createContext, isValidElement, useContext, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PencilLine } from "lucide-react";
@@ -20,7 +20,53 @@ function DraftBadge() {
   );
 }
 
+// 표: 컴퓨터에서는 표 모양 그대로(글 영역보다 넓게), 폰에서는 한 행이 카드 하나가 된다(globals.css의 .md-table).
+// 폰에서는 칸 이름을 각 칸 앞에 붙여야 하므로, 머리글 이름을 표에서 뽑아 행(tr)에 내려 준다.
+const TableHeaders = createContext<string[]>([]);
+
+interface HastNode {
+  type?: string;
+  tagName?: string;
+  value?: string;
+  children?: HastNode[];
+}
+
+function hastText(n: HastNode): string {
+  if (n.type === "text") return n.value ?? "";
+  return (n.children ?? []).map(hastText).join("");
+}
+
+function tableHeaders(table: HastNode | undefined): string[] {
+  const thead = table?.children?.find((c) => c.tagName === "thead");
+  const row = thead?.children?.find((c) => c.tagName === "tr");
+  return (row?.children ?? []).filter((c) => c.tagName === "th" || c.tagName === "td").map((c) => hastText(c).trim());
+}
+
+function MdTable({ node, children }: { node?: HastNode; children?: ReactNode }) {
+  return (
+    <div className="md-table not-prose">
+      <TableHeaders.Provider value={tableHeaders(node)}>
+        <table>{children}</table>
+      </TableHeaders.Provider>
+    </div>
+  );
+}
+
+function MdRow({ children }: { children?: ReactNode }) {
+  const headers = useContext(TableHeaders);
+  let col = 0;
+  return (
+    <tr>
+      {Children.map(children, (child) =>
+        isValidElement(child) ? cloneElement(child as ReactElement<{ "data-label"?: string }>, { "data-label": headers[col++] ?? "" }) : child
+      )}
+    </tr>
+  );
+}
+
 export const MD_COMPONENTS: Components = {
+  table: MdTable as Components["table"],
+  tr: MdRow as Components["tr"],
   // 안내문이 밑줄을 요구한 표현(영어 어법 3종 등). 눈에 확실히 보이게 두껍게 긋는다 — 학생이 그대로 밑줄을 그으면 된다.
   u({ children }) {
     return <u className="underline decoration-2 underline-offset-[3px]">{children}</u>;
