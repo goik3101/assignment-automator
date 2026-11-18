@@ -34,9 +34,8 @@ export default function Sidebar() {
     [
       "relative flex h-9 items-center gap-3 rounded-lg px-3 text-[13.5px] font-medium transition-colors",
       collapsed ? "md:justify-center md:px-0" : "",
-      active
-        ? "bg-raised text-foreground before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-foreground"
-        : "text-foreground hover:bg-raised",
+      // 선택된 메뉴는 왼쪽 막대 없이 면과 굵기만으로 구분한다
+      active ? "bg-raised font-semibold text-foreground" : "text-foreground hover:bg-raised",
     ].join(" ");
 
   function startNew() {
@@ -93,7 +92,8 @@ export default function Sidebar() {
             onClick={startNew}
             title={inTutor ? t("새 대화") : t("새 창작물")}
             className={[
-              "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-[13.5px] font-medium text-foreground transition-colors hover:bg-raised",
+              // 가장 자주 쓰는 동작이라 다른 메뉴 줄과 달리 테두리를 둔다
+              "flex h-10 w-full items-center gap-3 rounded-lg border border-border-strong px-3 text-[13.5px] font-medium text-foreground transition-colors hover:bg-raised",
               collapsed ? "md:justify-center md:px-0" : "",
             ].join(" ")}
           >
