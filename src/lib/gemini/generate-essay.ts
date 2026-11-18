@@ -72,6 +72,7 @@ import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stri
 import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
+import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
@@ -4109,6 +4110,22 @@ async function generateEssayImpl(
   }
   // 요약 줄에서 각주를 지운 자리에 남는 "…되었다 ." 공백도 정리한다(본문은 tidyOutputText가 이미 정리).
   if (fixes) attempt = { ...attempt, summaryLines: attempt.summaryLines.map((l) => l.replace(/[ \t]+([.,!?])/g, "$1").trim()) };
+  // 열리지 않는 페이지(url_valid=false)만 근거로 든 수치 문장은 지운다 — 학생이 확인할 수 없는 숫자를 내게 된다(dead-source-figures.ts). DEAD_SOURCE_FIGURES=off로 끔.
+  if (process.env.DEAD_SOURCE_FIGURES !== "off") {
+    const deadNs = attempt.sources.filter((x) => x.url_valid === false).map((x) => x.n);
+    if (deadNs.length > 0) {
+      const gone: string[] = [];
+      attempt = {
+        ...attempt,
+        sections: attempt.sections.map((sec) => {
+          const r = dropDeadSourceFigures(sec.content, deadNs);
+          gone.push(...r.removed);
+          return r.removed.length ? { ...sec, content: r.content } : sec;
+        }),
+      };
+      if (gone.length) console.warn(`[generateEssay] 열리지 않는 출처만 근거인 수치 문장 ${gone.length}개 지움: ${gone.slice(0, 2).map((g) => `"${g}"`).join(", ")}`);
+    }
+  }
   // 안내문 사진이 왔고 시간이 남았으면, 사진과 직접 대조해 어긴 것만 고친다(FINAL_REVIEW=on, 기본 꺼짐).
   if (fixes && finalReviewOn() && (input.noticeImages?.length ?? 0) > 0 && Date.now() - start < 42_000) {
     console.log(`[generateEssay] 안내문 사진 대조 시작(사진 ${input.noticeImages!.length}장, 단계 ${attempt.sections.length}개, 지금까지 ${((Date.now() - start) / 1000).toFixed(1)}초)`);
