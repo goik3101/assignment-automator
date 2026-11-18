@@ -84,12 +84,10 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
                 aria-current={pathname === it.href ? "page" : undefined}
                 className={[
                   "relative flex h-9 items-center gap-3 rounded-lg px-3 text-[13.5px] transition-colors",
-                  pathname === it.href
-                    ? "bg-raised font-semibold text-foreground before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-foreground"
-                    : "text-foreground hover:bg-raised",
+                  pathname === it.href ? "bg-raised font-semibold text-foreground" : "text-foreground hover:bg-raised",
                 ].join(" ")}
               >
-                <Icon size={17} strokeWidth={1.7} className="shrink-0 text-muted" aria-label={t(TASK_KIND_LABEL[it.kind])} />
+                <Icon size={16} strokeWidth={1.7} className="shrink-0 text-faint" aria-label={t(TASK_KIND_LABEL[it.kind])} />
                 <span className="truncate">{it.title}</span>
               </Link>
             </li>

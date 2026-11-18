@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { MessageSquare, X } from "lucide-react";
+import { Ellipsis, MessageSquare, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useT } from "@/lib/i18n";
 import { notifyTutorUpdated, onTutorUpdated } from "@/lib/ui/tutor-events";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface Conversation {
   id: string;
@@ -20,6 +22,7 @@ export default function SidebarTutorList({ onNavigate }: { onNavigate?: () => vo
   const pathname = usePathname();
   const router = useRouter();
   const [items, setItems] = useState<Conversation[] | null>(null);
+  const [target, setTarget] = useState<Conversation | null>(null);
 
   const load = useCallback(() => {
     if (!user) return Promise.resolve();
@@ -36,7 +39,6 @@ export default function SidebarTutorList({ onNavigate }: { onNavigate?: () => vo
   }, [load, pathname]);
 
   async function remove(c: Conversation) {
-    if (!window.confirm(t("“{title}” 대화를 지울까요? 지운 대화는 되돌릴 수 없어요.", { title: c.title }))) return;
     const res = await fetch(`/api/tutor/conversations/${c.id}`, { method: "DELETE" }).catch(() => null);
     if (!res?.ok) return;
     if (pathname === `/tutor/${c.id}`) router.push("/tutor");
@@ -62,24 +64,46 @@ export default function SidebarTutorList({ onNavigate }: { onNavigate?: () => vo
                 aria-current={active ? "page" : undefined}
                 className={[
                   "flex h-9 items-center gap-3 rounded-lg pl-3 pr-8 text-[13.5px] transition-colors",
-                  active ? "bg-raised text-foreground" : "text-foreground hover:bg-raised",
+                  active ? "bg-raised font-semibold text-foreground" : "text-foreground hover:bg-raised",
                 ].join(" ")}
               >
-                <MessageSquare size={17} strokeWidth={1.7} className="shrink-0 text-muted" aria-hidden />
+                <MessageSquare size={16} strokeWidth={1.7} className="shrink-0 text-faint" aria-hidden />
                 <span className="truncate">{c.title}</span>
               </Link>
-              <button
-                onClick={() => void remove(c)}
-                aria-label={t("대화 지우기")}
-                title={t("대화 지우기")}
-                className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-faint opacity-0 transition-opacity hover:bg-border-strong hover:text-foreground focus:opacity-100 group-hover:opacity-100"
-              >
-                <X size={13} strokeWidth={1.9} />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label={t("더보기")}
+                  className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted opacity-0 transition-opacity hover:bg-border-strong hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-popup-open:bg-border-strong data-popup-open:opacity-100"
+                >
+                  <Ellipsis size={15} strokeWidth={1.8} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-40 min-w-0">
+                  <DropdownMenuItem variant="destructive" onClick={() => setTarget(c)}>
+                    <Trash2 size={14} strokeWidth={1.7} />
+                    {t("대화 지우기")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           );
         })}
       </ul>
+      <AlertDialog open={target !== null} onOpenChange={(o) => !o && setTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("대화 지우기")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("“{title}” 대화를 지울까요? 지운 대화는 되돌릴 수 없어요.", { title: target?.title ?? "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("취소")}</AlertDialogCancel>
+            <AlertDialogAction variant="danger" onClick={() => target && void remove(target)}>
+              {t("삭제")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
