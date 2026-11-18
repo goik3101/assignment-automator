@@ -85,8 +85,9 @@ export function isOwnRecordStep(el: { label: string; description?: string }): bo
 }
 
 const BLANK = /\[직접\s*작성[^\]]*\]/g;
+/** 기록표의 날짜 칸은 학생만 아는 값이라 정당한 빈칸이다 — 줄마다 하나씩 생기므로 개수 상한에 세지 않는다(세면 표가 3줄로 줄어든다). */
 export function countBlanks(content: string): number {
-  return (content.match(BLANK) ?? []).length;
+  return (content.match(BLANK) ?? []).filter((b) => !/날짜|일시|시간/.test(b)).length;
 }
 
 /** 빈칸이 너무 많을 때 줄 보완 지시 — 본인만 아는 것만 남기고 나머지는 채우게 한다. */
@@ -145,7 +146,12 @@ export function isAiChatRecordLabel(label: string): boolean {
   return AI_RECORD_LABEL.test(label);
 }
 const CHAT_ANSWER = /(?:ChatGPT|챗\s*GPT|챗봇|AI)(?:는|가|도|에게서)?[^.!?\n]{0,60}?(?:제안했|답했|답변했|설명했|짚었|알려\s*(?:줬|주었)|추천했|말했|정리해\s*(?:줬|주었)|제시했|보여\s*(?:줬|주었))/;
-const CHAT_PROMPT = /[“"]([^”"\n]{8,200})[”"](?=\s*(?:라고|고)\s*(?:물었|질문했|요청했|입력했|부탁했))/;
+// 따옴표 질문과 뒤의 "라고 요청했"까지 한 덩어리로 바꾼다 — 따옴표만 바꾸면 "[빈칸]고 요청했다"처럼 문장이 깨진다(2026-11-19 히든 피겨스 결과물).
+const CHAT_PROMPT = /[“"]([^”"\n]{8,200})[”"]\s*(?:라고|고)\s*(물었|질문했|요청했|입력했|부탁했)/;
+/** 행동기록표의 "챗봇 사용" 줄도 같은 지어내기가 생긴다(질문을 따옴표로 적음). */
+export function isActionLogLabel(label: string): boolean {
+  return /(?:행동|활동)\s*(?:기록|일지)|행동일지/.test(label);
+}
 
 export function blankInventedChatLog(content: string): { content: string; blanked: number } {
   let blanked = 0;
@@ -153,15 +159,22 @@ export function blankInventedChatLog(content: string): { content: string; blanke
   let promptBlankPlaced = false;
   const lines = content.split("\n").map((line) => {
     if (/^\s*#{1,6}\s/.test(line) || !line.trim()) return line;
+    // 표 줄은 질문 따옴표만 바꾼다 — 문장 단위로 깎으면 칸 구분선이 같이 날아간다.
+    if (/^\s*\|/.test(line)) {
+      return line.replace(new RegExp(CHAT_PROMPT.source, "g"), (_m, _q, verb: string) => {
+        blanked++;
+        return `[직접 작성: 실제로 입력한 질문]라고 ${verb}`;
+      });
+    }
     const parts = line.split(/(?<=[.!?。](?:\[\d+(?:,\s*\d+)*\])*)\s+/);
     const kept: string[] = [];
     for (let part of parts) {
       if (CHAT_PROMPT.test(part)) {
-        part = part.replace(CHAT_PROMPT, () => {
+        part = part.replace(CHAT_PROMPT, (_m, _q, verb: string) => {
           blanked++;
-          return promptBlankPlaced ? "" : ((promptBlankPlaced = true), "[직접 작성: 실제로 입력한 질문]");
+          promptBlankPlaced = true;
+          return `[직접 작성: 실제로 입력한 질문]라고 ${verb}`;
         });
-        if (/^\s*(?:라고|고)\s/.test(part)) part = part.replace(/^\s*(?:라고|고)\s*/, "");
       }
       if (CHAT_ANSWER.test(part)) {
         blanked++;

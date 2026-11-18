@@ -53,3 +53,12 @@ test("일반 문장 속 콜론은 건드리지 않는다", () => {
   const t = "결과는 다음과 같다. 예를 들어: 학교 급식에서 과일을 눈에 띄게 두면 선택이 달라진다.";
   assert.equal(stripInlineNoticeEcho(t, "정책 가정 양립").content, t);
 });
+
+// 2026-11-19 히든 피겨스: "[직접 작성: 날짜]"의 콜론을 라벨 콜론으로 읽어 빈칸 머리를 잘라 "날짜]이다"가 됐다.
+test("대괄호 빈칸의 콜론은 안내문 라벨 콜론으로 읽지 않는다", () => {
+  const notice = "과제 공지를 확인한 날짜와 영화 시청 날짜 활동 내용 기록";
+  const text = "영화를 봤다. 과제 공지를 확인한 날짜와 영화 시청 날짜는 [직접 작성: 날짜]이다. 이어서 글을 썼다.";
+  assert.equal(stripInlineNoticeEcho(text, notice).content, text);
+  const line = "[직접 작성: 과제 공지를 확인한 날짜]이다. 영화를 본 뒤 핵심을 다시 읽고 글을 쓰기로 했다 오늘 바로.";
+  assert.equal(stripNoticeEcho(line, notice).content, line);
+});

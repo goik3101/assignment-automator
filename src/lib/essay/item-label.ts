@@ -76,6 +76,7 @@ export function stripNoticeEcho(content: string, noticeText: string): { content:
     const prefix = m[2].replace(/\*\*/g, "").trim();
     const rest = m[3];
     if (/(?:다|요|까|니다|\.)$/.test(prefix)) return line; // 문장 끝맺음이면 라벨이 아니다
+    if (/[\[\]]/.test(prefix)) return line; // 대괄호 빈칸의 콜론은 라벨 콜론이 아니다
     if (rest.replace(/\[\d+\]/g, "").trim().length < 15) return line;
     const pt = toks(prefix);
     if (pt.length === 0) return line;
@@ -100,6 +101,8 @@ export function stripInlineNoticeEcho(content: string, noticeText: string): { co
     return line.replace(/([.!?]\s+)([^:：.!?\n]{6,45}?)\s*[:：]\s+(?=\S)/g, (m, lead: string, prefix: string) => {
       const p = prefix.replace(/\*\*/g, "").trim();
       if (/(?:다|요|까|니다)$/.test(p)) return m;
+      // 대괄호 빈칸("[직접 작성: 날짜]")의 콜론을 라벨 콜론으로 읽으면 빈칸 머리를 잘라 "날짜]이다"처럼 깨진다(2026-11-19 히든 피겨스).
+      if (/[\[\]]/.test(p)) return m;
       const pt = toks(p);
       if (pt.length < 3 || pt.filter((t) => vocab.has(t)).length / pt.length < 0.8) return m;
       stripped.push(p);

@@ -81,7 +81,7 @@ import { wantsExtraMaterial, ensureExtraMaterialSlot, extraMaterialKind } from "
 import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { adminLeakOn, dedupeOn, finalReviewOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
-import { blankInventedChatLog, isAiChatRecordLabel, blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
+import { blankInventedChatLog, isAiChatRecordLabel, isActionLogLabel, blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
@@ -1584,7 +1584,7 @@ ${scopeLine}
 - 학생의 의견·감상·느낀 점·다짐·계획 문장에는 번호를 붙이지 않는다(그 생각의 근거가 출처에 있는 것이 아니다).
 - 노트의 사실은 확인된 사실이니 "~했다", "~이다"처럼 분명하게 쓴다. "~라는 기록이 있다", "~라는 보도가 있다", "~라는 평가가 있다", "~로 알려져 있다"처럼 전달하는 말투로 돌려 말하지 말 것(근거는 번호가 보여 준다). 노트 문장에 "이 글은", "해당 기사는" 같은 말이 있어도 옮기지 말고 사실만 쓴다.
 - 노트의 사실을 전부 쓸 필요는 없다. 이 글에 꼭 필요한 사실만 골라 위 분량 안에서 쓰고(분량을 넘기는 것이 가장 흔한 실패다), 고른 사실은 나열하지 말고 서로 원인·결과·비교로 이어서 설명한다.
-- 노트의 문장을 그대로 베끼지 말고 이 글의 형식과 문체에 맞게 다시 쓴다.
+- 노트의 문장을 그대로 베끼지 말고 이 글의 형식과 문체에 맞게 다시 쓴다. 여러 인물을 한 이름으로 묶어 부를 때는 노트가 가른 직함·분야를 지킨다(수학자와 엔지니어를 모두 "수학자"라 부르지 말 것).
 - 책을 다루는 글이면 책 제목(『』)과 저자를 글의 흐름 속에서 자연스럽게 한 번 언급하고(예: "헤르만 헤세의 『데미안』은 …") 그 문장에 서지 사실의 번호를 붙인다. 출판사·번역자·출간 연도·판본은 안내문이 요구하지 않으면 쓰지 않는다. 책 속 문장을 따옴표로 직접 인용하지 말 것(원문을 확인하지 못했다) — 줄거리·주제를 자기 말로 쓴다.
 - 노트의 연도·수치를 쓴 문장에는 반드시 번호를 붙인다. 출처 목록·참고문헌·"(출처: …)"·주소는 쓰지 말 것(출처는 시스템이 번호로 붙인다).
 `.trim();
@@ -2876,7 +2876,8 @@ async function generateEssayImpl(
       if (!isOwnRecordStep(el)) continue;
       const sec = attempt.sections.find((s) => s.label === el.label);
       const found = sec ? countBlanks(sec.content) : 0;
-      if (found <= MAX_BLANKS) continue;
+      // 챗봇 사용 기록은 항목(활동·질문·목적·비교·느낀 점)마다 학생만 아는 자리가 하나씩 있다 — 5~6개가 정상이다.
+      if (found <= (isAiChatRecordLabel(el.label) ? MAX_BLANKS + 2 : MAX_BLANKS)) continue;
       console.warn(`[generateEssay] 직접 작성 빈칸이 ${found}개 label="${el.label}" — 본인만 아는 것만 남기고 채우게 함`);
       activityRewrites.push({ label: el.label, instruction: blankOveruseRepairText(MAX_BLANKS, found) });
     }
@@ -4046,7 +4047,7 @@ async function generateEssayImpl(
     attempt = {
       ...attempt,
       sections: attempt.sections.map((sec) => {
-        if (!isAiChatRecordLabel(sec.label)) return sec;
+        if (!isAiChatRecordLabel(sec.label) && !isActionLogLabel(sec.label)) return sec;
         const r = blankInventedChatLog(sec.content);
         if (r.blanked > 0) console.warn(`[generateEssay] AI 대화 기록 ${r.blanked}곳을 학생이 채울 빈칸으로 바꿈 label="${sec.label}"`);
         return r.blanked > 0 ? { ...sec, content: r.content } : sec;

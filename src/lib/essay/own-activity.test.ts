@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { countBlanks, findOwnActivitySentences, isOwnActivitySentence, isOwnRecordStep } from "./own-activity.ts";
+import { countBlanks, findOwnActivitySentences, isOwnActivitySentence, isOwnRecordStep, blankInventedChatLog, isActionLogLabel } from "./own-activity.ts";
 
 // 실제 제출 직전 결과물(2026-10-29)에서 그대로 가져온 문장들 — 학생이 하지 않은 행동을 썼다고 한 경우.
 const FABRICATED = [
@@ -35,7 +35,7 @@ test("직접 수행 기록 단계를 가려내고 빈칸을 센다", () => {
   assert.equal(isOwnRecordStep({ label: "정책 제안서", description: "해결 방안을 제안한다." }), false);
   // 실제 결과물(결과물.2.txt)의 빈칸 표기
   const t = "날짜: [직접 작성: 조사한 날짜]\n[직접 작성: 관할 시·군·구 이름]의 경보 빈도\n고농도 일수 [직접 작성: 캡처한 일수]일";
-  assert.equal(countBlanks(t), 3);
+  assert.equal(countBlanks(t), 2); // 날짜 빈칸은 세지 않는다(2026-11-19)
   assert.equal(countBlanks("빈칸 없는 글"), 0);
 });
 
@@ -119,4 +119,24 @@ test("AI 챗봇 사용 기록: 지어낸 질문·답변을 빈칸으로 바꾼�
   assert.doesNotMatch(r.content, /\[1\]/);
   assert.match(r.content, /나는 그 답을 그대로 쓰지 않았다/);
   assert.equal(r.blanked, 2);
+});
+
+// 2026-11-19 히든 피겨스: 기록표 날짜 칸이 줄마다 있어 빈칸 상한(3~4)이 표를 3줄로 줄였고, 질문 따옴표만 바꿔 "[빈칸]고 요청했다"로 문장이 깨졌다.
+test("날짜 빈칸은 빈칸 개수에 세지 않는다", () => {
+  const t = "| [직접 작성: 날짜] | 공지 확인 |\n| [직접 작성: 영화를 본 날짜] | 시청 |\n| [직접 작성: 날짜] | 작성 |\n| [직접 작성: 날짜] | 수정 |\n| [직접 작성: 날짜] | 제출 |";
+  assert.equal(countBlanks(t), 0);
+  assert.equal(countBlanks("질문: [직접 작성: 실제로 입력한 질문]"), 1);
+});
+
+test("지어낸 질문 따옴표는 뒤의 '라고 요청했'까지 함께 빈칸으로 바꿔 문장이 깨지지 않는다", () => {
+  const r = blankInventedChatLog("AI 챗봇에 “과제 공지 확인부터 최종 제출까지 정리해 줘”라고 요청했다.");
+  assert.equal(r.blanked, 1);
+  assert.equal(r.content, "AI 챗봇에 [직접 작성: 실제로 입력한 질문]라고 요청했다.");
+});
+
+test("표 줄은 질문 따옴표만 바꾸고 칸 구분선을 지키며, 행동기록 단계 이름을 알아본다", () => {
+  const r = blankInventedChatLog("| 5/2 | ChatGPT 사용 | “히든 피겨스 주요 인물을 알려줘”고 질문했다 | 도움이 됐다 |");
+  assert.equal(r.blanked, 1);
+  assert.equal(r.content.split("|").length - 1, 5);
+  assert.ok(isActionLogLabel("행동기록") && isActionLogLabel("활동 일지") && !isActionLogLabel("영화 메시지 글"));
 });

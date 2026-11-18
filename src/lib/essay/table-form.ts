@@ -45,6 +45,8 @@ const splitSentences = (text: string) => (text ?? "").split(/(?<=[.。!?])\s+|\n
 export function isTableForm(el: TableElement, guide?: string): boolean {
   if (labelIsTable(el.label)) return true;
   if (TABLE_WORD.test(`${el.label} ${el.description ?? ""}`)) return true;
+  // 행동기록·활동일지는 날짜 칸이 있는 기록표다 — 분석이 "표 형태" 단서를 흘린 실행(2026-11-19 히든 피겨스)에서 칸 이름이 소제목 넷이 되어 표가 사라졌다.
+  if (/(?:행동|활동)\s*(?:기록|일지)|행동일지/.test(el.label) && (el.required_items ?? []).some((i) => /^날짜|^일시/.test(i.trim()))) return true;
   return splitSentences(guide ?? "").some((s) => TABLE_WORD.test(s) && mentionsLabel(el.label, s));
 }
 

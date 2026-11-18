@@ -93,3 +93,10 @@ test("줄 이름이 하나뿐이면 되접지 않는다", () => {
   const el = { label: "비교표", description: "", required_items: ["사례1-행동", "사례1-원인"] };
   assert.deepEqual(tableColumns(el), ["사례1-행동", "사례1-원인"]);
 });
+
+// 2026-11-19 히든 피겨스: 분석이 "표 형태"를 흘려도 날짜 칸이 있는 행동기록은 표다.
+test("날짜 칸이 있는 행동기록은 표 양식이다", () => {
+  const el = { label: "행동기록", description: "과제 공지 확인부터 최종 제출까지 모든 활동을 행동일지처럼 기록한다.", required_items: ["날짜(또는 시간)", "활동 내용", "구체적 실행(질문/탐색/활용)", "느낀 점/깨달음"] };
+  assert.equal(isTableForm(el as never, "행동기록은 항목으로 시간 흐름에 맞춰 적는다."), true);
+  assert.equal(isTableForm({ ...el, required_items: ["활동 내용", "느낀 점"] } as never, ""), false);
+});
