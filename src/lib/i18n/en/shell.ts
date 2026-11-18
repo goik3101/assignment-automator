@@ -74,6 +74,7 @@ export const shell: Record<string, string> = {
   "개인화 설정": "Personalization",
   "AI 설정": "AI",
   "개선 요청": "Feedback",
+  "전달하지 못했어요. 잠시 후 다시 시도해주세요.": "Couldn't send it. Please try again in a moment.",
   "설정 검색": "Search settings",
   "검색 결과가 없어요.": "No matching settings.",
   "이용약관": "Terms of service",

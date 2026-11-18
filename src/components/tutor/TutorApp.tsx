@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LoaderCircle, Plus, SendHorizontal, X } from "lucide-react";
+import { ArrowUp, ImagePlus, LoaderCircle, SquarePen, X } from "lucide-react";
 import { Message } from "@/components/chat/ChatView";
 import type { ChatMessage } from "@/components/chat/useChat";
 import StudyRail from "@/components/study/StudyRail";
@@ -168,7 +168,7 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
 
   const composer = (
     <div>
-      <div className="rounded-[28px] bg-surface transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--foreground)]">
+      <div className="rounded-[28px] border border-border-strong bg-surface transition-colors focus-within:border-foreground/40">
         {image && (
           <div className="flex items-center gap-2 px-4 pt-3">
             <div className="relative">
@@ -191,9 +191,9 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
             disabled={loginNeeded}
             aria-label={t("안내문 사진 첨부")}
             title={t("안내문 사진 첨부")}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-40"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-40"
           >
-            <Plus size={20} strokeWidth={1.7} />
+            <ImagePlus size={18} strokeWidth={1.7} />
           </button>
           <input
             ref={fileRef}
@@ -232,9 +232,9 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
             onClick={submit}
             disabled={!text.trim() || busy || loginNeeded}
             aria-label={t("보내기")}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-muted text-background transition-opacity hover:opacity-90 disabled:opacity-40"
           >
-            <SendHorizontal size={18} strokeWidth={1.9} />
+            <ArrowUp size={18} strokeWidth={2.2} />
           </button>
         </div>
       </div>
@@ -263,11 +263,10 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
         <h1 className="min-w-0 truncate text-[15px] font-bold">{title || t("AI 튜터")}</h1>
         <Link
           href="/tutor"
-          aria-label={t("새 대화")}
-          title={t("새 대화")}
-          className="grid h-9 w-9 place-items-center rounded-full text-muted transition-colors hover:bg-raised hover:text-foreground"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground"
         >
-          <Plus size={20} strokeWidth={1.8} />
+          <SquarePen size={13} strokeWidth={1.8} aria-hidden />
+          {t("새 대화")}
         </Link>
       </header>
 
@@ -294,7 +293,7 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
                         areaRef.current?.focus();
                       });
                     }}
-                    className="rounded-full border border-border-strong px-4 py-2 text-[13px] text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-40"
+                    className="rounded-full border border-border-strong px-4 py-2 text-[13px] font-medium transition-colors hover:bg-raised disabled:opacity-40"
                   >
                     {t(c)}
                   </button>
@@ -313,7 +312,7 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
                   <Message key={m.id} m={m} />
                 ))}
                 {pendingQuestion && (
-                  <div className="rounded-2xl bg-surface px-4 py-3.5">
+                  <div className="rounded-2xl border border-border bg-surface px-4 py-3.5">
                     <p className="text-[14px] font-semibold">{pendingQuestion.text}</p>
                     {pendingQuestion.options.length > 0 && (
                       <div className="mt-2.5 flex flex-wrap gap-2">
@@ -321,7 +320,7 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
                           <button
                             key={o}
                             onClick={() => void send(o, null)}
-                            className="rounded-full bg-raised px-3.5 py-1.5 text-[13px] font-semibold transition-colors hover:bg-border-strong"
+                            className="rounded-full border border-border-strong px-3.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-raised"
                           >
                             {o}
                           </button>
