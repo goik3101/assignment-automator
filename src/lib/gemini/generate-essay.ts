@@ -2766,7 +2766,10 @@ async function generateEssayImpl(
             parts.push(sourceVoiceRepairText(sec.label, voices));
           }
         }
-        const subjects = findSourceSubjectSentences(sec.content);
+        // 문서·매체를 주어로 삼은 문장 검사는 "근거 N개" 과제(헌법재판소)에서 나왔는데 모든 단계에 돌아 보완 호출을 부른다(2026-11-19 점검: 로그 135건 중 95건에서 안내문 조건 보완).
+        // 같은 안내문 4종을 켠 채/끈 채 돌려 보니 끈 쪽이 점수 도구(화면 검사 0건)·시간에서 같았고, 보완이 도는 실행에서도 문서 주어 문장은 1→1개로 안 줄었다 → 기본 꺼짐.
+        // 근거 N개를 요구한 단계는 위 `plan.slots` 검사가 따로 맡는다. SOURCE_SUBJECT_REPAIR=on으로 되살린다.
+        const subjects = process.env.SOURCE_SUBJECT_REPAIR === "on" ? findSourceSubjectSentences(sec.content) : [];
         if (subjects.length > 0) parts.push(sourceSubjectRepairText(subjects));
         if (parts.length === 0) continue;
         console.warn(`[generateEssay] 근거 서술 문제 label="${sec.label}": ${parts.length === 2 ? "개수+출처주어" : parts[0].slice(0, 24)}`);
