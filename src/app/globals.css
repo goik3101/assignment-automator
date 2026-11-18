@@ -157,3 +157,101 @@ body {
     background-position: -200% 0;
   }
 }
+
+/* 결과 글 속 표(ResultExtras의 MdTable). 컴퓨터: 표 모양 그대로, 폰: 한 행 = 카드 하나. */
+.md-table {
+  margin: 1.5rem 0;
+}
+.md-table table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.md-table th {
+  padding: 10px 14px;
+  text-align: left;
+  vertical-align: bottom;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-strong);
+}
+.md-table td {
+  padding: 14px;
+  vertical-align: top;
+  border-top: 1px solid var(--border);
+}
+.md-table td:first-child {
+  font-weight: 600;
+}
+@media (min-width: 768px) {
+  .md-table tbody tr:first-child td {
+    border-top: 0;
+  }
+  .md-table {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--background);
+  }
+  .md-table table {
+    min-width: 560px;
+  }
+  /* 첫 열은 사례 설명처럼 긴 글이 오는 경우가 많아 따로 폭을 보장하고, 긴 글이 굵게 보이지 않게 한다 */
+  .md-table td:first-child {
+    min-width: 10rem;
+    font-weight: 500;
+  }
+  .md-table td:not(:first-child) {
+    min-width: 11rem;
+  }
+}
+@media (max-width: 767px) {
+  .md-table table,
+  .md-table tbody,
+  .md-table tr,
+  .md-table td {
+    display: block;
+    width: 100%;
+  }
+  /* 머리글 줄은 화면에서만 숨긴다(스크린 리더에는 그대로) — 칸 이름은 각 칸 앞에 붙는다 */
+  .md-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .md-table tr {
+    margin-bottom: 12px;
+    padding: 16px;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background: var(--background);
+  }
+  .md-table td {
+    padding: 12px 0 0;
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .md-table td:first-child {
+    padding: 0;
+    margin-top: 0;
+    border-top: 0;
+    font-size: 15px;
+  }
+  .md-table td:not(:first-child)::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .md-table td[data-label=""]::before {
+    display: none;
+  }
+}
