@@ -24,12 +24,8 @@ export function buttonClass(variant: Variant = "secondary", size: Size = "md", e
   ].join(" ");
 }
 
-export default function Button({
-  variant = "secondary",
-  size = "md",
-  className = "",
-  type = "button",
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
+export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size };
+
+export default function Button({ variant = "secondary", size = "md", className = "", type = "button", ...props }: ButtonProps) {
   return <button type={type} className={buttonClass(variant, size, className)} {...props} />;
 }
