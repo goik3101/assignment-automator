@@ -14,6 +14,7 @@ import { needsSubjectSelection } from "@/lib/selection/selection-need";
 import { routeUsage } from "@/lib/llm/route-usage";
 import { withUiLangRoute } from "@/lib/llm/ui-lang-route";
 import { validateCoreTaskInfo } from "@/lib/api/validate";
+import { withoutOtherAreaNotes } from "@/lib/gemini/analysis-normalize";
 import type { CoreTaskInfo } from "@/types/task";
 
 export const maxDuration = 60;
@@ -22,7 +23,7 @@ export const POST = routeUsage("research-prefetch", withUiLangRoute(async functi
   if (!researchPrefetchOn()) return NextResponse.json({ ok: false, skipped: "off" }, { status: 202 });
   try {
     const body = (await req.json()) as { subject?: string; coreTaskInfo?: CoreTaskInfo; instructions?: string };
-    const core = body.coreTaskInfo;
+    const core = body.coreTaskInfo ? withoutOtherAreaNotes(body.coreTaskInfo) : body.coreTaskInfo;
     if (!core || validateCoreTaskInfo(core)) return NextResponse.json({ ok: false, skipped: "invalid" }, { status: 202 });
 
     // **대상이 아직 안 정해진 과제는 미리 하지 않는다.** 제작 전 질문의 답이 주제를 바꾸면

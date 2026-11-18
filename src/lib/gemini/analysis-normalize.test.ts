@@ -143,3 +143,11 @@ test("뺄 단계가 있으면 이유를 남기고, 그것밖에 없으면 그대
   assert.match(dropNote(r.dropped[0]), /선택 활동\(희망자만\)/);
   assert.equal(dropNonSubmissionActivities([els[1]], []).kept.length, 1);
 });
+
+test("다른 평가 영역을 적은 요구사항 줄은 뺀다(사회-04: 독서·인물 낱말이 책 선정 경로를 돌렸다)", async () => {
+  const { withoutOtherAreaNotes } = await import("./analysis-normalize.ts");
+  const core = { requirements: ["관심 요소 3가지를 고를 것.", "다른 영역(이번 과제 아님): 인물인터뷰(5월), 독서(학기 말)."] };
+  assert.deepEqual(withoutOtherAreaNotes(core).requirements, ["관심 요소 3가지를 고를 것."]);
+  const same = { requirements: ["독서 감상문을 쓸 것."] };
+  assert.equal(withoutOtherAreaNotes(same), same);
+});

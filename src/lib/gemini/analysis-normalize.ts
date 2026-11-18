@@ -361,3 +361,16 @@ export function dropRepeatedSiblingItems<T extends { label: string; required_ite
     return (keep.length >= 2 ? { ...rest, required_items: keep } : { ...rest, items_format: "flowing" as const }) as T;
   });
 }
+
+/**
+ * 분석이 "이번 과제가 아닌 다른 평가 영역"을 요구사항에 한 줄로 적어 둔 것("다른 영역(이번 과제 아님): 인물인터뷰·독서 …")을 뺀다.
+ *
+ * 왜(2026-11-19 사회-04 점검): 그 줄의 "독서"·"인물"을 낱말 규칙들이 읽어 **이번 과제와 무관한 책 선정 경로**(후보 제안·저자 확인·서지 검색 약 10초)가 돌고,
+ * 조사가 책 서지로 흘러 출처 0개·"검증 안 됨" 배너·881자로 끝났다 — 학생이 주제(스마트폰 과의존)를 직접 정해 줬는데도. 두 실행 모두 같았다.
+ * 이 줄은 분석 프롬프트가 일부러 적게 한 것이라 분석 쪽만 고치면 이미 저장된 분석(캐시·기록)에 남는다 — 생성 입구에서도 같은 함수로 뺀다.
+ */
+export function withoutOtherAreaNotes<T extends { requirements?: string[] }>(core: T): T {
+  const reqs = core.requirements;
+  if (!reqs || !reqs.some((r) => /^\s*다른\s*영역\s*\(\s*이번\s*과제\s*아님\s*\)/.test(r))) return core;
+  return { ...core, requirements: reqs.filter((r) => !/^\s*다른\s*영역\s*\(\s*이번\s*과제\s*아님\s*\)/.test(r)) };
+}

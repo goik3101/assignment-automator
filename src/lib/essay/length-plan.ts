@@ -215,7 +215,12 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
       // 항목이 많이 펼쳐진 한 단계(사회-02 합쳐진 제안서 3,597자, 과학-09 등)는 항목 수에 비례해 목표가 끝없이 커진다 — 학생이 제출할 한 단계의 상한을 둔다(2026-11-15).
       // 2026-11-16: 사용자가 "전체적으로 너무 짧다"고 했다. 같은 안내문을 ChatGPT식(사진 + 한 줄)으로 쓰면 우리 계획 최대의 1.5~3배가 나왔다
       // (과학-01 3,200 대 계획 800~1,500, 사회-03 1,985 대 960~1,800). 문서형 단계는 항목당 분량을 올린다. LENGTH_RAISE=off로 되돌린다.
-      if (lengthRaiseOn()) return { role, min: Math.min(n * 230, 2000), max: Math.min(n * 420, 3200), basis: `보고서 항목 ${n}개 × 항목당 대여섯~여덟 문장(한 단계 최대 3,200자)` };
+      // 2026-11-19 분량 편차 점검: 같은 안내문을 분석할 때마다 항목 수가 4/5/10개(과학-01)·3/5/12/20개(한문-01)로 흔들려 계획 총량이 2~3배(최대 9.9배)로 갈렸다.
+      // 항목 수는 분석 흔들림이 그대로 들어오는 값이라 3~6개로 묶는다(그 안에서는 예전과 똑같다). LENGTH_ITEM_CLAMP=off로 되돌린다.
+      if (lengthRaiseOn()) {
+        const k = process.env.LENGTH_ITEM_CLAMP === "off" ? n : Math.min(Math.max(n, 3), 6);
+        return { role, min: Math.min(k * 230, 2000), max: Math.min(k * 420, process.env.LENGTH_ITEM_CLAMP === "off" ? 3200 : 2520), basis: `보고서 항목 ${n}개 × 항목당 대여섯~여덟 문장(한 단계 최대 ${process.env.LENGTH_ITEM_CLAMP === "off" ? "3,200" : "2,500"}자)` };
+      }
       return { role, min: Math.min(n * 160, 1500), max: Math.min(n * 300, 2400), basis: `보고서 항목 ${n}개 × 항목당 대여섯 문장(한 단계 최대 2,400자)` };
     }
     case "table": {

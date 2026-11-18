@@ -35,6 +35,7 @@ import { stripClichesFromText, stripUnsupportedSuperlatives, stripFakeReferenceL
 import { attachFactMarkers, factSheetText, factsFromCitedText, mapFactMarkers } from "@/lib/essay/research-notes";
 import { stripHeadingDirectives, tabTableToMarkdown, fixJosaAfterTitle, reduceReportedSpeech, stripInlineUrls, stripOrdinalEnumerators, stripMetaNoteLines, stripModelReferenceBlock, stripWorkNotes } from "@/lib/essay/deliverable";
 import { limitSources, requiredSourceCount } from "@/lib/essay/source-select";
+import { withoutOtherAreaNotes } from "@/lib/gemini/analysis-normalize";
 import { blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { bannedVisualRepairText, findBannedVisuals, visualPolicy, visualPolicyInstruction } from "@/lib/essay/data-visual";
@@ -406,6 +407,7 @@ export async function generatePlan(
 ): Promise<PlanResult | InsufficientDataResult> {
   const start = Date.now();
   // 안내문의 개수 조건("8장면")은 필수 항목("장면 1…8")으로 펼친다(생성 시점에만 — form-requirements.ts).
+  input = { ...input, coreTaskInfo: withoutOtherAreaNotes(input.coreTaskInfo) };
   if (formRequirementsOn()) input = { ...input, coreTaskInfo: applyFormRequirements(input.coreTaskInfo) };
 
   const wantSearch = needsFactSearch(

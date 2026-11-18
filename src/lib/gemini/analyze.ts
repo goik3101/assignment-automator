@@ -4,7 +4,7 @@ import { normalizeSubject } from "./normalize-subject";
 import { recoverFormFields } from "@/lib/essay/notice-form";
 import { noticeFormOn } from "@/lib/essay/quality-flags";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
-import { dropInterrogativeItems, dropRepeatedSiblingItems, foldSkeletonItems, soloDefault, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
+import { withoutOtherAreaNotes, dropInterrogativeItems, dropRepeatedSiblingItems, foldSkeletonItems, soloDefault, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
 import { splitAnalysisItems } from "./analysis-items";
 import { reconcileItemLabels } from "@/lib/essay/item-reconcile";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
@@ -580,7 +580,7 @@ export async function analyzeAssignment(
     // 병렬 전사는 분석 JSON 밖에서 왔으므로, 순차 모드와 같은 모양이 되게 결과에 얹는다(측정 도구·되찾기가 읽는다).
     ...(parallelTranscript && noticeText ? { notice_text: noticeText } : {}),
     subject,
-    core_task_info: { ...coreRest, ...(noticeText ? { notice_text: noticeText } : {}), requirements: solo.requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
+    core_task_info: { ...coreRest, ...(noticeText ? { notice_text: noticeText } : {}), requirements: withoutOtherAreaNotes({ requirements: solo.requirements }).requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }
