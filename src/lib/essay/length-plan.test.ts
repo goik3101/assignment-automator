@@ -157,3 +157,13 @@ test("칸 산출물은 항목 수가 아니라 칸 수로 분량을 잰다 (카�
   // 설명이 장면 블록("칸마다 짧게")과 부딪치지 않는다
   assert.ok(!/항목당 대여섯 문장/.test(p.basis), `설명이 장면 블록과 반대다: ${p.basis}`);
 });
+
+// 2026-11-18: 손글씨 신호("부정행위 금지")가 안내문 전사에만 있어도 단계별 목표가 손으로 쓸 시간(1,350자)에 맞춰진다.
+test("전사에만 있는 손글씨 신호도 단계 목표를 1,350자로 묶는다", () => {
+  const el = { label: "논술", description: "논술형 글쓰기", required_items: ["a", "b", "c", "d", "e", "f", "g"] };
+  const base = { requirements: [], guide: "", labels: ["논술"] };
+  const without = effectiveTarget(el as never, base as never) ?? 0;
+  const withNotice = effectiveTarget(el as never, { ...base, notice: "오픈북 테스트가 아니며, 부정행위 절대 금지" } as never) ?? 0;
+  assert.ok(without > 1500, `신호 없이는 묶이지 않아야 한다: ${without}`);
+  assert.ok(withNotice <= 1350, `전사 신호가 반영돼야 한다: ${withNotice}`);
+});

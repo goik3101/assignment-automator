@@ -631,6 +631,22 @@ const SEPARATE_SEARCH_RULE_BOOK = `책 제목과 저자는 서로 다른 사실�
  * 모델이 지시를 지켜도 깎이는 구조였고, 그 보완이 시간 예산까지 먹었다.
  * **이 함수 밖에서 `boxLengths`를 직접 부르지 말 것.**
  */
+/**
+ * 분량 기준(`planLength`·`effectiveTarget`·`lengthGuideLines`)에 넘기는 문맥은 **여기서만** 만든다.
+ * 왜(2026-11-18): 단계별 목표를 정하는 두 곳(글쓰기 호출의 `stepTarget`·`targetOf`)이 `notice`(안내문 전사)를 빼고 넘겨서,
+ * "부정행위 금지"처럼 전사에만 있는 손글씨 신호를 못 읽었다 — 공유 프롬프트의 분량 가이드는 1,350자라는데 그 단계 호출은 3,050자 목표를 받았다.
+ */
+function lengthCtxOf(core: CoreTaskInfo, elements: CoreTaskInfo["task_elements"] = core.task_elements) {
+  return {
+    requirements: core.requirements,
+    guide: core.writing_guide,
+    labels: core.task_elements.map((e) => e.label),
+    topic: core.topic,
+    siblings: elements.map((e) => ({ label: e.label, description: e.description })),
+    notice: core.notice_text,
+  };
+}
+
 function taskBoxLengths(elements: CoreTaskInfo["task_elements"], core: CoreTaskInfo) {
   return boxLengthOn() ? boxLengths(elements.map((e) => e.label), core.writing_guide, core.requirements) : [];
 }
@@ -1684,9 +1700,7 @@ async function generateOnce(
       // 프롬프트의 분량은 "이 단계 전체"를 말한다 — 나눠 쓰는 호출에 자기 몫을 알려 주지 않으면
       // 목표의 0.5~1.1배로 갈린다(실측 2026-11-08, 카드뉴스 2회: 목표 2,050 → 1,064자 / 목표 1,350 → 1,507자).
       const stepTarget =
-        effectiveTarget(elements[0], formRequirementsOn()
-          ? { requirements: input.coreTaskInfo.requirements, guide: input.coreTaskInfo.writing_guide, labels: input.coreTaskInfo.task_elements.map((e) => e.label) }
-          : undefined) ?? undefined;
+        effectiveTarget(elements[0], formRequirementsOn() ? lengthCtxOf(input.coreTaskInfo) : undefined) ?? undefined;
       const parts = await Promise.all(
         soloItemGroups.map((group, i) =>
           generate({
@@ -1728,11 +1742,7 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
       // 단계마다 **그 단계의 목표 분량**을 자기 호출에 다시 적는다 — 공유 프롬프트의 목록만으로는
       // 저장된 9회가 214~930자로 갈렸다(목표 600, 역할 범위 300~900). 항목 나눠 쓰기에서 통한 처방과 같다.
       // ctx는 항상 넘긴다 — 없으면 `effectiveTarget`이 칸 크기를 읽지 못해 역할 표 숫자를 돌려준다(칸 블록과 어긋난다).
-      const guideCtx = {
-        requirements: input.coreTaskInfo.requirements,
-        guide: input.coreTaskInfo.writing_guide,
-        labels: input.coreTaskInfo.task_elements.map((e) => e.label),
-      };
+      const guideCtx = lengthCtxOf(input.coreTaskInfo);
       // 칸을 아는 단계면 `effectiveTarget`이 칸에서 숫자를 내준다(length-plan.ts) — 여기서 따로 계산하지 않는다.
       const targetOf = (l: string): number | undefined => {
         const el = elements.find((e) => e.label === l);
