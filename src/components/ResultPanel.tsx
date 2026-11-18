@@ -14,6 +14,8 @@ import Button from "@/components/ui/Button";
 import { ClaimCheckNote, MD_COMPONENTS, ProductionNotes } from "@/components/result/ResultExtras";
 import { useT } from "@/lib/i18n";
 
+const ACTION_BTN = "h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-left";
+
 // 결과 카드 위쪽의 경고 배너. 조용히 최종본인 척 내보내지 않고 정직하게 알리기 위한 것들이다.
 //  - caution: 검증이 안 됐거나 기준에 못 미침(출처 없음·분량·필수 항목)
 //  - danger: 확인된 오류(저자가 다르게 확인됨)
@@ -117,20 +119,15 @@ function RegenerateBox({ onRegenerate }: { onRegenerate: (revisionInstructions: 
 
   if (!open) {
     return (
-      <div className="mt-6 border-t border-border pt-4">
-        <button
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
-        >
-          <PencilLine size={14} strokeWidth={1.7} />
-          {t("마음에 안 들어요, 수정 요청하기 (하루 1회)")}
-        </button>
-      </div>
+      <Button size="sm" className={ACTION_BTN} onClick={() => setOpen(true)}>
+        <PencilLine size={14} strokeWidth={1.7} />
+        {t("마음에 안 들어요, 수정 요청하기 (하루 1회)")}
+      </Button>
     );
   }
 
   return (
-    <div className="mt-6 space-y-3 border-t border-border pt-4">
+    <div className="basis-full space-y-3 pt-2">
       <label htmlFor="regen-text" className="block text-[13px] font-semibold">
         {t("어떤 방향으로 고치고 싶은지 적어 주세요")}
       </label>
@@ -200,25 +197,21 @@ function ShareButton({ submissionId }: { submissionId: string }) {
   }
 
   return (
-    <div className="mt-4">
-      <button
-        onClick={handleShare}
-        disabled={state === "loading"}
-        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground disabled:opacity-40"
-      >
+    <>
+      <Button size="sm" className={ACTION_BTN} onClick={handleShare} disabled={state === "loading"}>
         <Link2 size={14} strokeWidth={1.7} />
         {state === "loading"
           ? t("링크 만드는 중...")
           : state === "copied"
             ? t("링크를 복사했어요 (로그인 없이 읽을 수 있어요)")
             : t("읽기 링크 복사")}
-      </button>
+      </Button>
       {state === "error" && (
-        <p role="alert" className="mt-1 text-xs text-danger">
+        <p role="alert" className="basis-full text-xs text-danger">
           {errorMessage}
         </p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -252,20 +245,15 @@ function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText
 
   if (!open) {
     return (
-      <div className="mt-4">
-        <button
-          onClick={handleOpen}
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-foreground"
-        >
-          <MessageSquareQuote size={14} strokeWidth={1.7} />
-          {t("발표 후 받을 만한 예상 질문 보기")}
-        </button>
-      </div>
+      <Button size="sm" className={ACTION_BTN} onClick={handleOpen}>
+        <MessageSquareQuote size={14} strokeWidth={1.7} />
+        {t("발표 후 받을 만한 예상 질문 보기")}
+      </Button>
     );
   }
 
   return (
-    <div className="mt-4 rounded-xl border border-border bg-background p-4">
+    <div className="basis-full rounded-xl border border-border bg-background p-4">
       <p className="mb-2 text-xs font-semibold text-faint">{t("예상 질문")}</p>
       {loading && (
         <p role="status" className="text-sm text-muted">
@@ -289,6 +277,13 @@ function ExpectedQuestionsBox({ topic, resultText }: { topic: string; resultText
       )}
     </div>
   );
+}
+
+// 결과 아래의 액션(수정 요청·링크 복사·예상 질문)은 흩어진 글줄 대신 한 줄의 같은 버튼으로 모은다.
+// 좁은 화면에서 긴 글이 넘치지 않게 줄바꿈을 허용한다.
+function ActionRow({ show, children }: { show: boolean; children: ReactNode }) {
+  if (!show) return null;
+  return <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-border pt-4">{children}</div>;
 }
 
 // 제출할 글을 **읽는** 화면이다. 사용자 실사용(2026-11-12): "길긴 한데 읽기가 복잡하다."
@@ -350,9 +345,11 @@ export function EssayPanel({
         checks={[...(result.claimCheck ? [result.claimCheck] : []), ...(result.sections ?? []).flatMap((x) => (x.claimCheck ? [x.claimCheck] : []))]}
       />
       <SourceList sources={result.sources} />
-      {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
-      {result.submissionId && <ShareButton submissionId={result.submissionId} />}
-      {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.markdown} />}
+      <ActionRow show={!!result.submissionId || !!(showExpectedQuestions && topic)}>
+        {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
+        {result.submissionId && <ShareButton submissionId={result.submissionId} />}
+        {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.markdown} />}
+      </ActionRow>
     </section>
   );
 }
@@ -409,9 +406,11 @@ export function PlanPanel({
           </ol>
         </div>
       )}
-      {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
-      {result.submissionId && <ShareButton submissionId={result.submissionId} />}
-      {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.content} />}
+      <ActionRow show={!!result.submissionId || !!(showExpectedQuestions && topic)}>
+        {result.submissionId && onRegenerate && <RegenerateBox onRegenerate={onRegenerate} />}
+        {result.submissionId && <ShareButton submissionId={result.submissionId} />}
+        {showExpectedQuestions && topic && <ExpectedQuestionsBox topic={topic} resultText={result.content} />}
+      </ActionRow>
     </section>
   );
 }

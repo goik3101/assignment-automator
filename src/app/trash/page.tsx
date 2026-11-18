@@ -5,6 +5,8 @@ import { BookOpen, Sparkles, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useLang } from "@/lib/i18n";
+import Button from "@/components/ui/Button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface TrashRow {
   key: string;
@@ -22,6 +24,7 @@ export default function TrashPage() {
   const { user, loading } = useAuth();
   const [rows, setRows] = useState<TrashRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [purge, setPurge] = useState<TrashRow | null>(null);
 
   const load = useCallback(async () => {
     const get = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -59,7 +62,6 @@ export default function TrashPage() {
   }, [user, load]);
 
   async function act(r: TrashRow, action: "restore" | "delete") {
-    if (action === "delete" && !window.confirm(t("영구 삭제하면 되돌릴 수 없어요. 삭제할까요?"))) return;
     const base = r.kind === "auto" ? `/api/histories/${r.id}` : `/api/learning/sessions/${r.id}`;
     try {
       const res =
@@ -100,19 +102,33 @@ export default function TrashPage() {
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button onClick={() => act(r, "restore")} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-strong px-3 text-[13px] font-semibold transition-colors hover:bg-raised">
+                <Button size="sm" onClick={() => act(r, "restore")}>
                   <Undo2 size={14} strokeWidth={1.8} />
                   {t("복원")}
-                </button>
-                <button onClick={() => act(r, "delete")} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-danger/50 px-3 text-[13px] font-semibold text-danger transition-colors hover:bg-danger/10">
+                </Button>
+                <Button size="sm" variant="danger" onClick={() => setPurge(r)}>
                   <Trash2 size={14} strokeWidth={1.8} />
                   {t("영구 삭제")}
-                </button>
+                </Button>
               </div>
             </li>
           ))}
         </ul>
       )}
+      <AlertDialog open={purge !== null} onOpenChange={(o) => !o && setPurge(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("영구 삭제")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("영구 삭제하면 되돌릴 수 없어요. 삭제할까요?")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("취소")}</AlertDialogCancel>
+            <AlertDialogAction variant="danger" onClick={() => purge && void act(purge, "delete")}>
+              {t("영구 삭제")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
