@@ -19,6 +19,8 @@ const BAN_SENTENCE =
   // (실측 2026-11-03). 선생님들이 가장 흔히 쓰는 표현 중 하나다.
   /(?:사용할|활용할|사용|활용|쓸|넣을|붙일|실을|첨부할)\s*수\s*(?:없|불가)|(?:사용|활용)\s*(?:불가|금지|안\s*됨|안\s*된다)|금지|(?:쓰지|붙이지|넣지|싣지|올리지|첨부하지)\s*(?:말|않|마)/;
 
+import { isActionLogLabel } from "./own-activity.ts";
+
 export interface VisualElement {
   label: string;
   description: string;
@@ -89,6 +91,9 @@ export function needsDataTable(
   soleStep = false,
   siblings: VisualElement[] = []
 ): boolean {
+  // 행동기록·활동일지는 양식 표(날짜·활동·느낀 점)라 수치 표가 아니다 — 수치 표 지시(| 연도 | 값 |)가 붙으면 행동기록에 엉뚱한 연도 표가 끼고
+  // "표를 안 만들었다" 보완이 돈다(2026-11-19 정보-02). 양식 표 자체는 table-form이 맡는다. 채점 기준표 등 다른 양식 표는 예전대로 둔다.
+  if (isActionLogLabel(el.label)) return false;
   if (wantsTable([el.label, el.description, (el.required_items ?? []).join(" ")].join(" "))) return true;
   const sentences = [...requirements, guide ?? ""].flatMap((line) => (line ? splitSentences(line) : []));
   return sentences.some((sentence) => {

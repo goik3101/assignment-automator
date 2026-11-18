@@ -97,3 +97,9 @@ test("표 요구는 그 문장의 주인 단계에만 붙는다 (2026-11-11 수�
   assert.equal(needsDataTable(paper[1], ["신문에는 그림이나 표는 필수로 넣는다."], undefined, false, paper), true);
   assert.equal(needsDataTable(paper[0], ["신문에는 그림이나 표는 필수로 넣는다."], undefined, false, paper), false);
 });
+
+// 2026-11-19 정보-02: 행동기록은 양식 표이지 수치 표가 아니다 — "표 형태"라는 문장이 수치 표 지시를 붙여 연도 표가 끼었다.
+test("행동기록 단계에는 수치 표를 시키지 않는다", () => {
+  const log = { label: "행동기록", description: "행동일지처럼 기록한다.", required_items: ["날짜(또는 시간)", "활동 내용"] };
+  assert.equal(needsDataTable(log, ["행동기록은 표 형태로 작성한다."], "행동기록 표는 작성 예시이다.", false, [log]), false);
+});
