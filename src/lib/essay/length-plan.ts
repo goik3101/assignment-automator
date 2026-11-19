@@ -64,6 +64,8 @@ export interface RoleCtx {
   labels?: string[];
   /** 안내문 전사(core_task_info.notice_text) — 손글씨 예산 관문만 읽는다. */
   notice?: string;
+  /** 안내문의 모든 단계 — 글 단계들의 계획 총량을 맞추려면 형제 단계의 항목·유형까지 알아야 한다(planLength). */
+  elements?: (PlanElement & { type?: string; target_length?: unknown })[];
 }
 
 /**
@@ -116,6 +118,15 @@ export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
   if (/문항[^.\n]{0,14}각각\s*(?:답|작성|설명)|각\s*문항(?:에|마다)/.test(text) && (el.required_items?.length ?? 0) >= 4) return "qa_list";
   // 항목이 전부 "문제 N"·"문항 N"이면 문제 목록이다 — 항목당 대여섯 문장(보고서)이 아니다(한문-01 문제 20개가 1,500~2,400자 기준을 받았다, 2026-11-16).
   if ((el.required_items?.length ?? 0) >= 4 && (el.required_items ?? []).every((i) => /^(?:문제|문항)\s*\d+$/.test(i.trim()))) return "qa_list";
+  // 칸 하나에 짧게 답하는 단계 — 역할 표의 기본 800~1,600자는 "한 줄에 입장 쓰기"·"옳고 그름 표시"·"자기 평가표 점수"에도 그대로 붙었다.
+  // 2026-11-19 34종 점검(ChatGPT식 기준선 대 우리 계획 총량): 이런 단계가 낀 안내문이 계획 총량 2~6배로 벗어난 안내문의 공통점이었다
+  // (과학-02 5.9배: 답안 칸 단계 넷이 각 800~1,350자 / 사회-05 2.1배 / 과학-07 4.1배: 자기 평가표가 1,150~2,100자).
+  // 소제목 항목이 있는 단계(위 sections)는 항목 수로 재므로 여기는 **항목이 없거나 표시·평가표인 단계**만 본다.
+  {
+    const answerBox = /답안\s*칸/.test([...(ctx?.requirements ?? []), ctx?.guide ?? ""].join(" "));
+    if (/자기\s*평가|상호\s*평가|동료\s*평가|자가\s*진단/.test(label) && /평가표|점수|합계|\d\s*\/\s*\d/.test(text)) return "qa_list";
+    if ((el.required_items?.length ?? 0) < 2 && (answerBox || /한\s*줄에|옳고\s*그름|○\s*×|O\s*\/\s*X|옳은\s*것만\s*고|표시한다|표시하고/.test(text))) return "short_answer";
+  }
   if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return qualityFixesOn() && !isResearchMaterialStep(el) ? "report_sections" : "material";
   if (/소감|느낀\s*점|후기|성찰|반성|다짐/.test(label)) return "reflection";
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
@@ -139,7 +150,7 @@ const PER_ITEM = 140;
 
 // 평가 기준 개수로 상한을 줄이는 규칙은 넣지 않는다(2026-11-06 시도 후 제거): 기준 개수를 문장 매칭으로 세면 부정확해서
 // 8장면 스토리보드가 "500~500자"가 됐다. 짧게 나오는 문제를 키우므로 기준 수 → 분량 규칙은 만들지 않는다.
-export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
+function planOne(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   const plan = rolePlanLength(el, ctx);
   // **교실에서 손으로 쓰는 평가면 쓸 수 있는 시간이 상한이다**(handwrite-budget.ts).
   // 사용자 실사용(2026-11-12): 과학 탐구보고서가 2,181자로 나왔는데 그 과제는 "2차시 개별 평가, 시험 대형"이다 —
@@ -277,6 +288,36 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   }
 }
 
+// ── 안내문 전체 분량 총량 ─────────────────────────────────────────────────────────────────────────
+// 2026-11-19 구조 점검(안내문 34종, ChatGPT식 기준선 대 우리 계획 총량): 단계마다 역할 표의 기본값을 **더하는** 구조라 총량이 단계 수에 비례했다
+// (우리 계획 총량 1,600~6,400자, 같은 안내문을 사진+한 줄로 쓴 기준선은 단계 수와 무관하게 중앙 2,460자·4분위 상한 3,300자). 단계가 4~5개인 안내문이
+// 기준선의 2~4배로 벗어났다(과학-07 4.1배, 수학-02 2.1배 …) — 학생은 그 단계들을 한 묶음 과제로 읽고 "너무 길다"고 느낀다.
+// 그래서 **물리적 한계가 없는 단계들의 합**이 TOTAL_CAP을 넘으면 같은 비율로 줄인다(단계 사이 비율은 그대로). 손으로 쓸 시간·안내문이 말한 글자 수가 있는 단계는
+// 이미 한계가 정해져 있어 줄이지 않는다. LENGTH_TOTAL_CAP=off로 끈다.
+const TOTAL_CAP = 3500;
+
+export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
+  const own = planOne(el, ctx);
+  const all = (ctx?.elements ?? []).filter((e) => !e.type || e.type === "text_submission");
+  if (process.env.LENGTH_TOTAL_CAP === "off" || all.length < 2) return own;
+  const mid = (p: LengthPlan) => (p.min + p.max) / 2;
+  let fixed = 0;
+  let pool = 0;
+  let ownInPool = false;
+  for (const e of all) {
+    const p = e.label === el.label ? own : planOne(e, ctx);
+    if (p.basis.includes("손으로 쓸 시간") || e.target_length) fixed += mid(p);
+    else {
+      pool += mid(p);
+      if (e.label === el.label) ownInPool = true;
+    }
+  }
+  const room = Math.max(TOTAL_CAP - fixed, TOTAL_CAP * 0.4);
+  if (!ownInPool || pool <= room) return own;
+  const k = room / pool;
+  return { ...own, min: Math.max(60, Math.round(own.min * k)), max: Math.max(100, Math.round(own.max * k)), basis: own.basis + ` → 안내문 전체 총량 상한 ${TOTAL_CAP}자에 맞춰 ${Math.round(k * 100)}%로` };
+}
+
 const round50 = (n: number) => Math.round(n / 50) * 50;
 
 /** 목표 하나에 허용할 오차. */
@@ -350,10 +391,11 @@ export type GuideCtx = {
   topic?: string;
   siblings?: { label: string; description: string }[];
   notice?: string;
+  elements?: RoleCtx["elements"];
 };
 
 const roleCtx = (ctx?: GuideCtx): RoleCtx | undefined =>
-  ctx ? { topic: ctx.topic, siblings: ctx.siblings, requirements: ctx.requirements, guide: ctx.guide, labels: ctx.labels, notice: ctx.notice } : undefined;
+  ctx ? { topic: ctx.topic, siblings: ctx.siblings, requirements: ctx.requirements, guide: ctx.guide, labels: ctx.labels, notice: ctx.notice, elements: ctx.elements } : undefined;
 
 /**
  * 안내문이 이 단계의 **양식 칸 줄 수**를 알려 줬는가(box-lines.ts). 알려 줬으면 그 칸이 기준이고,

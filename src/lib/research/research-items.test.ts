@@ -44,3 +44,7 @@ test("가운뎃점으로 묶인 항목은 '부정적 영향: … 문제점: …'
   assert.deepEqual(findMissingItems(c, ["부정적 영향·문제점"]), []);
   assert.deepEqual(findMissingItems("### 기술의 정의\n긍정적 영향: 영상 제작이 쉬워졌다.", ["부정적 영향·문제점"]), ["부정적 영향·문제점"]);
 });
+
+test("단원명 같은 값 칸은 짧아도 비었다고 하지 않는다", () => {
+  assert.deepEqual(findMissingItems("### 단원명\n수열과 금융\n\n### 내용\n" + "정기적금은 매월 일정한 금액을 납입하는 상품이다. ".repeat(3), ["단원명", "내용"]), []);
+});

@@ -646,6 +646,7 @@ function lengthCtxOf(core: CoreTaskInfo, elements: CoreTaskInfo["task_elements"]
     topic: core.topic,
     siblings: elements.map((e) => ({ label: e.label, description: e.description })),
     notice: core.notice_text,
+    elements: core.task_elements,
   };
 }
 
@@ -760,15 +761,7 @@ ${input.previousOutputText}
     },
   };
   const formOn = formRequirementsOn();
-  const formCtx = {
-    requirements: input.coreTaskInfo.requirements,
-    guide: input.coreTaskInfo.writing_guide,
-    labels: input.coreTaskInfo.task_elements.map((e) => e.label),
-    // 역할 분류가 "이 단계가 한 지면의 칸인지"를 알려면 과제 주제와 형제 단계를 봐야 한다(length-plan.ts의 RoleCtx).
-    topic: input.coreTaskInfo.topic,
-    siblings: input.coreTaskInfo.task_elements.map((e) => ({ label: e.label, description: e.description })),
-    notice: input.coreTaskInfo.notice_text,
-  };
+  const formCtx = lengthCtxOf(input.coreTaskInfo);
   // 안내문이 칸의 줄 수를 알려 준 단계는 그 칸 크기가 기준이다 — 학생은 이 글을 그 칸에 옮겨 적는다(box-lines.ts).
   // 실측(2026-11-07, 역사 신문): "내용 약 5줄" 칸에 1102자·949자를 썼고 사설은 308자와 2286자로 7배 갈렸다.
   // 안내문이 "분량 제한 없음"이라고 했으면(손글씨 포함) 칸 줄 수로 묶지 않는다 — 둘이 반대를 말하면 그쪽이 맞다.
@@ -1667,14 +1660,7 @@ async function generateOnce(
           if (!book || !isReadingActivity([input.coreTaskInfo.topic, input.instructions ?? ""])) return undefined;
           return bookThreadBlock(book.title, Math.max(...elements.map((e) => e.required_items?.length ?? 1), 1));
         })(),
-        lengthLines: lengthGuideLines(elements, {
-          requirements: input.coreTaskInfo.requirements,
-          guide: input.coreTaskInfo.writing_guide,
-          labels: elements.map((e) => e.label),
-          topic: input.coreTaskInfo.topic,
-          siblings: elements.map((e) => ({ label: e.label, description: e.description })),
-          notice: input.coreTaskInfo.notice_text,
-        }),
+        lengthLines: lengthGuideLines(elements, lengthCtxOf(input.coreTaskInfo)),
       })
     : buildPrompt(input, elements, notes);
   if (lean) console.log(`[generateEssay] 얇은 경로(안내문 사진 ${input.noticeImages?.length}장, 프롬프트 ${prompt.length}자 — 기본 경로는 보통 1만자 이상)`);
@@ -2460,14 +2446,7 @@ async function generateEssayImpl(
     elements
       .filter((el) => !el.target_length)
       .map((el) => {
-        const plan = planLength(el, {
-          topic: input.coreTaskInfo.topic,
-          siblings: elements.map((e) => ({ label: e.label, description: e.description })),
-          requirements: input.coreTaskInfo.requirements,
-          guide: input.coreTaskInfo.writing_guide,
-          labels: elements.map((e) => e.label),
-          notice: input.coreTaskInfo.notice_text,
-        });
+        const plan = planLength(el, lengthCtxOf(input.coreTaskInfo));
         const boxMin = taskBoxLengths(elements, input.coreTaskInfo).find((x) => x.label === el.label)?.min ?? 0;
         // 바닥은 역할 목표 최소값의 절반, 천장은 **최대값의 1.4배**(그 아래는 손대지 않는다 — 점수가 길이를
         // 따라가지 않으므로 어설픈 줄이기는 시간만 쓴다). 줄일 때 말해 줄 목표는 역할 최대값 그대로다.

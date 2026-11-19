@@ -167,3 +167,34 @@ test("전사에만 있는 손글씨 신호도 단계 목표를 1,350자로 묶�
   assert.ok(without > 1500, `신호 없이는 묶이지 않아야 한다: ${without}`);
   assert.ok(withNotice <= 1350, `전사 신호가 반영돼야 한다: ${withNotice}`);
 });
+
+// 2026-11-19 구조 점검: 단계마다 기본값을 더하면 총량이 단계 수에 비례한다 — 물리적 한계가 없는 단계들의 합은 총량 상한(3,500자)에 맞춘다.
+test("물리적 한계가 없는 단계들의 합이 총량 상한을 넘으면 같은 비율로 줄인다", () => {
+  const mk = (label: string) => ({ type: "text_submission", label, description: `${label}을 설명하는 글을 쓴다.`, required_items: ["가", "나", "다", "라", "마", "바"], items_format: "sections" as const });
+  const els = [mk("분석 하나"), mk("분석 둘"), mk("분석 셋"), mk("분석 넷")];
+  const ctx = { requirements: [], labels: els.map((e) => e.label), elements: els };
+  const total = els.reduce((s, e) => { const p = planLength(e as never, ctx as never); return s + (p.min + p.max) / 2; }, 0);
+  assert.ok(total <= 3600, `총량 상한 안이어야 한다: ${total}`);
+  const alone = els.reduce((s, e) => { const p = planLength(e as never, { ...ctx, elements: undefined } as never); return s + (p.min + p.max) / 2; }, 0);
+  assert.ok(alone > 4500, `상한 없이는 더 컸어야 한다(비교 기준): ${alone}`);
+});
+
+test("손으로 쓸 시간이 정해진 단계는 총량 상한으로 줄이지 않는다", () => {
+  const els = [
+    { type: "text_submission", label: "보고서", description: "보고서를 쓴다.", required_items: ["가", "나", "다", "라", "마", "바"], items_format: "sections" as const },
+    { type: "text_submission", label: "편지", description: "편지를 쓴다.", required_items: [] },
+  ];
+  const notice = "1차시 보고서\n활동 내용 : 보고서를 씀.\n활동 시간 : 40분 쓰기\n\n2차시 편지\n활동 내용 : 편지 쓰기.\n활동 시간 : 30분간";
+  const p = planLength(els[1] as never, { requirements: [], labels: ["보고서", "편지"], elements: els, notice } as never);
+  assert.ok(p.basis.includes("손으로 쓸 시간"), p.basis);
+  assert.ok(!p.basis.includes("총량 상한"), p.basis);
+});
+
+test("칸 하나에 짧게 답하는 단계(답안 칸·한 줄·자기 평가표)는 짧은 답으로 잰다", () => {
+  const box = { label: "실험1 원리 설명", description: "원리를 설명한다.", required_items: [] };
+  assert.equal(planLength(box as never, { requirements: ["각 활동의 빈 답안 칸에 제시된 원리를 설명할 것"], labels: ["실험1 원리 설명"] } as never).role, "short_answer");
+  const line = { label: "이용 입장 정하기", description: "입장을 정해 양식의 한 줄에 작성한다.", required_items: [] };
+  assert.equal(planLength(line as never, { requirements: [], labels: ["이용 입장 정하기"] } as never).role, "short_answer");
+  const self = { label: "자기 평가", description: "자기 평가표의 각 항목을 1 / 2 / 3으로 평가하고 합계를 기록한다.", required_items: ["가", "나", "다", "라", "마"], items_format: "sections" as const };
+  assert.equal(planLength(self as never, { requirements: [], labels: ["자기 평가"] } as never).role, "qa_list");
+});
