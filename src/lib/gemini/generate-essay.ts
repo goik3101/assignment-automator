@@ -73,6 +73,7 @@ import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { withoutOtherAreaNotes } from "@/lib/gemini/analysis-normalize";
 import { withBookBodyItem } from "@/lib/essay/book-body-item";
+import { mainBookTitle } from "@/lib/essay/book-title";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
@@ -2482,7 +2483,7 @@ async function generateEssayImpl(
       const tryFast = (!taskNeedsExcerpt(input, elements) || preExcerptOn()) && process.env.ESSAY_BOOK_PIPELINE !== "legacy";
       const fast = tryFast ? ((await selectBookCandidateFast(input)) ?? (await selectBookCandidateFast(input))) : null;
       const presetBook = fast ?? (await selectBookCandidate(input));
-      if (presetBook) input = { ...input, presetBook };
+      if (presetBook) input = { ...input, presetBook: { ...presetBook, title: mainBookTitle(presetBook.title) } };
     }
   }
 

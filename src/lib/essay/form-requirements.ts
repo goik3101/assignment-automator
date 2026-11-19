@@ -284,7 +284,8 @@ export function countScenes(content: string, word?: string): number {
     const t = line.trim().replace(/^[#>*\-\s]+/, "").replace(/^\*\*/, "");
     let m = new RegExp(`^(?:${unit})\\s*(\\d{1,2})\\b`).exec(t);
     if (m) nums.add(Number(m[1]));
-    m = new RegExp(`^(\\d{1,2})\\s*(?:번\\s*)?(?:${unit})\\b`).exec(t);
+    // 단위 낱말 뒤의 \b는 한글과 공백 사이를 경계로 보지 않아 "1장면 내용"을 못 셌다(2026-11-19 가정-02: 6장면인데 "실제 0개" 거짓 경고).
+    m = new RegExp(`^(\\d{1,2})\\s*(?:번\\s*)?(?:${unit})(?=$|[\\s:.)\\]·\\-–—])`).exec(t);
     if (m) nums.add(Number(m[1]));
     // 문제 목록은 "### 문제 1" 아래에 "1. …" "2. …"로 번호만 매겨 이어 쓰기도 한다(한문-01에서 20문제가 2개로 세어졌다).
     if (word && /^(?:문제|문항)$/.test(word)) {

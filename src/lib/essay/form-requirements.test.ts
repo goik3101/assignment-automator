@@ -151,6 +151,9 @@ test("장면 세기: 소제목·컷 표지·원 숫자·표 행", () => {
   assert.equal(countScenes("### 장면 1\n화면\n### 장면 2\n화면\n### 장면 3\n"), 3);
   assert.equal(countScenes("컷 1: 교문\n컷 2: 복도\n컷 2: 복도 다시\n"), 2);
   assert.equal(countScenes("① 시작\n② 전개\n③ 끝"), 3);
+  // 번호가 앞에 오는 소제목("1장면 내용") — 한글 뒤 \b가 경계가 아니라서 0개로 세었다(가정-02).
+  assert.equal(countScenes("### 1장면 내용\n가\n### 2장면 내용\n나\n### 3장면 내용\n다\n### 해결방법\n라"), 3);
+  assert.equal(countScenes("3장면에서는 갈등이 커진다.\n그래서 해결한다."), 0, "문장 첫머리의 '3장면에서는'은 소제목이 아니다");
   assert.equal(countScenes("| 장면 | 화면 |\n|---|---|\n| 1 | 교문 |\n| 2 | 복도 |"), 2);
   assert.equal(countScenes("화면은 밝다. 대사는 짧다."), 0);
 });

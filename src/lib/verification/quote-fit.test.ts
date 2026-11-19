@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { hangulShare, isForeignExcerpt, isFullTextDump, pickQuoteChunk } from "./quote-fit.ts";
+import { hangulShare, isForeignExcerpt, isFullTextDump, looksLikeMarketingCopy, pickQuoteChunk } from "./quote-fit.ts";
 
 describe("isForeignExcerpt", () => {
   it("한국어 제목 책의 포르투갈어 구절은 외국어 원문이다 (2026-11-19 결과물)", () => {
@@ -51,6 +51,23 @@ describe("pickQuoteChunk", () => {
   });
   it("허용 출처가 하나도 없으면 undefined", () => {
     assert.equal(pickQuoteChunk(chunks.slice(0, 2), "x", weak), undefined);
+  });
+});
+
+describe("looksLikeMarketingCopy", () => {
+  it("저자·책을 3인칭으로 소개하는 앞머리는 카피다 (예전엔 \\b 때문에 전부 안 걸렸다)", () => {
+    assert.equal(looksLikeMarketingCopy("이 책은 수많은 독자에게 사랑받았다"), true);
+    assert.equal(looksLikeMarketingCopy("저자는 평범한 일상에서 길어 올린 이야기를 들려준다"), true);
+    assert.equal(looksLikeMarketingCopy("작가는 말한다"), true);
+    assert.equal(looksLikeMarketingCopy("이 책은"), true);
+  });
+  it("광고성 수사만 있어도 카피다", () => {
+    assert.equal(looksLikeMarketingCopy("전국 강연에서 뜨거운 호응을 얻은 이야기"), true);
+  });
+  it("책 본문 문장은 아니다", () => {
+    assert.equal(looksLikeMarketingCopy("손을 잡고 서두르지 않은 채 길을 걸었다."), false);
+    assert.equal(looksLikeMarketingCopy("나는 이 책은행나무 아래에서 읽었다"), false);
+    assert.equal(looksLikeMarketingCopy("저자 서문을 읽었다"), false);
   });
 });
 
