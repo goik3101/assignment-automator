@@ -93,3 +93,9 @@ test("짝 맞추기: 3~5쌍이어야 하고 같은 말이 두 번 나오면 안 
     null
   );
 });
+
+test("암기 설정: 두음 보조는 기본 켜짐, 잘못된 값은 기본값", () => {
+  assert.equal(sanitizeStudyPrefs(null).memorize.mnemonic, true);
+  assert.equal(sanitizeStudyPrefs({ memorize: { mnemonic: false } }).memorize.mnemonic, false);
+  assert.equal(sanitizeStudyPrefs({ memorize: { mnemonic: "no" } }).memorize.mnemonic, true);
+});

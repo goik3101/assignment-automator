@@ -6,6 +6,7 @@ import { quizTypePlan, type QuizPrefs, type QuizType, type SummaryPrefs } from "
 import { readMemorizeSource, memorizeBlock, orderInstruction, termInstruction } from "./memorize-source";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { filterKeyTerms } from "./summary-terms";
+import { cleanSkeleton, skeletonLimits, type SkeletonBox } from "./memo-skeleton";
 export type { QuizQuestion };
 
 // 학습 도구: 이미 만들어진 과제 내용(AI 결과물 또는 학습 모드의 조사 자료·학생 글)을 "공부하기 좋은 형태"로 바꿔 준다.
@@ -36,9 +37,9 @@ function material(c: StudyContext): string {
  * 칸 이름과 **각주 붙은 문장**을 앞에 세우면 그 기준이 재료 자체에 들어간다.
  * 외울 것이 없는 과제(각주 없는 창작·계획형)에서는 빈 문자열이라 예전과 똑같이 돈다.
  */
-function memorize(c: StudyContext) {
+function memorize(c: StudyContext, opts?: { anchored?: boolean }) {
   const src = readMemorizeSource(c.text ?? "");
-  const block = memorizeBlock(src);
+  const block = memorizeBlock(src, opts);
   return { src, block: block ? `${block}\n\n` : "" };
 }
 
@@ -48,68 +49,80 @@ const strArr = (description?: string): Schema => ({ type: Type.ARRAY, items: { t
 export interface StudySummary {
   headline: string;
   format: "bullets" | "prose";
-  /** 개조식일 때 핵심 항목. */
+  /** 옛 저장본의 핵심 항목. 새로 만들 때는 비워 둔다 — 뼈대(skeleton)가 그 역할을 한다. */
   points: string[];
-  /** 서술식일 때 문단. */
+  /** 옛 저장본의 서술식 문단. */
   paragraphs: string[];
-  keyTerms: { term: string; meaning: string }[];
-  /** "쉬운 설명 포함"을 켰을 때만 — 어려운 개념을 비유·예시로 풀어 쓴 것. */
+  /** "개념 이해" — 학생이 모를 만한 개념을 쉬운 말로. inTask는 이 결과물에서 어디에 쓰였는지, analogy는 "쉬운 설명 포함"을 켰을 때의 비유. */
+  keyTerms: { term: string; meaning: string; inTask?: string; analogy?: string }[];
+  /** 옛 저장본 호환용 — 새로 만들 때는 비워 둔다. */
   easyExplanations: { topic: string; explanation: string }[];
+  /** **암기 뼈대**: 칸 순서 + 칸마다 한 줄·핵심어. 시험장에서 문장은 즉석에서 쓰니 외울 것은 이것뿐이다(memo-skeleton.ts). */
+  skeleton: SkeletonBox[];
 }
+
+/**
+ * "어떤 개념을 알려 줄지"의 기준 — 개념 이해(요약)와 암기 카드가 **같은 기준**을 쓴다(이해한 개념이 곧 외울 개념).
+ * 기준은 "교과 개념인가"가 아니라 "이 과제를 하는 고등학생이 **모를 만한가**"다 — 일상어·교과서 첫 줄 낱말을 알려 주면 요약이 쓸모없다.
+ */
+const CONCEPT_PICK =
+  `**학생이 뜻을 정확히 모를 만한 말**만 고른다: 전문 용어·한자어·학술 표현·이 단원에서 처음 만나는 개념(예: 영양단계, 생물 농축, 기회비용). ` +
+  `누구나 아는 일상어·지명·사물 이름(예: 멸치, 바다, 환경, 사회)과 "관찰 지침·예상 결과·보고서 항목"처럼 과제를 진행하는 말은 개념이 아니므로 넣지 않는다. ` +
+  `이 결과물을 이해하는 데 **더 중요한 것부터**, 자료에 실제로 나온 낱말만 쓴다.`;
 
 const SUMMARY_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
-    headline: { type: Type.STRING, description: "전체를 한 문장으로(40자 안팎)" },
-    points: strArr("개조식일 때 핵심 항목(각 한 문장). 서술식이면 빈 배열."),
-    paragraphs: strArr("서술식일 때 문단(각 2~4문장). 개조식이면 빈 배열."),
+    headline: { type: Type.STRING, description: "이 결과물이 말하는 것을 한 문장으로(35자 안팎, 명사로 끝내지 말고 결론을)" },
     key_terms: {
       type: Type.ARRAY,
-      description: "이 과제를 이해하고 시험에서 쓰려면 꼭 알아야 하는 **교과 개념**(예: 생산자, 소비자, 분해자). 과제 진행 방법·관찰 지침·예상·보고서 항목 같은 말은 개념이 아니다.",
-      items: {
-        type: Type.OBJECT,
-        properties: { term: { type: Type.STRING, description: "교과 개념 이름(자료에 실제로 나온 낱말)" }, meaning: { type: Type.STRING, description: "고등학교 교과서 수준의 **정확한 뜻** 한 줄(필요하면 예를 하나)" } },
-        required: ["term", "meaning"],
-      },
-    },
-    easy_explanations: {
-      type: Type.ARRAY,
-      description: "쉬운 설명을 요청했을 때만. 아니면 빈 배열.",
+      description: "학생이 모를 만한 개념(전문 용어·한자어·처음 만나는 개념), 중요한 순서",
       items: {
         type: Type.OBJECT,
         properties: {
-          topic: { type: Type.STRING, description: "어려운 개념 이름" },
-          explanation: { type: Type.STRING, description: "중학생도 알아듣게 비유·예시로 2~3문장" },
+          term: { type: Type.STRING, description: "개념 이름(자료에 실제로 나온 낱말)" },
+          meaning: { type: Type.STRING, description: "중학생도 알아듣는 쉬운 말 한 문장(45자 안팎). 어려운 한자어로 다시 설명하지 않는다" },
+          in_task: { type: Type.STRING, description: "이 결과물에서 이 개념이 쓰인 곳 한 줄(30자 안팎)" },
+          analogy: { type: Type.STRING, description: "일상 비유 한 줄. 요청하지 않았으면 빈 문자열" },
         },
-        required: ["topic", "explanation"],
+        required: ["term", "meaning", "in_task", "analogy"],
+      },
+    },
+    skeleton: {
+      type: Type.ARRAY,
+      description: "암기 뼈대 — 칸(또는 큰 덩어리) 순서대로",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          box: { type: Type.STRING, description: "칸 이름(안내문의 칸 이름 그대로, 없으면 덩어리 이름 2~8자)" },
+          line: { type: Type.STRING, description: "그 칸에서 말할 핵심 한 문장(40자 안팎). 아래 keywords가 이 문장 안에 그대로 들어 있어야 한다" },
+          keywords: strArr("외울 핵심어. 반드시 line 안에 있는 낱말(이름·전문 용어·수치·연도·결론 방향), 자료에 나온 표기 그대로"),
+        },
+        required: ["box", "line", "keywords"],
       },
     },
   },
-  required: ["headline", "points", "paragraphs", "key_terms", "easy_explanations"],
+  required: ["headline", "key_terms", "skeleton"],
 };
 
-const SUMMARY_DETAIL: Record<SummaryPrefs["detail"], { points: string; paragraphs: string; terms: string; max: number }> = {
-  brief: { points: "3개", paragraphs: "1개", terms: "2~3개", max: 4 },
-  standard: { points: "4~6개", paragraphs: "2~3개", terms: "3~6개", max: 8 },
-  detailed: { points: "7~10개", paragraphs: "4~5개", terms: "5~8개", max: 12 },
+const SUMMARY_DETAIL: Record<SummaryPrefs["detail"], { terms: string; max: number }> = {
+  brief: { terms: "2~3개", max: 3 },
+  standard: { terms: "4~5개", max: 5 },
+  detailed: { terms: "6~8개", max: 8 },
 };
 
 export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise<StudySummary> {
-  const mem = memorize(c);
+  // 요약에는 칸 순서만 준다 — [외울 문장]을 앞에 세우면 "외울 것"에 끌려 요약이 문장 나열이 되고 개념이 엉뚱해졌다(2026-11-19).
+  const mem = memorize(c, { anchored: false });
   const d = SUMMARY_DETAIL[prefs.detail];
-  const shape =
-    prefs.format === "prose"
-      ? `- 서술식: paragraphs에 문단 ${d.paragraphs}로 이어지는 글처럼 정리하고 points는 빈 배열로 둔다.`
-      : `- 개조식: points에 핵심 항목 ${d.points}를 짧은 한 문장씩 적고 paragraphs는 빈 배열로 둔다.`;
-  const easy = prefs.easy
-    ? "- easy_explanations에 자료 속 어려운 개념 2~4개를 골라 비유나 일상 예시로 쉽게 풀어 준다(자료에 없는 사실은 덧붙이지 않는다)."
-    : "- easy_explanations는 빈 배열로 둔다.";
+  // 손으로 쓰는 시험이면 쓸 수 있는 글자 수에 맞춰 외울 양을 줄인다(안내문이 시간을 말했을 때만).
+  const real = handwriteBudget([c.assignmentInfo]);
+  const limits = skeletonLimits(prefs.detail, real?.chars);
+  const analogy = prefs.easy ? "각 개념의 analogy에 일상 비유 한 줄을 쓴다(자료에 없는 사실은 덧붙이지 않는다)." : "analogy는 빈 문자열로 둔다.";
   const { data } = await generateJson<{
     headline: string;
-    points: string[];
-    paragraphs: string[];
-    key_terms: { term: string; meaning: string }[];
-    easy_explanations: { topic: string; explanation: string }[];
+    key_terms: { term: string; meaning: string; in_task?: string; analogy?: string }[];
+    skeleton: { box: string; line: string; keywords: string[] }[];
   }>({
     label: "study:summary",
     role: "study",
@@ -118,87 +131,41 @@ export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise
     prompt: [
       rules(c),
       "",
-      "아래 자료의 핵심을 요약해줘. 분량을 채우려고 늘리지 말고 정말 중요한 것만 남겨.",
-      shape,
-      `- key_terms는 ${d.terms}. **이 과제의 주제를 이해하고 시험에서 쓰려면 꼭 알아야 하는 교과 개념**만 고른다 — 예를 들어 생태계 과제면 생산자·소비자·분해자·먹이그물·에너지 흐름처럼 단원의 핵심 용어. ` +
-        `"관찰 지침"·"예상 결과"·"보고서 항목"·"실험 계획"처럼 **과제를 진행하는 말이나 문서 구조는 개념이 아니므로 넣지 않는다.** ` +
-        `term은 자료에 실제로 나온 낱말이어야 하고, meaning은 **교과서 기준으로 정확한 뜻**을 쓴다(자료의 설명이 짧거나 부정확해도 교과 개념은 바르게 설명한다. 단, 자료에 없는 숫자·연도·사람 이름은 덧붙이지 않는다).`,
-      `- points는 과제를 한 줄로 되풀이하지 말고 **알아야 할 지식과 결론**(무엇이 무엇이다, 왜 그렇다)을 써라. 개념끼리의 관계(예: 생산자 → 1차 소비자 → 2차 소비자)도 정확해야 한다. 교과 지식과 어긋나는 문장은 옮기지 말고 바르게 고쳐 쓴다.`,
-      // 칸이 여럿인 과제는 요점을 칸 순서로 쓰게 한다(해당 과제일 때만 들어간다). 외울 문장 기준의 "교과 상식 금지"(termInstruction)는 요약에서는 쓰지 않는다 — 학생이 진짜 필요한 개념을 못 얻었다(2026-11-15).
-      mem.src.boxes.length >= 2
-        ? `- 요점은 [칸 순서] 순서대로 쓰되 **칸마다 1~2개 항목**으로 나눈다. 항목 하나는 한 문장이고, 세미콜론(;)으로 여러 내용을 이어 붙이지 않는다. 칸 이름을 항목 앞에 붙인다(예: "논술형 탐구보고서 — …").`
-        : "",
-      "- 실험·활동을 어떻게 하라는 진행 설명보다 **그 활동으로 알게 되는 개념과 결론**을 먼저 쓴다.",
-      easy,
+      "학생은 이 결과물을 **이해한 뒤 단기 기억으로 외워서** 곧바로 수행평가를 본다. 시험장에서 문장은 이해한 대로 즉석에서 쓸 수 있으니, 외울 것은 **즉석에서 못 쓰는 것**(이름·전문 용어·수치·연도·칸 순서·결론의 방향)뿐이다. 분량을 채우려고 늘리지 말고 정말 중요한 것만 남겨.",
+      `- headline: 이 결과물이 말하는 결론을 한 문장으로.`,
+      `- key_terms(${d.terms}) — **이해용**: ${CONCEPT_PICK}`,
+      `  · meaning: 정확하되 중학생도 알아듣는 쉬운 말 한 문장. 교과서 정의를 그대로 옮기지 말고 풀어 쓴다(자료에 없는 숫자·연도·사람 이름은 덧붙이지 않는다).`,
+      `  · in_task: 이 결과물에서 그 개념이 어떻게 쓰였는지 한 줄(예: "멸치가 먹이사슬 어디에 있는지 설명할 때 쓰임").`,
+      `  · ${analogy}`,
+      `- skeleton(최대 ${limits.boxes}칸) — **암기용 뼈대**: ` +
+        (mem.src.boxes.length >= 2
+          ? `[칸 순서]의 칸을 **적힌 순서대로** 한 칸씩(너무 많으면 비슷한 칸을 묶는다).`
+          : `결과물의 큰 흐름을 시험지에 쓰는 순서대로 3~${Math.min(5, limits.boxes)}개 덩어리로 나누고 이름을 붙인다.`),
+      `  · line: 그 칸에서 쓸 핵심을 한 문장(40자 안팎)으로. 과제 설명이 아니라 **내용**이어야 한다(예: "대기압이 물을 빨대 안으로 민다").`,
+      `  · keywords: 그 문장 안에 **그대로 들어 있는** 핵심어를 칸마다 1~${limits.perBox}개. 이름·전문 용어·수치·연도·결론 방향처럼 시험에서 틀리면 안 되는 것만 고르고, 조사·서술어·누구나 쓸 말("중요하다")은 고르지 않는다. 같은 핵심어를 여러 칸에 되풀이하지 말고, 그 칸에서만 나오는 것을 고른다.`,
       "",
       mem.block + material(c),
     ]
       .filter(Boolean)
       .join("\n"),
   });
-  const clean = (a?: string[]) => (a ?? []).map((s) => s.trim()).filter(Boolean).slice(0, d.max);
-  const points = clean(data.points);
-  const paragraphs = clean(data.paragraphs);
+  const terms = (data.key_terms ?? [])
+    .filter((k) => k.term?.trim() && k.meaning?.trim())
+    .map((k) => ({
+      term: k.term.trim(),
+      meaning: k.meaning.trim(),
+      inTask: k.in_task?.trim() || undefined,
+      analogy: prefs.easy ? k.analogy?.trim() || undefined : undefined,
+    }));
   return {
     headline: (data.headline ?? "").trim(),
-    // 모델이 형식을 어겨 한쪽이 비면 있는 쪽을 쓴다.
-    format: prefs.format === "prose" ? (paragraphs.length ? "prose" : "bullets") : points.length ? "bullets" : "prose",
-    points,
-    paragraphs,
-    keyTerms: filterKeyTerms((data.key_terms ?? []).filter((k) => k.term?.trim() && k.meaning?.trim()), c.text ?? "").slice(0, 10),
-    easyExplanations: prefs.easy ? (data.easy_explanations ?? []).filter((e) => e.topic?.trim() && e.explanation?.trim()).slice(0, 5) : [],
+    format: "bullets",
+    points: [],
+    paragraphs: [],
+    keyTerms: filterKeyTerms(terms, c.text ?? "").slice(0, d.max),
+    easyExplanations: [],
+    skeleton: cleanSkeleton(data.skeleton, c.text ?? "", limits),
   };
-}
-
-// ── 플래시카드 ────────────────────────────────────────────────────────────────
-export interface Flashcard {
-  front: string;
-  back: string;
-  hint?: string;
-}
-
-const FLASHCARD_SCHEMA: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    cards: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          front: { type: Type.STRING, description: "앞면: 떠올려야 할 질문이나 빈칸 문장(60자 이내)" },
-          back: { type: Type.STRING, description: "뒷면: 정답과 한 줄 설명(100자 이내)" },
-          hint: { type: Type.STRING, nullable: true, description: "막혔을 때 보는 짧은 힌트(정답을 그대로 말하지 않기)" },
-        },
-        required: ["front", "back"],
-      },
-    },
-  },
-  required: ["cards"],
-};
-
-export async function makeFlashcards(c: StudyContext, count: number): Promise<Flashcard[]> {
-  const mem = memorize(c);
-  const { data } = await generateJson<{ cards: Flashcard[] }>({
-    label: "study:flashcards",
-    role: "study",
-    schema: FLASHCARD_SCHEMA,
-    effort: "low",
-    maxOutputTokens: Math.min(12000, 1200 + count * 160),
-    // 카드는 **단어장처럼 뒤집어 보는 것**이다 — 앞뒤가 길면 카드가 아니다.
-    // 위에 [칸 순서]가 있으면 칸마다 한 장(앞=칸 이름, 뒤=핵심어 2~3개)이 가장 쓸모 있다:
-    // 시험지 앞에서 제일 먼저 막히는 것이 "무엇을 어떤 순서로 쓰지?"다.
-    prompt: `${rules(c)}\n\n아래 자료로 암기용 플래시카드를 ${count}장 만들어줘.\n- 앞면도 뒷면도 짧게(단어장처럼 뒤집어 보는 카드다). 긴 설명은 카드가 아니다.\n- 위에 [칸 순서]가 있으면 **칸마다 한 장씩 먼저** 만든다 — 앞면은 칸 이름, 뒷면은 그 칸에 쓸 핵심어 2~3개.\n- 나머지는 [외울 문장]에서 만든다(연도·수치·정의처럼 틀리면 감점되는 것).\n- 교과서를 펴면 바로 나오는 일반 상식은 카드로 만들지 않는다.\n- 같은 내용을 두 장에 중복하지 않는다.\n\n${mem.block}${material(c)}`,
-  });
-  const seen = new Set<string>();
-  return (data.cards ?? [])
-    .map((x) => ({ front: x.front?.trim() ?? "", back: x.back?.trim() ?? "", hint: x.hint?.trim() || undefined }))
-    .filter((x) => {
-      const k = x.front.replace(/\s/g, "");
-      if (!x.front || !x.back || seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    })
-    .slice(0, count);
 }
 
 // ── 퀴즈 ─────────────────────────────────────────────────────────────────────

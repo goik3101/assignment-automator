@@ -7,7 +7,7 @@ import path from "node:path";
 const REPO = process.cwd();
 process.loadEnvFile(path.join(REPO, ".env.local"));
 
-const { makeSummary, makeFlashcards, makeQuiz, makeExam, gradeExam } = await import("@/lib/study/tools");
+const { makeSummary, makeQuiz, makeExam, gradeExam } = await import("@/lib/study/tools");
 const { DEFAULT_STUDY_PREFS } = await import("@/lib/study/prefs");
 const { clip } = await import("@/lib/study/context-pure");
 
@@ -41,9 +41,8 @@ for (const id of ids) {
       return null;
     }
   };
-  const [summary, cards, quiz, exam] = await Promise.all([
+  const [summary, quiz, exam] = await Promise.all([
     run("요약", () => makeSummary(ctx, DEFAULT_STUDY_PREFS.summary)),
-    run("플래시카드", () => makeFlashcards(ctx, DEFAULT_STUDY_PREFS.flashcards.count)),
     run("퀴즈", () => makeQuiz(ctx, DEFAULT_STUDY_PREFS.quiz)),
     run("가상 시험", () => makeExam(ctx)),
   ]);
@@ -53,10 +52,7 @@ for (const id of ids) {
     for (const p of summary.paragraphs) lines.push(p);
     lines.push("\n핵심 용어:");
     for (const k of summary.keyTerms) lines.push(`- ${k.term}: ${k.meaning}`);
-  }
-  if (cards) {
-    lines.push(`\n## 플래시카드 ${cards.length}장 (${time["플래시카드"].toFixed(1)}초)`);
-    cards.forEach((c, i) => lines.push(`${i + 1}. 앞: ${c.front}\n   뒤: ${c.back}${c.hint ? `\n   힌트: ${c.hint}` : ""}`));
+    for (const b of summary.skeleton) lines.push(`뼈대 ${b.box}: ${b.line} ◀ ${b.keywords.join(" · ")}`);
   }
   if (quiz) {
     lines.push(`\n## 퀴즈 ${quiz.length}문 (${time["퀴즈"].toFixed(1)}초)`);

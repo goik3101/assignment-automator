@@ -77,8 +77,9 @@ export function readMemorizeSource(markdown: string): MemorizeSource {
 }
 
 /** 공부 도구 프롬프트에 끼울 블록. 외울 것이 없으면 빈 문자열(그러면 예전처럼 본문만 쓴다). */
-export function memorizeBlock(src: MemorizeSource): string {
-  if (src.boxes.length < 2 && src.anchored.length === 0) return "";
+export function memorizeBlock(src: MemorizeSource, opts?: { anchored?: boolean }): string {
+  const withAnchored = opts?.anchored !== false;
+  if (src.boxes.length < 2 && (!withAnchored || src.anchored.length === 0)) return "";
   const parts: string[] = [];
   // 칸이 하나뿐이면 "순서"가 없다 — 칸 이름만 외울 이유가 없다.
   if (src.boxes.length >= 2) {
@@ -86,7 +87,7 @@ export function memorizeBlock(src: MemorizeSource): string {
       `[칸 순서 — 학생이 시험지에 이 순서로 쓴다]\n${src.boxes.map((b, i) => `${i + 1}. ${b}`).join("\n")}`
     );
   }
-  if (src.anchored.length > 0) {
+  if (withAnchored && src.anchored.length > 0) {
     parts.push(
       `[외울 문장 — 조사로 확인된 값이라 틀리면 감점된다]\n` +
         src.anchored.slice(0, 12).map((a) => `- (${a.box}) ${a.sentence}`).join("\n")
