@@ -77,9 +77,10 @@ export const results: Record<string, string> = {
   // 공부 도구 (StudyRail)
   "요약": "Summary",
   "핵심 + 개념 정리": "Key points + concepts",
-  "낯선 개념 + 외울 뼈대": "Unfamiliar concepts + skeleton to memorize",
-  "뼈대·개념 카드 뒤집기": "Flip skeleton and concept cards",
-  "빈칸에서 백지까지 3단계": "Blank to blank page in 3 steps",
+  "개념 이해 · 쉬운 풀이": "Understand · plain-language explanations",
+  "암기 · 핵심 문장 카드": "Memorize · key-sentence cards",
+  "암기 · 빈칸 문제": "Memorize · fill-in-the-blank",
+  "백지에 써 보며 점검": "Check by writing on a blank page",
   "빈칸 → 첫 글자 → 백지, 3단계로 풀어요": "Blank → first letter → blank page, in 3 steps",
   "퀴즈 시작": "Start quiz",
   "퀴즈 풀기": "Take the quiz",
