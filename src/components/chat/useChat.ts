@@ -14,6 +14,8 @@ export interface ChatMessage {
   offerMemorize?: boolean;
   /** AI 튜터가 되묻는 질문(선택 버튼용). */
   question?: { text: string; options: string[]; allowOther: boolean } | null;
+  /** 결과물의 한 칸을 고쳐 달라고 했을 때 AI가 낸 칸 완성본(저장된 결과물 화면에서만 "결과물에 적용" 버튼이 붙는다). */
+  edit?: { heading: string; markdown: string };
   /** 사용자가 붙인 사진 미리보기(화면용). */
   imageUrl?: string;
 }
@@ -29,7 +31,12 @@ export function useChat(initialContext: ChatContextRef = null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [context, setContext] = useState<ChatContextRef>(initialContext);
+  // 과제 화면의 채팅은 결과물이 저장되기 전(생성 중·방금 만든 직후)에는 initialContext가 null이다가 저장되면 값이 생긴다.
+  // useState(initialContext)는 첫 값만 붙잡아 그 뒤 채팅이 결과물을 못 보고 "글을 붙여 달라"고 답했다(2026-11-20).
+  // 그래서 홈처럼 직접 고른 값(override)이 있으면 그것을, 아니면 지금의 initialContext를 보낸다.
+  const [override, setOverride] = useState<ChatContextRef | undefined>(undefined);
+  const context = override !== undefined ? override : initialContext;
+  const setContext = useCallback((c: ChatContextRef) => setOverride(c), []);
   const imageRef = useRef<PreparedImage | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -59,8 +66,8 @@ export function useChat(initialContext: ChatContextRef = null) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error((data as { error?: string }).error ?? t("답변을 받지 못했어요."));
-        const { reply, sources, offerMemorize } = data as { reply: string; sources?: SourceRef[]; offerMemorize?: boolean };
-        setMessages((prev) => [...prev, { id: nextId(), role: "assistant", content: reply, sources, offerMemorize: offerMemorize === true }]);
+        const { reply, sources, offerMemorize, edit } = data as { reply: string; sources?: SourceRef[]; offerMemorize?: boolean; edit?: ChatMessage["edit"] };
+        setMessages((prev) => [...prev, { id: nextId(), role: "assistant", content: reply, sources, offerMemorize: offerMemorize === true, edit }]);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         setError(err instanceof Error ? err.message : t("답변을 받지 못했어요. 잠시 후 다시 시도해 주세요."));

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseContextRef, clip, learningToText, assignmentInfoToText } from "./context-pure.ts";
-import { buildChatPrompt, offersMemorize, routedAnswer } from "./chat-pure.ts";
+import { buildChatPrompt, CHAT_SYSTEM, offersMemorize, routedAnswer } from "./chat-pure.ts";
 import { sanitizeTurns } from "./turns.ts";
 import { validateQuizQuestion } from "./quiz-validate.ts";
 
@@ -117,4 +117,14 @@ test("퀴즈 검증: 보기 수·정답 번호·중복 보기를 걸러낸다", 
   assert.equal(validateQuizQuestion({ type: "ox", question: "참?", choices: ["O", "X", "?"], answerIndex: 0, explanation: "" }), null);
   // 모델이 snake_case(answer_index)로 줘도 받아들인다
   assert.equal(validateQuizQuestion({ type: "choice", question: "Q", choices: ["1", "2", "3", "4"], answer_index: 3, explanation: "" })?.answerIndex, 3);
+});
+
+test("채팅: 결과물을 이미 알고 있다고 못 박고, 수정 요청은 칸 전체 완성본으로 답하게 한다", () => {
+  assert.match(CHAT_SYSTEM, /AI가 작성한 결과물/);
+  assert.match(CHAT_SYSTEM, /다시 보내 달라고 하지 않는다/);
+  assert.match(CHAT_SYSTEM, /바뀐 칸 전체/);
+  // 결과물 본문(## 소제목 = 칸)이 프롬프트에 그대로 실린다.
+  const md = ["## 자료수집", "### 인물 배경", "아이다 B. 웰스는 노예로 태어났다.[1]"].join("\n");
+  const prompt = buildChatPrompt({ context: { title: "t", subject: "s", sourceLabel: "AI가 작성한 결과물", text: md }, turns: [{ role: "user" as const, content: "인물 배경 고쳐줘" }], toneRules: "R" });
+  assert.ok(prompt.includes(["### 인물 배경", "아이다 B. 웰스는 노예로 태어났다.[1]"].join("\n")));
 });

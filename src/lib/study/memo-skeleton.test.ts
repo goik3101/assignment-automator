@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { acronym, chipBank, cleanSkeleton, firstLetterHint, flowLine, readiness, sameKeyword, scoreWrite, segmentLine, skeletonLimits } from "./memo-skeleton.ts";
+import { acronym, chipBank, cleanSkeleton, firstLetterHint, flowLine, quizIndexes, readiness, sameKeyword, scoreWrite, segmentLine, skeletonLimits } from "./memo-skeleton.ts";
 
 const MATERIAL = "대기압이 물을 빨대 안으로 민다. 밸브는 역류를 막고 펌프는 압력을 바꾼다. 2023년 폐플라스틱은 771만 톤이다.";
 
@@ -15,9 +15,11 @@ test("cleanSkeleton: 한 줄에 없거나 자료에 없는 핵심어·빈 칸을
     MATERIAL,
     { boxes: 6, perBox: 2 }
   );
-  assert.deepEqual(r.map((b) => b.box), ["실험1", "수치"]);
+  // 칸 이름·한 줄이 비면 버리지만, 핵심어가 다 탈락한 칸("구조")은 순서에 남는다(핵심어만 빈 배열).
+  assert.deepEqual(r.map((b) => b.box), ["실험1", "구조", "수치"]);
+  assert.deepEqual(r[1].keywords, []);
   assert.deepEqual(r[0].keywords, ["대기압", "빨대"]);
-  assert.deepEqual(r[1].keywords, ["2023년", "771만 톤"]);
+  assert.deepEqual(r[2].keywords, ["2023년", "771만 톤"]);
 });
 
 test("cleanSkeleton: 칸 수 상한", () => {
@@ -68,4 +70,36 @@ test("sameKeyword·scoreWrite·readiness", () => {
   assert.deepEqual(s, { hit: ["대기압"], miss: ["빨대"] });
   assert.equal(readiness([{ hit: 1, total: 2 }, { hit: 3, total: 3 }]), 80);
   assert.equal(readiness([]), 0);
+});
+
+test("숫자 핵심어: 수치·소수점이 같은 답으로 뭉개지지 않고 힌트가 서로 구별된다", () => {
+  assert.ok(!sameKeyword("35%", "3.5%"));
+  assert.ok(!sameKeyword("23", "2-3"));
+  assert.deepEqual(scoreWrite("35%입니다", ["3.5%"]), { hit: [], miss: ["3.5%"] });
+  assert.equal(firstLetterHint("2022년"), "2022○");
+  assert.equal(acronym(["2022년", "2023년", "대기압"]), "2022·2023·대");
+});
+
+test("cleanSkeleton: 줄에 글자 그대로 없는 핵심어와 한 글자 낱말은 거른다", () => {
+  const r = cleanSkeleton(
+    [{ box: "A", line: "용기안의압력이 높아진다", keywords: ["용기 안의 압력", "물", "압력"] }],
+    "용기안의압력이 높아진다 물",
+    { boxes: 4, perBox: 3 }
+  );
+  assert.deepEqual(r[0].keywords, ["압력"]);
+});
+
+test("cleanSkeleton: 핵심어가 하나도 안 남은 칸(결론)도 순서에는 남기고, 빈칸 문제만 건너뛴다", () => {
+  const r = cleanSkeleton(
+    [
+      { box: "자료조사", line: "2023년 폐플라스틱은 771만 톤이다", keywords: ["771만 톤"] },
+      { box: "결론", line: "생산부터 폐기까지 함께 바꿔야 한다", keywords: ["지어낸 말"] },
+    ],
+    MATERIAL,
+    { boxes: 6, perBox: 3 }
+  );
+  assert.deepEqual(r.map((b) => b.box), ["자료조사", "결론"]);
+  assert.deepEqual(r[1].keywords, []);
+  assert.deepEqual(quizIndexes(r), [0]);
+  assert.equal(flowLine(r), "자료조사 → 결론");
 });

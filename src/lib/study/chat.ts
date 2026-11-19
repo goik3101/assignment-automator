@@ -5,6 +5,7 @@ import type { SourceRef } from "@/types/task";
 import { ANTI_AI_TONE_RULES } from "@/lib/gemini/prompts";
 import { dedupeAdjacentMarkers } from "@/lib/gemini/citation-cleanup";
 import type { StudyContext } from "./context";
+import { extractSectionEdit, type ChatSectionEdit } from "./section-edit";
 import { buildChatPrompt, CHAT_ROUTING_RULES, CHAT_SYSTEM, offersMemorize, routedAnswer } from "./chat-pure";
 
 import { sanitizeTurns, type ChatTurn } from "./turns";
@@ -16,6 +17,8 @@ export interface ChatAnswer {
   sources: SourceRef[];
   /** true면 화면이 답변 아래에 "어떤 방법으로 외워 볼까요?"(플래시카드·퀴즈·정리) 버튼을 보여준다. 저장된 과제에서만 켠다. */
   offerMemorize?: boolean;
+  /** 학생이 결과물의 한 칸을 고쳐 달라고 했을 때 AI가 낸 칸 완성본 — 화면이 "결과물에 적용" 버튼을 보여 준다(AI가 쓴 결과물에서만). */
+  edit?: ChatSectionEdit;
 }
 
 const ROUTED_SCHEMA: Schema = {
@@ -42,6 +45,9 @@ export async function answerChat(params: {
   const parts: LlmPart[] = [];
   if (image) parts.push({ image });
   parts.push({ text: prompt });
+  // 수정안은 학생 결과물(history)에서만 인정한다 — 칸 이름이 실제 결과물에 하나로 있을 때만.
+  const withEdit = (reply: string): { reply: string; edit?: ChatSectionEdit } =>
+    context?.kind === "history" ? extractSectionEdit(reply, context.text) : { reply: reply.replace(/```section[^\S\n]*\n?/g, "").replace(/```/g, "").trim() };
   const system = lang === "en" ? `${CHAT_SYSTEM}\n- 답은 영어로 쓴다(위의 "한국어로"보다 이 지시가 우선). 학생이 다른 언어를 명시하면 그 언어를 따른다.` : CHAT_SYSTEM;
 
   // 값싼 모델(공부 도구용)이 먼저 검색 없이 답해 보고, 검색이 필요하다고 하면 검색 가능한 main 모델로 다시 답한다.
@@ -61,7 +67,10 @@ export async function answerChat(params: {
       });
       offerMemorize = offersMemorize(data, !!context);
       const direct = routedAnswer(data);
-      if (direct) return { reply: direct, sources: [], ...(offerMemorize ? { offerMemorize } : {}) };
+      if (direct) {
+        const d = withEdit(direct);
+        return { reply: d.reply, sources: [], ...(d.edit ? { edit: d.edit } : {}), ...(offerMemorize ? { offerMemorize } : {}) };
+      }
       // 1차 모델이 "검색해야 한다"고 판단했으면 2차에서 검색을 건너뛰지 못하게 강제한다(안 그러면 검색 요금만 아끼고 출처 없는 답이 나올 수 있다).
       forceSearch = data?.needs_search === true;
     } catch (err) {
@@ -97,5 +106,6 @@ export async function answerChat(params: {
   const used = [...order.entries()]
     .sort((a, b) => a[1] - b[1])
     .map(([old, n]) => ({ ...sources.find((s) => s.n === old)!, n }));
-  return { reply: dedupeAdjacentMarkers(reply), sources: used, ...(offerMemorize ? { offerMemorize } : {}) };
+  const done = withEdit(dedupeAdjacentMarkers(reply));
+  return { reply: done.reply, sources: used, ...(done.edit ? { edit: done.edit } : {}), ...(offerMemorize ? { offerMemorize } : {}) };
 }

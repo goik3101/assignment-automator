@@ -43,24 +43,35 @@ export function cleanSkeleton(
       .map((k) => k?.trim() ?? "")
       .filter((k) => {
         const sq = squash(k);
-        if (sq.length < 1 || seen.has(sq)) return false;
-        if (!lineSq.includes(sq) || !body.includes(sq)) return false;
+        // 한 글자 낱말("물")은 어디에나 있어 채점이 무의미하다(숫자는 허용). 줄에는 **글자 그대로** 있어야 가리기가 된다.
+        if (sq.length < 2 && !/\d/.test(sq)) return false;
+        if (seen.has(sq) || !line.includes(k) || !lineSq.includes(sq) || !body.includes(sq)) return false;
         seen.add(sq);
         return true;
       })
       .slice(0, limits.perBox);
-    if (keywords.length === 0) continue;
+    // 핵심어가 하나도 안 남은 칸(결론처럼 숫자·이름이 없는 칸)도 **순서에는 남긴다** — 칸 순서가 외울 것의 절반이다. 빈칸 문제만 이 칸을 건너뛴다.
     out.push({ box, line, keywords });
     if (out.length >= limits.boxes) break;
   }
   return out;
 }
 
+/** 빈칸 문제가 되는(핵심어가 있는) 칸 번호들. */
+export const quizIndexes = (boxes: SkeletonBox[]) => boxes.flatMap((b, i) => (b.keywords.length > 0 ? [i] : []));
+
 /** 칸 순서를 한 줄 흐름으로: 실험1 → 실험2 → 샴푸 → 스프레이. */
 export const flowLine = (boxes: SkeletonBox[]) => boxes.map((b) => b.box).join(" → ");
 
 /** 두음 암기: 핵심어 첫 글자를 이어 붙인다. 예) 대기압·밸브·펌프 → "대·밸·펌". */
-export const acronym = (keywords: string[]) => keywords.map((k) => Array.from(k.trim())[0] ?? "").join("·");
+export const acronym = (keywords: string[]) => keywords.map((k) => leadToken(k)).join("·");
+
+/** 두음·힌트의 첫 조각: 보통은 첫 글자, 숫자로 시작하면 앞의 숫자 덩어리("2022년"→"2022")라야 서로 구별된다. */
+function leadToken(keyword: string): string {
+  const k = keyword.trim();
+  const num = /^\d[\d.,]*/.exec(k);
+  return num ? num[0] : (Array.from(k)[0] ?? "");
+}
 
 export interface LineSegment {
   text: string;
@@ -103,11 +114,14 @@ export function chipBank(boxes: SkeletonBox[], index: number, distractors = 2): 
 
 /** 첫 글자 힌트: "대기압" → "대○○". */
 export function firstLetterHint(keyword: string): string {
-  const chars = Array.from(keyword.trim());
-  return chars.length <= 1 ? chars.join("") : chars[0] + "○".repeat(chars.length - 1);
+  const k = keyword.trim();
+  const lead = leadToken(k);
+  const rest = Array.from(k).length - Array.from(lead).length;
+  return rest <= 0 ? lead : lead + "○".repeat(rest);
 }
 
-const norm = (s: string) => squash(s).toLowerCase();
+// 채점 비교는 소수점·하이픈·퍼센트를 지우지 않는다 — "3.5%"와 "35%", "2-3"과 "23"이 같은 답이 되면 수치 암기가 무의미하다.
+const norm = (s: string) => s.replace(/[\s·・,()「」『』"'“”‘’:]/g, "").toLowerCase();
 
 /** 입력이 핵심어와 같은 말로 볼 수 있는가(띄어쓰기·구두점·대소문자 무시). */
 export const sameKeyword = (input: string, keyword: string) => norm(input) === norm(keyword) && norm(keyword).length > 0;

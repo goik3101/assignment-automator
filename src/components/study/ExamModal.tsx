@@ -14,7 +14,6 @@ interface Exam {
   task: string;
   requirements: string[];
   hints: string[];
-  keyPoints: string[];
 }
 interface Grade {
   score: number;
@@ -58,7 +57,7 @@ function Paper({ exam, studyRef, onAgain }: { exam: Exam; studyRef: StudyRef; on
       const res = await fetch("/api/study/exam/grade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ context: studyRef, task: exam.task, keyPoints: exam.keyPoints, answer }),
+        body: JSON.stringify({ context: studyRef, task: exam.task, answer }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((json as { error?: string }).error ?? t("채점하지 못했어요."));

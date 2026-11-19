@@ -125,6 +125,21 @@ export function saveLocal<T>(key: string, value: T) {
   }
 }
 
+/** 결과물이 고쳐졌을 때 그 글로 만들어 둔 학습 자료(요약·시험)를 지운다 — 옛 글 기준의 요약이 남아 새 글과 어긋나지 않게. */
+export function clearSavedStudy(ref: StudyRef) {
+  const heads = [`${PREFIX}${baseOf(ref)}:`, `${PREFIX}${ref.kind}:${ref.id}:`];
+  try {
+    const drop: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && heads.some((h) => key.startsWith(h))) drop.push(key);
+    }
+    drop.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // 저장소가 막힌 환경 — 지울 것도 없다.
+  }
+}
+
 /** 이 과제에서 이미 만들어 브라우저에 저장된 학습 자료(도구별 마지막 생성 시각) — 공부 도구의 "내 학습" 목록용. */
 export function listSavedStudy(ref: StudyRef, lang: string): { tool: string; at: number }[] {
   const heads = [`${PREFIX}${baseOf(ref)}:`, `${PREFIX}${ref.kind}:${ref.id}:`];

@@ -12,7 +12,7 @@ export const POST = routeUsage("studyExamGrade", async function POST(req: NextRe
     const answer = str(body.answer, 6000).trim();
     if (!task) throw new StudyInputError("시험 문제가 없어요. 시험을 다시 시작해 주세요.");
     if (answer.length < 20) throw new StudyInputError("답안을 조금 더 써 주세요(20자 이상).");
-    const keyPoints = Array.isArray(body.keyPoints) ? body.keyPoints.filter((k): k is string => typeof k === "string").map((k) => k.slice(0, 300)).slice(0, 8) : [];
-    return gradeExam(context!, { task, keyPoints }, answer);
+    // 채점 기준은 브라우저로 내리지 않는다(시험 중에 보거나 쉬운 기준을 보내 점수를 올릴 수 없게) — 서버가 자료에서 직접 세운다.
+    return gradeExam(context!, { task }, answer);
   });
 });
