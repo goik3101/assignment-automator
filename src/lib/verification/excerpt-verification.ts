@@ -1,6 +1,7 @@
 import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
 import { normalizeAttributionName, sameAttribution } from "./attribution-name";
+import { isForeignExcerpt, pickQuoteChunk } from "./quote-fit";
 
 // 외부 자료(책/논문/뉴스/통계 등)를 인용할 때 "실제로 원문이 노출된 페이지가
 // 있는지"를 검증하는 범용 모듈. 책 전용 로직이 아니다 — 인용 대상의 종류
@@ -201,6 +202,8 @@ ${queries.map((q, i) => `${i + 1}. ${q}`).join("\n")}
   실제 원문과 정확히 일치하는지 보장할 수 없다. 이런 페이지만 검색되면 verified로
   결론 내리지 말고, 서점/전자책/발행처처럼 원문 편집 권한이 있는 페이지를 추가로
   찾아볼 것.
+- 책 전문을 올려 둔 PDF·문서 공유 페이지, 그리고 한국어로 출간된 책의 외국어 원문 구절 —
+  구절은 **한국어판**에 실린 한국어 문장만 인정한다.
 
 【서점 상세페이지 안에서도 섹션을 구분할 것 — 매우 중요, 실제로 발견된 버그】
 서점(교보문고/예스24/알라딘 등) 상세페이지는 보통 "책 소개"(출판사가 책을
@@ -277,14 +280,18 @@ type Investigation = Awaited<ReturnType<typeof runInvestigation>>;
  * 위키(isWeakQuoteSource)면 모델이 규칙을 놓쳤더라도 코드가 한 번 더 걸러낸다 —
  * 검색 없이 "확인했다"고 지어내거나, 위키/동영상을 원문 노출로 잘못 인정하는
  * 것 둘 다 방지하기 위한 이중 안전장치. */
-async function judge(investigation: Investigation): Promise<VerificationResult> {
+async function judge(investigation: Investigation, workName = ""): Promise<VerificationResult> {
   const outcome = await extractVerificationOutcome(investigation.text);
-  const firstTrustworthyChunk = investigation.chunks.find(
-    (c) => c.web?.uri && !isWeakQuoteSource(c.web.uri)
-  );
+  // 출처는 조사자가 말한 페이지와 맞는 것을 먼저 고른다(첫 허용 도메인이 구절과 상관없을 수 있다). 전문 업로드 사이트는 제외(quote-fit.ts).
+  const firstTrustworthyChunk = pickQuoteChunk(investigation.chunks, outcome.sourceTitle, isWeakQuoteSource);
   const isMarketingCopy = !!outcome.excerpt && looksLikeMarketingCopy(outcome.excerpt);
+  // 한국어 제목 책인데 구절이 외국어 원문이면(한국어판 구절이 아님) 학생 글에 쓸 수 없다.
+  const isForeign = !!outcome.excerpt && isForeignExcerpt(outcome.excerpt, workName);
+  if (outcome.verified && outcome.excerpt && isForeign) {
+    console.warn(`[verifyExcerpt] 구절이 외국어 원문이라 신뢰하지 않음: "${outcome.excerpt.slice(0, 80)}"`);
+  }
 
-  if (!outcome.verified || !outcome.excerpt || !firstTrustworthyChunk?.web?.uri || isMarketingCopy) {
+  if (!outcome.verified || !outcome.excerpt || !firstTrustworthyChunk?.web?.uri || isMarketingCopy || isForeign) {
     if (outcome.verified && outcome.excerpt && !firstTrustworthyChunk) {
       console.warn(
         `[verifyExcerpt] 조사자는 verified=true라고 했지만 그라운딩 출처가 없거나 전부 동영상/위키/블로그뿐이라 신뢰하지 않음`
@@ -352,7 +359,7 @@ export async function verifyExcerpt(
   try {
     const firstPrompt = buildInvestigationPrompt(target, queryTemplates);
     const firstInvestigation = await runInvestigation(firstPrompt);
-    const firstResult = await judge(firstInvestigation);
+    const firstResult = await judge(firstInvestigation, target.name);
     if (firstResult.verified) return firstResult;
 
     const queriesTried: string[] = [...firstInvestigation.queriesTried];
@@ -366,7 +373,7 @@ export async function verifyExcerpt(
           `이번에는 반드시 아래 검색어 중 최소 하나를 실제로 호출한 뒤에만 결론을 내릴 것.`
       );
       const retryInvestigation = await runInvestigation(retryPrompt);
-      const retryResult = await judge(retryInvestigation);
+      const retryResult = await judge(retryInvestigation, target.name);
       queriesTried.push(...retryInvestigation.queriesTried);
       if (retryResult.verified) return { ...retryResult, queriesTried };
       console.warn(`[verifyExcerpt] 재시도 후에도 검증 실패 — 시도한 검색어 전체: ${JSON.stringify(queriesTried)}`);
@@ -388,7 +395,7 @@ export async function verifyExcerpt(
           `검색어부터 다른 각도로 다시 조사할 것.`
       );
       const retryInvestigation = await runInvestigation(retryPrompt);
-      const retryResult = await judge(retryInvestigation);
+      const retryResult = await judge(retryInvestigation, target.name);
       queriesTried.push(...retryInvestigation.queriesTried);
       if (retryResult.verified) return { ...retryResult, queriesTried };
     }
