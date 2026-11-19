@@ -95,7 +95,8 @@ function tableHeadings(content: string): string[] {
 }
 
 // 이름·제목·명칭을 적는 칸은 한두 낱말이 정상이다 — 12자 미만이라고 비었다고 하면 거짓 경고다(2026-11-16, 값 칸을 값만 남기게 한 뒤 가정-01에서 드러남).
-const SHORT_VALUE_ITEM = /명칭|이름|제목|저자|지은이|출판사|서명|도서/;
+// 단원명·학번·학년·과목도 값 칸이다(2026-11-19 수학-02: "수열과 금융"이 6자라 "단원명이 비었다"는 거짓 경고가 떴다).
+const SHORT_VALUE_ITEM = /명칭|이름|제목|저자|지은이|출판사|서명|도서|단원|학번|학년|과목|교과/;
 
 export function findMissingItems(content: string, requiredItems: string[]): string[] {
   const blocks = splitByH3(content);
