@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, CircleHelp, ImagePlus, Layers, LoaderCircle, NotebookText, SendHorizontal, X } from "lucide-react";
+import { ArrowUp, CircleHelp, ImagePlus, Layers, LoaderCircle, NotebookText, X } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { prepareImage, type PreparedImage } from "@/lib/ui/image";
 import type { ChatMessage, useChat } from "./useChat";
+import ChatEditCard, { type ApplyEdit, type UndoEdit } from "./ChatEditCard";
 
 type Chat = ReturnType<typeof useChat>;
 
@@ -18,7 +19,7 @@ const MEMORIZE_CHOICES: { id: MemorizeTool; label: string; icon: typeof Layers }
   { id: "summary", label: "정리해줘", icon: NotebookText },
 ];
 
-export function Message({ m, onMemorizeTool }: { m: ChatMessage; onMemorizeTool?: (tool: MemorizeTool) => void }) {
+export function Message({ m, onMemorizeTool, onApplyEdit, onUndoEdit }: { m: ChatMessage; onMemorizeTool?: (tool: MemorizeTool) => void; onApplyEdit?: ApplyEdit; onUndoEdit?: UndoEdit }) {
   const t = useT();
   if (m.role === "user") {
     return (
@@ -27,7 +28,7 @@ export function Message({ m, onMemorizeTool }: { m: ChatMessage; onMemorizeTool?
           // eslint-disable-next-line @next/next/no-img-element
           <img src={m.imageUrl} alt={t("첨부한 안내문")} className="max-h-40 rounded-lg border border-border object-contain" />
         )}
-        <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-raised px-4 py-2.5 text-[14px] leading-relaxed">
+        <p className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-raised px-3.5 py-2.5 text-[13.5px] leading-relaxed [overflow-wrap:anywhere]">
           {m.content}
         </p>
       </div>
@@ -38,6 +39,7 @@ export function Message({ m, onMemorizeTool }: { m: ChatMessage; onMemorizeTool?
       <div className="text-[14px] leading-[1.75] [&_a]:underline [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_table]:my-2 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
       </div>
+      {m.edit && <ChatEditCard edit={m.edit} onApply={onApplyEdit} onUndo={onUndoEdit} />}
       {m.sources && m.sources.length > 0 && (
         <ol className="mt-3 space-y-1 border-t border-border pt-2.5 text-xs text-muted">
           {m.sources.map((s) => (
@@ -84,6 +86,8 @@ export default function ChatView({
   footer,
   className = "",
   onMemorizeTool,
+  onApplyEdit,
+  onUndoEdit,
 }: {
   chat: Chat;
   placeholder: string;
@@ -91,8 +95,8 @@ export default function ChatView({
   /** 입력창 바로 위(대화 목록 아래)에 끼워 넣을 요소 — 예: 대상 과제 선택. */
   header?: ReactNode;
   messagesClassName?: string;
-  /** 대화가 비었을 때 보여줄 안내. */
-  empty?: ReactNode;
+  /** 대화가 비었을 때 보여줄 안내. 함수로 주면 fill(글)로 입력칸을 채워 줄 수 있다(예시 문장을 눌러 이어 쓰게). */
+  empty?: ReactNode | ((api: { fill: (text: string) => void }) => ReactNode);
   disabledReason?: string | null;
   /** true면 입력창이 위, 대화가 그 아래에 펼쳐진다(홈 화면). 기본은 대화 위·입력창 아래(채팅 레일). */
   composerFirst?: boolean;
@@ -101,6 +105,9 @@ export default function ChatView({
   className?: string;
   /** 있으면 암기 요청에 대한 답 아래에 "플래시카드·퀴즈·정리해줘" 버튼을 보여주고, 눌렀을 때 부른다(저장된 과제 화면에서만 넘긴다). */
   onMemorizeTool?: (tool: MemorizeTool) => void;
+  /** 있으면 채팅의 칸 수정안 아래에 "결과물에 적용" 버튼을 보여 준다(저장된 AI 결과물 화면에서만 넘긴다). */
+  onApplyEdit?: ApplyEdit;
+  onUndoEdit?: UndoEdit;
 }) {
   const t = useT();
   const [text, setText] = useState("");
@@ -122,6 +129,22 @@ export default function ChatView({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }
+
+  // 예시 문장으로 입력칸을 채우면 그 뒤에 이어 쓸 수 있게 포커스를 옮긴다.
+  const [fillTick, setFillTick] = useState(0);
+  function fill(value: string) {
+    setText(value);
+    setFillTick((n) => n + 1);
+  }
+  useEffect(() => {
+    if (fillTick === 0) return;
+    autosize();
+    const el = areaRef.current;
+    if (el) {
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+  }, [fillTick]);
 
   async function submit() {
     const value = text.trim();
@@ -151,9 +174,9 @@ export default function ChatView({
 
   const messagesBlock = (hasMessages || empty) && (
         <div ref={listRef} className={`min-h-0 flex-1 space-y-5 overflow-y-auto px-1 pb-4 ${messagesClassName}`} aria-live="polite">
-          {!hasMessages && empty}
+          {!hasMessages && (typeof empty === "function" ? empty({ fill }) : empty)}
           {chat.messages.map((m) => (
-            <Message key={m.id} m={m} onMemorizeTool={onMemorizeTool} />
+            <Message key={m.id} m={m} onMemorizeTool={onMemorizeTool} onApplyEdit={onApplyEdit} onUndoEdit={onUndoEdit} />
           ))}
           {chat.busy && (
             <p role="status" className="flex items-center gap-2 text-[13px] text-muted">
@@ -261,7 +284,7 @@ export default function ChatView({
     </>
   ) : (
     <>
-        <div className="rounded-3xl bg-surface transition-shadow focus-within:shadow-[0_0_0_1.5px_var(--foreground)]">
+        <div className="rounded-2xl border border-border-strong bg-surface transition-colors focus-within:border-foreground/60">
           {image && (
             <div className="flex items-center gap-2 px-3 pt-3">
               <div className="relative">
@@ -278,7 +301,7 @@ export default function ChatView({
               <p className="text-xs text-muted">{t("이 사진을 안내문으로 보고 답해요")}</p>
             </div>
           )}
-          <div className="flex items-end gap-1.5 p-2">
+          <div className="flex items-end gap-1.5 py-2 pl-2 pr-2">
             {allowImage && (
               <>
                 <button
@@ -328,9 +351,9 @@ export default function ChatView({
               onClick={() => void submit()}
               disabled={!text.trim() || chat.busy || !!disabledReason}
               aria-label={t("보내기")}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-30"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-foreground text-background transition-colors hover:opacity-90 disabled:bg-raised disabled:text-faint"
             >
-              <SendHorizontal size={18} strokeWidth={1.9} />
+              <ArrowUp size={17} strokeWidth={2.2} />
             </button>
           </div>
         </div>

@@ -62,10 +62,10 @@ for (const id of ids) {
     });
   }
   if (exam) {
-    lines.push(`\n## 가상 시험 (${time["가상 시험"].toFixed(1)}초)\n제목: ${exam.title} / ${exam.durationMin}분\n문제: ${exam.task}\n조건: ${exam.requirements.join(" / ")}\n힌트: ${exam.hints.map((h, i) => `${i + 1}) ${h}`).join(" ")}\n채점 기준: ${exam.keyPoints.map((k) => `- ${k}`).join("\n")}`);
+    lines.push(`\n## 가상 시험 (${time["가상 시험"].toFixed(1)}초)\n제목: ${exam.title} / ${exam.durationMin}분\n문제: ${exam.task}\n조건: ${exam.requirements.join(" / ")}\n힌트: ${exam.hints.map((h, i) => `${i + 1}) ${h}`).join(" ")}`);
     // 채점 점검: 채점 기준 앞의 둘만 담은 부분 답안을 내 본다 — 만점이 나오면 채점이 후한 것이다.
-    const partial = exam.keyPoints.slice(0, 2).join(" ");
-    const g = await run("시험 채점", () => gradeExam(ctx, { task: exam.task, keyPoints: exam.keyPoints }, partial));
+    const partial = exam.task;
+    const g = await run("시험 채점", () => gradeExam(ctx, { task: exam.task }, partial));
     if (g) lines.push(`\n부분 답안(기준 2개만 담음) 채점 → ${JSON.stringify(g).slice(0, 700)}`);
   }
   lines.push(`\n(시간: ${Object.entries(time).map(([k, v]) => `${k} ${v.toFixed(1)}초`).join(", ")})`);

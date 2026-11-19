@@ -39,8 +39,8 @@ function buildCards(data: StudySummaryData, mnemonic: boolean): Card[] {
   const order: Card[] = (data.skeleton ?? []).map((b, i) => ({
     kind: "order" as const,
     front: `${i + 1}. ${b.box}`,
-    back: b.keywords.join(" · "),
-    line: b.line,
+    back: b.keywords.length ? b.keywords.join(" · ") : b.line,
+    line: b.keywords.length ? b.line : undefined,
     keywords: b.keywords,
     hint: mnemonic && b.keywords.length >= 2 ? acronym(b.keywords) : undefined,
   }));

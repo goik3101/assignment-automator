@@ -15,6 +15,7 @@ import type {
 import { EssayPanel, PlanPanel } from "./ResultPanel";
 import { ResultRatingBar, mergeRatingContexts, ratingContextFrom } from "./result/ResultRating";
 import StudyRail from "./study/StudyRail";
+import { replaceSection } from "@/lib/study/section-edit";
 import { StudyTabs, StudyToolsProvider } from "./study/StudyTools";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useT } from "@/lib/i18n";
@@ -79,6 +80,22 @@ export default function AssignmentFlow() {
       next[idx] = { element, status: "done", result };
       return next;
     });
+  }
+  // 채팅의 수정안이 저장된 결과물에 적용되면 화면의 결과(상태)도 그 칸을 바꿔 그린다. 서버가 글을 바꾼 방식과 같은 함수를 쓴다.
+  function applyResultEdit(heading: string, markdown: string) {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.status !== "done") return it;
+        const r = it.result;
+        const key = r.type === "essay" ? "markdown" : "content";
+        const cur = (r as unknown as Record<string, unknown>)[key];
+        if (typeof cur !== "string") return it;
+        const next = replaceSection(cur, heading, markdown);
+        const sections = r.type === "essay" && r.sections ? r.sections.map((s) => ({ ...s, markdown: replaceSection(s.markdown, heading, markdown) ?? s.markdown })) : undefined;
+        if (next === null && !sections) return it;
+        return { ...it, result: { ...r, ...(next !== null ? { [key]: next } : {}), ...(sections ? { sections } : {}) } as EssayResult | PlanResult };
+      })
+    );
   }
   function setItemError(idx: number, element: TaskElement, err: unknown) {
     setItems((prev) => {
@@ -413,6 +430,7 @@ export default function AssignmentFlow() {
       </div>
         {ratingContexts.length > 0 && loadingCount === 0 && <ResultRatingBar context={mergeRatingContexts(ratingContexts)} resultKey={ratingKey} />}
         <StudyRail
+          onResultEdited={applyResultEdit}
           studyRef={submissionId ? { kind: "submission", id: submissionId, key: `work:${submissionId}` } : null}
           title={info?.topic ?? t("이 과제")}
           lockedReason={

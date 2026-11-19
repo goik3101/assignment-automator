@@ -9,7 +9,7 @@ import type { StudySummaryData } from "./SummaryModal";
 import { useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
 import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
-import { chipBank, firstLetterHint, readiness, sameKeyword, scoreWrite, segmentLine, type SkeletonBox } from "@/lib/study/memo-skeleton";
+import { chipBank, firstLetterHint, quizIndexes, readiness, sameKeyword, scoreWrite, segmentLine, type SkeletonBox } from "@/lib/study/memo-skeleton";
 
 // 단계: 0 뼈대 한 장 → 1 보기에서 고르기 → 2 첫 글자 보고 입력 → 3 칸 이름만 보고 백지 → 4 결과
 // 각 단계는 칸을 한 번씩 돈다. 막힌 칸은 그 단계 끝에 한 번 더 나온다.
@@ -233,7 +233,8 @@ export default function QuizModal({
   function begin(s: 1 | 2 | 3, only?: number[]) {
     if (only) scope.current = only;
     else if (s === 1) scope.current = null;
-    const order = scope.current ?? boxes.map((_, i) => i);
+    // 핵심어가 없는 칸(결론 등)은 빈칸 문제가 안 되므로 건너뛴다(칸 순서에는 남아 있다).
+    const order = scope.current ?? quizIndexes(boxes);
     retried.current = new Set();
     if (s === 3) {
       for (const i of order) {
@@ -268,7 +269,7 @@ export default function QuizModal({
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
   const score = readiness(Object.values(first.current));
-  const hasSkeleton = boxes.length > 0;
+  const hasSkeleton = quizIndexes(boxes).length > 0;
   const current = stage >= 1 && stage <= 3 ? queue[pos] : undefined;
 
   return (
@@ -313,7 +314,7 @@ export default function QuizModal({
             <div key={`${stage}-${pos}`}>
               {stage === 1 && <ChooseStep boxes={boxes} index={current} onDone={onDone} />}
               {stage === 2 && <TypeStep boxes={boxes} index={current} onDone={onDone} />}
-              {stage === 3 && <WriteStep boxes={boxes} index={current} retry={pos >= (scope.current?.length ?? boxes.length)} onDone={onDone} />}
+              {stage === 3 && <WriteStep boxes={boxes} index={current} retry={pos >= (scope.current?.length ?? quizIndexes(boxes).length)} onDone={onDone} />}
             </div>
           </div>
         )}
