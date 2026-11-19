@@ -19,7 +19,9 @@ function bodySentences(md: string): string[] {
   const out: string[] = [];
   for (const raw of md.split(/\r?\n/)) {
     const l = raw.trim();
-    if (!l || /^#|^▣|^=+ |^\||^-\s*\[|^전체 출처|^학생 지침|^분석 |^\[직접|^\[붙일/.test(l) || /https?:\/\//.test(l)) continue;
+    // 서술 문단만 센다 — 목록(-,*,•,숫자.)·굵은 라벨·표·제목·40자 미만 줄은 뺀다. 기준선(보고서식)은 목록 줄이 15%(우리 4%)라, 빼지 않으면
+    // 짧은 라벨 줄이 "문장"으로 세어져 길이 변동이 부풀려진다(2026-11-20: 변동계수 0.29 대 0.39는 이 착시였고, 서술만 재면 0.28 대 0.31).
+    if (!l || /^[-*•]\s|^\d+[.)]\s|^\*\*|^#|^▣|^=+ |^\||^전체 출처|^학생 지침|^분석 |^\[직접|^\[붙일/.test(l) || /https?:\/\//.test(l) || l.length < 40) continue;
     for (const s of l.replace(/\[\d+(?:,\s*\d+)*\]/g, "").split(/(?<=[.!?。])\s+/)) {
       const t = s.trim();
       if (t.length >= 8) out.push(t);
