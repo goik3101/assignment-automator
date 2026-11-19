@@ -172,6 +172,15 @@ export interface RecommendationGuidance {
 const GUIDANCE_MIN_HISTORY = Number(process.env.RECOMMENDATION_GUIDANCE_MIN_HISTORY ?? 3);
 const GUIDANCE_TOP_N = Number(process.env.RECOMMENDATION_GUIDANCE_TOP_N ?? 5);
 
+/** 다양성 안내문(순수 함수 — 측정 스크립트가 실제 문구를 그대로 쓰도록 분리). */
+export function guidanceInstructionText(label: string, top: string[]): string {
+  return `
+[선정 다양성 참고 — 이 수행평가에서 최근 다른 학생들이 자주 고른 ${label}]
+${top.join(", ")}.
+가능하면 이 항목들과 겹치지 않는 대안을 우선 고려하되, 대안도 학생이 들어 봤을 만한 인지도 있는 항목이어야 하며 무명인 항목이나 과제 조건에 맞지 않는 항목으로 바꾸지는 말 것.
+`.trim();
+}
+
 /**
  * "같은 수행평가(scopeKey)"에서 최근 많이 선정된 항목만 알려주는 보조 안내문. 이제 이 안내문은 참고용 힌트일 뿐이고
  * (프롬프트만으로는 지켜지지 않는다는 게 실측으로 확인됨), 실제 회피는 src/lib/selection/의 코드 선택이 한다.
@@ -200,10 +209,6 @@ export async function buildRecommendationGuidance(
     .map(([k, c]) => `${names.get(k)}(최근 ${c}회)`);
   if (top.length === 0) return null;
   const label = category === "book" ? "책" : category === "statistic" ? "통계/자료" : category === "subject" ? "인물/대상" : "사례";
-  const instructionText = `
-[선정 다양성 참고 — 이 수행평가에서 최근 다른 학생들이 자주 고른 ${label}]
-${top.join(", ")}.
-가능하면 이 항목들과 겹치지 않는 대안을 우선 고려하되, 과제 조건에 맞지 않는 항목으로 바꾸지는 말 것.
-`.trim();
+  const instructionText = guidanceInstructionText(label, top);
   return { instructionText, scopeFrequency: freq };
 }
