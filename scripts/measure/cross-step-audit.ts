@@ -42,6 +42,55 @@ const sentences = (text: string) =>
     .map((s) => s.trim())
     .filter((s) => norm(s).length >= 14);
 
+// ── 말만 바꾼 되풀이(의미 되풀이) ─────────────────────────────────────────────────────────────────
+// 4글자 연쇄는 문장 복사만 잡는다(2026-11-19: 책 처방전 2·3·4차시가 "짧은 인사 한마디부터, 실패라고 단정하지 않기"를 세 번 말했는데 0%로 나왔다).
+// 그래서 **낱말 겹침**도 잰다: 뒤 카드의 내용어(조사 뗀 2음절 이상 낱말) 중 앞 카드에도 나온 비율.
+// 같은 주제의 카드끼리는 원래 어휘가 겹치므로, 다른 안내문 카드와의 겹침을 **잡음 기준선**으로 함께 찍는다(기준선보다 얼마나 높은가가 신호).
+const JOSA = /(?:으로|에서|에게|까지|부터|처럼|보다|이라|라고|이며|하게|하는|하고|한다|했다|이다|은|는|이|가|을|를|의|에|도|로|와|과|만|께)$/;
+const words = (text: string): Set<string> => {
+  const out = new Set<string>();
+  for (const w of text.replace(/\[\d+\]|\[F\d+\]/g, " ").split(/[^가-힣]+/)) {
+    let x = w;
+    if (x.length >= 3) x = x.replace(JOSA, "");
+    if (x.length >= 2) out.add(x);
+  }
+  return out;
+};
+const overlap = (later: Set<string>, earlier: Set<string>) => {
+  if (later.size === 0) return 0;
+  let hit = 0;
+  for (const w of later) if (earlier.has(w)) hit++;
+  return hit / later.size;
+};
+const allCards = new Map<string, { label: string; words: Set<string> }[]>();
+for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".md")).sort()) {
+  allCards.set(f.replace(/\.md$/, ""), cardsOf(fs.readFileSync(path.join(dir, f), "utf8")).filter((c) => norm(c.text).length > 80).map((c) => ({ label: c.label, words: words(c.text) })));
+}
+const lexRows: string[] = [];
+let lexSum = 0;
+let lexBase = 0;
+let lexN = 0;
+for (const [id, cards] of allCards) {
+  if (cards.length < 2) continue;
+  const others = [...allCards].filter(([k]) => k !== id).flatMap(([, v]) => v);
+  const baseUnion = new Set<string>();
+  for (const c of others.slice(0, 6)) for (const w of c.words) baseUnion.add(w); // 다른 안내문 카드 6장의 합집합(앞 카드 수와 비슷한 크기)
+  const parts: string[] = [];
+  for (let i = 1; i < cards.length; i++) {
+    const before = new Set<string>();
+    for (let j = 0; j < i; j++) for (const w of cards[j].words) before.add(w);
+    // 기준선은 앞 카드와 같은 크기의 무작위 다른 안내문 어휘와 비교하도록, 앞 카드 어휘 수만큼만 기준 합집합에서 잘라 쓴다.
+    const baseSlice = new Set([...baseUnion].slice(0, before.size));
+    const o = overlap(cards[i].words, before);
+    const b = overlap(cards[i].words, baseSlice);
+    parts.push(`${Math.round(o * 100)}%(기준 ${Math.round(b * 100)}%)`);
+    lexSum += o;
+    lexBase += b;
+    lexN++;
+  }
+  lexRows.push(`${id.padEnd(14)} 낱말 겹침: ${parts.join(" · ")}`);
+}
+
 let totalSent = 0;
 let totalRep = 0;
 let multi = 0;
@@ -75,4 +124,8 @@ for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".md")).sort()) {
 }
 console.log(rows.join("\n"));
 console.log(`\n여러 카드 안내문 ${multi}건 · 뒤 카드 문장 ${totalSent}개 중 앞 카드와 겹침 ${totalRep}개 (${totalSent ? Math.round((totalRep / totalSent) * 100) : 0}%)  [겹침 기준: 4글자 연쇄 ${THRESHOLD * 100}% 이상이 앞 카드에 있음]`);
+if (lexN) {
+  console.log(`\n${lexRows.join("\n")}`);
+  console.log(`낱말 겹침 평균 ${Math.round((lexSum / lexN) * 100)}% (같은 크기의 다른 안내문 어휘 기준선 ${Math.round((lexBase / lexN) * 100)}%) — 기준선보다 훨씬 높고 카드 역할이 달라야 하는데 높으면 말만 바꾼 되풀이를 의심한다.`);
+}
 if (examples.length) console.log(`\n예시:\n${examples.join("\n")}`);

@@ -3,7 +3,7 @@
 // 이 값은 생성 지시용 가이드일 뿐 강제 기준이 아니다(강제는 안내문이 명시한 분량만 — 부족 여부는 필수 항목 충족으로 본다).
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
 import { inferDeliverableForm, isResearchMaterialStep } from "./deliverable.ts";
-import { qualityFixesOn, formRequirementsOn, lengthInferOn, lineLengthOn, lengthTargetOn, boxLengthOn, tableFormOn } from "./quality-flags.ts";
+import { qualityFixesOn, formRequirementsOn, lineLengthOn, lengthTargetOn, boxLengthOn, tableFormOn } from "./quality-flags.ts";
 import { pageLengthForElement } from "./page-length.ts";
 import { hasSizeLimit, isSceneLikeElement, isSceneListElement, requirementsForElement } from "./form-requirements.ts";
 import { boxLengths, isDrawingBox } from "./box-lines.ts";
@@ -24,11 +24,7 @@ export type LengthRole =
   | "slogan" // 문구·슬로건·캐치프레이즈
   | "script" // 발표문·대본·연설
   | "report" // 보고서·논설문·감상문·에세이·비평
-  | "short_answer" // 짧은 서술형 답변 (LENGTH_INFER)
-  | "opinion" // 일반적인 의견 작성 (LENGTH_INFER)
-  | "argument" // 주장하는 글·논설문 (LENGTH_INFER)
-  | "inquiry" // 탐구·조사 보고서 (LENGTH_INFER)
-  | "deep_analysis" // 심층 분석 보고서 (LENGTH_INFER)
+  | "short_answer" // 짧은 서술형 답변(답안 칸·한 줄 입장·옳고 그름 표시)
   | "plan" // 계획·개요·설계
   | "scenes" // 장면 번호 소제목(스토리보드·컷)으로 쓰는 단계 — 장면마다 화면·대사 한두 문장
   | "table" // 양식이 **표**인 칸(비교표·분석표·채점 기준표) — 칸 이름은 소제목이 아니라 **열**이다
@@ -132,14 +128,6 @@ export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
   if (/선정\s*이유|선택\s*이유|동기|이유\s*작성/.test(label)) return "reason";
   if (/문구|슬로건|캐치|표어|제목\s*짓/.test(label)) return "slogan";
   if (/발표|대본|스피치|연설|speech/i.test(text)) return "script";
-  // 과제 유형 추론(분량 기준 문서 3순위) — 낱말로 정한 아래 규칙보다 먼저, 더 구체적인 유형부터 본다.
-  if (lengthInferOn()) {
-    if (/심층|종합\s*분석|비교\s*분석/.test(text) && /보고서/.test(text)) return "deep_analysis";
-    if (/(탐구|조사|연구|실험)\s*(결과\s*)?보고서/.test(text)) return "inquiry";
-    if (/논설|논술|주장하는\s*글|설득/.test(text)) return "argument";
-    if (/서술형|한\s*문단|간단히\s*(쓰|서술|작성)|짧게\s*(쓰|서술|작성)|한두\s*문장/.test(text)) return "short_answer";
-    if (/의견|견해|입장|제언|생각을?\s*(쓰|서술|작성)/.test(text) && !/보고서/.test(label)) return "opinion";
-  }
   if (/보고서|논설|논술|에세이|소논문|비평|감상문|독후감|칼럼/.test(text)) return "report";
   if (/계획|개요|설계|구상|기획/.test(label)) return "plan";
   return "general";
@@ -187,14 +175,6 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   switch (role) {
     case "short_answer":
       return { role, min: 300, max: 500, basis: "짧은 서술형 답변" };
-    case "opinion":
-      return { role, min: 500, max: 800, basis: "근거를 갖춘 일반적인 의견" };
-    case "argument":
-      return { role, min: 800, max: 1200, basis: "주장·근거·반론·결론을 갖춘 글" };
-    case "inquiry":
-      return { role, min: 1200, max: 2000, basis: "탐구·조사 보고서" };
-    case "deep_analysis":
-      return { role, min: 2000, max: 2800, basis: "심층 분석 보고서" };
     case "material": {
       const n = Math.max(items, 2);
       return { role, min: n * 160, max: n * 380, basis: `조사 항목 ${n}개 × 항목당 사실 2~4문장` };
