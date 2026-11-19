@@ -155,7 +155,8 @@ export default function StudyRail({
 
       <div className={["flex h-full min-h-0 flex-col gap-6 lg:overflow-y-auto", collapsed ? "lg:hidden" : ""].join(" ")}>
         <section>
-          <div className="mb-3 flex items-center justify-between">
+          {/* 위쪽 탭(StudyTabs)이 같은 화면에 있으면 좁은 화면에서는 같은 기능이 두 번 나오지 않게 이 카드를 숨긴다 */}
+          <div className={["mb-3 flex items-center justify-between", shared ? "max-lg:hidden" : ""].join(" ")}>
             <h2 className="text-[13px] font-semibold text-muted">{t("만들기")}</h2>
             <button
               onClick={() => toggle(true)}
@@ -265,9 +266,9 @@ export default function StudyRail({
         )}
       </div>
 
-      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenExam={openExam} />}
-      {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenExam={openExam} />}
-      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenExam={openExam} />}
+      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenMemorize={() => open("flashcards")} />}
+      {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} onOpenQuiz={() => open("quiz")} />}
+      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} onOpenExam={openExam} />}
       {studyRef && tool?.id === "exam" && <ExamModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
     </aside>
   );

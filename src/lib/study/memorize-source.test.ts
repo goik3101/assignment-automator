@@ -66,3 +66,13 @@ test("칸이 둘 이상이면 요점을 칸 순서로 쓰게 한다", () => {
   assert.match(i, /2줄/);
   assert.match(i, /시험지에 쓰는 순서/);
 });
+
+test("memorizeBlock: anchored:false면 [외울 문장]을 빼고 칸 순서만 준다(요약용)", () => {
+  const md = "## 가\n본문 문장입니다 열두 글자 넘게 쓴 문장이다[1].\n## 나\n다른 칸의 문장도 열두 글자를 넘긴다[2].\n";
+  const src = readMemorizeSource(md);
+  const all = memorizeBlock(src);
+  const orderOnly = memorizeBlock(src, { anchored: false });
+  assert.match(all, /외울 문장/);
+  assert.match(orderOnly, /칸 순서/);
+  assert.doesNotMatch(orderOnly, /외울 문장/);
+});

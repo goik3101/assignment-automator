@@ -1,339 +1,354 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
-import { CircleCheck, CircleX, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Check, GraduationCap, RotateCcw, X } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
-import StudyState, { CachedNote } from "./StudyState";
-import ExamNudge from "./ExamNudge";
+import StudyState from "./StudyState";
+import type { StudySummaryData } from "./SummaryModal";
 import { useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
-import { isTextAnswerCorrect, type QuizQuestion as Question } from "@/lib/study/quiz-validate";
 import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
+import { chipBank, firstLetterHint, readiness, sameKeyword, scoreWrite, segmentLine, type SkeletonBox } from "@/lib/study/memo-skeleton";
 
-const isText = (q: Question) => q.type === "short" || q.type === "blank";
-/** 짝 맞추기: 왼쪽(용어)을 누르고 오른쪽(뜻)을 눌러 잇는다. 보기를 고르는 것이 아니라 **잇는** 문제다. */
-const isMatch = (q: Question) => q.type === "match";
+// 단계: 0 뼈대 한 장 → 1 보기에서 고르기 → 2 첫 글자 보고 입력 → 3 칸 이름만 보고 백지 → 4 결과
+// 각 단계는 칸을 한 번씩 돈다. 막힌 칸은 그 단계 끝에 한 번 더 나온다.
+type Stage = 0 | 1 | 2 | 3 | 4;
 
-/** 빈칸 문제의 ____ 를 눈에 띄는 빈칸으로 보여 준다. */
-function QuestionText({ q }: { q: Question }) {
+const STAGE_NAME: Record<1 | 2 | 3, string> = { 1: "보기에서 고르기", 2: "첫 글자 보고 쓰기", 3: "백지에 떠올리기" };
+
+/** 한 칸 문제의 결과: 모두 맞았는가. */
+type Done = (passed: boolean, hit?: number) => void;
+
+function ChooseStep({ boxes, index, onDone }: { boxes: SkeletonBox[]; index: number; onDone: Done }) {
   const t = useT();
-  if (q.type !== "blank") return <>{q.question}</>;
-  const parts = q.question.split(/_{2,}/);
-  return (
-    <>
-      {parts.map((part, i) => (
-        <Fragment key={i}>
-          {part}
-          {i < parts.length - 1 && <span className="mx-1 inline-block w-20 border-b-2 border-foreground/60 align-baseline" aria-label={t("빈칸")} />}
-        </Fragment>
-      ))}
-    </>
-  );
-}
+  const b = boxes[index];
+  const segs = useMemo(() => segmentLine(b.line, b.keywords), [b]);
+  const blanks = segs.filter((s) => s.blank !== undefined).map((s) => s.text);
+  const bank = useMemo(() => chipBank(boxes, index, 2), [boxes, index]);
+  const [filled, setFilled] = useState<string[]>([]);
+  const [used, setUsed] = useState<Set<number>>(new Set());
+  const [wrong, setWrong] = useState<number | null>(null);
+  const [missed, setMissed] = useState(false);
+  const done = filled.length >= blanks.length;
 
-function Runner({ questions, onRetryAll }: { questions: Question[]; onRetryAll: () => void }) {
-  const t = useT();
-  const [list, setList] = useState(questions);
-  const [i, setI] = useState(0);
-  const [picked, setPicked] = useState<number | null>(null);
-  const [typed, setTyped] = useState("");
-  const [textResult, setTextResult] = useState<"right" | "wrong" | null>(null);
-  // 짝 맞추기 — links[왼쪽 순번] = 학생이 이은 오른쪽의 **원래** 순번(정답은 둘이 같을 때).
-  const [links, setLinks] = useState<Record<number, number>>({});
-  const [activeLeft, setActiveLeft] = useState<number | null>(null);
-  const [matchResult, setMatchResult] = useState<"right" | "wrong" | null>(null);
-  const [wrong, setWrong] = useState<Question[]>([]);
-  const [score, setScore] = useState(0);
-  const done = i >= list.length;
-  const q = list[i];
-  const answered = picked !== null || textResult !== null || matchResult !== null;
-  const correct = q && (isText(q) ? textResult === "right" : isMatch(q) ? matchResult === "right" : picked === q.answerIndex);
-
-  // 오른쪽(뜻)은 섞어 보여 준다 — 문항이 바뀔 때만 섞는다(다시 그릴 때마다 섞이면 풀 수가 없다).
-  const rightOrder = useMemo(() => {
-    const order = [...Array(q?.pairs?.length ?? 0).keys()];
-    for (let k = order.length - 1; k > 0; k--) {
-      const j = Math.floor(Math.random() * (k + 1));
-      [order[k], order[j]] = [order[j], order[k]];
+  function pick(i: number) {
+    if (done || used.has(i)) return;
+    if (sameKeyword(bank[i], blanks[filled.length])) {
+      setFilled((f) => [...f, bank[i]]);
+      setUsed((u) => new Set(u).add(i));
+      setWrong(null);
+    } else {
+      setWrong(i);
+      setMissed(true);
     }
-    return order;
-  }, [q]);
-
-  /** 왼쪽을 고른 뒤 오른쪽을 누르면 이어진다. 다 이으면 그 자리에서 채점한다. */
-  function link(rightIndex: number) {
-    if (answered || activeLeft === null) return;
-    const next = { ...links, [activeLeft]: rightIndex };
-    setLinks(next);
-    setActiveLeft(null);
-    const total = q.pairs?.length ?? 0;
-    if (Object.keys(next).length < total) return;
-    const ok = [...Array(total).keys()].every((idx) => next[idx] === idx);
-    setMatchResult(ok ? "right" : "wrong");
-    if (ok) setScore((s) => s + 1);
-    else setWrong((w) => [...w, q]);
   }
 
-  function choose(idx: number) {
-    if (answered) return;
-    setPicked(idx);
-    if (idx === q.answerIndex) setScore((s) => s + 1);
-    else setWrong((w) => [...w, q]);
-  }
-  function submitText() {
-    if (answered || !typed.trim()) return;
-    const ok = isTextAnswerCorrect(typed, q);
-    setTextResult(ok ? "right" : "wrong");
-    if (ok) setScore((s) => s + 1);
-    else setWrong((w) => [...w, q]);
-  }
-  // 표기만 달라 오답 처리된 경우 학생이 직접 정답으로 바꿀 수 있다.
-  function markRight() {
-    setTextResult("right");
-    setScore((s) => s + 1);
-    setWrong((w) => w.filter((x) => x !== q));
-  }
-  function next() {
-    setPicked(null);
-    setTyped("");
-    setTextResult(null);
-    setLinks({});
-    setActiveLeft(null);
-    setMatchResult(null);
-    setI((v) => v + 1);
-  }
-
-  if (done) {
-    const pct = Math.round((score / list.length) * 100);
-    return (
-      <div className="flex flex-col items-center gap-5 py-8 text-center">
-        <p className="text-4xl font-bold tabular-nums">
-          {score}
-          <span className="text-xl font-medium text-faint"> / {list.length}</span>
-        </p>
-        <p className="text-sm text-muted">
-          {pct === 100
-            ? t("전부 맞혔어요. 내용을 잘 이해하고 있어요.")
-            : pct >= 70
-              ? t("잘 이해하고 있어요. 틀린 문제만 다시 풀어 볼까요?")
-              : t("아직 헷갈리는 부분이 있어요. 틀린 문제를 다시 풀어 보세요.")}
-        </p>
-        <div className="flex flex-wrap justify-center gap-2">
-          {wrong.length > 0 && (
-            <Button
-              variant="primary"
-              onClick={() => {
-                setList(wrong);
-                setWrong([]);
-                setScore(0);
-                setI(0);
-                setPicked(null);
-                setTyped("");
-                setTextResult(null);
-                setLinks({});
-                setActiveLeft(null);
-                setMatchResult(null);
-              }}
-            >
-              <RotateCcw size={15} strokeWidth={1.8} />
-              {t("틀린 문제만 다시 ({n}문제)", { n: wrong.length })}
-            </Button>
-          )}
-          <Button onClick={onRetryAll}>{t("처음부터 다시 풀기")}</Button>
-        </div>
-      </div>
-    );
-  }
-
+  let blankNo = -1;
   return (
     <div>
-      <div className="mb-6">
-        <div className="mb-2 flex items-center justify-between text-xs text-faint">
-          <span className="tabular-nums">
-            {i + 1} / {list.length}
-          </span>
-          <span className="tabular-nums">{t("맞힌 문제 {n}", { n: score })}</span>
-        </div>
-        <div className="h-1 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuemin={0} aria-valuemax={list.length} aria-valuenow={i + (answered ? 1 : 0)}>
-          <div className="h-full rounded-full bg-foreground transition-all duration-300" style={{ width: `${((i + (answered ? 1 : 0)) / list.length) * 100}%` }} />
-        </div>
-      </div>
-      <p className="mb-2 text-xs font-semibold text-faint">
-        {q.type === "choice" ? t("객관식") : q.type === "ox" ? t("OX") : q.type === "short" ? t("주관식") : q.type === "match" ? t("짝 맞추기") : t("빈칸 채우기")}
-      </p>
-      <p className="text-[19px] font-bold leading-relaxed tracking-tight">
-        <QuestionText q={q} />
-      </p>
-
-      {isText(q) && (
-        <form
-          className="mt-5 flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submitText();
-          }}
-        >
-          <input
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            disabled={answered}
-            autoFocus
-            maxLength={60}
-            aria-label={t("답 입력")}
-            placeholder={q.type === "blank" ? t("빈칸에 들어갈 말") : t("답을 짧게 써 보세요")}
-            className={[
-              "h-12 min-w-0 flex-1 rounded-2xl px-4 text-[15px] outline-none transition-colors placeholder:text-faint",
-              textResult === "right" ? "bg-foreground font-semibold text-background" : textResult === "wrong" ? "bg-danger/10 text-danger" : "bg-surface focus:bg-raised",
-            ].join(" ")}
-          />
-          {!answered && (
-            <Button type="submit" variant="primary" disabled={!typed.trim()}>
-              {t("확인")}
-            </Button>
-          )}
-        </form>
-      )}
-
-      {/* 짝 맞추기 — 왼쪽(용어)을 누르고 오른쪽(뜻)을 눌러 잇는다. 오른쪽은 섞여 있고, 다 이으면 바로 채점한다.
-          보기를 만들지 않으므로 **오답을 지어낼 일이 없는** 유형이다(2026-11-13 결정). */}
-      {isMatch(q) && (
-        <div className="mt-5 grid grid-cols-2 gap-2.5">
-          <ul className="flex flex-col gap-2.5">
-            {(q.pairs ?? []).map((pair, li) => {
-              const linked = links[li];
-              const state = answered ? (linked === li ? "right" : "wrong") : activeLeft === li ? "active" : linked !== undefined ? "done" : "idle";
-              return (
-                <li key={li}>
-                  <button
-                    onClick={() => !answered && setActiveLeft(activeLeft === li ? null : li)}
-                    disabled={answered}
-                    aria-pressed={activeLeft === li}
-                    className={[
-                      "flex w-full items-center gap-2 rounded-2xl px-3.5 py-3.5 text-left text-[15px] leading-snug transition-colors",
-                      state === "idle" ? "bg-surface hover:bg-raised" : "",
-                      state === "active" ? "bg-raised ring-2 ring-foreground" : "",
-                      state === "done" ? "bg-raised" : "",
-                      state === "right" ? "bg-foreground font-semibold text-background" : "",
-                      state === "wrong" ? "bg-danger/10 text-danger" : "",
-                    ].join(" ")}
-                  >
-                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-background/70 text-xs font-semibold tabular-nums text-foreground">
-                      {linked !== undefined ? rightOrder.indexOf(linked) + 1 : li + 1}
-                    </span>
-                    <span className="flex-1">{pair.left}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <ul className="flex flex-col gap-2.5">
-            {rightOrder.map((ri, pos) => {
-              const takenBy = Object.keys(links).find((k) => links[Number(k)] === ri);
-              const state = answered ? (takenBy !== undefined && Number(takenBy) === ri ? "right" : takenBy !== undefined ? "wrong" : "dim") : takenBy !== undefined ? "done" : "idle";
-              return (
-                <li key={ri}>
-                  <button
-                    onClick={() => link(ri)}
-                    disabled={answered || activeLeft === null}
-                    className={[
-                      "flex w-full items-center gap-2 rounded-2xl px-3.5 py-3.5 text-left text-[14px] leading-snug transition-colors",
-                      state === "idle" ? "bg-surface hover:bg-raised disabled:hover:bg-surface" : "",
-                      state === "done" ? "bg-raised" : "",
-                      state === "right" ? "bg-foreground font-semibold text-background" : "",
-                      state === "wrong" ? "bg-danger/10 text-danger" : "",
-                      state === "dim" ? "bg-surface text-faint" : "",
-                    ].join(" ")}
-                  >
-                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-background/70 text-xs font-semibold tabular-nums text-foreground">{pos + 1}</span>
-                    <span className="flex-1">{(q.pairs ?? [])[ri]?.right}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-      {isMatch(q) && !answered && (
-        <p className="mt-3 text-xs text-faint">{activeLeft === null ? t("왼쪽에서 하나를 고르세요") : t("이제 오른쪽에서 알맞은 뜻을 고르세요")}</p>
-      )}
-
-      <ul className={["mt-5 gap-2.5", q.type === "ox" ? "grid grid-cols-2" : "flex flex-col", isText(q) || isMatch(q) ? "hidden" : ""].join(" ")}>
-        {q.choices.map((c, idx) => {
-          const isAnswer = idx === q.answerIndex;
-          const isPicked = picked === idx;
-          const state = !answered ? "idle" : isAnswer ? "right" : isPicked ? "wrong" : "dim";
+      <p className="text-xs font-semibold text-faint">{b.box}</p>
+      <p className="mt-2 text-lg font-bold leading-[2.1] tracking-tight">
+        {segs.map((s, i) => {
+          if (s.blank === undefined) return <span key={i}>{s.text}</span>;
+          blankNo += 1;
+          const text = filled[blankNo];
           return (
-            <li key={idx}>
-              <button
-                onClick={() => choose(idx)}
-                disabled={answered}
-                aria-pressed={isPicked}
-                className={[
-                  "flex w-full items-center gap-3 rounded-2xl px-4 py-4 text-left text-[15px] leading-snug transition-colors",
-                  q.type === "ox" ? "justify-center py-7 text-2xl font-bold" : "",
-                  state === "idle" ? "bg-surface hover:bg-raised" : "",
-                  state === "right" ? "bg-foreground font-semibold text-background" : "",
-                  state === "wrong" ? "bg-danger/10 text-danger" : "",
-                  state === "dim" ? "bg-surface text-faint" : "",
-                ].join(" ")}
-              >
-                {q.type === "choice" && (
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-background/70 text-xs font-semibold tabular-nums text-foreground">{idx + 1}</span>
-                )}
-                <span className="flex-1">{c}</span>
-                {answered && isAnswer && <CircleCheck size={18} strokeWidth={1.8} className="shrink-0" aria-label={t("정답")} />}
-                {answered && isPicked && !isAnswer && <CircleX size={18} strokeWidth={1.8} className="shrink-0" aria-label={t("오답")} />}
-              </button>
-            </li>
+            <span
+              key={i}
+              className={["mx-0.5 inline-block min-w-[3.5rem] rounded-md border-b-2 px-1.5 text-center", text ? "border-foreground bg-surface" : "border-border-strong text-transparent"].join(" ")}
+            >
+              {text ?? "○○"}
+            </span>
           );
         })}
-      </ul>
-
-      {answered && (
-        <div role="status" className="mt-5 rounded-2xl bg-surface p-5">
-          <p className="mb-1 text-xs font-semibold text-faint">{correct ? t("맞았어요") : t("아쉬워요")}</p>
-          {isText(q) && (
-            <p className="mb-1.5 text-sm">
-              {t("정답")}: <span className="font-bold">{q.answer}</span>
-            </p>
-          )}
-          <p className="text-sm leading-relaxed text-muted">{q.explanation}</p>
-          {isText(q) && textResult === "wrong" && (
-            <button onClick={markRight} className="mt-3 text-xs font-semibold text-muted underline underline-offset-2 hover:text-foreground">
-              {t("같은 뜻으로 썼어요 — 맞은 걸로 할게요")}
-            </button>
-          )}
-        </div>
-      )}
-      <div className="mt-5 flex justify-end">
-        <Button variant="primary" onClick={next} disabled={!answered}>
-          {i + 1 === list.length ? t("결과 보기") : t("다음 문제")}
+      </p>
+      <p className="mt-5 text-xs text-faint">{t("빈칸에 들어갈 말을 순서대로 눌러 보세요")}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {bank.map((k, i) => (
+          <button
+            key={i}
+            onClick={() => pick(i)}
+            disabled={used.has(i) || done}
+            className={[
+              "h-10 rounded-full px-4 text-[14px] font-semibold transition-colors disabled:opacity-30",
+              wrong === i ? "bg-danger/15 text-danger" : "bg-raised hover:bg-border-strong",
+            ].join(" ")}
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+      {wrong !== null && !done && <p className="mt-3 text-xs text-danger">{t("그 순서가 아니에요. 다시 골라 보세요.")}</p>}
+      <div className="mt-6 flex justify-end">
+        <Button variant="primary" disabled={!done} onClick={() => onDone(!missed)}>
+          {t("다음")} <ArrowRight size={14} strokeWidth={1.8} />
         </Button>
       </div>
     </div>
   );
 }
 
-export default function QuizModal({ studyRef, onClose, reuse = false, onOpenExam }: { studyRef: StudyRef; onClose: () => void; reuse?: boolean; onOpenExam?: () => void }) {
+function TypeStep({ boxes, index, onDone }: { boxes: SkeletonBox[]; index: number; onDone: Done }) {
   const t = useT();
-  // 설정 > AI 설정의 퀴즈 설정. 창이 열릴 때 한 번 읽는다(이 창은 버튼을 누른 뒤에만 그려져 서버 렌더와 어긋나지 않는다).
-  const [prefs] = useState(() => loadStudyPrefs().quiz);
-  const { data, error, loading, fromCache, refresh } = useStudyData<{ questions: Question[] }>(studyRef, "quiz", { prefs }, Infinity, {
-    sig: prefsSignature(prefs),
-    reuse,
-  });
-  const [run, setRun] = useState(0);
+  const b = boxes[index];
+  const segs = useMemo(() => segmentLine(b.line, b.keywords), [b]);
+  const blanks = segs.filter((s) => s.blank !== undefined);
+  const [vals, setVals] = useState<string[]>(() => blanks.map(() => ""));
+  const [checked, setChecked] = useState(false);
+  const ok = blanks.map((s, i) => sameKeyword(vals[i] ?? "", s.text));
+  const allOk = ok.every(Boolean);
+
+  let n = -1;
   return (
-    <Modal title={t("퀴즈")} onClose={onClose} width={620} busy={loading}>
-      <StudyState loading={loading} error={error} onRetry={refresh} loadingText={t("내용을 읽고 문제를 만들고 있어요...")}>
-        {data && data.questions.length > 0 ? (
-          <>
-            <Runner key={run} questions={data.questions} onRetryAll={() => setRun((r) => r + 1)} />
-            <CachedNote at={fromCache} onRefresh={() => { setRun((r) => r + 1); void refresh(); }} busy={loading} />
-            <ExamNudge onOpenExam={onOpenExam} />
-          </>
+    <div>
+      <p className="text-xs font-semibold text-faint">{b.box}</p>
+      <p className="mt-2 text-lg font-bold leading-[2.4] tracking-tight">
+        {segs.map((s, i) => {
+          if (s.blank === undefined) return <span key={i}>{s.text}</span>;
+          n += 1;
+          const k = n;
+          return (
+            <input
+              key={i}
+              value={vals[k]}
+              disabled={checked}
+              onChange={(e) => setVals((v) => v.map((x, j) => (j === k ? e.target.value : x)))}
+              placeholder={firstLetterHint(s.text)}
+              aria-label={t("빈칸 {n}", { n: k + 1 })}
+              size={Math.max(4, Array.from(s.text).length + 1)}
+              className={[
+                "mx-0.5 rounded-md border-b-2 bg-surface px-1.5 text-center text-[16px] font-bold outline-none placeholder:font-medium placeholder:text-faint",
+                checked ? (ok[k] ? "border-foreground" : "border-danger text-danger") : "border-border-strong focus:border-foreground",
+              ].join(" ")}
+            />
+          );
+        })}
+      </p>
+      {checked && !allOk && (
+        <p className="mt-3 text-sm text-muted">
+          {t("정답")}: <b className="text-foreground">{blanks.map((s) => s.text).join(" · ")}</b>
+        </p>
+      )}
+      <div className="mt-6 flex justify-end gap-2">
+        {!checked ? (
+          <Button variant="primary" onClick={() => setChecked(true)} disabled={vals.some((v) => !v.trim())}>
+            {t("확인")}
+          </Button>
         ) : (
-          data && <p className="py-10 text-center text-sm text-muted">{t("문제로 만들 만한 내용이 부족해요.")}</p>
+          <Button variant="primary" onClick={() => onDone(allOk)}>
+            {t("다음")} <ArrowRight size={14} strokeWidth={1.8} />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WriteStep({ boxes, index, retry, onDone }: { boxes: SkeletonBox[]; index: number; retry: boolean; onDone: Done }) {
+  const t = useT();
+  const b = boxes[index];
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<{ hit: string[]; miss: string[] } | null>(null);
+  return (
+    <div>
+      <p className="text-xs font-semibold text-faint">{t("칸 이름")}</p>
+      <p className="mt-1 text-xl font-bold tracking-tight">{b.box}</p>
+      <textarea
+        value={text}
+        disabled={!!result}
+        onChange={(e) => setText(e.target.value)}
+        rows={4}
+        placeholder={t("이 칸에 쓸 핵심어와 내용을 떠올려 써 보세요 (시험장에서 쓰듯이)")}
+        className="mt-4 w-full resize-none rounded-xl border border-border-strong bg-transparent px-4 py-3 text-[15px] leading-relaxed outline-none focus:border-foreground"
+      />
+      {result && (
+        <div className="mt-3 space-y-1.5 text-sm">
+          <p className="flex flex-wrap items-center gap-1.5">
+            {result.hit.map((k) => (
+              <span key={k} className="inline-flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 font-semibold">
+                <Check size={12} strokeWidth={2.2} />
+                {k}
+              </span>
+            ))}
+            {result.miss.map((k) => (
+              <span key={k} className="inline-flex items-center gap-1 rounded-full bg-danger/15 px-2.5 py-1 font-semibold text-danger">
+                <X size={12} strokeWidth={2.2} />
+                {k}
+              </span>
+            ))}
+          </p>
+          <p className="leading-relaxed text-muted">{b.line}</p>
+        </div>
+      )}
+      <div className="mt-5 flex items-center justify-between gap-3">
+        <span className="text-xs text-faint">{retry ? t("한 번 더 도전") : ""}</span>
+        {!result ? (
+          <Button variant="primary" onClick={() => setResult(scoreWrite(text, b.keywords))} disabled={!text.trim()}>
+            {t("확인")}
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={() => onDone(result.miss.length === 0, result.hit.length)}>
+            {t("다음")} <ArrowRight size={14} strokeWidth={1.8} />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 퀴즈(= 암기 사다리): 요약에서 만든 **뼈대**(칸 순서 + 칸마다 핵심어)를 가리는 양을 늘려 가며 외운다.
+ * 문장은 시험장에서 이해한 대로 쓰면 되므로 외울 것은 뼈대뿐이다. 요약이 저장돼 있으면 그것을 쓰고, 없으면 같은 요청으로 만든다(별도 모델 호출 없음).
+ */
+export default function QuizModal({
+  studyRef,
+  onClose,
+  onOpenExam,
+}: {
+  studyRef: StudyRef;
+  onClose: () => void;
+  onOpenExam?: () => void;
+}) {
+  const t = useT();
+  const [prefs] = useState(() => loadStudyPrefs());
+  // reuse=true: 어떤 설정으로 만든 요약이든 저장돼 있으면 그대로 쓴다.
+  const { data, error, loading, refresh } = useStudyData<StudySummaryData>(studyRef, "summary", { prefs: prefs.summary }, Infinity, {
+    sig: prefsSignature(prefs.summary),
+    reuse: true,
+  });
+  const boxes = useMemo(() => data?.skeleton ?? [], [data]);
+
+  const [stage, setStage] = useState<Stage>(0);
+  const [queue, setQueue] = useState<number[]>([]);
+  const [pos, setPos] = useState(0);
+  const retried = useRef(new Set<number>());
+  // 백지 단계에서 **처음 쓴 답**의 적중(준비도 계산용)과, 실제로 헷갈린 칸.
+  const first = useRef<Record<number, { hit: number; total: number }>>({});
+  const weak = useRef<Set<number>>(new Set());
+
+  // 이번 회차가 도는 칸들(헷갈린 칸만 다시 할 때는 일부).
+  const scope = useRef<number[] | null>(null);
+
+  function begin(s: 1 | 2 | 3, only?: number[]) {
+    if (only) scope.current = only;
+    else if (s === 1) scope.current = null;
+    const order = scope.current ?? boxes.map((_, i) => i);
+    retried.current = new Set();
+    if (s === 3) {
+      for (const i of order) {
+        delete first.current[i];
+        weak.current.delete(i);
+      }
+    }
+    setQueue(order);
+    setPos(0);
+    setStage(s);
+  }
+
+  const onDone: Done = (passed, hit) => {
+    const i = queue[pos];
+    if (stage === 3 && first.current[i] === undefined) {
+      first.current[i] = { hit: hit ?? (passed ? boxes[i].keywords.length : 0), total: boxes[i].keywords.length };
+      if (!passed) weak.current.add(i);
+    }
+    // 막힌 칸은 이 단계 끝에 한 번 더 나온다.
+    if (!passed && !retried.current.has(i)) {
+      retried.current.add(i);
+      setQueue((q) => [...q, i]);
+    }
+    setPos((p) => p + 1);
+  };
+
+  // 큐를 다 돌았으면 다음 단계로(재도전으로 길어진 큐도 끝까지 돈다).
+  useEffect(() => {
+    if (stage < 1 || stage > 3 || queue.length === 0 || pos < queue.length) return;
+    if (stage < 3) begin((stage + 1) as 2 | 3);
+    else setStage(4);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const score = readiness(Object.values(first.current));
+  const hasSkeleton = boxes.length > 0;
+  const current = stage >= 1 && stage <= 3 ? queue[pos] : undefined;
+
+  return (
+    <Modal title={t("퀴즈")} onClose={onClose} width={640} busy={loading}>
+      <StudyState loading={loading} error={error} onRetry={refresh} loadingText={t("외울 뼈대를 만들고 있어요...")}>
+        {data && !hasSkeleton && (
+          <div className="py-10 text-center">
+            <p className="text-sm leading-relaxed text-muted">{t("이 요약에는 암기 뼈대가 없어요. 새로 만들면 외울 것만 뽑아 줘요.")}</p>
+            <Button className="mt-4" variant="primary" onClick={refresh}>
+              {t("새로 만들기")}
+            </Button>
+          </div>
+        )}
+
+        {data && hasSkeleton && stage === 0 && (
+          <div>
+            <p className="text-base font-bold leading-snug">{t("빈칸 → 첫 글자 → 백지, 3단계로 풀어요")}</p>
+            <ol className="mt-3 space-y-1.5 text-sm leading-relaxed text-muted">
+              <li>1. {t(STAGE_NAME[1])}</li>
+              <li>2. {t(STAGE_NAME[2])}</li>
+              <li>3. {t(STAGE_NAME[3])}</li>
+            </ol>
+            <p className="mt-3 text-xs text-faint">{t("시험장에서 문장은 이해한 대로 쓰면 돼요. 핵심어와 순서만 맞히면 돼요.")}</p>
+            <div className="mt-6 flex justify-end">
+              <Button variant="primary" onClick={() => begin(1)}>
+                {t("퀴즈 시작")} <ArrowRight size={14} strokeWidth={1.8} />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {data && hasSkeleton && current !== undefined && (
+          <div>
+            <div className="mb-5 flex items-center justify-between text-xs text-faint">
+              <span className="font-semibold">
+                {stage} / 3 · {t(STAGE_NAME[stage as 1 | 2 | 3])}
+              </span>
+              <span className="tabular-nums">
+                {Math.min(pos + 1, queue.length)} / {queue.length}
+              </span>
+            </div>
+            <div key={`${stage}-${pos}`}>
+              {stage === 1 && <ChooseStep boxes={boxes} index={current} onDone={onDone} />}
+              {stage === 2 && <TypeStep boxes={boxes} index={current} onDone={onDone} />}
+              {stage === 3 && <WriteStep boxes={boxes} index={current} retry={pos >= (scope.current?.length ?? boxes.length)} onDone={onDone} />}
+            </div>
+          </div>
+        )}
+
+        {data && hasSkeleton && stage === 4 && (
+          <div className="py-6 text-center">
+            <p className="text-xs font-semibold text-faint">{t("지금 시험을 보면 (추정)")}</p>
+            <p className="mt-1 text-5xl font-bold tabular-nums">
+              {score}
+              <span className="text-xl font-medium text-faint">%</span>
+            </p>
+            <p className="mx-auto mt-3 max-w-sm text-xs leading-relaxed text-faint">{t("이 숫자는 핵심어를 얼마나 떠올렸는지로 낸 추정이에요. 실제 채점 점수와는 달라요.")}</p>
+            {weak.current.size > 0 ? (
+              <p className="mt-5 text-sm text-muted">
+                {t("헷갈린 칸")}: <b className="text-foreground">{[...weak.current].map((i) => boxes[i].box).join(" · ")}</b>
+              </p>
+            ) : (
+              <p className="mt-5 text-sm text-muted">{t("전부 떠올렸어요!")}</p>
+            )}
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {weak.current.size > 0 && (
+                <Button variant="primary" onClick={() => begin(2, [...weak.current])}>
+                  <RotateCcw size={15} strokeWidth={1.8} />
+                  {t("헷갈린 칸만 다시")}
+                </Button>
+              )}
+              <Button onClick={() => { weak.current = new Set(); begin(1); }}>{t("처음부터 다시")}</Button>
+              {onOpenExam && (
+                <Button variant={weak.current.size > 0 ? "secondary" : "primary"} onClick={onOpenExam}>
+                  <GraduationCap size={15} strokeWidth={1.8} />
+                  {t("가상 시험 보기")}
+                </Button>
+              )}
+            </div>
+          </div>
         )}
       </StudyState>
     </Modal>

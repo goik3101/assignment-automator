@@ -21,10 +21,15 @@ export interface SummaryPrefs {
   format: SummaryFormat;
   easy: boolean;
 }
+export interface MemorizePrefs {
+  /** 핵심어 첫 글자를 이어 붙인 두음 암기 보조를 보여 줄지. */
+  mnemonic: boolean;
+}
 export interface StudyPrefs {
   quiz: QuizPrefs;
   flashcards: FlashcardPrefs;
   summary: SummaryPrefs;
+  memorize: MemorizePrefs;
 }
 
 export const QUIZ_TYPES: QuizType[] = ["choice", "ox", "short", "blank", "match"];
@@ -38,6 +43,7 @@ export const DEFAULT_STUDY_PREFS: StudyPrefs = {
   quiz: { types: [...QUIZ_TYPES], difficulty: "normal", depth: "basic", count: 10 },
   flashcards: { count: 10 },
   summary: { detail: "standard", format: "bullets", easy: false },
+  memorize: { mnemonic: true },
 };
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
@@ -76,13 +82,23 @@ export function sanitizeSummaryPrefs(v: unknown): SummaryPrefs {
   };
 }
 
+export function sanitizeMemorizePrefs(v: unknown): MemorizePrefs {
+  const o = rec(v);
+  return { mnemonic: typeof o.mnemonic === "boolean" ? o.mnemonic : DEFAULT_STUDY_PREFS.memorize.mnemonic };
+}
+
 export function sanitizeStudyPrefs(v: unknown): StudyPrefs {
   const o = rec(v);
-  return { quiz: sanitizeQuizPrefs(o.quiz), flashcards: sanitizeFlashcardPrefs(o.flashcards), summary: sanitizeSummaryPrefs(o.summary) };
+  return {
+    quiz: sanitizeQuizPrefs(o.quiz),
+    flashcards: sanitizeFlashcardPrefs(o.flashcards),
+    summary: sanitizeSummaryPrefs(o.summary),
+    memorize: sanitizeMemorizePrefs(o.memorize),
+  };
 }
 
 /** 같은 설정으로 만든 자료인지 비교하는 문자열 — 설정을 바꾼 뒤 "만들기"를 누르면 저장된 옛 자료 대신 새로 만든다. */
-export function prefsSignature(p: QuizPrefs | FlashcardPrefs | SummaryPrefs): string {
+export function prefsSignature(p: QuizPrefs | FlashcardPrefs | SummaryPrefs | MemorizePrefs): string {
   return JSON.stringify(p);
 }
 

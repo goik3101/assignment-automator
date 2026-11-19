@@ -11,11 +11,14 @@ export interface ActiveStudyTool {
   reuse: boolean;
 }
 
+/**
+ * 요약 → 플래시카드 → 퀴즈 → 가상 시험 (이해 → 암기 → 확인 순서). 이름은 다른 공부 앱처럼 익숙하게 두고 안은 "빠르게 외우기"에 맞췄다(2026-11-19):
+ * 요약 = 낯선 개념 + 외울 뼈대, 플래시카드 = 뼈대·개념 카드, 퀴즈 = 빈칸→첫 글자→백지 사다리. 플래시카드·퀴즈는 요약을 재료로 써서 별도 모델 호출이 없다.
+ */
 export const STUDY_TOOLS: { id: StudyToolId; label: string; hint: string; icon: LucideIcon }[] = [
-  // 설명에 **무엇이 들어 있는지**를 적는다 — 개념이 들어가는 도구는 "개념"이라고 밝힌다(2026-11-13).
-  { id: "summary", label: "요약", hint: "핵심 + 개념 정리", icon: NotebookText },
-  { id: "flashcards", label: "플래시카드", hint: "개념 카드 뒤집기", icon: Layers },
-  { id: "quiz", label: "퀴즈", hint: "빈칸·단답 퀴즈", icon: CircleHelp },
+  { id: "summary", label: "요약", hint: "낯선 개념 + 외울 뼈대", icon: NotebookText },
+  { id: "flashcards", label: "플래시카드", hint: "뼈대·개념 카드 뒤집기", icon: Layers },
+  { id: "quiz", label: "퀴즈", hint: "빈칸에서 백지까지 3단계", icon: CircleHelp },
   { id: "exam", label: "가상 시험", hint: "빈 종이에 써 보기", icon: GraduationCap },
 ];
 

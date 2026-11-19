@@ -17,12 +17,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   DEFAULT_STUDY_PREFS,
-  FLASHCARD_COUNT,
-  QUIZ_COUNT,
   loadStudyPrefs,
   resetStudyPrefs,
   saveStudyPrefs,
-  type QuizType,
   type StudyPrefs,
 } from "@/lib/study/prefs";
 
@@ -295,14 +292,6 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
     }
   }
 
-  const q = prefs.quiz;
-  const toggleQuizType = (type: QuizType) => {
-    const has = q.types.includes(type);
-    // 마지막 하나는 끌 수 없다(문제를 낼 유형이 없어진다).
-    if (has && q.types.length === 1) return;
-    updatePrefs({ ...prefs, quiz: { ...q, types: has ? q.types.filter((x) => x !== type) : [...q.types, type] } });
-  };
-
   // 검색은 묶음(Group) 단위로 찾는다 — 제목과 그 안의 항목 이름이 검색어를 포함하면 보여준다.
   const groups: { tab: SettingsTab; title: string; keywords: string[]; node: ReactNode }[] = [
     {
@@ -482,84 +471,11 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
     },
     {
       tab: "ai",
-      title: t("퀴즈 설정"),
-      keywords: [t("문제 유형"), t("객관식"), t("주관식"), t("빈칸 채우기"), t("짝 맞추기"), t("난이도"), t("생성 방식"), t("심층"), t("문항 수")],
+      title: t("요약·암기 설정"),
+      keywords: [t("상세도"), t("쉬운 설명 포함"), t("두음 암기"), t("요약"), t("암기")],
       node: (
-        <Group title={t("퀴즈 설정")}>
-          <Row stacked label={t("문제 유형")}>
-            <Pills
-              label={t("문제 유형")}
-              value={q.types}
-              onChange={toggleQuizType}
-              options={[
-                { id: "choice", label: t("객관식") },
-                { id: "ox", label: t("OX") },
-                { id: "short", label: t("주관식") },
-                { id: "blank", label: t("빈칸 채우기") },
-                { id: "match", label: t("짝 맞추기") },
-              ]}
-            />
-          </Row>
-          <Row label={t("난이도")}>
-            <Pills
-              label={t("난이도")}
-              value={q.difficulty}
-              onChange={(d) => updatePrefs({ ...prefs, quiz: { ...q, difficulty: d } })}
-              options={[
-                { id: "easy", label: t("쉬움") },
-                { id: "normal", label: t("보통") },
-                { id: "hard", label: t("어려움") },
-              ]}
-            />
-          </Row>
-          <Row label={t("생성 방식")} desc={t("심층은 문제를 한 번 더 검토해 품질이 좋아지지만, 생성이 더 오래 걸릴 수 있어요.")}>
-            <Pills
-              label={t("생성 방식")}
-              value={q.depth}
-              onChange={(d) => updatePrefs({ ...prefs, quiz: { ...q, depth: d } })}
-              options={[
-                { id: "basic", label: t("기본") },
-                { id: "deep", label: t("심층") },
-              ]}
-            />
-          </Row>
-          <Row label={t("문항 수")} desc={t("한 번에 {min}–{max}문항", { min: QUIZ_COUNT.min, max: QUIZ_COUNT.max })}>
-            <Stepper
-              label={t("문항 수")}
-              value={q.count}
-              min={QUIZ_COUNT.min}
-              max={QUIZ_COUNT.max}
-              onChange={(n) => updatePrefs({ ...prefs, quiz: { ...q, count: n } })}
-            />
-          </Row>
-        </Group>
-      ),
-    },
-    {
-      tab: "ai",
-      title: t("플래시카드 설정"),
-      keywords: [t("카드 수")],
-      node: (
-        <Group title={t("플래시카드 설정")}>
-          <Row label={t("카드 수")} desc={t("한 번에 {min}–{max}장", { min: FLASHCARD_COUNT.min, max: FLASHCARD_COUNT.max })}>
-            <Stepper
-              label={t("카드 수")}
-              value={prefs.flashcards.count}
-              min={FLASHCARD_COUNT.min}
-              max={FLASHCARD_COUNT.max}
-              onChange={(n) => updatePrefs({ ...prefs, flashcards: { count: n } })}
-            />
-          </Row>
-        </Group>
-      ),
-    },
-    {
-      tab: "ai",
-      title: t("요약 설정"),
-      keywords: [t("상세도"), t("요약 형식"), t("개조식"), t("서술식"), t("쉬운 설명 포함")],
-      node: (
-        <Group title={t("요약 설정")}>
-          <Row label={t("상세도")} desc={t("기본값은 표준이에요.")}>
+        <Group title={t("요약·암기 설정")}>
+          <Row label={t("상세도")} desc={t("개념 수와 외울 핵심어 수가 달라져요. 기본값은 표준이에요.")}>
             <Pills
               label={t("상세도")}
               value={prefs.summary.detail}
@@ -571,22 +487,18 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
               ]}
             />
           </Row>
-          <Row label={t("요약 형식")} desc={t("개조식은 핵심을 짧은 항목으로, 서술식은 문단으로 풀어 정리합니다")}>
-            <Pills
-              label={t("요약 형식")}
-              value={prefs.summary.format}
-              onChange={(f) => updatePrefs({ ...prefs, summary: { ...prefs.summary, format: f } })}
-              options={[
-                { id: "bullets", label: t("개조식") },
-                { id: "prose", label: t("서술식") },
-              ]}
-            />
-          </Row>
-          <Row label={t("쉬운 설명 포함")} desc={t("복잡한 개념을 더 쉽게 이해할 수 있도록 설명합니다")}>
+          <Row label={t("쉬운 설명 포함")} desc={t("각 개념에 일상 비유를 한 줄 덧붙여요")}>
             <Switch
               label={t("쉬운 설명 포함")}
               checked={prefs.summary.easy}
               onChange={(v) => updatePrefs({ ...prefs, summary: { ...prefs.summary, easy: v } })}
+            />
+          </Row>
+          <Row label={t("두음 암기 보조")} desc={t("핵심어 첫 글자를 이어 붙여 보여 줘요 (예: 대·밸·펌)")}>
+            <Switch
+              label={t("두음 암기 보조")}
+              checked={prefs.memorize.mnemonic}
+              onChange={(v) => updatePrefs({ ...prefs, memorize: { mnemonic: v } })}
             />
           </Row>
         </Group>
@@ -602,7 +514,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             <li>{t("· 과제 만들기: 로그인 시 하루 2회, 비로그인 하루 1회 (원고와 제작 계획이 함께 나오는 과제도 1회로 세요)")}</li>
             <li>{t("· 결과 수정 요청(다시 만들기): 하루 1회")}</li>
             <li>{t("· 학습 모드(자료 조사 + 피드백): 하루 5회")}</li>
-            <li>{t("· 요약·플래시카드·퀴즈·가상 시험: 로그인 시 종류별로 하루 1회")}</li>
+            <li>{t("· 요약·가상 시험: 로그인 시 종류별로 하루 1회 (플래시카드·퀴즈는 요약 내용을 그대로 써서 횟수에 안 세요)")}</li>
             <li>{t("· AI 채팅: 로그인 시 하루 횟수 제한이 있어요")}</li>
           </ul>
         </Group>
