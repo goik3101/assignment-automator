@@ -126,6 +126,33 @@ export function isWeakQuoteSource(url: string): boolean {
   return isVideoPlatformUrl(url) || isWikiUrl(url) || isReviewBlogUrl(url);
 }
 
+/**
+ * 구절 확인을 **서로 다른 검색 순서로 두 번 동시에** 돌려 먼저 확인된 쪽을 쓴다(둘 다 못 찾으면 못 찾은 것).
+ * 왜(2026-11-19 진단, 한국어판이 있는 책 7회): 한 번 시도의 성공률이 약 70%(5/7)였고, 같은 책(『미움받을 용기』)이 같은 설정에서 실패했다가 성공했다 —
+ * 설정(검색 깊이)보다 시도마다 달라지는 운이 컸다. 글을 쓰기 전 확인은 시간 때문에 재시도 0회라 한 번 실패하면 포기했다.
+ * 순차 재시도(+12초)는 30초 목표를 깬다 — 동시에 돌리면 시간은 늘지 않고 비용만 는다(성공 1회 약 $0.02). EXCERPT_HEDGE=off로 끈다.
+ */
+export async function verifyExcerptHedged(target: VerificationTarget): Promise<VerificationResult> {
+  if (process.env.EXCERPT_HEDGE === "off") return verifyExcerpt(target, undefined, 0);
+  const attempts = [
+    verifyExcerpt(target, BOOK_EXCERPT_QUERY_TEMPLATES, 0),
+    verifyExcerpt(target, rotate(BOOK_EXCERPT_QUERY_TEMPLATES, 4), 0),
+  ];
+  return new Promise((resolve) => {
+    let pending = attempts.length;
+    let firstFail: VerificationResult | null = null;
+    for (const a of attempts) {
+      a.then((r) => {
+        if (r.verified) return resolve(r);
+        firstFail ??= r;
+        if (--pending === 0) resolve(firstFail);
+      }).catch(() => {
+        if (--pending === 0) resolve(firstFail ?? { verified: false, queriesTried: [] });
+      });
+    }
+  });
+}
+
 // 실제로 발견된 버그: "그 페이지에 실제로 노출된 텍스트인가"와 "그 텍스트가
 // 책 본문(발췌)인가"는 서로 다른 질문인데, 검증 로직이 전자만 확인하고
 // 넘어가서 서점 상세페이지의 저자 소개/마케팅 카피(3인칭으로 저자·책을
@@ -261,7 +288,7 @@ async function runInvestigation(prompt: string) {
   const queriesTried = grounding?.queries ?? [];
   const chunks = grounding?.chunks ?? [];
   console.log(
-    `[verifyExcerpt] queriesTried=${JSON.stringify(queriesTried)} chunks=${chunks.length} investigationText=${text.slice(0, 400)}`
+    `[verifyExcerpt] queriesTried=${JSON.stringify(queriesTried)} chunks=${chunks.length} hosts=${JSON.stringify(chunks.map((c) => { try { return new URL(c.web?.uri ?? "").hostname.replace(/^www\./, ""); } catch { return "?"; } }).slice(0, 10))} investigationText=${text.slice(0, 400)}`
   );
   return { text, queriesTried, chunks };
 }
