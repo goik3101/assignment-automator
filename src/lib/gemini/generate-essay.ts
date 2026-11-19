@@ -72,6 +72,7 @@ import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stri
 import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { withoutOtherAreaNotes } from "@/lib/gemini/analysis-normalize";
+import { withBookBodyItem } from "@/lib/essay/book-body-item";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
@@ -2411,7 +2412,7 @@ async function generateEssayImpl(
   if (currentOutputLang() === "en") input = { ...input, coreTaskInfo: scaleLengthsForEnglish(input.coreTaskInfo) };
   // 안내문의 개수 조건: "8장면" 같은 단위는 필수 항목("장면 1…8")으로 펼친다(생성 시점에만 — 저장된 분석 결과·화면은 그대로).
   const formOn = formRequirementsOn();
-  input = { ...input, coreTaskInfo: withoutOtherAreaNotes(input.coreTaskInfo) };
+  input = { ...input, coreTaskInfo: withBookBodyItem(withoutOtherAreaNotes(input.coreTaskInfo)) };
   if (formOn) input = { ...input, coreTaskInfo: applyFormRequirements(input.coreTaskInfo) };
   // 신문처럼 "실제로 제출할 산출물" 단계는 조사 자료 형식("### 항목명" 불릿 나열)이 아니라 그 산출물의 형식으로 쓴다 —
   // 분석 단계가 안내문 문장을 required_items로 베껴 sections로 분류해도 여기서 바로잡는다(deliverable.ts).

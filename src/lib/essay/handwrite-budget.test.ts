@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handwriteBudget, clampToHandwrite } from "./handwrite-budget.ts";
+import { handwriteBudget, clampToHandwrite, stepHandwriteBudget } from "./handwrite-budget.ts";
 
 test("교실에서 손으로 쓰는 평가면 한 차시를 기준으로 잡는다 (2026-11-12 과학)", () => {
   // 과학(멸치) 안내문의 실제 문장
@@ -57,4 +57,54 @@ test("손글씨·수행평가 시간·디지털 기기 불가 같은 말도 '그
   assert.ok(handwriteBudget(["미리 준비하지 못한 경우 수행평가 시간을 할애하여 그리면 인정함."]));
   assert.ok(handwriteBudget(["교과서, 학습지를 활용할 수 있으나 디지털 기기는 지참 및 사용 불가."]));
   assert.equal(handwriteBudget(["집에서 보고서를 작성해 파일로 제출한다.", "분량은 A4 2장 이내"]), null);
+});
+
+// 2026-11-19 사용자 개선 요청(공통국어 책 처방전): 차시마다 쓰는 시간이 다르고, "시험 대형" 같은 신호가 한 낱말도 없는 안내문이다.
+const BOOK_RX = `공통국어 2학기 수행평가
+
+1차시 고민쓰기
+활동 내용 : 요즘 나의 고민 등을 씀.
+활동 시간 : 9/3 전후 국어시간에 약 25분 가량
+기타 : 줄 쳐진 A4 용지 제공
+
+2차시 고민뽑기 및 친구의 고민 분석하기 [도서관 수업]
+활동 내용 : 친구의 문제상황을 요약한 후 그 원인을 분석하고 해결책을 제안함.
+활동 시간 : 9/9 전후 국어시간(제비뽑기10분, 25분 쓰고, 나머지 시간 책 돌려보기)
+
+3차시 책 처방전 쓰기
+활동 내용 : 도움을 줄 수 있는 책을 소개함.
+활동 시간 : 9/15전후 한 시간 동안 진행함.
+
+4차시 친구에게 편지 쓰기
+활동 내용 : 친구에게 마음을 전하는 손편지 직접 쓰기.
+활동 시간 : 3차시 바로 다음 시간에 30분간 진행함.`;
+
+test("차시마다 그 차시의 쓰는 시간을 읽는다(첫 숫자를 모든 단계에 쓰지 않는다)", () => {
+  assert.equal(stepHandwriteBudget({ label: "고민 쓰기" }, BOOK_RX)?.minutes, 25);
+  assert.equal(stepHandwriteBudget({ label: "친구의 고민 분석 및 해결책 제안" }, BOOK_RX)?.minutes, 25); // 제비뽑기 10분이 아니라 쓰는 25분
+  assert.equal(stepHandwriteBudget({ label: "책 처방전" }, BOOK_RX)?.minutes, 60);
+  const letter = stepHandwriteBudget({ label: "친구에게 편지 쓰기" }, BOOK_RX);
+  assert.equal(letter?.minutes, 30);
+  assert.equal(letter?.chars, 900);
+});
+
+test("발표·말하기 차시의 시간은 쓰는 시간이 아니다", () => {
+  const speech = `1차시 주제 정하기
+활동 내용 : 주제를 정해 적음.
+활동 시간 : 25분
+
+2차시 발표하기
+활동 내용 : 모둠별로 발표함.
+활동 시간 : 20분`;
+  assert.equal(stepHandwriteBudget({ label: "발표하기" }, speech), null);
+  assert.equal(stepHandwriteBudget({ label: "주제 정하기" }, speech)?.minutes, 25);
+});
+
+test("차시 구역이 없는 안내문이나 시간이 없는 구역은 null(예전 관문이 맡는다)", () => {
+  assert.equal(stepHandwriteBudget({ label: "보고서" }, "활동 시간 : 40분"), null);
+  assert.equal(stepHandwriteBudget({ label: "A" }, "1차시 A\n활동 내용 : 씀\n\n2차시 B\n활동 내용 : 씀"), null);
+});
+
+test("'제비뽑기 10분, 25분 쓰고'에서 쓰는 시간은 25분이다(사이에 다른 숫자가 끼면 그 앞 숫자는 쓰는 시간이 아니다)", () => {
+  assert.equal(handwriteBudget(["활동 시간 : 국어시간(제비뽑기10분, 25분 쓰고, 나머지 시간 책 둘러보기)"])?.minutes, 25);
 });
