@@ -1,7 +1,7 @@
 import { generate } from "@/lib/llm";
 import { Type, type Schema } from "@google/genai";
 import { normalizeAttributionName, sameAttribution } from "./attribution-name";
-import { isForeignExcerpt, pickQuoteChunk } from "./quote-fit";
+import { isForeignExcerpt, looksLikeMarketingCopy, pickQuoteChunk } from "./quote-fit";
 
 // 외부 자료(책/논문/뉴스/통계 등)를 인용할 때 "실제로 원문이 노출된 페이지가
 // 있는지"를 검증하는 범용 모듈. 책 전용 로직이 아니다 — 인용 대상의 종류
@@ -135,15 +135,8 @@ export function isWeakQuoteSource(url: string): boolean {
 // 3인칭으로 저자/책 자체를 소개하는 문두 패턴과 광고성 수사 어휘 둘 중 하나만
 // 걸려도 마케팅 카피로 간주한다 — 실제 책 본문(대사·서술·조언 문장 등)은
 // 이런 패턴에 거의 걸리지 않는다.
-const MARKETING_LEAD_PATTERN = /^\s*(저자(들)?는|이\s*책은|이\s*책에서는|작가는|지은이는)\b/;
-const MARKETING_RHETORIC_PATTERN =
-  /강연|호응을|신뢰를\s*받고\s*있는|노하우를\s*털어놓|베스트셀러|화제를\s*모았|극찬|필독서|추천사|스테디셀러|사랑받고\s*있는|많은\s*독자(들)?(에게|의)/;
-
-/** 검증된 원문이라도 "책 속 발췌"가 아니라 "서점/출판사의 저자·책 소개 카피"로
- * 보이면 인용 후보에서 배제한다. */
-export function looksLikeMarketingCopy(text: string): boolean {
-  return MARKETING_LEAD_PATTERN.test(text) || MARKETING_RHETORIC_PATTERN.test(text);
-}
+// (패턴과 판정 함수는 테스트할 수 있게 quote-fit.ts로 옮겼다 — 앞머리 패턴이 `\b` 때문에 한 번도 안 걸리던 것을 고치면서.)
+export { looksLikeMarketingCopy };
 
 /** 배열을 startIndex부터 시작하도록 앞뒤를 돌린다 — 재시도할 때 같은 쿼리
  * 순서를 그대로 반복하지 않고 다른 각도부터 먼저 보여주기 위해 쓴다. */

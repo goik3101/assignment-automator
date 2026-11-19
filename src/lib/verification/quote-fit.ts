@@ -88,3 +88,14 @@ export function pickQuoteChunk<T extends QuoteChunk>(
   }
   return ok[0];
 }
+
+// 서점·출판사의 저자·책 소개 카피(3인칭으로 저자·책을 홍보하는 문장)는 책 "본문"이 아니다 — 인용 후보에서 뺀다.
+// 앞머리 패턴 뒤의 `\b`는 한글과 공백 사이를 경계로 보지 않아 "이 책은 …"·"저자는 …"에 **한 번도 안 걸렸다**(2026-11-19 확인: 예문 4개 전부 false).
+// 그래서 뒤가 공백·문장부호·끝인 것만 보는 lookahead로 쓴다.
+const MARKETING_LEAD_PATTERN = /^\s*(저자(들)?는|이\s*책은|이\s*책에서는|작가는|지은이는)(?=\s|$|[,.:])/;
+const MARKETING_RHETORIC_PATTERN =
+  /강연|호응을|신뢰를\s*받고\s*있는|노하우를\s*털어놓|베스트셀러|화제를\s*모았|극찬|필독서|추천사|스테디셀러|사랑받고\s*있는|많은\s*독자(들)?(에게|의)/;
+
+export function looksLikeMarketingCopy(text: string): boolean {
+  return MARKETING_LEAD_PATTERN.test(text) || MARKETING_RHETORIC_PATTERN.test(text);
+}
