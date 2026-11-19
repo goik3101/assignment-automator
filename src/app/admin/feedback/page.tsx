@@ -28,6 +28,19 @@ export default async function AdminFeedbackPage() {
                 <span>{item.from_logged_in_user ? "로그인 사용자" : "비로그인"}</span>
               </div>
               <p className="whitespace-pre-wrap text-sm">{item.message}</p>
+              {item.attachments.length > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {item.attachments.map((a) => (
+                    <li key={a.url}>
+                      <a href={a.url} target="_blank" rel="noopener noreferrer" title={a.name} className="block overflow-hidden rounded-lg border border-border-strong">
+                        {/* 비공개 버킷의 임시 주소라 next/image 최적화를 거치지 않는다 */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={a.url} alt={a.name} loading="lazy" className="h-28 w-auto max-w-[220px] object-cover" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           ))}
         </ul>
