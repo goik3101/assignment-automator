@@ -197,4 +197,16 @@ test("칸 하나에 짧게 답하는 단계(답안 칸·한 줄·자기 평가�
   assert.equal(planLength(line as never, { requirements: [], labels: ["이용 입장 정하기"] } as never).role, "short_answer");
   const self = { label: "자기 평가", description: "자기 평가표의 각 항목을 1 / 2 / 3으로 평가하고 합계를 기록한다.", required_items: ["가", "나", "다", "라", "마"], items_format: "sections" as const };
   assert.equal(planLength(self as never, { requirements: [], labels: ["자기 평가"] } as never).role, "qa_list");
+  const ox = { label: "탐구 확인 문제", description: "과학 윤리에 관한 문항은 ○ 또는 X로 표시하고, 옳은 것을 보기에서 고른다.", required_items: [] };
+  assert.equal(planLength(ox as never, { requirements: [], labels: ["탐구 확인 문제"] } as never).role, "short_answer");
+});
+
+// 2026-11-20 역효과 점검(34종): 글 속 "표시한다"·안내문 어딘가의 "답안 칸" 때문에 회고록·실험 절차가 작은 답(300~500자)으로 분류됐다.
+test("회고록·실험 절차는 작은 답이 아니다(표시 동작·다른 단계의 답안 칸에 속지 않는다)", () => {
+  const memoir = { label: "회고록", description: "전시 동원 체제를 겪은 가상의 인물을 설정하고, 1950년을 현재 시점으로 표시한다. 과거를 회상하는 회고록을 쓴다.", required_items: [] };
+  assert.notEqual(planLength(memoir as never, { requirements: [], labels: ["회고록"] } as never).role, "short_answer");
+  // 안내문 다른 곳에 "답안 칸"이 있어도 회고록은 그대로 글이다.
+  assert.notEqual(planLength(memoir as never, { requirements: ["문항 답은 답안 칸에 쓴다"], labels: ["회고록"] } as never).role, "short_answer");
+  const lab = { label: "실험 1: 용액의 액성 판별하기", description: "A, B, C 스포이드에 표시하고 각 용액을 6홈판에 1mL씩 넣는다. 각 용액에 BTB 용액을 떨어뜨려 색을 관찰한다.", required_items: [] };
+  assert.notEqual(planLength(lab as never, { requirements: [], labels: ["실험 1: 용액의 액성 판별하기"] } as never).role, "short_answer");
 });

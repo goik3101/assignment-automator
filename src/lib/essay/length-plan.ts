@@ -121,7 +121,11 @@ export function lengthRoleOf(el: PlanElement, ctx?: RoleCtx): LengthRole {
   {
     const answerBox = /답안\s*칸/.test([...(ctx?.requirements ?? []), ctx?.guide ?? ""].join(" "));
     if (/자기\s*평가|상호\s*평가|동료\s*평가|자가\s*진단/.test(label) && /평가표|점수|합계|\d\s*\/\s*\d/.test(text)) return "qa_list";
-    if ((el.required_items?.length ?? 0) < 2 && (answerBox || /한\s*줄에|옳고\s*그름|○\s*×|O\s*\/\s*X|옳은\s*것만\s*고|표시한다|표시하고/.test(text))) return "short_answer";
+    // 2026-11-20 역효과 점검(34종): ① 역사-04 **회고록**이 300~500자로 분류됐다(글 속 "표시한다") ② 과학-09 실험 절차가 작은 답이 됐다("스포이드에 표시하고" — 실험 동작).
+    // 그래서 글쓰기가 본문인 단계는 작은 답에서 빼고, "표시"는 **답을 표시한다**는 꼴(○·X·옳음·정답 근처)만 본다. 안내문 전체의 "답안 칸"(answerBox)은 그대로 둔다(과학-02 정당한 경우).
+    const longForm = /회고|일기|편지|논술|논설|보고서|에세이|소논문|비평|감상문|독후감|칼럼|발표|대본|소감|성찰|글쓰기|작문/.test(label);
+    const marksAnswer = /한\s*줄에|옳고\s*그름|○\s*×|O\s*\/\s*X|옳은\s*것만\s*고|(?:○|×|X|O|옳|맞|정답|답)[^.\n]{0,15}표시/.test(text);
+    if (!longForm && (el.required_items?.length ?? 0) < 2 && (answerBox || marksAnswer)) return "short_answer";
   }
   if (el.items_format === "sections" && (el.required_items?.length ?? 0) >= 2) return qualityFixesOn() && !isResearchMaterialStep(el) ? "report_sections" : "material";
   if (/소감|느낀\s*점|후기|성찰|반성|다짐/.test(label)) return "reflection";
