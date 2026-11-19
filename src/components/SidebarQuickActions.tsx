@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { Check, ExternalLink, Languages, MessageSquareText, MessagesSquare, Moon, Settings, Sun, Trash2 } from "lucide-react";
 import { openSettings } from "@/lib/settings/open";
+import { DISCORD_URL } from "@/lib/seo/site";
 import { useLang } from "@/lib/i18n";
 import { LANGS } from "@/lib/i18n/core";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const STORAGE_KEY = "studed-theme";
-// 공식 디스코드 서버 초대 링크(질문·피드백·소식).
-const DISCORD_URL = "https://discord.gg/CTsBVscrvJ";
 
 // 사이드바 하단 "도움말 및 도구": 휴지통 / 피드백·문의 / 커뮤니티 / 화면 언어. 모두 메뉴 글줄과 같은 모양이다.
 // 테마 전환은 설정 창과 같은 저장 키·data-theme 속성을 쓰므로 어디서 바꿔도 동일하게 동작한다.

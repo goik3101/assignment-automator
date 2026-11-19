@@ -17,7 +17,7 @@ const cspReportOnly = [
   "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
   "font-src 'self' data: https://cdn.jsdelivr.net",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${supabaseOrigin}`.trim(),
   `connect-src 'self' ${supabaseOrigin} ${supabaseOrigin.replace(/^https:/, "wss:")}`.trim(),
   "frame-src https://challenges.cloudflare.com",
   "frame-ancestors 'none'",

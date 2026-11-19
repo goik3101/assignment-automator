@@ -12,6 +12,9 @@ export const SITE_ALT_NAMES = ["studed ai", "studedai", "STUDED", "스터디드"
 // 화면(푸터)과 구조화 데이터에 같은 값이 나가야 AI가 "같은 곳"으로 알아본다.
 export const CONTACT_EMAIL = "sstuded.official3101@gmail.com";
 
+// 공식 디스코드 서버 초대 링크(질문·피드백·소식). 사이드바와 피드백 폼이 같이 쓴다.
+export const DISCORD_URL = "https://discord.gg/CTsBVscrvJ";
+
 // 공식 SNS 주소. 푸터 링크와 Organization의 sameAs가 이 배열 하나에서 나온다(비어 있으면 둘 다 생략).
 export const SOCIAL_LINKS: string[] = [
   "https://www.tiktok.com/@ttoday3101",
