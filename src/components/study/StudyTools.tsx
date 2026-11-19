@@ -16,10 +16,10 @@ export interface ActiveStudyTool {
  * 요약 = 낯선 개념 + 외울 뼈대, 플래시카드 = 뼈대·개념 카드, 퀴즈 = 빈칸→첫 글자→백지 사다리. 플래시카드·퀴즈는 요약을 재료로 써서 별도 모델 호출이 없다.
  */
 export const STUDY_TOOLS: { id: StudyToolId; label: string; hint: string; icon: LucideIcon }[] = [
-  { id: "summary", label: "요약", hint: "낯선 개념 + 외울 뼈대", icon: NotebookText },
-  { id: "flashcards", label: "플래시카드", hint: "뼈대·개념 카드 뒤집기", icon: Layers },
-  { id: "quiz", label: "퀴즈", hint: "빈칸에서 백지까지 3단계", icon: CircleHelp },
-  { id: "exam", label: "가상 시험", hint: "빈 종이에 써 보기", icon: GraduationCap },
+  { id: "summary", label: "요약", hint: "개념 이해 · 쉬운 풀이", icon: NotebookText },
+  { id: "flashcards", label: "플래시카드", hint: "암기 · 핵심 문장 카드", icon: Layers },
+  { id: "quiz", label: "퀴즈", hint: "암기 · 빈칸 문제", icon: CircleHelp },
+  { id: "exam", label: "가상 시험", hint: "백지에 써 보며 점검", icon: GraduationCap },
 ];
 
 // 위쪽 탭과 오른쪽 공부 도구(StudyRail)가 "지금 열린 도구"를 함께 쓰게 하는 공유 상태.
