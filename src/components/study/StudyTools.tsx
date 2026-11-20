@@ -1,12 +1,13 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { CircleHelp, FileText, GraduationCap, Layers, NotebookText, type LucideIcon } from "lucide-react";
+import { CircleHelp, FileText, GraduationCap, Layers, MessageCircle, NotebookText, type LucideIcon } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 export type StudyToolId = "summary" | "flashcards" | "quiz" | "exam";
 export interface ActiveStudyTool {
-  id: StudyToolId;
+  /** "chat"은 좁은 화면에서 위쪽 탭의 "AI 채팅"으로 여는 대화 화면이다(오른쪽 레일이 없는 화면용). */
+  id: StudyToolId | "chat";
   /** true면 이미 만들어 둔 자료를 이어서 연다(새로 만들지 않아 하루 횟수 제한에 걸리지 않는다). */
   reuse: boolean;
 }
@@ -68,6 +69,15 @@ export function StudyTabs({ locked = false }: { locked?: boolean }) {
           {t(label)}
         </button>
       ))}
+      <button
+        onClick={() => setTool({ id: "chat", reuse: false })}
+        disabled={locked}
+        aria-current={tool?.id === "chat" ? "true" : undefined}
+        className={[base, tool?.id === "chat" ? on : off].join(" ")}
+      >
+        <MessageCircle size={15} strokeWidth={1.8} aria-hidden />
+        {t("AI 채팅")}
+      </button>
     </nav>
   );
 }
