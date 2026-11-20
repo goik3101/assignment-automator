@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ChevronRight, GraduationCap, MessageCircle, MessageCircleQuestion, PanelRightClose, PanelRightOpen, PencilLine, SquarePen, type LucideIcon } from "lucide-react";
+import { ChevronRight, GraduationCap, MessageCircle, MessageCircleQuestion, PanelRightClose, PanelRightOpen, PencilLine, SquarePen, X, type LucideIcon } from "lucide-react";
 import ChatView from "@/components/chat/ChatView";
 import { useChat } from "@/components/chat/useChat";
 import SummaryModal from "./SummaryModal";
@@ -152,6 +152,57 @@ export default function StudyRail({
   }).sort((a, b) => b.at - a.at);
   const dateFmt = (at: number) => new Date(at).toLocaleDateString(lang === "en" ? "en-US" : "ko-KR", { month: "short", day: "numeric" });
 
+  // 레일 안의 채팅과 좁은 화면의 전체 화면 채팅(위쪽 탭의 "AI 채팅")이 같은 대화를 쓴다.
+  const renderChat = (inSheet: boolean) => (
+    <ChatView
+      chat={chat}
+      onMemorizeTool={(id) => open(id)}
+      onApplyEdit={canEdit ? (e) => sendEdit(e.heading, e.markdown) : undefined}
+      onUndoEdit={canEdit ? async (heading, before) => void (await sendEdit(heading, before)) : undefined}
+      // 안내가 빠져 대화 목록이 비어도 입력창은 맨 아래에 둔다.
+      className="flex-1 justify-end"
+      placeholder={t("이 결과물에 대해 무엇이든 물어보세요")}
+      disabledReason={locked ? t("결과물이 저장되면 쓸 수 있어요") : null}
+      messagesClassName={inSheet ? "" : "max-h-[46vh] lg:max-h-none"}
+      empty={
+        // 학습 자료를 하나라도 만들었으면 안내는 접고 "내 학습"에 자리를 내준다.
+        !inSheet && savedTools.length > 0
+          ? undefined
+          : ({ fill }) => (
+              <div className="text-[13px] leading-relaxed">
+                <p className="font-semibold text-foreground">{t("이 결과물로 이런 걸 할 수 있어요")}</p>
+                <ul className="mt-3 space-y-3">
+                  {CHAT_ABILITIES.map(({ icon: Icon, title: name, desc, descReadOnly }) => (
+                    <li key={name} className="flex gap-3">
+                      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-muted">
+                        <Icon size={15} strokeWidth={1.7} aria-hidden />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block font-medium text-foreground">{t(name)}</span>
+                        <span className="block text-xs leading-relaxed text-muted">{t(canEdit || !descReadOnly ? desc : descReadOnly)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {/* 문장을 붙여 넣어야 하는 질문은 입력칸을 채워 주고, 그대로 물어도 되는 질문은 바로 보낸다 */}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {CHAT_STARTERS.map(({ text, fill: partial }) => (
+                    <button
+                      key={text}
+                      onClick={() => (partial ? fill(t(text)) : void chat.send(t(text), null))}
+                      disabled={locked || chat.busy}
+                      className="rounded-full border border-border-strong px-3 py-1.5 text-left text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t(text).replace(/[:：]\s*$/, "…")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+      }
+    />
+  );
+
   return (
     <aside
       ref={railRef}
@@ -213,7 +264,7 @@ export default function StudyRail({
               <PanelRightClose size={16} strokeWidth={1.8} />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className={["grid grid-cols-2 gap-2.5", shared ? "max-lg:hidden" : ""].join(" ")}>
             {TOOLS.map(({ id, label, hint, icon: Icon }) => (
               <button
                 key={id}
@@ -259,7 +310,7 @@ export default function StudyRail({
         )}
 
         {!hideChat && (
-        <section aria-label={t("AI 채팅")} className="flex min-h-[300px] flex-1 flex-col lg:min-h-[260px]">
+        <section aria-label={t("AI 채팅")} className={["flex min-h-[300px] flex-1 flex-col lg:min-h-[260px]", shared ? "max-lg:hidden" : ""].join(" ")}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-muted">
               <MessageCircle size={14} strokeWidth={1.8} />
@@ -275,57 +326,40 @@ export default function StudyRail({
               </button>
             )}
           </div>
-          <ChatView
-            chat={chat}
-            onMemorizeTool={(id) => open(id)}
-            onApplyEdit={canEdit ? (e) => sendEdit(e.heading, e.markdown) : undefined}
-            onUndoEdit={canEdit ? async (heading, before) => void (await sendEdit(heading, before)) : undefined}
-            // 안내가 빠져 대화 목록이 비어도 입력창은 맨 아래에 둔다.
-            className="flex-1 justify-end"
-            placeholder={t("이 결과물에 대해 무엇이든 물어보세요")}
-            disabledReason={locked ? t("결과물이 저장되면 쓸 수 있어요") : null}
-            messagesClassName="max-h-[46vh] lg:max-h-none"
-            empty={
-              // 학습 자료를 하나라도 만들었으면 안내는 접고 "내 학습"에 자리를 내준다.
-              savedTools.length > 0
-                ? undefined
-                : ({ fill }) => (
-                    <div className="text-[13px] leading-relaxed">
-                      <p className="font-semibold text-foreground">{t("이 결과물로 이런 걸 할 수 있어요")}</p>
-                      <ul className="mt-3 space-y-3">
-                        {CHAT_ABILITIES.map(({ icon: Icon, title: name, desc, descReadOnly }) => (
-                          <li key={name} className="flex gap-3">
-                            <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-muted">
-                              <Icon size={15} strokeWidth={1.7} aria-hidden />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block font-medium text-foreground">{t(name)}</span>
-                              <span className="block text-xs leading-relaxed text-muted">{t(canEdit || !descReadOnly ? desc : descReadOnly)}</span>
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                      {/* 문장을 붙여 넣어야 하는 질문은 입력칸을 채워 주고, 그대로 물어도 되는 질문은 바로 보낸다 */}
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {CHAT_STARTERS.map(({ text, fill: partial }) => (
-                          <button
-                            key={text}
-                            onClick={() => (partial ? fill(t(text)) : void chat.send(t(text), null))}
-                            disabled={locked || chat.busy}
-                            className="rounded-full border border-border-strong px-3 py-1.5 text-left text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            {t(text).replace(/[:：]\s*$/, "…")}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-            }
-          />
+          {renderChat(false)}
         </section>
         )}
       </div>
 
+      {!hideChat && shared && tool?.id === "chat" && (
+        <div role="dialog" aria-modal="true" aria-label={t("AI 채팅")} className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background lg:hidden">
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border pl-4 pr-2">
+            <h2 className="inline-flex items-center gap-1.5 text-[15px] font-semibold">
+              <MessageCircle size={16} strokeWidth={1.8} aria-hidden />
+              {t("AI 채팅")}
+            </h2>
+            <div className="flex items-center gap-1">
+              {chat.messages.length > 0 && (
+                <button
+                  onClick={chat.reset}
+                  className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-foreground"
+                >
+                  <SquarePen size={12} strokeWidth={1.8} />
+                  {t("새 대화")}
+                </button>
+              )}
+              <button
+                onClick={close}
+                aria-label={t("닫기")}
+                className="grid h-9 w-9 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-foreground"
+              >
+                <X size={18} strokeWidth={1.8} />
+              </button>
+            </div>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-4">{renderChat(true)}</div>
+        </div>
+      )}
       {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenMemorize={() => open("flashcards")} />}
       {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} onOpenQuiz={() => open("quiz")} />}
       {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} onOpenExam={openExam} />}
