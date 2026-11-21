@@ -425,3 +425,11 @@ test("이름 있는 필수 항목이 번호 단위 개수 이상이면 항목이
   // 개수 조건이 없으면 거짓
   assert.equal(itemsAreCountedUnits(six, []), false);
 });
+
+test("itemsAreCountedUnits는 글에 번호 표지가 하나라도 있으면 번호로 세게 둔다(진짜 모자란 경우를 놓치지 않는다)", async () => {
+  const { itemsAreCountedUnits, extractCountRequirements } = await import("./form-requirements.ts");
+  const reqs = extractCountRequirements(["문항 수: 총 4문항"]);
+  const six = { label: "수행평가 답안", description: "", required_items: ["가", "나", "다", "라", "마", "바"] };
+  assert.equal(itemsAreCountedUnits(six, reqs, "### 가\n내용\n### 나\n내용"), true);
+  assert.equal(itemsAreCountedUnits(six, reqs, "### 문항 1\n내용\n### 문항 2\n내용"), false);
+});
