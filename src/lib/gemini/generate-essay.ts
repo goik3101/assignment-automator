@@ -2771,8 +2771,10 @@ async function generateEssayImpl(
     // 보완할 수 있는 이 자리에서 먼저 읽기 전용으로 대조해, 뒷받침되지 않는 수치는 그 단계에서 고치게 한다.
     {
       const pages: PageTexts = new Map(attempt.sources.map((src) => [src.n, getCachedPageText(src.url)]));
+      // 앞부분만 읽은 PDF에서 값을 못 찾은 것은 "없다"가 아니다 — 이걸 보완 호출의 근거로 삼으면 맞는 수치를 지우게 한다(PDF 읽기 도입 때 빠뜨림, 2026-11-22).
+      const partialPre = new Set(attempt.sources.filter((src) => isPartialPageText(src.url)).map((src) => src.n));
       for (const sec of attempt.sections) {
-        const bad = checkClaims(sec.content, pages).findings
+        const bad = checkClaims(sec.content, pages, undefined, { partial: partialPre }).findings
           .filter((f) => f.status === "unsupported" && f.tokens.numbers.length > 0 && !isOpinionOrPlan(f.text))
           .slice(0, 3);
         if (bad.length === 0) continue;
