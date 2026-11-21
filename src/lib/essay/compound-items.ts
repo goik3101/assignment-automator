@@ -72,7 +72,7 @@ export function compoundItems(names: string[]): CompoundItem[] {
  * `multiStep`이 참이면 주인이 있는 항목에 **그 단계 이름을 적어** 다른 단계가 가져가지 않게 한다.
  * 단계가 하나면 적을 필요가 없다(그 단계 것이 분명하다).
  */
-export function compoundItemBlock(items: CompoundItem[], multiStep = false): string {
+export function compoundItemBlock(items: CompoundItem[], multiStep = false, answerSheet = false): string {
   if (items.length === 0) return "";
   const owned = multiStep && items.some((it) => it.owner);
   return (
@@ -88,7 +88,9 @@ export function compoundItemBlock(items: CompoundItem[], multiStep = false): str
             .join(", ")} 줄을 각각 쓴다.`
       )
       .join("\n") +
-    `\n각 줄의 내용은 한 문장으로 끝내지 말고 과제에 맞게 구체적으로 쓴다(이름만 적고 비워 두지 말 것).\n`
+    (answerSheet
+      ? `\n각 줄에는 그 항목이 요구한 답만 쓴다(독음·한자처럼 값이 정해진 항목은 그 값만 적고 해설을 덧붙이지 말 것. 비워 두지는 말 것).\n`
+      : `\n각 줄의 내용은 한 문장으로 끝내지 말고 과제에 맞게 구체적으로 쓴다(이름만 적고 비워 두지 말 것).\n`)
   );
 }
 

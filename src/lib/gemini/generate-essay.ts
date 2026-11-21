@@ -143,7 +143,7 @@ import { describePair, findRepeatedStatements } from "@/lib/essay/repetition";
 import { dropRepeatedSentences, duplicateStepLabels, stripDefinitionPrefix } from "@/lib/essay/dedupe";
 import { checkClaims, describeToken, isOpinionOrPlan, type ClaimFinding, type PageTexts } from "@/lib/essay/claim-check";
 import { findUncoveredFlowingItems, type CoverageGap } from "@/lib/essay/coverage";
-import { effectiveTarget, isAttachmentStep, lengthGuideLines, planLength } from "@/lib/essay/length-plan";
+import { effectiveTarget, isAttachmentStep, lengthGuideLines, lengthRoleOf, planLength } from "@/lib/essay/length-plan";
 import { buildFormRulesBlock, inferFormKinds } from "@/lib/essay/form-rules";
 import { limitSources, requiredSourceCount, retainedAtLimit } from "@/lib/essay/source-select";
 import { needsExcerpt } from "@/lib/essay/excerpt-need";
@@ -821,7 +821,10 @@ ${input.previousOutputText}
     input.coreTaskInfo.writing_guide,
     ...elements.map((el) => el.description),
   ]);
-  const compoundBlock = compoundItemBlock(compoundAll, elements.length > 1);
+  // 문제마다 답을 적는 답안지(문제 1…N)는 항목 줄을 "구체적으로 길게" 쓰라고 하면 독음·한자쓰기 칸에까지 해설이 붙는다(한문-01 실측 2026-11-21) — 그 단계의 항목 줄만 답만 쓰게 한다.
+  const answerSheetLabels = new Set(elements.filter((el) => lengthRoleOf(el, formCtx) === "qa_list").map((el) => el.label));
+  const answerSheetOnly = answerSheetLabels.size > 0 && compoundAll.length > 0 && compoundAll.every((it) => (it.owner ? answerSheetLabels.has(it.owner) : answerSheetLabels.size === elements.length));
+  const compoundBlock = compoundItemBlock(compoundAll, elements.length > 1, answerSheetOnly && process.env.ANSWER_SHEET_RULES !== "off");
   // 안내문이 다룰 기간을 못 박은 과제(역사 신문 등)는 그 시점에서 쓰는 글이다 — 뒤에 일어난 일을 알 수 없다.
   const timeRange = findTimeRange([
     ...input.coreTaskInfo.requirements,
@@ -889,6 +892,8 @@ ${input.previousOutputText}
   // 장면 번호 소제목으로 쓰는 단계(스토리보드 등)는 조사 자료도 문단 보고서도 아니다 — 장면 블록이 따로 지시한다.
   const sceneEls = formOn ? structuredEls.filter(isSceneListElement) : [];
   const reportEls = fixes ? structuredEls.filter((el) => !isResearchMaterialStep(el) && !sceneEls.includes(el)) : [];
+  // 문제 답안지 단계는 "2~4문장 문단 + 왜 중요한지" 보고서 규칙의 대상이 아니다(위 answerSheetLabels). ANSWER_SHEET_RULES=off면 예전처럼 보고서 규칙.
+  const answerSheetEls = process.env.ANSWER_SHEET_RULES !== "off" ? reportEls.filter((el) => answerSheetLabels.has(el.label)) : [];
   const materialEls = structuredEls.filter((el) => !reportEls.includes(el) && !sceneEls.includes(el));
   // 발표 과제면 장면 대사를 높임말로 쓰게 한다(글 종류 판정은 form-rules와 같은 기준).
   const sceneSpeech = sceneEls.some((el) => inferFormKinds(el).includes("speech")) || /발표|말하기|구술/.test([input.coreTaskInfo.topic, ...input.coreTaskInfo.requirements].join(" "));
@@ -917,11 +922,11 @@ ${input.previousOutputText}
         .map(
           (el) =>
             `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}` +
-            (!fixes || sceneEls.includes(el) ? "" : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
+            (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
         )
         .join("\n") +
       (materialEls.length ? `\n${RESEARCH_MATERIAL_RULES}` : "") +
-      (reportEls.length ? `\n${REPORT_SECTION_RULES}` : "") +
+      (reportEls.some((el) => !answerSheetEls.includes(el)) ? `\n${REPORT_SECTION_RULES}` : "") +
       "\n"
     : "";
   // 출처 목록 항목(예: "신뢰할 수 있는 출처 3개 이상")은 시스템이 확인된 출처로 채운다 — generateEssay()가 required_items에서 떼어 둔다.
