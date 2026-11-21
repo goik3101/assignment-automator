@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server-client";
 import { getSessionUser } from "@/lib/supabase/session-user";
 import { EssayPanel, PlanPanel } from "@/components/ResultPanel";
 import StudyRail from "@/components/study/StudyRail";
+import { STUDY_PAGE_WIDTH } from "@/components/study/layout";
 import { StudyTabs, StudyToolsProvider } from "@/components/study/StudyTools";
 import type { EssayResult, PlanResult } from "@/types/task";
 import { getT } from "@/lib/i18n/server";
@@ -41,7 +42,7 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
 
   return (
     <StudyToolsProvider>
-    <div className="mx-auto w-full max-w-[1200px] px-6 py-8 md:px-10">
+    <div className={`mx-auto w-full ${STUDY_PAGE_WIDTH} px-6 py-8 md:px-10`}>
       <Breadcrumb title={title} />
       <header className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>

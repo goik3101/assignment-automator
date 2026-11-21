@@ -11,6 +11,7 @@ import QuizModal, { MemorizeModal } from "./QuizModal";
 import ExamModal from "./ExamModal";
 import { clearSavedStudy, listSavedStudy, type StudyRef } from "./useStudyData";
 import { useRouter } from "next/navigation";
+import { RAIL_WIDTH } from "./layout";
 import { STUDY_TOOLS as TOOLS, useSharedStudyTool, type ActiveStudyTool, type StudyToolId } from "./StudyTools";
 import { useLang, useT } from "@/lib/i18n";
 
@@ -211,7 +212,7 @@ export default function StudyRail({
       style={{ "--rail-top": `${pinTop ?? 24}px` } as CSSProperties}
       className={[
         "min-h-0 lg:sticky lg:top-[var(--rail-top)] lg:h-[calc(100vh-var(--rail-top)-1.5rem)]",
-        collapsed ? "lg:w-12" : "lg:w-[360px] xl:w-[380px]",
+        collapsed ? "lg:w-12" : RAIL_WIDTH,
         className,
       ].join(" ")}
     >
@@ -265,21 +266,26 @@ export default function StudyRail({
               <PanelRightClose size={16} strokeWidth={1.8} />
             </button>
           </div>
-          <div className={["grid grid-cols-2 gap-2.5", shared ? "max-lg:hidden" : ""].join(" ")}>
+          {/* 레일이 넓으면(@[26rem] 이상) 아이콘을 왼쪽에 두는 가로 타일, 좁으면 세로 타일. 이름은 크게, 설명은 두 줄까지 */}
+          <div className={["@container", shared ? "max-lg:hidden" : ""].join(" ")}>
+            <div className="grid grid-cols-2 gap-2.5">
             {TOOLS.map(({ id, label, hint, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setTool({ id, reuse: false })}
                 disabled={locked}
-                className="group flex flex-col items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3.5 text-left transition-colors hover:border-border-strong hover:bg-raised/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-surface"
+                className="group flex flex-col items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3.5 text-left transition-colors hover:border-border-strong hover:bg-raised/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-surface @[26rem]:min-h-[72px] @[26rem]:flex-row @[26rem]:items-center @[26rem]:gap-3"
               >
-                <Icon size={18} strokeWidth={1.6} className="text-muted transition-colors group-hover:text-foreground" aria-hidden />
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-raised text-muted transition-colors group-hover:text-foreground">
+                  <Icon size={18} strokeWidth={1.6} aria-hidden />
+                </span>
                 <span className="min-w-0 max-w-full">
                   <span className="block text-[14px] font-semibold leading-tight">{t(label)}</span>
                   <span className="mt-1 line-clamp-2 text-xs leading-snug text-muted">{t(hint)}</span>
                 </span>
               </button>
             ))}
+            </div>
           </div>
           {locked && lockedReason && <p className="mt-3 text-xs leading-relaxed text-muted">{lockedReason}</p>}
         </section>

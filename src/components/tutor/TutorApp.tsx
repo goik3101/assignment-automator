@@ -7,6 +7,7 @@ import { ArrowUp, ImagePlus, LoaderCircle, SquarePen, X } from "lucide-react";
 import { Message } from "@/components/chat/ChatView";
 import type { ChatMessage } from "@/components/chat/useChat";
 import StudyRail from "@/components/study/StudyRail";
+import { STUDY_PAGE_WIDTH } from "@/components/study/layout";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useT } from "@/lib/i18n";
 import { prepareImage, type PreparedImage } from "@/lib/ui/image";
@@ -258,7 +259,7 @@ export default function TutorApp({ initialId }: { initialId?: string }) {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-1px)] w-full max-w-[1200px] flex-col px-4 md:px-8">
+    <div className={`mx-auto flex min-h-[calc(100vh-1px)] w-full ${STUDY_PAGE_WIDTH} flex-col px-4 md:px-8`}>
       <header className="flex h-14 shrink-0 items-center justify-between">
         <h1 className="min-w-0 truncate text-[15px] font-bold">{title || t("AI 튜터")}</h1>
         <Link
