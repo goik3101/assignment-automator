@@ -124,6 +124,7 @@ import {
   buildTitleFieldBlock,
   buildSceneBlock,
   checkFormRequirements,
+  itemsAreCountedUnits,
   isSceneLikeElement,
   isSceneListElement,
   requirementsForElement,
@@ -3504,7 +3505,7 @@ async function generateEssayImpl(
         const el = elements.find((e) => e.label === sec.label);
         if (!el) return sec;
         const reqs = requirementsForElement(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, input.coreTaskInfo.task_elements.map((e) => e.label));
-        const skipScene = isSceneListElement(el);
+        const skipScene = isSceneListElement(el) || (process.env.ITEM_UNITS !== "off" && itemsAreCountedUnits(el, reqs));
         const issues = checkFormRequirements(sec.content, reqs, { skipScene });
         if (issues.length === 0) return sec;
         console.warn(`[generateEssay] 형식 조건 위반 label="${sec.label}": ${JSON.stringify(issues.map((i) => ({ unit: i.req.word, min: i.req.min, max: i.req.max, actual: i.actual })))}`);
