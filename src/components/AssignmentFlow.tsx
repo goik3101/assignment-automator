@@ -15,6 +15,7 @@ import type {
 import { EssayPanel, PlanPanel } from "./ResultPanel";
 import { ResultRatingBar, mergeRatingContexts, ratingContextFrom } from "./result/ResultRating";
 import StudyRail from "./study/StudyRail";
+import { STUDY_PAGE_WIDTH } from "./study/layout";
 import { replaceSection } from "@/lib/study/section-edit";
 import { StudyTabs, StudyToolsProvider } from "./study/StudyTools";
 import { useAuth } from "@/lib/supabase/use-auth";
@@ -344,7 +345,7 @@ export default function AssignmentFlow() {
 
   return (
     <StudyToolsProvider>
-    <div className="mx-auto w-full max-w-[1200px] px-6 py-8 md:px-10 md:py-10">
+    <div className={`mx-auto w-full ${STUDY_PAGE_WIDTH} px-6 py-8 md:px-10 md:py-10`}>
       <header className="mb-8">
         <Breadcrumb title={info?.topic ?? t("새 창작물")} onHome={() => setStep("home")} />
         <h1 className="text-2xl font-bold tracking-tight">{info?.topic ?? t("새 창작물")}</h1>

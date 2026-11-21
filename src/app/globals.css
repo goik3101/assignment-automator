@@ -255,3 +255,44 @@ body {
     display: none;
   }
 }
+
+/* 공부 도구 레일(StudyRail)이 붙는 화면의 바깥 폭과 레일 폭. 화면이 넓을수록 둘이 같이 커져서 본문 폭이 줄지 않는다.
+   Tailwind 단계(2xl 등) 대신 직접 적은 이유: 1536px보다 큰 단계를 Tailwind에 더하면 작은 단계 규칙보다 앞에 놓여 적용되지 않았다. */
+.study-page {
+  max-width: 1200px;
+}
+@media (min-width: 1280px) {
+  .study-page {
+    max-width: 1320px;
+  }
+}
+@media (min-width: 1536px) {
+  .study-page {
+    max-width: 1500px;
+  }
+}
+@media (min-width: 1800px) {
+  .study-page {
+    max-width: 1640px;
+  }
+}
+@media (min-width: 1024px) {
+  .study-rail {
+    width: 360px;
+  }
+}
+@media (min-width: 1280px) {
+  .study-rail {
+    width: 380px;
+  }
+}
+@media (min-width: 1536px) {
+  .study-rail {
+    width: 500px;
+  }
+}
+@media (min-width: 1800px) {
+  .study-rail {
+    width: 580px;
+  }
+}

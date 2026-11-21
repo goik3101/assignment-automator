@@ -18,6 +18,7 @@ import { learningApi, STATUS_LABEL } from "./api";
 import { Check, ChevronDown, TriangleAlert } from "lucide-react";
 import Button from "@/components/ui/Button";
 import StudyRail from "@/components/study/StudyRail";
+import { STUDY_PAGE_WIDTH } from "@/components/study/layout";
 import Breadcrumb from "@/components/Breadcrumb";
 import { useT } from "@/lib/i18n";
 
@@ -548,7 +549,7 @@ export default function LearningWorkspace({ id }: { id: string }) {
   const usageLeft = usage.unlimited ? Infinity : usage.limit - usage.used;
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 py-6 md:px-8">
+    <div className={`mx-auto w-full ${STUDY_PAGE_WIDTH} px-4 py-6 md:px-8`}>
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <Breadcrumb title={session.title} />
