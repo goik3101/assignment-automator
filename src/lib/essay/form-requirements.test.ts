@@ -413,3 +413,15 @@ test("같은 단위의 개수 조건이 둘이면 큰 쪽만 남긴다(한문-01
   const reqs = requirementsForElement(el, ["하나의 문장에서 2문제 출제", "총 20문제"], "", ["한문 수행평가"]);
   assert.deepEqual(reqs.filter((r) => r.unit === "scene").map((r) => r.min), [20]);
 });
+
+test("이름 있는 필수 항목이 번호 단위 개수 이상이면 항목이 곧 단위다 — 번호 세기를 건너뛴다(가정-03 '문항 조건 4개, 실제 0개' 거짓 경고)", async () => {
+  const { itemsAreCountedUnits, extractCountRequirements } = await import("./form-requirements.ts");
+  const reqs = extractCountRequirements(["문항 수: 총 4문항"]);
+  const six = { label: "수행평가 답안", description: "", required_items: ["의사소통의 종류", "구성요소", "효과적인 방법", "갈등 원인", "갈등 상황 분석", "갈등 해결"] };
+  assert.equal(itemsAreCountedUnits(six, reqs), true);
+  // 항목이 개수보다 적으면(펼쳐야 하는 경우)·이미 "문항 N" 항목이면 건너뛰지 않는다
+  assert.equal(itemsAreCountedUnits({ ...six, required_items: ["번역", "독음"] }, reqs), false);
+  assert.equal(itemsAreCountedUnits({ ...six, required_items: ["문항 1", "문항 2", "문항 3", "문항 4"] }, reqs), false);
+  // 개수 조건이 없으면 거짓
+  assert.equal(itemsAreCountedUnits(six, []), false);
+});

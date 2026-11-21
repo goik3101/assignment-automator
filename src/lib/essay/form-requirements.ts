@@ -270,6 +270,19 @@ export function expandSceneUnits<T extends FormElement>(el: T, reqs: CountReq[])
   return { ...el, required_items: items, items_format: "sections", description };
 }
 
+/**
+ * 번호 단위("문항 4개")가 있는데 이 단계의 **이름 있는 필수 항목이 이미 그 개수 이상**이면, 항목이 곧 그 단위다 —
+ * expandSceneUnits가 그래서 항목을 "문항 1…N"으로 바꾸지 않는다. 그런데 생성 뒤 검사는 "### 문항 N" 번호만 세어 항목 이름으로 쓴 글을 0개로 읽고
+ * "문항 조건 4개, 실제 0개"라는 거짓 경고(와 보완 호출)를 냈다(가정-03 실측 2026-11-21; 같은 뿌리의 가정-02 6장면 경고는 11-19). 이 경우 번호 세기는 건너뛴다.
+ */
+export function itemsAreCountedUnits(el: FormElement, reqs: CountReq[]): boolean {
+  const scene = reqs.filter((r) => r.unit === "scene" && r.min >= 2 && r.min <= 20 && (r.max === 0 || r.max === r.min)).sort((a, b) => b.min - a.min)[0];
+  const items = (el.required_items ?? []).filter((i) => i.trim());
+  // 항목이 이미 "문제 1…N"·"장면 1…N"처럼 번호 항목이면 번호로 세는 것이 맞다(한문-01 문제 20개).
+  if (!scene || isSceneListElement(el) || (items.length > 0 && items.every((i) => /^(?:문제|문항)\s*\d+$/.test(i.trim())))) return false;
+  return items.length >= scene.min;
+}
+
 // ── 세기 ────────────────────────────────────────────────────
 
 const stripMarks = (s: string) => s.replace(/\[(?:\d+|F\d+)\]/g, "");
