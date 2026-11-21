@@ -11,19 +11,24 @@ export interface PdfTextResult {
 }
 
 export const PDF_MAX_BYTES = 6_000_000;
+// 쪽당 글자가 이보다 적으면(스캔본에 표지 글자만 있는 문서 등) 다 읽었어도 "일부만 읽은 것"으로 본다 — 읽히지 않은 내용이 대부분일 수 있다.
+const SPARSE_CHARS_PER_PAGE = 300;
 
 export async function extractPdfText(bytes: Uint8Array, opts: { maxPages?: number; maxMs?: number } = {}): Promise<PdfTextResult | null> {
-  const maxPages = opts.maxPages ?? 40;
+  // 실측(2026-11-22, 실제 PDF 9개): 40쪽 읽기 중앙 0.3초·최대 1.2초라 80쪽까지 올려도 시간 상한(3초)이 지킨다.
+  const maxPages = opts.maxPages ?? 80;
   const maxMs = opts.maxMs ?? 3000;
   const started = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // 바깥 시간 제한은 안쪽(쪽 사이 점검)보다 길게 둔다 — 같으면 안쪽이 부분 결과를 돌려주기 전에 바깥이 null로 이겨 버린다. 바깥은 문서 열기가 멈춘 경우를 위한 것.
   const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), maxMs);
+    timer = setTimeout(() => resolve(null), maxMs + 1500);
   });
   try {
     const run = (async (): Promise<PdfTextResult | null> => {
       const { getDocumentProxy } = await import("unpdf");
-      const doc = await getDocumentProxy(new Uint8Array(bytes));
+      // verbosity 0: 글꼴 경고("TT: undefined function")가 서버 로그를 덮지 않게 한다.
+      const doc = await getDocumentProxy(new Uint8Array(bytes), { verbosity: 0 });
       const total = doc.numPages;
       const limit = Math.min(total, maxPages);
       const parts: string[] = [];
@@ -36,7 +41,9 @@ export async function extractPdfText(bytes: Uint8Array, opts: { maxPages?: numbe
         read = i;
       }
       const text = parts.join("\n").replace(/\s+/g, " ").trim();
-      return text ? { text, partial: read < total, pages: total } : null;
+      if (!text) return null;
+      const sparse = read > 0 && text.length / read < SPARSE_CHARS_PER_PAGE;
+      return { text, partial: read < total || sparse, pages: total };
     })();
     return await Promise.race([run, timeout]);
   } catch {

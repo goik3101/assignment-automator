@@ -9,7 +9,7 @@ function tinyPdf(lines: string[]): Uint8Array {
     "%PDF-1.4\n" +
     "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
     "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
-    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 400 300]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n" +
+    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 4000 300]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n" +
     `4 0 obj<</Length ${content.length}>>stream\n${content}\nendstream endobj\n` +
     "5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n" +
     "trailer<</Root 1 0 R/Size 6>>\n%%EOF";
@@ -17,7 +17,8 @@ function tinyPdf(lines: string[]): Uint8Array {
 }
 
 test("PDF에서 글자를 뽑고, 다 읽었으면 partial이 아니다", async () => {
-  const r = await extractPdfText(tinyPdf(["about 350,000 people were in the city", "height 61.8 cm"]));
+  const filler = "the report describes the city population and the physical size of the censer in detail ".repeat(4);
+  const r = await extractPdfText(tinyPdf(["about 350,000 people were in the city " + filler, "height 61.8 cm " + filler]));
   assert.ok(r, "텍스트를 못 뽑았다");
   assert.match(r!.text, /350,000/);
   assert.match(r!.text, /61\.8/);
@@ -31,4 +32,10 @@ test("깨진 데이터는 null이고 던지지 않는다", async () => {
 
 test("쪽 수 제한(maxPages=0)이면 아무것도 못 읽어 null", async () => {
   assert.equal(await extractPdfText(tinyPdf(["x y z"]), { maxPages: 0 }), null);
+});
+
+test("쪽당 글자가 너무 적은 PDF는 다 읽었어도 partial이다(스캔본·표지만 있는 문서에서 값을 못 찾았다고 각주를 지우지 않게)", async () => {
+  const r = await extractPdfText(tinyPdf(["short"]));
+  assert.ok(r);
+  assert.equal(r!.partial, true);
 });
