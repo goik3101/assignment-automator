@@ -4199,8 +4199,16 @@ async function generateEssayImpl(
         lengthWarning: [lengthWarningByLabel.get(s.label), formWarningByLabel.get(s.label)].filter(Boolean).join(" ") || undefined,
         authorWarning: bookTitle ? authorWarningByTitle.get(normalizeBookTitleKey(bookTitle)) : undefined,
         // 그림 칸(만평·광고)은 "그릴 그림"이라 각주를 달 수 없게 해 둔 칸이다 — 출처가 없는 것이 정상이라 배너를 띄우지 않는다(2026-11-16 결과물34).
+        // 같은 결과의 다른 카드가 출처를 갖고 있으면 조사는 이미 돈 것이다 — 이 카드가 앞 카드의 사실을 이어 쓰는 글(책 처방전 편지, 문제해결)일 때
+        // "책 제목·평균·자료" 같은 넓은 낱말로 배너를 띄우면 거짓 경고가 된다(실측 2026-11-21: 책처방전 편지·과학-11 문제해결). 그때는 연도·수치 같은 강한 사실만 본다.
         noSourcesWarning:
-          !noSearchTool && renumberedSources.length === 0 && !isPicturePanel(s.label) && sectionHasVerifiableClaim(s, claimMode(s.label)),
+          !noSearchTool &&
+          renumberedSources.length === 0 &&
+          !isPicturePanel(s.label) &&
+          sectionHasVerifiableClaim(
+            s,
+            process.env.SIBLING_BANNER !== "off" && renumbered.sections.some((other, j) => j !== si && other.sources.length > 0) ? "own" : claimMode(s.label)
+          ),
         structureWarning:
           structureWarningByLabel.get(s.label) ??
           (fixes && !s.content.trim() ? "이 단계의 글을 만들지 못했어요. 이 단계만 다시 생성해 주세요." : undefined),
