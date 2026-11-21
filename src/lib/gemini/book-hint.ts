@@ -16,6 +16,16 @@ export function isSourceListSentence(sentence: string): boolean {
   return SOURCE_KIND.test(sentence) && SEARCH_VERB.test(sentence);
 }
 
+// "참고한 도서를 기록한다"는 **조사하며 본 자료를 적는 칸**이지 책을 골라 읽는 과제가 아니다. 이걸 책 과제로 읽으면 책 후보 선정·서지 확인(약 30초+)이 돌고
+// 결과물이 "신용하의 평전을 참고해 활동을 확인했다"처럼 학생이 하지 않은 일을 쓴다(역사-05 실측 2026-11-21, 51.7초). 이 칸은 학생이 직접 적도록 비워 두는 것이
+// 이미 정해진 방식이다(essay/reference-slot.ts). "읽은 책"·"책 제목과 저자"처럼 책이 소재인 문장은 그대로 책 과제다.
+const REFERENCE_RECORD = /참고(?:한|하여|할|해)\s*(?:도서|서적|책|문헌)[을를]?\s*(?:모두\s*)?(?:기록|기재|적|작성|명시)/;
+
+/** 이 문장이 "참고한 도서를 기록한다" 꼴인가. */
+export function isReferenceRecordSentence(sentence: string): boolean {
+  return REFERENCE_RECORD.test(sentence);
+}
+
 const SPLIT = /(?<=[.!?。])\s+|\n+/;
 
 /** 자료 출처 나열 문장을 뺀 나머지에서만 "책 과제인가"를 본다. */
@@ -23,5 +33,5 @@ export function mentionsBookTask(text: string): boolean {
   if (!text) return false;
   return text
     .split(SPLIT)
-    .some((s) => s.trim() && !isSourceListSentence(s) && BOOK_TASK_HINT_PATTERN.test(s));
+    .some((s) => s.trim() && !isSourceListSentence(s) && !(process.env.REFERENCE_BOOK_TASK !== "legacy" && isReferenceRecordSentence(s)) && BOOK_TASK_HINT_PATTERN.test(s));
 }
