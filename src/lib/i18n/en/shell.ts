@@ -212,5 +212,5 @@ export const shell: Record<string, string> = {
   "· 결과 수정 요청(다시 만들기): 하루 1회": "· Revision requests (regenerate): 1 per day",
   "· 학습 모드(자료 조사 + 피드백): 하루 5회": "· Study mode (research + feedback): 5 per day",
   "· 요약·플래시카드·퀴즈·가상 시험: 로그인 시 종류별로 하루 1회": "· Summary, flashcards, quiz, mock exam: 1 each per day when signed in",
-  "· AI 채팅: 로그인 시 하루 횟수 제한이 있어요": "· AI chat: daily limit when signed in",
+  "· AI 튜터(채팅): 로그인 시 하루 횟수 제한이 있어요": "· AI tutor (chat): daily limit when signed in",
 };

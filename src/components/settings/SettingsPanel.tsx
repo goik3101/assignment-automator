@@ -489,7 +489,7 @@ export default function SettingsPanel({ tab, onTab, onClose }: { tab: SettingsTa
             <li>{t("· 결과 수정 요청(다시 만들기): 하루 1회")}</li>
             <li>{t("· 학습 모드(자료 조사 + 피드백): 하루 5회")}</li>
             <li>{t("· 요약·가상 시험: 로그인 시 종류별로 하루 1회 (플래시카드·퀴즈는 요약 내용을 그대로 써서 횟수에 안 세요)")}</li>
-            <li>{t("· AI 채팅: 로그인 시 하루 횟수 제한이 있어요")}</li>
+            <li>{t("· AI 튜터(채팅): 로그인 시 하루 횟수 제한이 있어요")}</li>
           </ul>
         </Group>
       ),

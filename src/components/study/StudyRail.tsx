@@ -6,7 +6,8 @@ import ChatView from "@/components/chat/ChatView";
 import { useChat } from "@/components/chat/useChat";
 import SummaryModal from "./SummaryModal";
 import FlashcardsModal from "./FlashcardsModal";
-import QuizModal from "./QuizModal";
+import ConceptsModal from "./ConceptsModal";
+import QuizModal, { MemorizeModal } from "./QuizModal";
 import ExamModal from "./ExamModal";
 import { clearSavedStudy, listSavedStudy, type StudyRef } from "./useStudyData";
 import { useRouter } from "next/navigation";
@@ -37,7 +38,7 @@ const CHAT_STARTERS: { text: string; fill: boolean }[] = [
 ];
 
 /**
- * 과제 화면 오른쪽의 공부 도구: 요약 · 플래시카드 · 퀴즈 · 가상 시험(각각 큰 창으로 열림) + 이 과제에 대해 묻는 AI 채팅.
+ * 과제 화면 오른쪽의 공부 도구: 요약 · 개념 · 플래시카드 · 퀴즈 · 암기 · 가상 시험(각각 큰 창으로 열림) + 이 과제에 대해 묻는 AI 튜터.
  * 자동 작성 모드의 결과물과 학습 모드의 과제 모두 같은 구성을 쓴다. 내용은 서버가 id로 직접 읽어 온다.
  * 넓은 화면에서는 접어서 아이콘 줄만 남길 수 있다(접힘 여부는 브라우저에 기억).
  * 넓은 화면에서는 처음 놓인 자리에 그대로 고정된다 — 스크롤해도 위로 밀려 올라가지 않고, 화면 아래 끝까지 채운다.
@@ -54,7 +55,7 @@ export default function StudyRail({
   title: string;
   className?: string;
   lockedReason?: string;
-  /** AI 튜터 화면처럼 큰 대화창이 따로 있으면 레일 안의 작은 AI 채팅은 숨긴다. */
+  /** AI 튜터 화면처럼 큰 대화창이 따로 있으면 레일 안의 작은 AI 튜터 채팅은 숨긴다. */
   hideChat?: boolean;
   /** 채팅의 수정안이 결과물에 적용(또는 되돌리기)되면 부른다 — 결과물을 상태로 들고 있는 화면이 그 칸을 바꿔 그리게. */
   onResultEdited?: (heading: string, markdown: string) => void;
@@ -152,7 +153,7 @@ export default function StudyRail({
   }).sort((a, b) => b.at - a.at);
   const dateFmt = (at: number) => new Date(at).toLocaleDateString(lang === "en" ? "en-US" : "ko-KR", { month: "short", day: "numeric" });
 
-  // 레일 안의 채팅과 좁은 화면의 전체 화면 채팅(위쪽 탭의 "AI 채팅")이 같은 대화를 쓴다.
+  // 레일 안의 채팅과 좁은 화면의 전체 화면 채팅(위쪽 탭의 "AI 튜터")이 같은 대화를 쓴다.
   const renderChat = (inSheet: boolean) => (
     <ChatView
       chat={chat}
@@ -240,8 +241,8 @@ export default function StudyRail({
           {!hideChat && (
             <button
               onClick={() => toggle(false)}
-              aria-label={t("AI 채팅")}
-              title={t("AI 채팅")}
+              aria-label={t("AI 튜터")}
+              title={t("AI 튜터")}
               className="grid h-10 w-10 place-items-center rounded-xl bg-surface text-foreground/80 transition-colors hover:bg-raised hover:text-foreground"
             >
               <MessageCircle size={18} strokeWidth={1.6} />
@@ -275,7 +276,7 @@ export default function StudyRail({
                 <Icon size={18} strokeWidth={1.6} className="text-muted transition-colors group-hover:text-foreground" aria-hidden />
                 <span className="min-w-0 max-w-full">
                   <span className="block text-[14px] font-semibold leading-tight">{t(label)}</span>
-                  <span className="mt-1 block truncate text-xs leading-snug text-muted">{t(hint)}</span>
+                  <span className="mt-1 line-clamp-2 text-xs leading-snug text-muted">{t(hint)}</span>
                 </span>
               </button>
             ))}
@@ -310,11 +311,11 @@ export default function StudyRail({
         )}
 
         {!hideChat && (
-        <section aria-label={t("AI 채팅")} className={["flex min-h-[300px] flex-1 flex-col lg:min-h-[260px]", shared ? "max-lg:hidden" : ""].join(" ")}>
+        <section aria-label={t("AI 튜터")} className={["flex min-h-[300px] flex-1 flex-col lg:min-h-[260px]", shared ? "max-lg:hidden" : ""].join(" ")}>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-muted">
               <MessageCircle size={14} strokeWidth={1.8} />
-              {t("AI 채팅")}
+              {t("AI 튜터")}
             </h2>
             {chat.messages.length > 0 && (
               <button
@@ -332,11 +333,11 @@ export default function StudyRail({
       </div>
 
       {!hideChat && shared && tool?.id === "chat" && (
-        <div role="dialog" aria-modal="true" aria-label={t("AI 채팅")} className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background lg:hidden">
+        <div role="dialog" aria-modal="true" aria-label={t("AI 튜터")} className="fixed inset-x-0 top-0 z-50 flex h-dvh flex-col bg-background lg:hidden">
           <div className="flex h-14 shrink-0 items-center justify-between border-b border-border pl-4 pr-2">
             <h2 className="inline-flex items-center gap-1.5 text-[15px] font-semibold">
               <MessageCircle size={16} strokeWidth={1.8} aria-hidden />
-              {t("AI 채팅")}
+              {t("AI 튜터")}
             </h2>
             <div className="flex items-center gap-1">
               {chat.messages.length > 0 && (
@@ -360,9 +361,11 @@ export default function StudyRail({
           <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-4">{renderChat(true)}</div>
         </div>
       )}
-      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenMemorize={() => open("flashcards")} />}
+      {studyRef && tool?.id === "summary" && <SummaryModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenConcepts={() => open("concepts")} />}
+      {studyRef && tool?.id === "concepts" && <ConceptsModal studyRef={studyRef} onClose={close} reuse={tool.reuse} onOpenFlashcards={() => open("flashcards")} />}
       {studyRef && tool?.id === "flashcards" && <FlashcardsModal studyRef={studyRef} onClose={close} onOpenQuiz={() => open("quiz")} />}
-      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} onOpenExam={openExam} />}
+      {studyRef && tool?.id === "quiz" && <QuizModal studyRef={studyRef} onClose={close} onOpenMemorize={() => open("memorize")} />}
+      {studyRef && tool?.id === "memorize" && <MemorizeModal studyRef={studyRef} onClose={close} onOpenExam={openExam} />}
       {studyRef && tool?.id === "exam" && <ExamModal studyRef={studyRef} onClose={close} reuse={tool.reuse} />}
     </aside>
   );
