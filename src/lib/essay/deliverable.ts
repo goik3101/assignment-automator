@@ -27,7 +27,10 @@ export function newspaperSectionLabels(topic: string, els: { label: string; desc
   // "신문" 옆에 바로 제작 동사가 와야 한다. 느슨하게 보면 "관련 신문 기사를 바탕으로 … 작성"(사회 평가지)까지 걸려
   // 엉뚱한 과제가 영역 분담으로 묶인다(실측 2026-11-01 회귀 검사에서 잡음).
   const makesNewspaper = NEWSPAPER_DESC.test(topic ?? "");
-  if (makesNewspaper && els.length > 1) return els.map((e) => e.label);
+  // 재료 단계("자료 수집"·"조사"·"계획")는 지면의 영역이 아니다 — 다른 시간에 따로 쓰는 단계다. 영역으로 묶으면 신문이 "칸 하나"(300~900자, 40분이면 600자)로 줄어든다
+  // (2026-11-22 사용자 개선 요청3 사회 인권저널: 자료 수집 + 신문 두 단계라 신문이 629자로 나왔다. 만점 실측은 약 1,350자).
+  const pageEls = els.filter((e) => !MATERIAL_LABEL.test(e.label));
+  if (makesNewspaper && pageEls.length > 1) return pageEls.map((e) => e.label);
   const byLabel = els.filter((e) => inferDeliverableForm(e) === "newspaper");
   return byLabel.length > 1 ? byLabel.map((e) => e.label) : [];
 }

@@ -51,6 +51,17 @@ test("신문을 만드는 과제면 단계 전부가 그 신문의 영역이다"
   );
 });
 
+test("자료 수집 단계는 신문 지면의 영역이 아니다(인권 저널: 자료 수집 + 신문)", () => {
+  const els = [
+    { label: "자료 수집", description: "인물 배경·주요 활동을 수행평가지에 기록한다" },
+    { label: "신문", description: "수집한 자료를 토대로 신문을 제작한다" },
+  ];
+  assert.deepEqual(newspaperSectionLabels("인권 선구자의 업적을 탐구하고 신문을 제작한다", els), []);
+  // 지면의 영역이 둘 이상이면 재료 단계만 빠진다.
+  const withAreas = [{ label: "자료 조사", description: "조사한다" }, { label: "머리기사", description: "쓴다" }, { label: "사설", description: "쓴다" }];
+  assert.deepEqual(newspaperSectionLabels("현대사 신문 만들기", withAreas), ["머리기사", "사설"]);
+});
+
 test("신문을 자료로 쓰는 과제는 영역으로 보지 않는다", () => {
   const els = [
     { label: "신문 기사 스크랩", description: "기사를 붙인다" },
