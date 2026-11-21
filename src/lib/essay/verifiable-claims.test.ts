@@ -71,3 +71,13 @@ test("소제목과 빈칸만 남은 칸에는 검증 배너를 띄우지 않는�
   assert.equal(hasVerifiableClaimText("### 제목\n\n[직접 작성: 참고한 도서 제목]\n\n### 저자(지은이)\n\n[직접 작성: 참고한 도서의 저자]"), false);
   assert.equal(hasVerifiableClaimText("2023년 통계에 따르면 사용률은 34.7%였고 자료에 따라 조사한 사례가 있다.한 줄 더 길게 써서 서른 자를 넘긴다."), true);
 });
+
+test("강한 판정(strongOnly)은 책 제목·'평균·자료' 같은 넓은 낱말로는 참이 되지 않고 연도·수치에만 참이다(다른 카드가 출처를 가진 카드의 배너 기준)", () => {
+  const letter = "내가 골라 본 책은 수전 케인의 『콰이어트』야. 책을 읽다가 마음에 걸리는 부분이 있으면 잠깐 멈춰서 생각해 봐도 좋겠어.";
+  const solving = "농도별 속도나 평균값을 임의로 정해 결론을 내릴 수는 없다. 측정 자료가 없으므로 그래프의 기울기로 비교한다.";
+  assert.equal(hasVerifiableClaimText(letter), true);
+  assert.equal(hasVerifiableClaimText(letter, { strongOnly: true }), false);
+  assert.equal(hasVerifiableClaimText(solving), true);
+  assert.equal(hasVerifiableClaimText(solving, { strongOnly: true }), false);
+  assert.equal(hasVerifiableClaimText("2011년경 약 3,500만 건이 보도되었다.", { strongOnly: true }), true);
+});
