@@ -3,8 +3,8 @@
 import { Children, cloneElement, createContext, isValidElement, useContext, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { PencilLine } from "lucide-react";
-import type { ClaimCheckSummary } from "@/types/task";
+import { CircleCheck, PencilLine, TriangleAlert } from "lucide-react";
+import type { ChecklistRow } from "@/lib/essay/submit-checklist";
 import { useT } from "@/lib/i18n";
 
 // 모델이 "(학생 감상 초안 — …)"으로 표시한 줄은 본문처럼 읽히지 않게 작은 안내 표지로 바꿔 보여 준다 — 학생이 밝히지 않은 생각을 AI가 대신 쓴 부분이라는 뜻이다.
@@ -110,57 +110,67 @@ export function ProductionNotes({ notes }: { notes: { label?: string; text: stri
 }
 
 /**
- * 인용 문장이 인용한 페이지와 맞는지 코드로 대조한 결과. 연도·수치·영문 이름만 대조하므로
- * "문장이 맞다"가 아니라 "그 값이 페이지에 있다"는 뜻이다 — 그래서 한계를 함께 적는다.
+ * 제출 전 확인 목록. 코드가 이미 센 값만 보여 준다(submit-checklist.ts) — 긴 설명 대신 한 줄씩.
+ * 문제가 있는 행(todo)은 표시를 달리하고, 확인하지 못한 것은 아예 행이 없다.
  */
-export function ClaimCheckNote({ checks }: { checks: ClaimCheckSummary[] }) {
+export function SubmitChecklist({ rows }: { rows: ChecklistRow[] }) {
   const t = useT();
-  const total = checks.reduce(
-    (a, c) => ({
-      checked: a.checked + c.checked,
-      supported: a.supported + c.supported,
-      repointed: a.repointed + c.repointed,
-      unverified: a.unverified + c.unverified,
-      unsupported: [...a.unsupported, ...c.unsupported],
-    }),
-    { checked: 0, supported: 0, repointed: 0, unverified: 0, unsupported: [] as ClaimCheckSummary["unsupported"] }
-  );
-  if (total.checked === 0) return null;
-  const confirmed = total.supported + total.repointed;
+  if (rows.length === 0) return null;
+  const text = (r: ChecklistRow): string => {
+    switch (r.kind) {
+      case "blanks":
+        return t("직접 채워야 하는 빈칸 {n}개", { n: r.n });
+      case "length":
+        return t("글자 수 약 {n}자 (공백 포함)", { n: r.chars });
+      case "lengthWarning":
+      case "structureWarning":
+      case "authorWarning":
+        return r.message;
+      case "noSources":
+        return t("검색 출처가 없어요 — 책·인용구·통계는 직접 확인하세요");
+      case "sourcesOpen":
+        return t("출처 {n}개 모두 링크가 열려요", { n: r.n });
+      case "sourcesBroken":
+        return t("출처 {n}개는 링크가 열리지 않았어요", { n: r.n });
+      case "claimsOk":
+        return t("연도·수치가 든 문장 {n}개를 출처 페이지에서 확인했어요", { n: r.n });
+      case "claimsUnsupported":
+        return t("출처 페이지에서 값을 찾지 못한 문장 {n}개", { n: r.items.length });
+      case "claimsUnread":
+        return t("페이지를 읽지 못해 확인하지 못한 문장 {n}개", { n: r.n });
+    }
+  };
   return (
-    <div className="mt-6 rounded-2xl bg-background px-5 py-4 text-xs leading-relaxed text-muted">
-      <p className="text-sm font-semibold text-foreground">{t("출처 대조 결과")}</p>
-      <p className="mt-1">
-        {t("연도·수치·영문 이름이 들어 있는 인용 문장 {n}개를 인용한 페이지 본문과 맞춰 봤어요. {c}개에서 그 값이 확인됐고", {
-          n: total.checked,
-          c: confirmed,
-        })}
-        {total.repointed > 0 ? ` ${t("(그중 {n}개는 각주를 실제로 나온 출처로 바로잡았어요)", { n: total.repointed })}` : ""}
-        {total.unverified > 0 ? `${t(", {n}개는 페이지를 읽지 못해 자동으로 확인하지 못했어요", { n: total.unverified })}` : ""}
-        {t(". 한국어 서술의 뜻까지 맞는지는 판단하지 못하니 중요한 문장은 링크를 열어 확인하세요.")}
-      </p>
-      {total.unsupported.length > 0 && (
-        <div className="mt-2">
-          <p className="font-semibold text-danger">{t("읽은 출처 페이지에서 확인되지 않아 각주를 뺀 문장 {n}개", { n: total.unsupported.length })}</p>
-          <ul className="mt-1 space-y-1">
-            {total.unsupported.slice(0, 6).map((u, i) => (
-              <li key={i} className="flex gap-2">
-                <span aria-hidden>·</span>
-                <span>
-                  {u.text} <span className="text-faint">{t("(찾지 못한 값: {v})", { v: u.tokens })}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          {/* 본문에 표시를 남긴 경우에만 그렇게 안내한다 — 표시를 끄고 쓰면 "표시했어요"가 거짓말이 된다(실측: 결과물.3). */}
-          {checks.some((c) => c.marked) ? (
-            <p className="mt-1">{t("본문에서는 이 문장 끝에 [확인 필요]라고 표시했어요. 틀렸다는 뜻이 아니라, 읽은 페이지에서 그 값을 찾지 못했다는 뜻이에요.")}</p>
-          ) : (
-            <p className="mt-1">{t("틀렸다는 뜻이 아니라, 읽은 페이지에서 그 값을 찾지 못했다는 뜻이에요.")}</p>
-          )}
-          <p className="mt-1">{t("제출 전에 이 문장들의 사실을 직접 검색해서 확인하거나 고쳐 주세요.")}</p>
-        </div>
-      )}
+    <div className="mt-6 rounded-2xl bg-background px-5 py-4">
+      <p className="text-sm font-semibold">{t("제출 전 확인")}</p>
+      <ul className="mt-2 space-y-1.5 text-xs leading-relaxed">
+        {rows.map((r, i) => (
+          <li key={i} className="flex gap-2">
+            {r.status === "ok" ? (
+              <CircleCheck size={14} strokeWidth={1.8} className="mt-0.5 shrink-0 text-muted" aria-label={t("확인됨")} />
+            ) : r.status === "todo" ? (
+              <TriangleAlert size={14} strokeWidth={1.8} className="mt-0.5 shrink-0 text-danger" aria-label={t("확인 필요")} />
+            ) : (
+              <span aria-hidden className="mt-0.5 w-3.5 shrink-0 text-center text-faint">·</span>
+            )}
+            <div className="min-w-0">
+              <p className={r.status === "todo" ? "text-foreground" : "text-muted"}>{text(r)}</p>
+              {r.kind === "claimsUnsupported" && (
+                <>
+                  <ul className="mt-1 space-y-1 text-muted">
+                    {r.items.slice(0, 6).map((u, j) => (
+                      <li key={j}>
+                        {u.text} <span className="text-faint">{t("(찾지 못한 값: {v})", { v: u.tokens })}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {r.marked && <p className="mt-1 text-faint">{t("본문 문장 끝에 [확인 필요]라고 표시했어요")}</p>}
+                </>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

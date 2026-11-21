@@ -11,7 +11,8 @@ import { CircleCheck, CircleHelp, CircleX, Link2, MessageSquareQuote, PencilLine
 import type { EssayResult, PlanResult, SourceRef } from "@/types/task";
 import { SOURCE_TIER_LABEL } from "@/lib/links/source-quality";
 import Button from "@/components/ui/Button";
-import { ClaimCheckNote, MD_COMPONENTS, ProductionNotes } from "@/components/result/ResultExtras";
+import { MD_COMPONENTS, ProductionNotes, SubmitChecklist } from "@/components/result/ResultExtras";
+import { buildChecklist } from "@/lib/essay/submit-checklist";
 import { useT } from "@/lib/i18n";
 
 const ACTION_BTN = "h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-left";
@@ -342,8 +343,16 @@ export function EssayPanel({
           ...(result.sections ?? []).flatMap((x) => (x.productionNotes ? [{ label: x.label, text: x.productionNotes }] : [])),
         ]}
       />
-      <ClaimCheckNote
-        checks={[...(result.claimCheck ? [result.claimCheck] : []), ...(result.sections ?? []).flatMap((x) => (x.claimCheck ? [x.claimCheck] : []))]}
+      <SubmitChecklist
+        rows={buildChecklist({
+          markdown: result.markdown,
+          sources: result.sources,
+          lengthWarning: result.lengthWarning,
+          authorWarning: result.authorWarning,
+          noSourcesWarning: result.noSourcesWarning,
+          structureWarning: result.structureWarning,
+          claimChecks: [...(result.claimCheck ? [result.claimCheck] : []), ...(result.sections ?? []).flatMap((x) => (x.claimCheck ? [x.claimCheck] : []))],
+        })}
       />
       <SourceList sources={result.sources} />
       <ActionRow show={!!result.submissionId || !!(showExpectedQuestions && topic)}>
