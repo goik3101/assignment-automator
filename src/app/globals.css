@@ -258,22 +258,23 @@ body {
 
 /* 공부 도구 레일(StudyRail)이 붙는 화면의 바깥 폭과 레일 폭. 화면이 넓을수록 둘이 같이 커져서 본문 폭이 줄지 않는다.
    Tailwind 단계(2xl 등) 대신 직접 적은 이유: 1536px보다 큰 단계를 Tailwind에 더하면 작은 단계 규칙보다 앞에 놓여 적용되지 않았다. */
+/* 쪽 폭 = 본문 카드(최대 740px) + 간격 32px + 레일 폭 + 좌우 여백 80px. 본문 카드보다 폭이 남아 한쪽이 비어 보이지 않게 맞춰 둔다. */
 .study-page {
-  max-width: 1200px;
+  max-width: 1212px;
 }
 @media (min-width: 1280px) {
   .study-page {
-    max-width: 1320px;
+    max-width: 1232px;
   }
 }
 @media (min-width: 1536px) {
   .study-page {
-    max-width: 1500px;
+    max-width: 1412px;
   }
 }
 @media (min-width: 1800px) {
   .study-page {
-    max-width: 1640px;
+    max-width: 1492px;
   }
 }
 @media (min-width: 1024px) {
@@ -288,11 +289,11 @@ body {
 }
 @media (min-width: 1536px) {
   .study-rail {
-    width: 500px;
+    width: 560px;
   }
 }
 @media (min-width: 1800px) {
   .study-rail {
-    width: 580px;
+    width: 640px;
   }
 }
