@@ -29,6 +29,7 @@ const { isTableForm, labelIsTable } = await import("@/lib/essay/table-form");
 const { stripAdminLeak } = await import("@/lib/essay/admin-leak");
 const { handwriteBudget } = await import("@/lib/essay/handwrite-budget");
 const { needsFactSearch } = await import("@/lib/llm/search-policy");
+const { mentionsBookTask } = await import("@/lib/gemini/book-hint");
 
 type Case = [want: boolean, text: string];
 interface Rule {
@@ -45,6 +46,22 @@ const { wantsExtraMaterial } = await import("@/lib/essay/extra-material");
 const { foldSkeletonItems } = await import("@/lib/gemini/analysis-normalize");
 
 const RULES: Rule[] = [
+  {
+    name: "책과제",
+    what: "책을 고르고 서지를 확인하는 무거운 경로(30~50초)를 돌릴 과제인가 — 도서관·도서산간·참고 목록은 아니어야 한다(book-hint.ts, 2026-11-21 오탐 12/15 → 2/15)",
+    run: (t) => mentionsBookTask(t),
+    cases: [
+      [true, "독서 감상문을 쓴다."], [true, "읽은 책을 바탕으로 글을 쓴다."], [true, "친구에게 도움이 될 책을 소개한다."],
+      [true, "책 제목과 저자, 인상적인 구절을 적는다."], [true, "도서를 한 권 선정하여 읽고 감상을 쓴다."], [true, "진로와 관련된 도서를 읽고 독후감을 작성한다."],
+      [true, "책 한 권을 골라 독서 활동 보고서를 쓴다."], [true, "참고한 도서를 바탕으로 보고서를 작성한다."], [true, "참고한 도서의 인상 깊은 구절을 소개한다."],
+      [true, "도서 정보를 기재하고 책의 내용을 요약한다."], [true, "읽은 도서의 출처를 밝히고 줄거리를 요약한다."],
+      [false, "도서관에서 자료를 조사한다."], [false, "학교 도서관 이용 방법을 안내한다."], [false, "인터넷이나 도서관을 활용하여 자료를 수집한다."],
+      [false, "도서산간 지역의 의료 접근성 문제를 분석한다."], [false, "도서·산간 지역 주민의 이동권을 조사한다."], [false, "독서실 이용 시간 통계를 분석한다."],
+      [false, "참고문헌(도서, 논문, 기사)을 정리한다."], [false, "출처(도서, 신문기사, 누리집)를 밝힌다."], [false, "참고한 도서를 기록한다."],
+      [false, "참고 도서를 기록한다."], [false, "참고한 책의 제목과 저자를 적는다."], [false, "참고 문헌 및 도서를 기재한다."], [false, "사용한 도서와 자료의 출처를 적는다."],
+      [false, "사회적 책임을 다하는 기업의 사례를 조사한다."], [false, "교과서 p.29~p.40 범위"], [false, "정책 제안서를 작성한다."],
+    ],
+  },
   {
     name: "추가자료",
     what: "안내문이 추가 자료·이미지 포함을 요구했는가(걸리면 학생이 붙일 자리를 코드가 둔다 — extra-material.ts, 2026-11-15)",
