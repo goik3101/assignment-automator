@@ -31,9 +31,22 @@ const LATIN_NAME = /\b[A-Z][A-Za-z'’-]{2,}(?:\s+[A-Z][A-Za-z'’-]{2,})*\b/g;
 // 영문 약어·머리글자라 거의 모든 페이지에 있거나 의미가 없는 것들은 표지로 쓰지 않는다.
 const NAME_STOP = new Set(["The", "And", "For", "With", "From", "That", "This"]);
 
-export function extractCheckTokens(sentence: string): CheckTokens {
-  const s = sentence.replace(/\[\d+\]/g, " ");
+// "35만 명"·"1.7억"·"3,500만 건"처럼 한국어 단위가 붙은 큰 수. 쉼표 큰 수·% 규칙은 "3,500만"의 "3,500"만 잡아 단위를 잃었다(역사-01 실측: "약 35만 명"이 아무 검사도 못 받았다).
+// 표지는 "35만"처럼 원문 표기 그대로 두고, 페이지 대조는 pageSupports가 단위를 풀어서 한다.
+const UNIT_NUMBER = /(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(만|억|조)(?!큼)/g;
+const UNIT_MULT: Record<string, number> = { 만: 1e4, 억: 1e8, 조: 1e12 };
+const UNIT_TOKEN = /^(\d+(?:\.\d+)?)(만|억|조)$/;
+
+export function extractCheckTokens(sentence: string, opts: { units?: boolean } = {}): CheckTokens {
+  let s = sentence.replace(/\[\d+\]/g, " ");
   const numbers = new Set<string>();
+  if (opts.units) {
+    // 단위 수는 따로 뽑고 문장에서 지운다 — 안 지우면 BIG_NUMBER가 "3,500만"에서 "3500"을 또 뽑아 페이지에 "3500"이 있어야만 통과하게 된다.
+    s = s.replace(UNIT_NUMBER, (_m, num: string, unit: string) => {
+      numbers.add(`${num.replace(/,/g, "")}${unit}`);
+      return " ";
+    });
+  }
   for (const m of s.matchAll(YEAR)) numbers.add(m[1]);
   for (const m of s.matchAll(BIG_NUMBER)) numbers.add(m[0].replace(/[,\s]/g, ""));
   const names = new Set<string>();
@@ -42,13 +55,33 @@ export function extractCheckTokens(sentence: string): CheckTokens {
 }
 
 function norm(text: string): string {
-  return text.toLowerCase().replace(/(\d),(\d{3})/g, "$1$2").replace(/\s+/g, " ");
+  // 쉼표 뒤가 세 자리면 천 단위 구분이다. 예전 식은 "1,700,000"에서 앞 쌍만 풀어 "1700,000"을 남겼다.
+  return text.toLowerCase().replace(/(\d),(?=\d{3})/g, "$1").replace(/\s+/g, " ");
+}
+
+// 페이지 글에서 "값"을 모두 뽑는다: 숫자 자체, 그리고 뒤에 단위(만·万·million·billion·thousand …)가 붙은 숫자는 곱해서.
+const PAGE_NUMBER = /(\d+(?:\.\d+)?)\s?(만|萬|万|억|億|조|兆|million|billion|trillion|thousand)?/g;
+const PAGE_MULT: Record<string, number> = { 만: 1e4, 萬: 1e4, 万: 1e4, 억: 1e8, 億: 1e8, 조: 1e12, 兆: 1e12, million: 1e6, billion: 1e9, trillion: 1e12, thousand: 1e3 };
+// 한국어 글은 "약 35만 명"처럼 반올림해 쓰고 출처는 "346,000"처럼 정확한 값을 적는다 — 그래서 단위 수는 ±5% 안의 값이 페이지에 있으면 뒷받침으로 본다.
+// 틀린 경고(멀쩡한 문장에 [확인 필요])가 놓치는 것보다 해로우므로 넉넉한 쪽이다.
+const UNIT_TOLERANCE = 0.05;
+
+function unitSupported(token: string, normalizedPage: string): boolean {
+  const m = UNIT_TOKEN.exec(token);
+  if (!m) return normalizedPage.includes(token.toLowerCase());
+  const target = Number(m[1]) * UNIT_MULT[m[2]];
+  if (!Number.isFinite(target) || target <= 0) return true; // 읽을 수 없는 표기는 판정하지 않는다
+  for (const pm of normalizedPage.matchAll(PAGE_NUMBER)) {
+    const v = Number(pm[1]) * (pm[2] ? PAGE_MULT[pm[2]] : 1);
+    if (Math.abs(v - target) <= target * UNIT_TOLERANCE) return true;
+  }
+  return false;
 }
 
 /** 이 페이지가 문장의 표지를 뒷받침하는가: 숫자는 전부, 이름은 절반 이상(번역·표기 차이 여유). */
 export function pageSupports(tokens: CheckTokens, pageText: string): boolean {
   const t = norm(pageText);
-  if (!tokens.numbers.every((n) => t.includes(n.toLowerCase()))) return false;
+  if (!tokens.numbers.every((n) => (UNIT_TOKEN.test(n) ? unitSupported(n, t) : t.includes(n.toLowerCase())))) return false;
   if (tokens.names.length === 0) return true;
   const hit = tokens.names.filter((n) => t.includes(n.toLowerCase())).length;
   return hit >= Math.ceil(tokens.names.length / 2);
@@ -78,7 +111,7 @@ export function checkClaims(
   content: string,
   pages: PageTexts,
   rank: (n: number) => number = () => 0,
-  opts: { markUnsupported?: boolean } = {}
+  opts: { markUnsupported?: boolean; units?: boolean } = {}
 ): { content: string; findings: ClaimFinding[] } {
   const findings: ClaimFinding[] = [];
   const groups = [...content.matchAll(/(?:\[\d+\])+/g)];
@@ -97,7 +130,7 @@ export function checkClaims(
     const text = rawSegment.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").replace(/\[\d+\]/g, "").trim();
     segStart = gEnd;
     const cited = [...g[0].matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
-    const tokens = extractCheckTokens(text);
+    const tokens = extractCheckTokens(text, { units: opts.units });
     out += content.slice(cursor, gStart);
     cursor = gEnd;
     const keep = g[0];

@@ -168,3 +168,47 @@ test("줄글 형식 단계 이름만 줄글로 본다", () => {
   assert.equal(isProseForm({ label: "탐구 보고서" }), false);
   assert.equal(isProseForm({ label: "자료 수집" }), false);
 });
+
+// ── 근거 확인: 한국어 단위 수(만·억·조) ─────────────────────
+test("units 옵션이 켜지면 '35만'·'1.7억'·'3,500만'을 단위째 표지로 뽑고, 꺼져 있으면 예전과 같다", () => {
+  const sent = "히로시마에는 약 35만 명이 있었고 피해 추정은 170만 명에서 400만 명이며 3,500만 건이 보도됐다.";
+  assert.deepEqual(extractCheckTokens(sent, { units: true }).numbers.sort(), ["170만", "3500만", "35만", "400만"].sort());
+  // 예전 방식은 "3,500만"의 "3500"만 잡고 "35만"은 아예 못 봤다(회귀 방지: 기본값은 바뀌지 않는다)
+  assert.deepEqual(extractCheckTokens(sent).numbers, ["3500"]);
+  assert.deepEqual(extractCheckTokens("그만큼 3만큼 늘었다", { units: true }).numbers, []);
+  assert.deepEqual(extractCheckTokens("약 5만원과 10억원", { units: true }).numbers.sort(), ["10억", "5만"]);
+});
+
+test("단위 수는 페이지의 정확한 값·다른 표기(万·million·쉼표 큰 수)·±5% 안의 값이면 뒷받침으로 본다", () => {
+  const tok = (n: string) => ({ numbers: [n], names: [] });
+  assert.equal(pageSupports(tok("35만"), LONG("the city had about 350,000 people")), true);
+  assert.equal(pageSupports(tok("35만"), LONG("population of 346,000 in 1945")), true); // 반올림 차이
+  assert.equal(pageSupports(tok("35만"), LONG("人口は約35万人でした")), true);
+  assert.equal(pageSupports(tok("35만"), LONG("0.35 million residents")), true);
+  assert.equal(pageSupports(tok("170만"), LONG("1.7 million casualties estimated")), true);
+  assert.equal(pageSupports(tok("170만"), LONG("estimated 1,700,000 casualties")), true);
+  assert.equal(pageSupports(tok("3500만"), LONG("35 million articles")), true);
+  // 음성: 비슷한 숫자가 전혀 없으면 불통
+  assert.equal(pageSupports(tok("35만"), LONG("the museum opened in 1955 and welcomed 60,000 visitors")), false);
+  assert.equal(pageSupports(tok("35만"), LONG("a 35 person committee met in 1945")), false); // "35"는 35만이 아니다
+  assert.equal(pageSupports(tok("14만"), LONG("about 140,000 died by the end of the year")), true);
+});
+
+test("큰 쉼표 수는 천 단위 구분을 모두 풀어 비교한다(예전엔 7자리 수가 '1700,000'이 됐다)", () => {
+  assert.equal(pageSupports({ numbers: ["1700000"], names: [] }, LONG("estimated 1,700,000 casualties")), true);
+});
+
+test("checkClaims: units가 켜지면 페이지에 없는 '35만 명' 문장은 각주를 지우고 표시하며, 꺼져 있으면 예전처럼 손대지 않는다", () => {
+  const pages = new Map<number, string | null>([[2, LONG("The Truman Library page about the decision to use the bomb in 1945")]]);
+  const text = "히로시마에는 약 35만 명이 있었다.[2]";
+  const on = checkClaims(text, pages, () => 0, { units: true, markUnsupported: true });
+  assert.equal(on.findings[0].status, "unsupported");
+  assert.ok(on.content.includes("[확인 필요]") && !on.content.includes("[2]"));
+  const off = checkClaims(text, pages, () => 0, { markUnsupported: true });
+  assert.equal(off.findings[0].status, "unchecked");
+  assert.equal(off.content, text);
+  // 페이지에 있으면 그대로 둔다
+  const ok = checkClaims(text, new Map([[2, LONG("about 350,000 people were in Hiroshima")]]), () => 0, { units: true, markUnsupported: true });
+  assert.equal(ok.findings[0].status, "supported");
+  assert.equal(ok.content, text);
+});

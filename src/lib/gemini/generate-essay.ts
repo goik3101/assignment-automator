@@ -3795,7 +3795,7 @@ async function generateEssayImpl(
   attempt = {
     ...attempt,
     sections: attempt.sections.map((s) => {
-      const { content, findings } = checkClaims(s.content, pageTexts, tierRank, { markUnsupported: unverifiedMarkOn() });
+      const { content, findings } = checkClaims(s.content, pageTexts, tierRank, { markUnsupported: unverifiedMarkOn(), units: process.env.CLAIM_UNITS !== "off" });
       const checkedFindings = findings.filter((f) => f.status !== "unchecked");
       if (checkedFindings.length === 0) return s;
       const count = (st: ClaimFinding["status"]) => findings.filter((f) => f.status === st).length;
