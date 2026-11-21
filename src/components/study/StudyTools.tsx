@@ -39,7 +39,7 @@ export function useSharedStudyTool() {
 }
 
 /**
- * 결과물 화면 맨 위의 탭: 결과물 | 요약 | 개념 | 플래시카드 | 퀴즈 | 암기 | 가상 시험 | AI 튜터.
+ * 결과물 화면 맨 위의 탭: AI 튜터 | 결과물 | 요약 | 개념 | 플래시카드 | 퀴즈 | 암기 | 가상 시험.
  * 도구 탭을 누르면 오른쪽 "만들기" 카드를 누른 것과 똑같이 그 도구 창이 열리고, 창이 열려 있는 동안 그 탭이 선택돼 보인다.
  * 결과물이 아직 저장되지 않았으면(생성 중·비로그인) 도구 탭은 잠긴다.
  * 핸드폰·좁은 화면에서만 보인다(`lg:hidden`) — 넓은 화면에는 오른쪽 공부 도구가 이미 있어서 겹치지 않게 한다.
@@ -55,6 +55,15 @@ export function StudyTabs({ locked = false }: { locked?: boolean }) {
 
   return (
     <nav aria-label={t("공부 도구")} className="-mt-2 mb-6 flex gap-1.5 overflow-x-auto pb-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <button
+        onClick={() => setTool({ id: "chat", reuse: false })}
+        disabled={locked}
+        aria-current={tool?.id === "chat" ? "true" : undefined}
+        className={[base, tool?.id === "chat" ? on : off].join(" ")}
+      >
+        <MessageCircle size={15} strokeWidth={1.8} aria-hidden />
+        {t("AI 튜터")}
+      </button>
       <button onClick={() => setTool(null)} aria-current={!tool ? "true" : undefined} className={[base, !tool ? on : off].join(" ")}>
         <FileText size={15} strokeWidth={1.8} aria-hidden />
         {t("결과물")}
@@ -71,15 +80,6 @@ export function StudyTabs({ locked = false }: { locked?: boolean }) {
           {t(label)}
         </button>
       ))}
-      <button
-        onClick={() => setTool({ id: "chat", reuse: false })}
-        disabled={locked}
-        aria-current={tool?.id === "chat" ? "true" : undefined}
-        className={[base, tool?.id === "chat" ? on : off].join(" ")}
-      >
-        <MessageCircle size={15} strokeWidth={1.8} aria-hidden />
-        {t("AI 튜터")}
-      </button>
     </nav>
   );
 }

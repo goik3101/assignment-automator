@@ -276,7 +276,7 @@ export default function StudyRail({
                 disabled={locked}
                 className="group flex flex-col items-start gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3.5 text-left transition-colors hover:border-border-strong hover:bg-raised/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-surface @[26rem]:min-h-[72px] @[26rem]:flex-row @[26rem]:items-center @[26rem]:gap-3"
               >
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-raised text-muted transition-colors group-hover:text-foreground">
+                <span className="grid shrink-0 place-items-center text-muted transition-colors group-hover:text-foreground @[26rem]:h-9 @[26rem]:w-9 @[26rem]:rounded-lg @[26rem]:bg-raised">
                   <Icon size={18} strokeWidth={1.6} aria-hidden />
                 </span>
                 <span className="min-w-0 max-w-full">
