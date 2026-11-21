@@ -296,8 +296,8 @@ function ActionRow({ show, children }: { show: boolean; children: ReactNode }) {
 // 칸 경계는 `prose-h2:` 수정자가 아니라 **직접 선택자**로 쓴다 — 첫 칸만 경계선을 빼야 하는데
 // (`first:prose-h2:`는 Tailwind에서 그 순서로 동작하지 않는다) `[&>h2:first-child]`는 확실하다.
 const ARTICLE =
-  // 글줄은 64자로 묶고(max-w-[64ch]), 표(.md-table)는 이 폭에 갇히지 않게 카드 전체 폭을 쓴다.
-  "prose max-w-none [&>*:not(.md-table)]:max-w-[64ch] prose-neutral dark:prose-invert prose-headings:tracking-tight " +
+  // 글줄은 68자로 묶고(max-w-[68ch]), 표(.md-table)는 이 폭에 갇히지 않게 카드 전체 폭을 쓴다.
+  "prose max-w-none [&>*:not(.md-table)]:max-w-[68ch] prose-neutral dark:prose-invert prose-headings:tracking-tight " +
   "prose-h3:text-[15px] prose-h3:mt-6 prose-p:leading-[1.9] prose-li:leading-[1.8] prose-a:underline " +
   "[&>h2]:mt-10 [&>h2]:border-t [&>h2]:border-border-strong [&>h2]:pt-6 [&>h2]:text-lg " +
   "[&>h2:first-child]:mt-0 [&>h2:first-child]:border-t-0 [&>h2:first-child]:pt-0";

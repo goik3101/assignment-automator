@@ -360,7 +360,7 @@ export default function AssignmentFlow() {
 
       <StudyTabs locked={!submissionId} />
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,740px)_auto] lg:items-start">
       <div className="min-w-0 space-y-6">
         {essaySummaryLines.length > 0 && (
           <div className="rounded-2xl border border-border bg-surface p-5">

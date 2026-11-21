@@ -56,7 +56,7 @@ export default async function HistoryDetailPage(props: PageProps<"/histories/[id
 
       <StudyTabs />
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,740px)_auto] lg:items-start">
         <div className="min-w-0">
           {result ? (
             result.type === "essay" ? (
