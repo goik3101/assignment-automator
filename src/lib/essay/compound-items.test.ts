@@ -137,3 +137,14 @@ test("안내문 글에서 뽑은 항목은 주인이 없어 전 단계에 그대
   assert.equal(items[0].owner, undefined);
   assert.ok(!compoundItemBlock(items, true).includes("단계에서만"));
 });
+
+test("답안지 단계의 항목 줄 블록은 '구체적으로 길게' 대신 '요구한 답만'을 말한다(한문 독음 칸에 해설이 붙던 문제)", () => {
+  const items = compoundItems(["번역·독음·한자쓰기"]);
+  const normal = compoundItemBlock(items);
+  const sheet = compoundItemBlock(items, false, true);
+  assert.match(normal, /한 문장으로 끝내지 말고/);
+  assert.doesNotMatch(sheet, /한 문장으로 끝내지 말고/);
+  assert.match(sheet, /요구한 답만/);
+  // 줄을 나눠 각각 쓰라는 핵심 지시는 두 경우 모두 남는다
+  assert.match(sheet, /"독음: …"/);
+});
