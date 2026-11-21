@@ -54,18 +54,27 @@ function Deck({ cards, onRestart, onOpenQuiz }: { cards: Card[]; onRestart: () =
   const [i, setI] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [hint, setHint] = useState(false);
-  const [known, setKnown] = useState(0);
-  const [unsure, setUnsure] = useState<Card[]>([]);
+  // answers[idx] = 그 카드를 알았는가. 이전 버튼으로 돌아가면 그 뒤 답을 지우므로 카운터가 항상 맞는다.
+  const [answers, setAnswers] = useState<boolean[]>([]);
   const [round, setRound] = useState(1);
   const done = i >= queue.length;
   const card = queue[i];
+  const known = answers.filter(Boolean).length;
+  const missed = answers.filter((a) => !a).length;
+  const unsure = queue.filter((_, idx) => answers[idx] === false);
 
   function next(wasKnown: boolean) {
-    if (wasKnown) setKnown((k) => k + 1);
-    else setUnsure((u) => [...u, card]);
+    setAnswers((a) => [...a.slice(0, i), wasKnown]);
     setFlipped(false);
     setHint(false);
     setI((v) => v + 1);
+  }
+  function prev() {
+    if (i === 0) return;
+    setAnswers((a) => a.slice(0, i - 1));
+    setFlipped(false);
+    setHint(false);
+    setI((v) => v - 1);
   }
 
   useEffect(() => {
@@ -101,8 +110,7 @@ function Deck({ cards, onRestart, onOpenQuiz }: { cards: Card[]; onRestart: () =
               variant="primary"
               onClick={() => {
                 setQueue(shuffled(unsure));
-                setUnsure([]);
-                setKnown(0);
+                setAnswers([]);
                 setI(0);
                 setRound((r) => r + 1);
               }}
@@ -129,7 +137,11 @@ function Deck({ cards, onRestart, onOpenQuiz }: { cards: Card[]; onRestart: () =
   return (
     <div>
       <div className="mb-4 flex items-center justify-between text-xs text-faint">
-        <span className="tabular-nums">
+        <span className="inline-flex items-center gap-2 tabular-nums">
+          <Button variant="ghost" size="sm" onClick={prev} disabled={i === 0} aria-label={t("이전 카드")}>
+            <ArrowLeft size={14} strokeWidth={1.8} />
+            {t("이전")}
+          </Button>
           {i + 1} / {queue.length}
           {round > 1 && ` ${t("· {n}번째 복습", { n: round })}`}
         </span>
@@ -182,12 +194,12 @@ function Deck({ cards, onRestart, onOpenQuiz }: { cards: Card[]; onRestart: () =
           <>
             <Button onClick={() => next(false)} className="flex-1">
               <X size={15} strokeWidth={1.9} />
-              {t("헷갈려요")}
+              {t("헷갈려요")} <span className="tabular-nums text-faint">{missed}</span>
               <ArrowLeft size={13} strokeWidth={1.8} className="text-faint" aria-hidden />
             </Button>
             <Button variant="primary" onClick={() => next(true)} className="flex-1">
               <Check size={15} strokeWidth={2} />
-              {t("알아요")}
+              {t("알아요")} <span className="tabular-nums opacity-60">{known}</span>
               <ArrowRight size={13} strokeWidth={1.8} className="opacity-60" aria-hidden />
             </Button>
           </>
