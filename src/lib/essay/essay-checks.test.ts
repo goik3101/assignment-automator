@@ -212,3 +212,38 @@ test("checkClaims: units가 켜지면 페이지에 없는 '35만 명' 문장은 
   assert.equal(ok.findings[0].status, "supported");
   assert.equal(ok.content, text);
 });
+
+test("units 옵션: '61.8cm' 같은 단위 붙은 소수도 표지가 되고, 페이지의 ±2% 값이면 뒷받침으로 본다", () => {
+  assert.deepEqual(extractCheckTokens("금동대향로는 높이가 약 61.8cm에 이르는 큰 향로다.", { units: true }).numbers, ["61.8cm"]);
+  assert.deepEqual(extractCheckTokens("금동대향로는 높이가 약 61.8cm에 이르는 큰 향로다.").numbers, []);
+  // 정수 측정값은 변별력이 없어 뺀다
+  assert.deepEqual(extractCheckTokens("거리는 30km였다.", { units: true }).numbers, []);
+  const tok = { numbers: ["61.8cm"], names: [] };
+  assert.equal(pageSupports(tok, LONG("The censer is 61.8 cm tall")), true);
+  assert.equal(pageSupports(tok, LONG("높이 62센티미터")), true);
+  assert.equal(pageSupports(tok, LONG("높이 64cm이고 무게 11.8kg")), false);
+});
+
+test("checkClaims: 앞부분만 읽은 PDF에서 값을 못 찾아도 각주를 지우지 않는다(확인 불가)", () => {
+  const pages = new Map<number, string | null>([[1, LONG("a long report about trade volume")]]);
+  const text = "교역량은 2019년에 2,000만 톤이었다.[1]";
+  const partial = checkClaims(text, pages, () => 0, { units: true, markUnsupported: true, partial: new Set([1]) });
+  assert.equal(partial.findings[0].status, "unverified");
+  assert.equal(partial.content, text);
+  // partial이 아니면 예전대로 지우고 표시한다
+  const full = checkClaims(text, pages, () => 0, { units: true, markUnsupported: true });
+  assert.equal(full.findings[0].status, "unsupported");
+  // 다 읽은 PDF에 값이 있으면 supported
+  const ok = checkClaims(text, new Map([[1, LONG("in 2019 the volume was 20,000,000 tons")]]), () => 0, { units: true, partial: new Set([1]) });
+  assert.equal(ok.findings[0].status, "supported");
+});
+
+test("units 옵션: 법 조항 '제46조'는 단위 수가 아니다", () => {
+  assert.deepEqual(extractCheckTokens("개인정보 보호법 제46조는 이를 금지한다.", { units: true }).numbers, []);
+  assert.deepEqual(extractCheckTokens("개인정보 보호법 46조에 따라", { units: true }).numbers, []);
+});
+
+test("'1930년대' 같은 연대 표현은 연도 표지가 아니다(구체적인 해만 표지)", () => {
+  assert.deepEqual(extractCheckTokens("시집은 1930년대 후반부터 1941년 사이에 쓰였다.").numbers, ["1941"]);
+  assert.deepEqual(extractCheckTokens("1990년대 중반에는 상황이 달랐다.").numbers, []);
+});
