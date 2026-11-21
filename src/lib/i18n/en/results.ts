@@ -49,19 +49,19 @@ export const results: Record<string, string> = {
   // 결과 부가 안내 (ResultExtras)
   "AI가 쓴 초안이에요 — 본인 생각과 경험으로 고쳐 쓰세요": "Drafted by AI — rewrite it with your own thoughts and experience",
   "제작 참고 — 제출하는 글이 아니에요": "Production notes — not part of what you submit",
-  "출처 대조 결과": "Source check results",
-  "연도·수치·영문 이름이 들어 있는 인용 문장 {n}개를 인용한 페이지 본문과 맞춰 봤어요. {c}개에서 그 값이 확인됐고":
-    "We compared {n} quoted sentences containing years, figures, or English names with the text of the pages they cite. The values were confirmed in {c}",
-  "(그중 {n}개는 각주를 실제로 나온 출처로 바로잡았어요)": "(of which {n} had the footnote corrected to the source where the value actually appeared)",
-  ", {n}개는 페이지를 읽지 못해 자동으로 확인하지 못했어요": ", and {n} couldn't be checked automatically because the page couldn't be read",
-  ". 한국어 서술의 뜻까지 맞는지는 판단하지 못하니 중요한 문장은 링크를 열어 확인하세요.":
-    ". We can't judge whether the meaning of the Korean wording matches, so open the links to check important sentences.",
-  "읽은 출처 페이지에서 확인되지 않아 각주를 뺀 문장 {n}개": "{n} sentences whose footnotes were removed because they weren't found on the source pages we read",
+  "제출 전 확인": "Check before submitting",
+  "확인됨": "Verified",
+  "확인 필요": "Needs checking",
+  "직접 채워야 하는 빈칸 {n}개": "{n} blanks you need to fill in yourself",
+  "글자 수 약 {n}자 (공백 포함)": "About {n} characters (with spaces)",
+  "검색 출처가 없어요 — 책·인용구·통계는 직접 확인하세요": "No search sources — check any books, quotes, and statistics yourself",
+  "출처 {n}개 모두 링크가 열려요": "All {n} source links open",
+  "출처 {n}개는 링크가 열리지 않았어요": "{n} source links did not open",
+  "연도·수치가 든 문장 {n}개를 출처 페이지에서 확인했어요": "Checked {n} sentences with years or figures against their source pages",
+  "출처 페이지에서 값을 찾지 못한 문장 {n}개": "{n} sentences whose value wasn't found on the source page",
+  "페이지를 읽지 못해 확인하지 못한 문장 {n}개": "{n} sentences couldn't be checked because the page couldn't be read",
   "(찾지 못한 값: {v})": "(value not found: {v})",
-  "본문에서는 이 문장 끝에 [확인 필요]라고 표시했어요. 틀렸다는 뜻이 아니라, 읽은 페이지에서 그 값을 찾지 못했다는 뜻이에요.":
-    "We added a needs-checking tag (written in Korean) at the end of these sentences in the text. It doesn't mean they're wrong — only that we couldn't find the value on the page we read.",
-  "틀렸다는 뜻이 아니라, 읽은 페이지에서 그 값을 찾지 못했다는 뜻이에요.": "It does not mean they are wrong - only that we could not find the value on the page we read.",
-  "제출 전에 이 문장들의 사실을 직접 검색해서 확인하거나 고쳐 주세요.": "Before submitting, search to verify these sentences or fix them.",
+  "본문 문장 끝에 [확인 필요]라고 표시했어요": "A needs-checking tag (written in Korean) is at the end of those sentences in the text",
 
   // 경로 / 암기노트
   "경로": "Breadcrumb",
