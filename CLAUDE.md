@@ -170,6 +170,7 @@ docs/
 | `ESSAY_LEAN_WRITE=on`(기본 꺼짐, **Vercel에 두지 말 것**) / `FINAL_REVIEW=on`(기본 꺼짐·효과 미확인) / `ANALYSIS_CACHE=on`(Vercel에 켜져 있음) / `LENGTH_FROM_ANALYZE`(기각, 꺼짐) | 얇은 경로(사진 직접 주기, 구조 변경이라 승인 먼저) / 안내문 사진 대조 단계 / 분석 캐시 |
 | `CHAT_ROUTING=off` / `STUDY_LIMIT_CHAT`(기본 20) / `TUTOR_WRITE_ROUTING=off` / `STUDY_LIMIT_TUTOR`(기본 20) | AI 채팅·튜터 모델 길 나누기 / 하루 상한(관리자 제외) |
 | `TURNSTILE_REQUIRED=on` / `GENERATION_TICKET=off` | 운영에서 캡차 키가 없으면 비로그인 생성 거절(기본은 키 없으면 건너뜀) / 같은 과제 이어지는 요청 표 |
+| `CLAIM_UNITS=off`(11-21, 기본 켜짐) | 출처 대조(`claim-check`)가 "35만 명"·"3,500만" 같은 한국어 단위 수도 본다. 생성 뒤 최종 대조에서만 켜지고(보완 호출 트리거는 그대로), 페이지의 정확한 값·万·million 표기·±5%를 뒷받침으로 인정. 저장 결과물 54개·각주 묶음 435개 점검: 판정이 바뀐 6개는 전부 "페이지 못 읽음" 알림뿐, 거짓 삭제 0 |
 | `ANTI_AI_TONE_VERSION`(기본 v3) | 문체 규칙 버전 |
 
 ### 지켜야 할 규칙 (생성 파이프라인)
