@@ -1971,9 +1971,18 @@ ${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}\n${tableSte
   const invalidNs = new Set(
     validatedSources.filter((s) => s.url_valid === false || s.tier === "weak").map((s) => s.n)
   );
+  // 열리지 않는 출처만 근거인 수치 문장은 **각주를 떼기 전에** 지운다. 떼고 나면 "죽은 출처를 가리키는 각주"가 사라져 뒤쪽의 DEAD_SOURCE_FIGURES가 찾지 못하고,
+  // 근거 없는 수치가 각주도 [확인 필요] 표시도 없이 남는다(2026-11-22 사회-02: 2019→2022 "92.2%"가 같은 해 "91.0%"와 충돌). DEAD_SOURCE_FIGURES=off로 끔.
+  const deadNsEarly = validatedSources.filter((s) => s.url_valid === false).map((s) => s.n);
+  const dropDeadFigures = (t: string): string => {
+    if (process.env.DEAD_SOURCE_FIGURES === "off" || deadNsEarly.length === 0) return t;
+    const r = dropDeadSourceFigures(t, deadNsEarly);
+    if (r.removed.length) console.warn(`[generateEssay] 열리지 않는 출처만 근거인 수치 문장 ${r.removed.length}개 지움(각주 떼기 전): ${r.removed.slice(0, 2).map((g) => `"${g}"`).join(", ")}`);
+    return r.content;
+  };
   if (invalidNs.size > 0) {
     console.warn(`[generateEssay] 검증 실패한 출처를 가리키는 각주 제거: [${[...invalidNs].join(",")}]`);
-    annotated = stripInvalidCitationMarkers(annotated, invalidNs);
+    annotated = stripInvalidCitationMarkers(dropDeadFigures(annotated), invalidNs);
   }
 
   const mechanicalSections = splitAnnotatedIntoSections(annotated, labels);
@@ -1996,7 +2005,7 @@ ${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}\n${tableSte
   // stage B는 링크 확인과 동시에 돌아서 무효 출처 각주가 아직 남은 글을 봤다 — 요약·폴백 본문에서도 같은 각주를 지운다.
   if (invalidNs.size > 0) {
     parsed.summary_lines = (parsed.summary_lines ?? []).map((l) => stripInvalidCitationMarkers(l, invalidNs));
-    for (const sec of parsed.sections) if (sec.content) sec.content = stripInvalidCitationMarkers(sec.content, invalidNs);
+    for (const sec of parsed.sections) if (sec.content) sec.content = stripInvalidCitationMarkers(dropDeadFigures(sec.content), invalidNs);
   }
 
   // 안전장치: 실제로 그라운딩이 안 됐는데(출처 0개) 본문에 [1][2] 같은 각주 모양이
