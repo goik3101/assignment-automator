@@ -2,6 +2,7 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 import type { SourceRef } from "@/types/task";
 import { classifySourceTier } from "./source-quality";
 import { classifyFetchError, classifyHttpStatus, toUrlValid, type LinkStatus } from "./url-status";
+import { extractPdfText, PDF_MAX_BYTES } from "./pdf-text";
 
 const TIMEOUT_MS = 5000;
 
@@ -22,19 +23,40 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-function rememberPageText(urls: string[], html: string): void {
-  const text = htmlToText(html).slice(0, PAGE_TEXT_MAX_CHARS);
+// 쪽·시간 제한 때문에 앞부분만 읽은 PDF의 주소. 이런 문서에서 값을 못 찾았다고 각주를 지우면 안 된다(못 읽은 쪽에 있을 수 있다).
+const partialPageUrls = new Set<string>();
+
+function rememberText(urls: string[], rawText: string, partial = false): void {
+  const text = rawText.slice(0, PAGE_TEXT_MAX_CHARS);
   if (text.length < 200) return;
   for (const u of urls) {
-    if (pageTextCache.size >= PAGE_TEXT_MAX_ENTRIES) pageTextCache.delete(pageTextCache.keys().next().value as string);
+    if (pageTextCache.size >= PAGE_TEXT_MAX_ENTRIES) {
+      const oldest = pageTextCache.keys().next().value as string;
+      pageTextCache.delete(oldest);
+      partialPageUrls.delete(oldest);
+    }
     pageTextCache.set(u, text);
+    if (partial) partialPageUrls.add(u);
+    else partialPageUrls.delete(u);
   }
+}
+
+function rememberPageText(urls: string[], html: string): void {
+  rememberText(urls, htmlToText(html));
 }
 
 /** 출처 검증 때 받아 둔 페이지 본문. 못 받았거나(차단·시간 초과·PDF 등) 오래돼 밀려났으면 null. */
 export function getCachedPageText(url: string): string | null {
   return pageTextCache.get(url) ?? null;
 }
+
+/** 이 주소의 본문이 PDF의 앞부분뿐인가(쪽 수·시간 제한). */
+export function isPartialPageText(url: string): boolean {
+  return partialPageUrls.has(url);
+}
+
+const pdfTextOn = () => process.env.PDF_TEXT !== "off";
+const looksLikePdf = (contentType: string, url: string) => /application\/pdf/i.test(contentType) || /\.pdf(?:[?#]|$)/i.test(url);
 
 interface CheckResult {
   status: LinkStatus;
@@ -102,6 +124,23 @@ async function checkUrl(url: string): Promise<CheckResult> {
     if (looksLikeBotCheck(finalUrl, "")) return { status: "unverifiable", finalUrl: url };
     const byStatus = classifyHttpStatus(res.status);
     if (byStatus !== "valid") return { status: byStatus, finalUrl };
+
+    // PDF는 HTML 오류 페이지 검사(글자 수·문구)가 맞지 않고 본문을 글자로 읽지도 못한다 — 크기가 작을 때만 받아 글자를 뽑는다.
+    if (pdfTextOn() && looksLikePdf(res.headers.get("content-type") ?? "", finalUrl)) {
+      const declared = Number(res.headers.get("content-length") ?? 0);
+      if (declared > PDF_MAX_BYTES) return { status: "valid", finalUrl };
+      try {
+        const pdfRes = haveBody ? res : await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow", headers: BROWSER_HEADERS });
+        const bytes = new Uint8Array(await pdfRes.arrayBuffer());
+        if (bytes.length <= PDF_MAX_BYTES) {
+          const extracted = await extractPdfText(bytes);
+          if (extracted) rememberText([url, pdfRes.url || finalUrl], extracted.text, extracted.partial);
+        }
+      } catch {
+        // 받기·읽기 실패(느린 서버·시간 초과) — 링크는 열렸으니 valid, 본문만 없다
+      }
+      return { status: "valid", finalUrl };
+    }
 
     // HTTP 상태는 정상이어도 내용이 없는 오류/주차 페이지일 수 있으므로 본문을 확인한다(같은 5초 예산 안에서).
     try {

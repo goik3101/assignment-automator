@@ -25,16 +25,23 @@ export interface CheckTokens {
   names: string[];
 }
 
-const YEAR = /(?<![\d.,])(1[0-9]{3}|20[0-9]{2})(?![\d])/g;
+// "1930년대"는 연도가 아니라 연대다 — 페이지에는 1938·1941처럼 구체적인 해만 적혀 있어 "1930"을 못 찾고 멀쩡한 문장이 걸린다(국어-01 실측 2026-11-21).
+const YEAR = /(?<![\d.,])(1[0-9]{3}|20[0-9]{2})(?![\d])(?!\s?년대)/g;
 const BIG_NUMBER = /(?<![\d.])\d{1,3}(?:,\d{3})+(?![\d])|(?<![\d.])\d+(?:\.\d+)?\s?%/g;
 const LATIN_NAME = /\b[A-Z][A-Za-z'’-]{2,}(?:\s+[A-Z][A-Za-z'’-]{2,})*\b/g;
 // 영문 약어·머리글자라 거의 모든 페이지에 있거나 의미가 없는 것들은 표지로 쓰지 않는다.
 const NAME_STOP = new Set(["The", "And", "For", "With", "From", "That", "This"]);
 
 // "35만 명"·"1.7억"·"3,500만 건"처럼 한국어 단위가 붙은 큰 수. 쉼표 큰 수·% 규칙은 "3,500만"의 "3,500"만 잡아 단위를 잃었다(역사-01 실측: "약 35만 명"이 아무 검사도 못 받았다).
+// "조"는 뺀다 — "개인정보 보호법 제46조"의 조항 번호가 1조(10^12)로 읽혀 거짓 경고가 났다(사회-05 실측 2026-11-21). 조 단위 금액은 이 과제들에서 드물다.
 // 표지는 "35만"처럼 원문 표기 그대로 두고, 페이지 대조는 pageSupports가 단위를 풀어서 한다.
-const UNIT_NUMBER = /(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(만|억|조)(?!큼)/g;
+const UNIT_NUMBER = /(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(만|억)(?!큼)/g;
 const UNIT_MULT: Record<string, number> = { 만: 1e4, 억: 1e8, 조: 1e12 };
+// "61.8cm"·"2.5kg"처럼 단위가 붙은 소수(길이·무게·온도·넓이). 소수가 아닌 정수 측정값("30km")은 어느 페이지에나 있는 숫자와 겹쳐 변별력이 없어 뺀다.
+// 같은 값이 페이지에 단위 낱말 없이도("61.8 센티미터") 적히므로 숫자만 ±2%로 찾는다.
+const MEASURE_NUMBER = /(?<![\d.,])(\d+\.\d+)\s?(cm|mm|km|kg|ml|℃|㎡|m²)(?![A-Za-z])/g;
+const MEASURE_TOKEN = /^(\d+\.\d+)(cm|mm|km|kg|ml|℃|㎡|m²)$/;
+const MEASURE_TOLERANCE = 0.02;
 const UNIT_TOKEN = /^(\d+(?:\.\d+)?)(만|억|조)$/;
 
 export function extractCheckTokens(sentence: string, opts: { units?: boolean } = {}): CheckTokens {
@@ -44,6 +51,10 @@ export function extractCheckTokens(sentence: string, opts: { units?: boolean } =
     // 단위 수는 따로 뽑고 문장에서 지운다 — 안 지우면 BIG_NUMBER가 "3,500만"에서 "3500"을 또 뽑아 페이지에 "3500"이 있어야만 통과하게 된다.
     s = s.replace(UNIT_NUMBER, (_m, num: string, unit: string) => {
       numbers.add(`${num.replace(/,/g, "")}${unit}`);
+      return " ";
+    });
+    s = s.replace(MEASURE_NUMBER, (_m, num: string, unit: string) => {
+      numbers.add(`${num}${unit}`);
       return " ";
     });
   }
@@ -66,7 +77,17 @@ const PAGE_MULT: Record<string, number> = { 만: 1e4, 萬: 1e4, 万: 1e4, 억: 1
 // 틀린 경고(멀쩡한 문장에 [확인 필요])가 놓치는 것보다 해로우므로 넉넉한 쪽이다.
 const UNIT_TOLERANCE = 0.05;
 
+function measureSupported(token: string, normalizedPage: string): boolean {
+  const target = Number(MEASURE_TOKEN.exec(token)?.[1]);
+  if (!Number.isFinite(target) || target <= 0) return true;
+  for (const pm of normalizedPage.matchAll(/\d+(?:\.\d+)?/g)) {
+    if (Math.abs(Number(pm[0]) - target) <= target * MEASURE_TOLERANCE) return true;
+  }
+  return false;
+}
+
 function unitSupported(token: string, normalizedPage: string): boolean {
+  if (MEASURE_TOKEN.test(token)) return measureSupported(token, normalizedPage);
   const m = UNIT_TOKEN.exec(token);
   if (!m) return normalizedPage.includes(token.toLowerCase());
   const target = Number(m[1]) * UNIT_MULT[m[2]];
@@ -81,7 +102,7 @@ function unitSupported(token: string, normalizedPage: string): boolean {
 /** 이 페이지가 문장의 표지를 뒷받침하는가: 숫자는 전부, 이름은 절반 이상(번역·표기 차이 여유). */
 export function pageSupports(tokens: CheckTokens, pageText: string): boolean {
   const t = norm(pageText);
-  if (!tokens.numbers.every((n) => (UNIT_TOKEN.test(n) ? unitSupported(n, t) : t.includes(n.toLowerCase())))) return false;
+  if (!tokens.numbers.every((n) => (UNIT_TOKEN.test(n) || MEASURE_TOKEN.test(n) ? unitSupported(n, t) : t.includes(n.toLowerCase())))) return false;
   if (tokens.names.length === 0) return true;
   const hit = tokens.names.filter((n) => t.includes(n.toLowerCase())).length;
   return hit >= Math.ceil(tokens.names.length / 2);
@@ -111,7 +132,7 @@ export function checkClaims(
   content: string,
   pages: PageTexts,
   rank: (n: number) => number = () => 0,
-  opts: { markUnsupported?: boolean; units?: boolean } = {}
+  opts: { markUnsupported?: boolean; units?: boolean; partial?: Set<number> } = {}
 ): { content: string; findings: ClaimFinding[] } {
   const findings: ClaimFinding[] = [];
   const groups = [...content.matchAll(/(?:\[\d+\])+/g)];
@@ -160,6 +181,12 @@ export function checkClaims(
       const to = others.slice(0, 2);
       out += to.map((n) => `[${n}]`).join("");
       findings.push({ status: "repointed", text, cited, to, tokens });
+      continue;
+    }
+    // 읽은 페이지가 전부 "앞부분만 읽은 PDF"이면 못 읽은 쪽에 값이 있을 수 있다 — 지우지 않고 확인 불가로 둔다.
+    if (opts.partial && readable.every((n) => opts.partial!.has(n))) {
+      out += keep;
+      findings.push({ status: "unverified", text, cited, tokens });
       continue;
     }
     // 읽은 페이지 중 뒷받침하는 곳이 없다 — 각주를 지운다(없는 근거를 있는 것처럼 보이지 않게). 읽지 못한 인용이 섞여 있으면 그 번호만 남긴다.

@@ -26,7 +26,7 @@ import {
 } from "./prompts";
 import { findMissingItems, isOrganizedByQuestionNumbers, parseResearchItems } from "@/lib/research/research-items";
 import { buildSourceList, insertCitationMarkers, stripInvalidCitationMarkers, tidyOutputText } from "./citations";
-import { validateSources, getCachedPageText } from "@/lib/links/validate-sources";
+import { validateSources, getCachedPageText, isPartialPageText } from "@/lib/links/validate-sources";
 import {
   buildNewspaperBlock,
   buildSourceListSection,
@@ -3798,10 +3798,11 @@ async function generateEssayImpl(
   console.log(`[generateEssay] 각주 추적: 후처리(따옴표·서술각주·상투구 제거)후=${countMarkers(attempt.sections)} 출처=${attempt.sources.length}`);
   const tierRank = (n: number) => ({ official: 4, reliable: 3, general: 2, reference: 1, weak: 0 })[attempt.sources.find((x) => x.n === n)?.tier ?? "general"];
   const pageTexts: PageTexts = new Map(attempt.sources.map((src) => [src.n, getCachedPageText(src.url)]));
+  const partialPages = new Set(attempt.sources.filter((src) => isPartialPageText(src.url)).map((src) => src.n));
   attempt = {
     ...attempt,
     sections: attempt.sections.map((s) => {
-      const { content, findings } = checkClaims(s.content, pageTexts, tierRank, { markUnsupported: unverifiedMarkOn(), units: process.env.CLAIM_UNITS !== "off" });
+      const { content, findings } = checkClaims(s.content, pageTexts, tierRank, { markUnsupported: unverifiedMarkOn(), units: process.env.CLAIM_UNITS !== "off", partial: partialPages });
       const checkedFindings = findings.filter((f) => f.status !== "unchecked");
       if (checkedFindings.length === 0) return s;
       const count = (st: ClaimFinding["status"]) => findings.filter((f) => f.status === st).length;
