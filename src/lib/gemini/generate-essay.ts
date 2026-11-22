@@ -82,7 +82,7 @@ import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
 import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
 import { wantsExtraMaterial, ensureExtraMaterialSlot, extraMaterialKind } from "@/lib/essay/extra-material";
-import { isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
+import { isLetterStep, isPicturePanel, isTooWordy, panelRepairText, stripPanelCitations } from "@/lib/essay/picture-panel";
 import { adminLeakOn, dedupeOn, finalReviewOn, leanWriteOn, evidenceSlotsOn, formRequirementsOn, planCitationsOn, qualityFixesOn, boxLengthOn, rubricCheckOn, sourceRetryOn, stepOrderOn, tableFormOn, unverifiedMarkOn, writerGeneralKnowledgeOn } from "@/lib/essay/quality-flags";
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankInventedChatLog, isAiChatRecordLabel, isActionLogLabel, blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
@@ -3742,10 +3742,10 @@ async function generateEssayImpl(
         // 학생이 실물을 붙이는 칸의 날짜·신문사를 지어냈으면 빈칸으로 되돌린다 — 그대로 내면 거짓 기록이다(paste-slot.ts).
         // 그림으로 내는 칸(만평·광고·삽화)에는 각주를 달 수 없다 — 그림에 출처를 붙일 수는 없고,
         // 각주가 붙으면 "조사한 글"처럼 보인다. 역할 지시에 이미 적혀 있지만 모델이 지키지 않는다(picture-panel.ts).
-        if (isPicturePanel(s.label)) {
+        if (isPicturePanel(s.label) || isLetterStep(s.label)) {
           const panel = stripPanelCitations(content);
           if (panel.removed > 0) {
-            console.warn(`[generateEssay] 그림 칸의 각주 ${panel.removed}개 제거 label="${s.label}"`);
+            console.warn(`[generateEssay] 그림·편지 칸의 각주 ${panel.removed}개 제거 label="${s.label}"`);
             content = panel.content;
           }
         }
