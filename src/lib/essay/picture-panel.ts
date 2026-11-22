@@ -19,9 +19,19 @@ export function isPicturePanel(label: string): boolean {
  * 소제목 줄은 건드리지 않는다.
  */
 export function stripPanelCitations(content: string): { content: string; removed: number } {
-  const removed = (content.match(/\[\d+\]/g) ?? []).length;
+  // "[1,2]" 꼴 묶음 각주도 뗀다(예전 정규식은 "[1]"만 지워 "[1,2]"가 남았다).
+  const MARK = /\s*\[\d+(?:\s*,\s*\d+)*\]/g;
+  const removed = (content.match(MARK) ?? []).length;
   if (removed === 0) return { content, removed: 0 };
-  return { content: content.replace(/\s*\[\d+\]/g, "").replace(/[ \t]{2,}/g, " "), removed };
+  return { content: content.replace(MARK, "").replace(/[ \t]{2,}/g, " "), removed };
+}
+
+/**
+ * 손편지 칸인가. 편지는 학생이 친구에게 **손으로 옮겨 적는 글**이라 각주 표시가 붙으면 그대로 베껴 적게 된다(2026-11-22 책처방전 편지 카드에 [1][2] — 이전 실행도 같았다).
+ * 그림 칸과 같은 이유로 각주를 뗀다(stripPanelCitations 재사용).
+ */
+export function isLetterStep(label: string): boolean {
+  return /편지/.test(label ?? "");
 }
 
 /** 글(소제목·빈 줄 제외)이 몇 자인가. */
