@@ -12,11 +12,46 @@
 
 const TRIM = (s: string) => s.replace(/^[\s·,、]+|[\s·,、]+$/g, "").trim();
 
-/** 나열 기호로 나뉜 조각들. 기호가 없으면 null. */
+/** 괄호 **밖**의 나열 기호에서만 나눈다 — 괄호 안의 "·"·","는 그 항목의 설명이지 항목을 가르는 기호가 아니다. */
+function splitOutsideParens(name: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (let i = 0; i < name.length; i++) {
+    const ch = name[i];
+    if (ch === "(" || ch === "（") depth++;
+    else if (ch === ")" || ch === "）") depth = Math.max(0, depth - 1);
+    const comma = ch === "," && /\s/.test(name[i + 1] ?? " ");
+    if (depth === 0 && (ch === "·" || ch === "・" || ch === "、" || comma)) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/**
+ * 나열 기호로 나뉜 조각들. 기호가 없으면 null.
+ *
+ * 2026-11-22(가정-01 점검): "정책 설명(대상·방법)"을 괄호 속 "·"에서 잘라 "정책 설명(대상"과 "방법)"이라는 깨진 조각을 만들었고, 프롬프트가 그 이름으로 줄을 쓰라고 시켜
+ * 칸에 "방법): …"만 남고 "대상" 줄이 사라졌다(저장된 분석 776개 항목 중 18개가 이렇게 깨진다). 이제는 괄호 밖에서만 나누고,
+ * "이름(가·나)"처럼 괄호가 **그 항목 안에 쓸 것**을 나열하면 괄호 속 조각이 나열 항목이다(안내문 양식도 "대상: … / 방법: …"으로 적게 한다).
+ */
 function bySymbol(name: string): string[] | null {
-  if (!/[·・、]|,\s/.test(name)) return null;
-  const parts = name.split(/[·・、]|,\s*/).map(TRIM).filter((p) => p.length >= 2);
-  return parts.length >= 2 ? parts : null;
+  const top = splitOutsideParens(name).map(TRIM);
+  // "실험 1·2·3: …"처럼 한 글자 조각이 끼면 이름 나열이 아니라 번호 나열이다.
+  if (top.length >= 2 && !top.some((p) => p.length > 0 && p.length < 2)) {
+    const parts = top.filter((p) => p.length >= 2);
+    if (parts.length >= 2) return parts;
+  }
+  const m = /^(.+?)\s*[(（]([^()（）:：]+)[)）]\s*$/.exec(name.trim());
+  if (!m) return null;
+  const inner = m[2].split(/[·・、,]\s*/).map((p) => TRIM(p).replace(/\s*등$/, ""));
+  if (inner.length < 2 || inner.some((p) => p.length < 2 || p.length > 12)) return null;
+  return inner;
 }
 
 /**
