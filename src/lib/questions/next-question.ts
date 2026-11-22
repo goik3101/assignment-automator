@@ -4,10 +4,17 @@ import type { CoreTaskInfo } from "@/types/task";
 import { selectionTargetWord } from "@/lib/selection/selection-need";
 import { isTopicQuestion } from "@/lib/selection/student-topic";
 import {
+  bookQuestionOpen,
+  buildBookQuestion,
+  buildExcerptQuestion,
+  buildMaterialQuestion,
   buildTopicQuestion,
+  cleanOptions,
+  excerptQuestionOpen,
   QUESTION_CAP,
   sanitizeQuestion,
   topicStillOpen,
+  unseenMaterialPointer,
   type AiMode,
   type PreAnswer,
   type PreQuestion,
@@ -94,6 +101,65 @@ const TOPIC_OPTIONS_SCHEMA: Schema = {
   required: ["options"],
 };
 
+const OPTIONS_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: { options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "서로 다른 후보 4~5개. 한 줄." } },
+  required: ["options"],
+};
+
+/** 보기 후보만 받는 값싼 호출(최대 2번). 실패하면 빈 배열 — 질문은 보기 없이도(직접 입력·AI에게 맡김) 성립한다. */
+async function proposeOptions(label: string, prompt: string): Promise<string[]> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { data } = await generateJson<{ options: string[] }>({ label, role: "lite", schema: OPTIONS_SCHEMA, effort: "low", prompt });
+      const options = cleanOptions(data.options);
+      if (options.length >= 2) return options.sort(() => Math.random() - 0.5);
+    } catch (err) {
+      console.warn(`[questions] ${label} 보기 생성 실패`, err instanceof Error ? err.message : err);
+    }
+  }
+  return [];
+}
+
+/**
+ * 책을 소개·분석하는 과제의 책 질문 — **AI가 추천 책을 보기로 주고**, 학생은 고르거나 직접 적거나 AI에게 맡긴다.
+ * 보기는 "제목 — 저자" 한 줄. 인지도 있는 책만 받고 순서를 섞는다(전국 학생이 같은 순서·같은 책으로 쏠리지 않게).
+ */
+async function proposeBookQuestion(params: { subject: string; info: CoreTaskInfo; instructions: string; answers: PreAnswer[] }): Promise<PreQuestion> {
+  const answered = params.answers.map((a) => `- ${a.question} → ${a.answer || (a.state === "later" ? "(나중에)" : "(AI에게 맡김)")}`).join("\n");
+  const options = await proposeOptions(
+    "questions:bookOptions",
+    [
+      describeTask(params.subject, params.info, params.instructions),
+      answered ? `[이전 질문과 답변]
+${answered}` : "",
+      "",
+      "이 과제에서 학생이 쓸 **책 후보 4~5권**을 제시해라.",
+      "- 한국 고등학생이 들어 봤거나 학교·공공도서관에서 쉽게 빌릴 수 있는 **인지도 있는 책**만(번역서는 한국어판 제목). 무명·절판·해외 전용 책 금지.",
+      "- 안내문이 허용하지 않는 종류(예: 만화책)와 과제 주제에 맞지 않는 책은 넣지 말 것. 서로 다른 갈래·분야로.",
+      '- 각 후보는 "제목 — 저자" 한 줄로.',
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+  return buildBookQuestion(params.answers, options);
+}
+
+/** 안내문이 쪽수로만 가리키는 자료·실험의 내용 후보 — AI가 가능성 높은 것을 추정해 보기로 준다(학생이 교과서와 맞는 것을 고르거나 직접 적는다). */
+async function proposeMaterialQuestion(params: { subject: string; info: CoreTaskInfo; instructions: string; answers: PreAnswer[] }, pointer: string): Promise<PreQuestion> {
+  const options = await proposeOptions(
+    "questions:materialOptions",
+    [
+      describeTask(params.subject, params.info, params.instructions),
+      "",
+      `안내문은 "${pointer}"이라고만 적었고 그 교과서·자료의 내용은 우리가 볼 수 없다. 고등학교 ${params.subject || "해당 교과"} 교과서에서 **가능성이 높은 내용 후보 3~4개**를 제시해라.`,
+      "- 서로 다른 후보(다른 실험·다른 활동)로, 각각 한 줄(60자 이내)에 핵심 재료나 방법이 드러나게.",
+      "- 확실하지 않은 세부 수치·시약 농도는 쓰지 말 것. 후보일 뿐이라는 점을 학생이 알아서 고르게 한다.",
+    ].join("\n")
+  );
+  return buildMaterialQuestion(pointer, params.answers, options);
+}
+
 /**
  * 주제(대상)가 미정인 선정 과제의 첫 질문 — **후보를 AI가 찾아 보기로 주고 학생이 고른다**(직접 입력·AI에게 맡김은 화면이 항상 따로 준다).
  *
@@ -163,6 +229,16 @@ export async function nextQuestion(params: {
   if (topicOpen) {
     const proposed = await proposeTopicQuestion(params, word);
     if (proposed) return { question: proposed, remaining: left - 1 };
+  }
+
+  // 안내문만으로 정할 수 없는 것(책·구절·못 보는 자료)은 모델의 자유 판단보다 먼저 코드가 묻는다 — 모델은 "조사로 해결 가능"이라며 건너뛰곤 했다.
+  // 순서: 책 → (학생이 책을 정했고 구절을 요구하면) 구절 → 쪽수로만 가리킨 자료. 개수 상한은 위에서 이미 강제한다.
+  const asked = { info: params.info, instructions: params.instructions, answers: params.answers };
+  if (!topicOpen) {
+    if (bookQuestionOpen(asked)) return { question: await proposeBookQuestion(params), remaining: left - 1 };
+    if (excerptQuestionOpen(asked)) return { question: buildExcerptQuestion(params.answers), remaining: left - 1 };
+    const pointer = unseenMaterialPointer(asked);
+    if (pointer) return { question: await proposeMaterialQuestion(params, pointer), remaining: left - 1 };
   }
 
   const { data } = await generateJson<{ needed: boolean; reason: string; question?: unknown }>({

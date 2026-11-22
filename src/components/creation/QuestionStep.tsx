@@ -40,8 +40,8 @@ export default function QuestionStep({
   }, [question?.id]);
 
   useEffect(() => {
-    if (otherOpen || question?.kind === "personal") areaRef.current?.focus();
-  }, [otherOpen, question?.id, question?.kind]);
+    if (otherOpen || question?.kind === "personal" || (question && question.options.length === 0)) areaRef.current?.focus();
+  }, [otherOpen, question]);
 
   if (loading || !question) {
     return (
@@ -56,6 +56,8 @@ export default function QuestionStep({
   }
 
   const personal = question.kind === "personal";
+  const noOptions = !personal && question.options.length === 0;
+  const areaVisible = personal || otherOpen || noOptions;
   const answer = (state: PreAnswer["state"], value = "") => onAnswer({ question: question.text, key: question.key, answer: value, state });
 
   return (
@@ -81,6 +83,17 @@ export default function QuestionStep({
               </button>
             </li>
           ))}
+          {/* 직접 답할 칸은 모든 선택형 질문에 항상 있다 — 보기 밖의 답이 있을 수 있다. */}
+          {!otherOpen && question.options.length > 0 && (
+            <li>
+              <button
+                onClick={() => setOtherOpen(true)}
+                className="w-full rounded-xl border border-dashed border-border-strong px-4 py-3.5 text-left text-[14.5px] leading-snug text-muted transition-colors hover:border-foreground hover:text-foreground"
+              >
+                {t("직접 입력하기")}
+              </button>
+            </li>
+          )}
         </ul>
       )}
 
@@ -98,7 +111,7 @@ export default function QuestionStep({
         </div>
       )}
 
-      {(personal || otherOpen) && (
+      {areaVisible && (
         <div className="mt-4">
           <label className="sr-only" htmlFor="q-text">
             {t("내 답")}
@@ -122,16 +135,12 @@ export default function QuestionStep({
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4 text-[13px]">
-        {!personal && question.allowOther && !otherOpen && (
-          <button onClick={() => setOtherOpen(true)} className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground">
-            {t("직접 입력하기")}
-          </button>
-        )}
-        {personal ? (
+        {(personal || question.allowLater) && (
           <button onClick={() => answer("later")} className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground">
             {t("나중에 직접 쓸게요")}
           </button>
-        ) : (
+        )}
+        {!personal && (
           <button onClick={() => answer("delegate")} className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground">
             {t("AI가 알아서 정해 주세요")}
           </button>

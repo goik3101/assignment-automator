@@ -74,6 +74,7 @@ import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { withoutOtherAreaNotes } from "@/lib/gemini/analysis-normalize";
 import { withBookBodyItem } from "@/lib/essay/book-body-item";
 import { mainBookTitle, isPlausibleBookTitle } from "@/lib/essay/book-title";
+import { studentExcerptState } from "@/lib/questions/questions-pure";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
@@ -1046,7 +1047,7 @@ ${CITATION_JUDGMENT_RULE}
 ${scope.personAndPerspective ? PERSPECTIVE_RULE : ""}
 ${scope.personAndPerspective ? REAL_PERSON_NAME_RULE : ""}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
-${notes ? `${factSheetRules()}${notes.excerpt?.verified ? "\n- 예외: [사실 노트]의 「책 속 구절(원문 확인됨)」 문장은 원문이 확인됐다. '인상 깊은 구절' 같은 항목에서는 이 문장을 큰따옴표로 한 글자도 바꾸지 말고 그대로 인용하고 그 번호를 붙인다. 다른 책 속 문장은 따옴표로 인용하지 말 것." : notes.excerpt ? "\n- 책 속 구절은 확인하지 못했다. '인상 깊은 구절' 항목에는 구절을 지어내지 말고, 줄거리·감상을 구절처럼 쓰지도 말고, 구절 자리에 \"[직접 작성: 책에서 직접 고른 인상 깊은 구절 — 원문 그대로 옮겨 적을 것]\" 한 줄만 두고 그 항목에는 다른 말을 쓰지 않는다. 이 책이 친구의 고민과 이어지는 이유는 책 소개·추천 이유 항목에 사실 노트의 내용으로 쓴다." : ""}
+${notes ? `${factSheetRules()}${studentExcerptState(input.instructions) === "provided" ? "\n- 예외: 학생이 제작 전 질문에서 직접 준 책 속 구절은 학생이 원문에서 옮긴 것이다. '인상 깊은 구절' 항목에는 그 문장을 큰따옴표로 한 글자도 바꾸지 말고 그대로 쓰되 각주 번호는 붙이지 않는다." : studentExcerptState(input.instructions) === "later" ? "\n- 책 속 구절은 학생이 나중에 직접 쓰겠다고 했다. '인상 깊은 구절' 항목에는 \"[직접 작성: 책에서 직접 고른 인상 깊은 구절 — 원문 그대로 옮겨 적을 것]\" 한 줄만 두고 그 항목에는 다른 말을 쓰지 않는다." : ""}${notes.excerpt?.verified ? "\n- 예외: [사실 노트]의 「책 속 구절(원문 확인됨)」 문장은 원문이 확인됐다. '인상 깊은 구절' 같은 항목에서는 이 문장을 큰따옴표로 한 글자도 바꾸지 말고 그대로 인용하고 그 번호를 붙인다. 다른 책 속 문장은 따옴표로 인용하지 말 것." : notes.excerpt ? "\n- 책 속 구절은 확인하지 못했다. '인상 깊은 구절' 항목에는 구절을 지어내지 말고, 줄거리·감상을 구절처럼 쓰지도 말고, 구절 자리에 \"[직접 작성: 책에서 직접 고른 인상 깊은 구절 — 원문 그대로 옮겨 적을 것]\" 한 줄만 두고 그 항목에는 다른 말을 쓰지 않는다. 이 책이 친구의 고민과 이어지는 이유는 책 소개·추천 이유 항목에 사실 노트의 내용으로 쓴다." : ""}
 
 [사실 노트]
 ${factSheetText(notes.facts)}` : ""}
@@ -1625,7 +1626,7 @@ async function generateOnce(
     const book = input.presetBook;
     const [researched, ex] = await Promise.all([
       researchWithCache(input, elements),
-      excerptTask && book
+      excerptTask && book && !studentExcerptState(input.instructions)
         ? verifyExcerptHedged({ name: book.title, attribution: book.author }).catch((err) => {
             console.error("[generateEssay] 구절 미리 확인 실패(구절 없이 진행)", err);
             return null;

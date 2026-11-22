@@ -3,6 +3,8 @@
 
 import { selectionTargetWord, shouldAskSubject, type SelectionNeedInfo } from "../selection/selection-need.ts";
 import { findStudentTopic, isTopicQuestion } from "../selection/student-topic.ts";
+import { mentionsBookTask } from "../gemini/book-hint.ts";
+import { needsExcerpt } from "../essay/excerpt-need.ts";
 
 export type AiMode = "fast" | "personal";
 
@@ -25,6 +27,8 @@ export interface PreQuestion {
   allowOther: boolean;
   /** 이 질문을 왜 묻는지(학생에게 한 줄로 보여줄 이유). */
   why: string;
+  /** 선택형이어도 "나중에 직접 쓸게요"를 줄지(개인형은 항상 준다). 책 구절처럼 학생만 가진 원문을 묻는 질문에 쓴다. */
+  allowLater?: boolean;
 }
 
 export interface PreAnswer {
@@ -134,7 +138,8 @@ export function sanitizeQuestion(raw: unknown, asked: PreAnswer[]): PreQuestion 
     text,
     kind,
     options,
-    allowOther: kind === "personal" ? true : q.allow_other === true,
+    // 직접 답할 칸은 **항상** 준다. 모델의 allow_other에 맡겼더니 대부분 false라 보기만 있고 쓸 칸이 없는 질문이 나왔다(2026-11-22 사용자 보고).
+    allowOther: true,
     why: typeof q.why === "string" ? q.why.trim().slice(0, 100) : "",
   };
 }
@@ -145,7 +150,19 @@ export function answersToInstructions(answers: PreAnswer[]): string {
   const lines = answers.map((a) => {
     if (a.state === "later")
       return `- 질문: ${a.question}\n  답: (학생이 나중에 직접 쓰겠다고 함) → 이 부분은 지어내지 말고, 학생이 직접 채울 자리를 "[직접 작성: 무엇]" 형태의 빈칸으로 남길 것.`;
+    // 못 보는 자료는 AI도 모른다 — 맡겨도 하나의 실험·절차를 단정하지 않는다(과학-11: 티오황산 나트륨을 단정해 앞뒤 단계가 다른 실험을 썼다).
+    if (a.state === "delegate" && a.key === "unseen_material")
+      return `- 질문: ${a.question}\n  답: (학생이 AI에게 맡김) → 그 교과서·자료의 실제 내용을 우리는 모른다. 하나의 구체적인 실험·절차·시약·수치를 단정하지 말고, 일반적인 원리 설명과 학생이 채울 "[직접 작성: 무엇]" 빈칸으로 쓰며 모든 단계에서 같은 내용을 가리킬 것.`;
     if (a.state === "delegate") return `- 질문: ${a.question}\n  답: (학생이 AI에게 맡김) → 과제 조건에 맞게 합리적으로 정하되, 학생 본인의 경험·감정은 지어내지 말 것.`;
+    // 책 제목은 지침의 겹낫표 꼴로 적어야 생성이 책 선정을 건너뛰고 그 책으로 고정한다(extractStudentSpecifiedBook — "저자의 『제목』"이면 저자도 읽는다).
+    if (a.key === "book_title") {
+      const b = parseBookAnswer(a.answer);
+      return `- 질문: ${a.question}\n  답: ${b.author ? `${b.author}의 ` : ""}『${b.title}』 — 학생이 정한 책이다(다른 책으로 바꾸지 말 것).`;
+    }
+    if (a.key === "book_excerpt")
+      return `- 질문: ${a.question}\n  답: "${a.answer}" — ${PROVIDED_EXCERPT_MARK}이다. '인상 깊은 구절' 항목에는 이 문장을 한 글자도 바꾸지 말고 큰따옴표 안에 그대로 쓰고, 이 구절은 검색으로 확인하지 않는다.`;
+    if (a.key === "unseen_material")
+      return `- 질문: ${a.question}\n  답: ${a.answer} — 학생이 알려 준 교과서·배부 자료의 내용이다. 이 내용을 그대로 따르고 다른 실험·자료로 바꾸거나 더 구체적인 절차·수치를 지어내지 말 것.`;
     return `- 질문: ${a.question}\n  답: ${a.answer}`;
   });
   return `[학생이 제작 전에 답한 내용 — 아래 답은 그대로 반영하고, 답에 없는 학생의 개인 경험·생각은 지어내지 말 것]\n${lines.join("\n")}`;
@@ -171,4 +188,144 @@ export function sanitizeAnswers(raw: unknown, cap: number): PreAnswer[] {
     out.push({ question: o.question.trim().slice(0, 200), answer, state, key: typeof o.key === "string" ? o.key.slice(0, 40) : undefined });
   }
   return out;
+}
+
+/* ───────────── 안내문만으로는 정할 수 없는 것을 묻는 질문(책·구절·못 보는 자료) ─────────────
+ *
+ * 왜(2026-11-22 5종 직접 테스트): ① 책처방전은 AI가 책을 골라 구절 검증에 15호출·$0.16·36초를 쓰고도 구절을 못 찾아 빈칸이 됐는데, 그 안내문에서 학생이 어떤 책을 어떻게 쓰는지는
+ * 안내문만으로 정확히 알 수 없다 ② 과학-11은 "교과서 p.217 실험"만 적혀 있는데 모델이 가장 흔한 실험(티오황산 나트륨)을 단정해 앞 단계와 뒤 단계가 다른 실험을 썼다.
+ * **안내문이 알려 주지 않고 결과물이 그것에 달려 있으면 지어내지 말고 묻는다.** 질문마다 AI 추천(보기)·직접 답하기·AI에게 맡기기·(원문이면) 나중에 직접 쓰기를 준다.
+ * 너무 사소한 것은 묻지 않는다 — 책 질문은 책 과제일 때만, 구절 질문은 구절을 요구하고 학생이 책을 정했을 때만, 자료 질문은 "실험·활동·자료 + 교과서 쪽수" 꼴일 때만 한다.
+ * 되돌리기: QUESTION_BOOK=off / QUESTION_MATERIAL=off.
+ */
+
+export type QuestionTaskInfo = SelectionNeedInfo & { provided_materials?: string[] };
+
+const BOOK_QUOTE = /[『《][^』》]{1,60}[』》]/;
+
+export function bookQuestionsOn(): boolean {
+  return process.env.QUESTION_BOOK !== "off";
+}
+export function materialQuestionOn(): boolean {
+  return process.env.QUESTION_MATERIAL !== "off";
+}
+
+function taskTexts(info: QuestionTaskInfo): string[] {
+  return [info.topic, ...info.requirements, ...info.task_elements.flatMap((e) => [e.label, e.description])].filter(Boolean);
+}
+
+/** 학생이 이미 책을 정했는가(지침의 겹낫표 제목이거나 책 질문에 답함). */
+function studentChoseBook(instructions: string, answers: PreAnswer[]): boolean {
+  if (answers.some((a) => a.key === "book_title" && a.state === "answered")) return true;
+  return BOOK_QUOTE.test(instructions);
+}
+
+/** 책을 소개·분석하는 과제인데 어떤 책인지 아직 아무도(학생도, 이전 질문도) 정하지 않았는가. */
+export function bookQuestionOpen(params: { info: QuestionTaskInfo; instructions: string; answers: PreAnswer[] }): boolean {
+  if (!bookQuestionsOn()) return false;
+  if (params.answers.some((a) => a.key === "book_title")) return false;
+  if (studentChoseBook(params.instructions, params.answers)) return false;
+  return taskTexts(params.info).some((t) => mentionsBookTask(t));
+}
+
+/** 구절을 요구하는 과제이고 학생이 책을 정했는데, 구절은 아직 안 물었는가. 책을 AI에게 맡겼으면 묻지 않는다(AI가 책과 구절을 함께 정한다). */
+export function excerptQuestionOpen(params: { info: QuestionTaskInfo; instructions: string; answers: PreAnswer[] }): boolean {
+  if (!bookQuestionsOn()) return false;
+  if (params.answers.some((a) => a.key === "book_excerpt")) return false;
+  if (!studentChoseBook(params.instructions, params.answers)) return false;
+  return needsExcerpt(taskTexts(params.info));
+}
+
+const TEXTBOOK_POINTER = /교과서\s*(?:p\.?\s*)?(\d{1,4})\s*(?:쪽|페이지|p)?/i;
+const MATERIAL_ACTIVITY = /실험|활동|탐구|제시문|지문|자료/;
+// 시험 범위("범위: 교과서 p29~p40")는 한 활동의 내용이 아니라 공부할 폭이다 — 쪽수를 알려 줘도 글의 내용이 정해지지 않는다.
+const SCOPE_WORDS = /범위|단원|~|∼|-\s*p?\d/;
+
+/**
+ * 안내문이 **한 활동·실험·자료를 교과서 쪽수로만 가리키는가**(예: "반응 속도 측정 실험(실험 교과서 p.217)"). 있으면 그 줄을, 없으면 null.
+ * 안내문에 자료가 실려 있거나(provided_materials) 학생이 이미 그 쪽을 언급했으면 묻지 않는다.
+ */
+export function unseenMaterialPointer(params: { info: QuestionTaskInfo; instructions: string; answers: PreAnswer[] }): string | null {
+  if (!materialQuestionOn()) return null;
+  if ((params.info.provided_materials?.length ?? 0) > 0) return null;
+  if (params.answers.some((a) => a.key === "unseen_material")) return null;
+  for (const text of taskTexts(params.info)) {
+    for (const line of text.split(/\n/)) {
+      const m = TEXTBOOK_POINTER.exec(line);
+      if (!m || !MATERIAL_ACTIVITY.test(line) || SCOPE_WORDS.test(line.replace(TEXTBOOK_POINTER, ""))) continue;
+      if (params.instructions.includes(m[1])) return null; // 학생이 이미 그 쪽을 말했다
+      return line.trim().slice(0, 70);
+    }
+  }
+  return null;
+}
+
+/** 보기 문구를 화면에 보여도 되는 형태로(중복·너무 긴 것·화면이 따로 주는 보기 제거, 최대 5개). */
+export function cleanOptions(raw: unknown): string[] {
+  const seen = new Set<string>();
+  return (Array.isArray(raw) ? raw : [])
+    .map((o) => (typeof o === "string" ? o.trim() : ""))
+    .filter((o) => {
+      const k = norm(o);
+      if (!o || o.length > 80 || GENERIC_OPTION.test(o) || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .slice(0, 5);
+}
+
+export function buildBookQuestion(asked: PreAnswer[], options: string[] = []): PreQuestion {
+  return {
+    id: `q${asked.length + 1}`,
+    key: "book_title",
+    text: "어떤 책으로 할까요?",
+    kind: "choice",
+    options,
+    allowOther: true,
+    why: "책에 따라 글 내용이 완전히 달라져요. 이미 읽었거나 빌린 책이 있으면 직접 적어 주세요.",
+  };
+}
+
+export function buildExcerptQuestion(asked: PreAnswer[]): PreQuestion {
+  return {
+    id: `q${asked.length + 1}`,
+    key: "book_excerpt",
+    text: "그 책에서 인상 깊은 구절이 있나요?",
+    kind: "choice",
+    options: [],
+    allowOther: true,
+    allowLater: true,
+    why: "원문 그대로 옮겨야 해서 책을 가진 학생이 적는 게 가장 정확해요. 모르겠으면 AI가 찾아보고, 못 찾으면 빈칸으로 둬요.",
+  };
+}
+
+export function buildMaterialQuestion(pointer: string, asked: PreAnswer[], options: string[] = []): PreQuestion {
+  const text = `안내문에는 "${pointer.slice(0, 40)}"이라고만 적혀 있어요. 실제로 하는 내용이 무엇인가요?`;
+  return {
+    id: `q${asked.length + 1}`,
+    key: "unseen_material",
+    text: text.slice(0, 140),
+    kind: "choice",
+    options,
+    allowOther: true,
+    allowLater: true,
+    why: "교과서·배부 자료는 우리가 볼 수 없어요. 내용을 지어내지 않으려고 물어봐요.",
+  };
+}
+
+/** 책 보기 문구("제목 — 저자")를 제목과 저자로 나눈다. */
+export function parseBookAnswer(answer: string): { title: string; author?: string } {
+  const [rawTitle, ...rest] = answer.split(/\s[—–-]\s/);
+  const title = rawTitle.replace(/[『』《》]/g, "").trim();
+  const author = rest.join(" ").trim();
+  return { title, author: author || undefined };
+}
+
+/** 학생이 구절을 직접 줬거나 나중에 쓰겠다고 했는가(그러면 생성이 구절을 검색으로 확인하지 않는다). */
+export const PROVIDED_EXCERPT_MARK = "학생이 책에서 직접 옮긴 원문 구절";
+export function studentExcerptState(instructions?: string): "provided" | "later" | null {
+  if (!instructions) return null;
+  if (instructions.includes(PROVIDED_EXCERPT_MARK)) return "provided";
+  if (/질문:[^\n]*구절[^\n]*\n\s*답:\s*\(학생이 나중에 직접 쓰겠다고 함\)/.test(instructions)) return "later";
+  return null;
 }

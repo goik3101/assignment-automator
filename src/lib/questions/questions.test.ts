@@ -85,3 +85,84 @@ test("개인 내용을 AI가 어떻게 처리할지 묻는 질문은 만들지 �
   assert.equal(sanitizeQuestion({ text: "개인적 부분은 어떻게 할까요?", kind: "choice", options: ["빈칸으로 남겨 주세요", "일반 문장으로"] }, []), null);
   assert.equal(sanitizeQuestion({ text: "어떤 책으로 쓸까요?", kind: "choice", options: ["어린 왕자", "소년이 온다"] }, [])?.kind, "choice");
 });
+
+import {
+  bookQuestionOpen,
+  buildBookQuestion,
+  buildExcerptQuestion,
+  buildMaterialQuestion,
+  cleanOptions,
+  excerptQuestionOpen,
+  parseBookAnswer,
+  studentExcerptState,
+  unseenMaterialPointer,
+} from "./questions-pure.ts";
+
+const task = (topic: string, requirements: string[], elements: { label: string; description: string }[] = []) => ({ topic, requirements, task_elements: elements });
+const BOOKRX = task("책 처방전", ["3차시: 친구의 문제 상황에 도움을 줄 수 있는 책을 소개함.", "인상적인 구절 등을 적어 오도록 함"], [{ label: "책 처방전", description: "책 제목, 저자, 인상적인 구절 등을 적어 올 수 있도록 함." }]);
+
+test("선택형 질문에도 직접 답할 칸을 항상 준다(2026-11-22 사용자 보고: 보기만 있고 쓸 칸이 없었다)", () => {
+  const q = sanitizeQuestion({ text: "어떤 인물로 쓸까요?", kind: "choice", options: ["a", "b"], allow_other: false, why: "" }, []);
+  assert.equal(q?.allowOther, true);
+});
+
+test("책 질문: 책 과제이고 아직 책이 안 정해졌을 때만, 학생이 정했거나 이미 물었으면 묻지 않는다", () => {
+  assert.equal(bookQuestionOpen({ info: BOOKRX, instructions: "", answers: [] }), true);
+  assert.equal(bookQuestionOpen({ info: BOOKRX, instructions: "내가 고른 책은 『사피엔스』야", answers: [] }), false);
+  assert.equal(bookQuestionOpen({ info: BOOKRX, instructions: "", answers: [{ question: "어떤 책으로 할까요?", key: "book_title", answer: "", state: "delegate" }] }), false);
+  // 책 과제가 아니면 묻지 않는다
+  assert.equal(bookQuestionOpen({ info: task("해양 플라스틱 정책 제안", ["정책을 제안한다."]), instructions: "", answers: [] }), false);
+  // 도서관·참고 목록 문장은 책 과제가 아니다(book-hint 규칙)
+  assert.equal(bookQuestionOpen({ info: task("지역 문제 탐구", ["도서관에서 자료를 조사한다.", "참고한 도서를 기록한다."]), instructions: "", answers: [] }), false);
+});
+
+test("구절 질문: 구절을 요구하고 학생이 책을 정했을 때만(책을 AI에게 맡겼으면 묻지 않는다)", () => {
+  const picked: PreAnswer[] = [{ question: "어떤 책으로 할까요?", key: "book_title", answer: "미움받을 용기 — 기시미 이치로", state: "answered" }];
+  assert.equal(excerptQuestionOpen({ info: BOOKRX, instructions: "", answers: picked }), true);
+  assert.equal(excerptQuestionOpen({ info: BOOKRX, instructions: "", answers: [{ ...picked[0], state: "delegate", answer: "" }] }), false);
+  assert.equal(excerptQuestionOpen({ info: BOOKRX, instructions: "", answers: [] }), false);
+  assert.equal(excerptQuestionOpen({ info: BOOKRX, instructions: "", answers: [...picked, { question: "구절?", key: "book_excerpt", answer: "", state: "later" }] }), false);
+  // 구절을 요구하지 않는 책 과제는 구절을 묻지 않는다
+  assert.equal(excerptQuestionOpen({ info: task("독서 감상문", ["읽은 책의 줄거리와 감상을 쓴다."]), instructions: "『사피엔스』", answers: [] }), false);
+});
+
+test("못 보는 자료 질문: 한 실험·활동을 교과서 쪽수로만 가리킬 때만(시험 범위·실린 자료·학생이 말한 쪽은 제외)", () => {
+  const ptr = (info: ReturnType<typeof task> & { provided_materials?: string[] }, instructions = "", answers: PreAnswer[] = []) => unseenMaterialPointer({ info, instructions, answers });
+  const lab = task("화학 실험", ["실험 결과를 바탕으로 결론 도출 및 보고서 작성"], [{ label: "실험", description: "반응 속도 측정 실험(실험 교과서 p.217)" }]);
+  assert.equal(ptr(lab), "반응 속도 측정 실험(실험 교과서 p.217)");
+  assert.equal(ptr(lab, "교과서 217쪽 실험은 과산화수소 분해야"), null); // 학생이 이미 말했다
+  assert.equal(ptr({ ...lab, provided_materials: ["실험 절차: …"] }), null);
+  assert.equal(ptr(lab, "", [{ question: "실제로 하는 내용이 무엇인가요?", key: "unseen_material", answer: "x", state: "answered" }]), null);
+  // 시험 범위는 한 활동의 내용이 아니다(가정-03 "범위: 교과서 p29~p40", 수학-01)
+  assert.equal(ptr(task("가정", ["범위: 교과서 p29~p40 / 해당범위 학습지"])), null);
+  assert.equal(ptr(task("수학", ["시험범위: 교과서 p10-p25 활동"])), null);
+});
+
+test("답변을 지침으로: 책 제목은 겹낫표(저자 포함)로, 구절은 원문 표지로 바뀌어 생성이 읽는다", () => {
+  assert.deepEqual(parseBookAnswer("미움받을 용기 — 기시미 이치로"), { title: "미움받을 용기", author: "기시미 이치로" });
+  assert.deepEqual(parseBookAnswer("『사피엔스』"), { title: "사피엔스", author: undefined });
+  const text = answersToInstructions([
+    { question: "어떤 책으로 할까요?", key: "book_title", answer: "미움받을 용기 — 기시미 이치로", state: "answered" },
+    { question: "그 책에서 인상 깊은 구절이 있나요?", key: "book_excerpt", answer: "나는 나를 좋아한다", state: "answered" },
+  ]);
+  assert.match(text, /기시미 이치로의 『미움받을 용기』/);
+  assert.equal(studentExcerptState(text), "provided");
+  assert.match(text, /"나는 나를 좋아한다"/);
+  const later = answersToInstructions([{ question: "그 책에서 인상 깊은 구절이 있나요?", key: "book_excerpt", answer: "", state: "later" }]);
+  assert.equal(studentExcerptState(later), "later");
+  assert.equal(studentExcerptState(answersToInstructions([{ question: "그 책에서 인상 깊은 구절이 있나요?", key: "book_excerpt", answer: "", state: "delegate" }])), null);
+  assert.equal(studentExcerptState(undefined), null);
+});
+
+test("질문 만들기: 직접 입력은 항상 열려 있고 보기는 정리된다", () => {
+  assert.equal(buildBookQuestion([]).allowOther, true);
+  assert.equal(buildExcerptQuestion([]).allowLater, true);
+  const m = buildMaterialQuestion("반응 속도 측정 실험(실험 교과서 p.217)", [], ["a", "b"]);
+  assert.ok(m.text.length <= 140 && m.allowLater && m.key === "unseen_material");
+  assert.deepEqual(cleanOptions(["미움받을 용기 — 기시미 이치로", "미움받을 용기 — 기시미 이치로", "직접 입력", "AI가 정해 주세요", "", "사피엔스 — 유발 하라리"]), ["미움받을 용기 — 기시미 이치로", "사피엔스 — 유발 하라리"]);
+});
+
+test("못 보는 자료를 AI에게 맡겨도 하나의 실험을 단정하지 않는다", () => {
+  const t = answersToInstructions([{ question: "실제로 하는 내용이 무엇인가요?", key: "unseen_material", answer: "", state: "delegate" }]);
+  assert.match(t, /실제 내용을 우리는 모른다[\s\S]*단정하지 말고[\s\S]*\[직접 작성: 무엇\]/);
+});
