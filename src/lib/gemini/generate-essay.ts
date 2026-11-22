@@ -1046,7 +1046,7 @@ ${CITATION_JUDGMENT_RULE}
 ${scope.personAndPerspective ? PERSPECTIVE_RULE : ""}
 ${scope.personAndPerspective ? REAL_PERSON_NAME_RULE : ""}
 ${MULTI_DELIVERABLE_SEPARATION_RULE}
-${notes ? `${factSheetRules()}${notes.excerpt?.verified ? "\n- 예외: [사실 노트]의 「책 속 구절(원문 확인됨)」 문장은 원문이 확인됐다. '인상 깊은 구절' 같은 항목에서는 이 문장을 큰따옴표로 한 글자도 바꾸지 말고 그대로 인용하고 그 번호를 붙인다. 다른 책 속 문장은 따옴표로 인용하지 말 것." : notes.excerpt ? "\n- 책 속 구절은 확인하지 못했다. '인상 깊은 구절' 항목에는 구절을 지어내지 말고, 줄거리·감상을 구절처럼 쓰지도 말고, 구절 자리에 \"[직접 작성: 책에서 직접 고른 인상 깊은 구절 — 원문 그대로 옮겨 적을 것]\" 한 줄만 둔 뒤 그 아래에 이 책이 친구의 고민과 이어지는 이유를 사실 노트의 내용으로 쓴다." : ""}
+${notes ? `${factSheetRules()}${notes.excerpt?.verified ? "\n- 예외: [사실 노트]의 「책 속 구절(원문 확인됨)」 문장은 원문이 확인됐다. '인상 깊은 구절' 같은 항목에서는 이 문장을 큰따옴표로 한 글자도 바꾸지 말고 그대로 인용하고 그 번호를 붙인다. 다른 책 속 문장은 따옴표로 인용하지 말 것." : notes.excerpt ? "\n- 책 속 구절은 확인하지 못했다. '인상 깊은 구절' 항목에는 구절을 지어내지 말고, 줄거리·감상을 구절처럼 쓰지도 말고, 구절 자리에 \"[직접 작성: 책에서 직접 고른 인상 깊은 구절 — 원문 그대로 옮겨 적을 것]\" 한 줄만 두고 그 항목에는 다른 말을 쓰지 않는다. 이 책이 친구의 고민과 이어지는 이유는 책 소개·추천 이유 항목에 사실 노트의 내용으로 쓴다." : ""}
 
 [사실 노트]
 ${factSheetText(notes.facts)}` : ""}
@@ -2212,7 +2212,10 @@ async function extractFieldValues(items: { name: string; text: string }[]): Prom
       // 너무 길거나 서술문으로 돌아오면 쓰지 않는다(값을 못 뽑은 것).
       // 값은 **지금 글에 이미 있는 말**이어야 한다(없는 출판사·제목을 새로 지어내지 않는다). 글에 없다고 한 빈칸 표시는 그대로 받는다.
       const compact = (t: string) => t.replace(/[\s『』《》"'“”‘’·.,]/g, "");
-      const grounded = /^\[직접\s*작성/.test(val) || (it && compact(it.text).includes(compact(val)));
+      // 지은이가 둘이면 글에는 "A와 B"로, 값은 "A, B"로 오므로 통째 비교가 빗나간다(2026-11-22 책 처방전: 저자 칸이 "이 책은 …가 함께 썼다."로 남음) — 쉼표·가운뎃점으로 나눈 이름이 각각 글에 있으면 인정한다.
+      const pieces = val.split(/[,·、/]/).map(compact).filter((p) => p.length >= 2);
+      const grounded =
+        /^\[직접\s*작성/.test(val) || (it && (compact(it.text).includes(compact(val)) || (pieces.length >= 2 && pieces.every((p) => compact(it.text).includes(p)))));
       if (it && val && grounded && val.length <= 40 && !/[가-힣]다[.。]\s*$/.test(val)) out.set(it.name, val);
     }
   } catch (err) {

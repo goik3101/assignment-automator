@@ -7,6 +7,22 @@ test("나열 기호로 묶인 항목 이름을 쪼갠다", () => {
   assert.deepEqual(splitCompoundItem("원인, 양상, 영향"), ["원인", "양상", "영향"]);
 });
 
+test("괄호 속 기호는 항목을 가르는 기호가 아니다 — 깨진 조각을 만들지 않는다(가정-01 '정책 설명(대상·방법)')", () => {
+  // 괄호가 그 항목 안에 쓸 것을 나열하면 괄호 속 조각이 항목이다(안내문 양식도 "대상: … / 방법: …").
+  assert.deepEqual(splitCompoundItem("정책 설명(대상·방법)"), ["대상", "방법"]);
+  assert.deepEqual(splitCompoundItem("혼합 용액의 색(BTB 용액·페놀프탈레인 용액·만능지시약)"), ["BTB 용액", "페놀프탈레인 용액", "만능지시약"]);
+  assert.deepEqual(splitCompoundItem("가상 인물 설정(나이·성별·직업·가족관계 등)"), ["나이", "성별", "직업", "가족관계"]);
+  // 설명 문장이 든 괄호·번호 나열·한 글자 조각은 나열이 아니다.
+  assert.equal(splitCompoundItem("창의성 (개념 : 기존의 것을 새롭게 조합, 새로운 생각을 발견하는 능력)"), null);
+  assert.equal(splitCompoundItem("실험 1·2·3: 반응한 CaCO₃의 질량(g)"), null);
+  assert.equal(splitCompoundItem("반응물과 생성물 사이의 양적 관계(질량, 몰)"), null);
+  // 괄호 밖 기호는 그대로 나눈다.
+  assert.deepEqual(splitCompoundItem("글의 목적·주제(예상 독자 포함)"), ["글의 목적", "주제(예상 독자 포함)"]);
+  // 어느 조각에도 짝 없는 괄호가 남지 않는다.
+  for (const n of ["정책 설명(대상·방법)", "정책의 내용(대상·방법)", "가상 인물 설정(나이·성별·직업·가족관계 등)"])
+    for (const p of splitCompoundItem(n) ?? []) assert.ok(!/[()]/.test(p), p);
+});
+
 test("같은 끝말로 이어진 '과/와'만 나열로 본다", () => {
   assert.deepEqual(splitCompoundItem("중심 내용과 세부 내용"), ["중심 내용", "세부 내용"]);
   // 끝말이 다르면 한 덩어리다 — 여기서 쪼개면 "산"이 항목이 되어 버린다.
