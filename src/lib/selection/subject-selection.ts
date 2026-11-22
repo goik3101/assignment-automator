@@ -3,7 +3,8 @@ import { Type, type Schema } from "@google/genai";
 import { extractSubjectSpec, verifyCandidates, SUBJECT_TYPES, SUBJECT_TYPE_LABEL, type SubjectSpec, type SubjectType } from "@/lib/learning/subject-spec";
 import { needsSubjectSelection } from "@/lib/learning/items";
 import { loadSelectionHistory } from "@/lib/recommendations/recommendation-diversity";
-import { canonicalize } from "./canonical";
+import { canonicalize, sameEntity } from "./canonical";
+import { selectionCount, MULTI_TYPES } from "./selection-need";
 import { selectFromCandidates, type HistoryEntry, type ScoredCandidate, type SelectionCandidate, type SelectionTier } from "./score";
 import { cleanSubjectName, findStudentTopic, isMediumOnly } from "./student-topic";
 import { DOMESTIC_CONSTRAINT, isDomesticScope } from "./domestic-scope";
@@ -33,6 +34,8 @@ export interface SelectedSubject {
   /** auto일 때만. */
   tier?: SelectionTier;
   fallbackUsed?: boolean;
+  /** 안내문이 서로 다른 대상 여러 개를 고르라고 할 때 첫 대상(name) 말고 더 고른 것들. */
+  additional?: { name: string; key: string; group?: string | null }[];
   candidateCount?: number;
   rejected?: { name: string; reason: string }[];
   ranking?: { name: string; fit: number; penalty: number; score: number }[];
@@ -65,6 +68,7 @@ const CANDIDATE_COUNT = 10;
 export function isSelectionTask(info: CoreTaskInfo): boolean {
   return needsSubjectSelection(info);
 }
+
 
 async function generateCandidates(spec: SubjectSpec, subject: string, instructions?: string, domestic = false): Promise<SelectionCandidate[]> {
   const typeLabel = SUBJECT_TYPE_LABEL[spec.subject_type];
@@ -114,6 +118,11 @@ export async function selectSubjectForTask(
   ctx: SubjectSelectionContext = {}
 ): Promise<SelectedSubject | null> {
   if (!isSelectionTask(params.info)) return null;
+  // 안내문이 서로 다른 대상을 여러 개 고르라 하면서 **고를 자료를 직접 싣고 있으면**(가정-01: 정책 자료) 그 자료가 1순위 소재다 — 자동 선정이 자료 밖의 대상을 골라 쓰면 자료와 어긋난다.
+  if (process.env.MULTI_SUBJECT !== "off" && (params.info.provided_materials?.length ?? 0) > 0 && selectionCount(params.info) >= 2) {
+    console.log("[selection] 안내문에 고를 자료가 실려 있음 → 자동 선정 생략(자료가 1순위 소재)");
+    return null;
+  }
 
   // 제작 전 질문 답이나 "주제: …" 줄로 학생이 이미 정했으면 AI 판정 없이 그대로 쓴다(AI 판정이 놓치거나 매체를 대상으로 잡은 실측 — student-topic.ts).
   const typed = process.env.SELECTION_STUDENT_TOPIC !== "off" ? findStudentTopic(params.instructions) : null;
@@ -170,6 +179,35 @@ export async function selectSubjectForTask(
     console.log(
       `[selection] 후보=${JSON.stringify(sel.ranking.map((r) => ({ n: r.name, fit: r.fit.toFixed(2), pen: r.penalty.toFixed(2) })))} 선택="${picked.name}" tier=${sel.tier}`
     );
+    // 서로 다른 대상 여러 개를 고르라는 안내문이면 첫 대상과 같은 계열·같은 대상을 뺀 후보에서 같은 방식으로 더 고른다.
+    // 후보가 이미 "A vs B" 쌍이면(인물 VS 인물 과제) 그 쌍이 대상 둘이다 — 쌍을 또 고르면 네 명이 된다(2026-11-22 역사-05 재실행: 윤동주 vs 백석 / 김대중 vs 노무현).
+    const isPair = /\s(?:vs\.?|VS|대)\s/.test(picked.name);
+    const want = process.env.MULTI_SUBJECT === "off" || isPair || !MULTI_TYPES.has(spec.subject_type) ? 1 : selectionCount(params.info);
+    const additional: { name: string; key: string; group: string | null }[] = [];
+    const notUsed = (c: SelectionCandidate, taken: { key: string; group?: string | null }[]) =>
+      !taken.some((t) => t.key === c.key || sameEntity(t.key, c.key));
+    let taken: { key: string; group?: string | null }[] = [{ key: picked.key, group: picked.group }];
+    for (let k = 1; k < want; k++) {
+      let pool = remaining.filter((c) => notUsed(c, taken) && !taken.some((t) => t.group && c.group === t.group));
+      if (pool.length === 0) pool = remaining.filter((c) => notUsed(c, taken)); // 계열이 겹쳐도 다른 대상이면 쓴다
+      let got = false;
+      for (let a = 0; a < 3 && pool.length > 0 && !got; a++) {
+        const s2 = selectFromCandidates(pool, history, { userId: ctx.userId, scopeKey: ctx.scopeKey, rng: ctx.rng });
+        if (!s2) break;
+        if (shouldVerify) {
+          const [v2] = await verifyCandidates(spec, [s2.picked.name]);
+          if (!v2.pass) {
+            rejected.push({ name: s2.picked.name, reason: v2.note || `조건 미충족(${v2.actual_type})` });
+            pool = pool.filter((c) => c.key !== s2.picked.key);
+            continue;
+          }
+        }
+        additional.push({ name: s2.picked.name, key: s2.picked.key, group: s2.picked.group ?? null });
+        taken = [...taken, { key: s2.picked.key, group: s2.picked.group }];
+        got = true;
+      }
+    }
+    if (want > 1) console.log(`[selection] 서로 다른 대상 ${want}개 요구 → ${[picked.name, ...additional.map((a) => a.name)].join(" / ")}`);
     return {
       kind: "auto",
       name: picked.name,
@@ -179,6 +217,7 @@ export async function selectSubjectForTask(
       tier: sel.tier,
       fallbackUsed: sel.fallbackUsed,
       candidateCount: candidates.length,
+      ...(additional.length > 0 ? { additional } : {}),
       rejected,
       ranking: sel.ranking.map((r) => ({ name: r.name, fit: r.fit, penalty: r.penalty, score: r.score })),
     };

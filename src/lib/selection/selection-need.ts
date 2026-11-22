@@ -110,3 +110,40 @@ export function shouldAskSubject(info: SelectionNeedInfo): boolean {
   if (process.env.SELECTION_TRIGGER === "legacy") return LEGACY.test(lines.join(" "));
   return lines.some((l) => SELECTED_FIELD.test(l) || picksATarget(l, true));
 }
+
+const NUM_WORD: Record<string, number> = { 두: 2, 둘: 2, 세: 3, 셋: 3, "2": 2, "3": 3 };
+
+/**
+ * 안내문이 **서로 다른 대상을 몇 개** 고르라고 하는가(1이면 한 개, 최대 3).
+ *
+ * 왜(2026-11-22 5종 직접 테스트): 선정이 한 번에 대상 하나만 골라 프롬프트가 "다른 대상을 함께 다루지 말 것"이라고 못 박아서, 두 개를 고르라는 안내문 3종이 3/3 틀렸다 —
+ * 가정-01은 "효과적인 정책"과 "보완이 필요한 정책"에 같은 정책, 역사-05는 카드마다 인물 쌍이 달라졌고(안중근+신채호 / 안중근+윤봉길), 역사-03은 문화유산 하나(정림사지 탑·절터)를 둘로 쪼갰다.
+ * 저장된 안내문 36종 중 7종이 이 모양이다. 개수는 안내문 글에서 코드가 읽는다("두 명을 선정", "한 가지 골라"가 서로 다른 문장에 둘). "후보 N개"는 그중 하나를 다시 고르므로 세지 않는다.
+ */
+export function selectionCount(info: SelectionNeedInfo): number {
+  const reqs = info.requirements ?? [];
+  const texts = [...reqs, ...(info.task_elements ?? []).map((e) => e.description ?? "")].filter(Boolean);
+  const UNIT = "(?:가지|명|개|편|곳|국가|사례|정책|인물|사건|문화유산)";
+  const numbered = new RegExp(`(두|둘|세|셋|2|3)\\s*${UNIT}\\s*(?:을|를)?[^.\\n]{0,20}?(?:선정|선택|골라|고르|정해)`);
+  for (const t of texts) {
+    for (const s of t.split(/[.。\n]/)) {
+      if (/후보/.test(s)) continue;
+      const m = numbered.exec(s);
+      if (m) return Math.min(3, NUM_WORD[m[1]] ?? 1);
+    }
+  }
+  // "효과적인 것을 한 가지 골라 … / 보완이 필요한 것을 한 가지 골라 …"처럼 한 가지씩을 **서로 다른 문장에서** 따로 고르라는 안내문.
+  const singles = new Set<string>();
+  for (const r of reqs) {
+    for (const s of r.split(/[.。\n]/)) {
+      if (/후보/.test(s)) continue;
+      // 키는 "한 가지" 앞 25자 — 두 낱말만 보면 "효과적이라고 생각하는 것"과 "보완이 필요하다고 생각하는 것"이 같은 키("생각하는 것")로 합쳐진다(2026-11-22 재실행).
+      const m = /([^.\n]{2,25}?)\s*(?:을|를)?\s*(?:한|1)\s*가지[^.\n]{0,12}(?:골라|선정|선택)/.exec(s);
+      if (m) singles.add(m[1].replace(/[\s·,]/g, ""));
+    }
+  }
+  return singles.size >= 2 ? Math.min(3, singles.size) : 1;
+}
+
+/** 이 유형에서만 서로 다른 대상 여러 개를 고른다 — 작품(시집 속 작품 고르기)·개념(관심 요소로 주제 잡기)은 한 개 선정이 맞다. */
+export const MULTI_TYPES = new Set<string>(["person", "system", "event", "organization", "other"]);

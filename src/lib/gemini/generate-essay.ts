@@ -73,7 +73,7 @@ import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { withoutOtherAreaNotes } from "@/lib/gemini/analysis-normalize";
 import { withBookBodyItem } from "@/lib/essay/book-body-item";
-import { mainBookTitle } from "@/lib/essay/book-title";
+import { mainBookTitle, isPlausibleBookTitle } from "@/lib/essay/book-title";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
 import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
@@ -241,7 +241,7 @@ export interface GenerateEssayInput {
    * 고르지 않고 이 대상을 그대로 쓴다 — generateEssay()가 selection 옵션으로 채운다. 학생이 지침에 직접 지정한
    * 대상이면 userSpecified가 true(추천 로직 미실행).
    */
-  presetSubject?: { name: string; key: string; group?: string | null; userSpecified?: boolean; tier?: string; fallbackUsed?: boolean };
+  presetSubject?: { name: string; key: string; group?: string | null; userSpecified?: boolean; tier?: string; fallbackUsed?: boolean; additional?: string[] };
   /**
    * 자동 선정 옵션. 주면 generateEssay()가 본문 생성 전에 대상 선정 단계를 실행한다(선정 과제일 때만).
    * scopeKey = 같은 수행평가 식별자(cluster_id), history = 테스트용 fixture 이력(없으면 DB에서 읽음).
@@ -994,7 +994,7 @@ ${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${fo
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
-${input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 ${input.presetSubject.name}${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이 줄의 괄호 설명과 「」·"" 같은 표시는 이 지시문의 것이니 글에 옮겨 적지 말 것. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지${englishNameNote}), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
+${input.presetSubject?.additional?.length ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 서로 다른 ${1 + input.presetSubject.additional.length}개로, ${[input.presetSubject.name, ...input.presetSubject.additional].join(", ")}이다(조건 검증과 다양성을 함께 고려해 이미 선정됨). 이름은 이 표기 그대로만 쓰고, **모든 단계에서 이 같은 대상들**을 쓸 것(단계마다 다른 대상으로 바꾸거나 한 대상을 둘로 쪼개 쓰지 말 것). 안내문이 대상마다 따로 쓰라고 하면 위 순서대로 하나씩 맡긴다(예: 첫째 대상은 앞의 것, 둘째 대상은 뒤의 것). confirmed_subject는 첫째 대상이다.\n` : input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 ${input.presetSubject.name}${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이 줄의 괄호 설명과 「」·"" 같은 표시는 이 지시문의 것이니 글에 옮겨 적지 말 것. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지${englishNameNote}), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -1108,6 +1108,8 @@ function detectPresetBookMismatch(
 /** 선정된 대상(presetSubject)과 다른 대상을 다뤘는지. 단계 B가 뽑은 confirmed_subject를 canonical로 비교하고, 못 뽑았으면 본문에 이름이 있는지 본다. */
 function detectPresetSubjectMismatch(attempt: Attempt, preset?: GenerateEssayInput["presetSubject"]): boolean {
   if (!preset) return false;
+  // 서로 다른 대상 여러 개를 고른 과제는 confirmed_subject 하나로 비교할 수 없다 — 프롬프트가 모든 단계에 같은 대상들을 쓰게 한다.
+  if (preset.additional?.length) return false;
   if (attempt.confirmedSubject) {
     const k = canonicalize(attempt.confirmedSubject).key;
     if (k === preset.key || sameEntity(k, preset.key)) return false;
@@ -1415,7 +1417,7 @@ async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["t
 ${input.coreTaskInfo.requirements.map((r) => `- ${r}`).join("\n") || "(명시된 요구사항 없음)"}
 [써야 할 단계]
 ${items}
-${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 것] ${input.presetSubject.name}\n` : ""}${input.instructions ? `[학생이 입력한 내용]\n${input.instructions}\n` : ""}${
+${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 것] ${[input.presetSubject.name, ...(input.presetSubject.additional ?? [])].join(" / ")}\n` : ""}${input.instructions ? `[학생이 입력한 내용]\n${input.instructions}\n` : ""}${
     qualityFixesOn() && input.coreTaskInfo.writing_guide ? `[안내문의 작성 기준 — 채점 기준이 요구하는 내용을 빠짐없이 조사할 것]\n${input.coreTaskInfo.writing_guide}\n` : ""
   }${evidenceBlock ? `${evidenceBlock}\n` : ""}
 규칙:${
@@ -2503,7 +2505,8 @@ async function generateEssayImpl(
       const tryFast = (!taskNeedsExcerpt(input, elements) || preExcerptOn()) && process.env.ESSAY_BOOK_PIPELINE !== "legacy";
       const fast = tryFast ? ((await selectBookCandidateFast(input)) ?? (await selectBookCandidateFast(input))) : null;
       const presetBook = fast ?? (await selectBookCandidate(input));
-      if (presetBook) input = { ...input, presetBook: { ...presetBook, title: mainBookTitle(presetBook.title) } };
+      if (presetBook && !isPlausibleBookTitle(presetBook.title)) console.warn(`[generateEssay] 책 후보가 책 제목이 아니라 버림: "${presetBook.title.slice(0, 40)}"`);
+      else if (presetBook) input = { ...input, presetBook: { ...presetBook, title: mainBookTitle(presetBook.title) } };
     }
   }
 
@@ -2528,6 +2531,7 @@ async function generateEssayImpl(
           userSpecified: subjectSelection.kind === "user_specified",
           tier: subjectSelection.tier,
           fallbackUsed: subjectSelection.fallbackUsed,
+          additional: subjectSelection.additional?.map((a) => a.name),
         },
       };
     }
