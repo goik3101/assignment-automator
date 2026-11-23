@@ -20,7 +20,7 @@
 | DB + 인증 | Supabase (PostgreSQL + pgvector + 매직링크 인증) |
 | AI | OpenAI Responses API(`LLM_PROVIDER=openai`, `src/lib/llm/`이 유일한 입구) — Gemini 제공자도 남아 있음. 모델 이름은 전부 `.env`로 분리 |
 | 봇 방지 | Cloudflare Turnstile (M4에서 연동) |
-| 호스팅 | Vercel Pro |
+| 호스팅 | Vercel **Hobby 플랜**(2026-11-24 대시보드에서 확인 — 기획서의 "Pro"는 실제와 다름). 크론은 하루 한 번까지·시각 ±59분, 상업적 이용 제한 약관은 운영자가 확인할 것 |
 
 이 조합을 고른 이유: 1인 개발 + MVP 단계라 프론트-백엔드-DB-인증-호스팅을
 최대한 하나의 생태계로 묶어 관리 부담을 줄이는 것이 최우선이었음.

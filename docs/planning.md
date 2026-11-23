@@ -234,6 +234,8 @@ Next.js + Supabase(PostgreSQL+pgvector+매직링크) + Cloudflare Turnstile + Ve
 + 상업적 이용 금지인데, 실행계획 경로가 8~12초 걸릴 가능성이 있어서 504 위험.
 M1 실측 후 10초 이내로 나오면 Hobby 전환 검토 가능.
 
+> 2026-11-24 확인: Vercel 대시보드에 계정이 **Hobby**로 표시된다(이 챕터의 "Pro"는 실제와 다름). 크론(`vercel.json`)은 Hobby의 하루 한 번·시각 ±59분 한도 안에서 쓴다.
+
 ## 18. 로드맵 / 마일스톤
 
 M1 핵심 생성 파이프라인 → M2 클러스터 식별+벡터DB → M3 비율기반 억제+버전관리 →
