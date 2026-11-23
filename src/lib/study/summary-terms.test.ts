@@ -13,11 +13,21 @@ test("과제 진행·문서 구조 말과 자료에 없는 합성어를 걸러 �
     { term: "1차 소비자", meaning: "생산자를 먹는 생물" },
     { term: "분해자", meaning: "사체를 분해하는 생물" },
   ];
-  const r = filterKeyTerms(terms, MATERIAL).map((t) => t.term);
-  assert.deepEqual(r, ["생산자", "1차 소비자", "분해자"]);
+  assert.deepEqual(filterKeyTerms(terms, MATERIAL).map((t) => t.term), ["생산자", "1차 소비자", "분해자"]);
 });
 
-test("거의 다 걸러지면 모델 목록(메타 말만 뺀)을 쓴다", () => {
+test("'평가·계획·작성'이 들어간 진짜 개념은 지우지 않는다", () => {
+  const material = "형성평가와 사업계획서, 자기평가, 기회비용, 평가 기준표를 다룬다.";
+  const terms = ["형성평가", "사업계획서", "자기평가", "기회비용", "평가 기준표"].map((t) => ({ term: t, meaning: "x" }));
+  assert.deepEqual(filterKeyTerms(terms, material).map((t) => t.term), ["형성평가", "사업계획서", "자기평가", "기회비용"]);
+});
+
+test("거의 다 걸러지면 모델 목록(진행 말만 뺀)을 쓴다", () => {
   const terms = [{ term: "항상성", meaning: "a" }, { term: "삼투", meaning: "b" }, { term: "작성 요령", meaning: "c" }];
   assert.deepEqual(filterKeyTerms(terms, "전혀 다른 자료").map((t) => t.term), ["항상성", "삼투"]);
+});
+
+test("영어 화면: 한국어 자료에 용어가 없어도 버리지 않는다", () => {
+  const terms = [{ term: "Producer", meaning: "a" }, { term: "Decomposer", meaning: "b" }, { term: "Observation guide", meaning: "c" }];
+  assert.deepEqual(filterKeyTerms(terms, MATERIAL, { skipMaterialCheck: true }).map((t) => t.term), ["Producer", "Decomposer", "Observation guide"]);
 });

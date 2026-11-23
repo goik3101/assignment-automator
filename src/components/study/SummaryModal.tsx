@@ -14,6 +14,8 @@ import { normHeading } from "@/lib/study/section-edit";
 // 저장된 옛 요약에는 skeleton·inTask·analogy가 없고, 그 전에는 format·paragraphs·easyExplanations도 없다.
 export interface StudySummaryData {
   headline: string;
+  /** 총 정리(3~4문장). 옛 저장본에는 없다. */
+  overall?: string;
   format?: "bullets" | "prose";
   points: string[];
   paragraphs?: string[];
@@ -117,6 +119,13 @@ export default function SummaryModal({
                   })}
                 </ol>
               )
+            )}
+
+            {data.overall && (
+              <div className="mt-6">
+                <h3 className="mb-2.5 text-xs font-semibold text-faint">{t("총 정리")}</h3>
+                <p className="rounded-xl bg-surface px-4 py-3.5 text-[15px] leading-[1.85]">{data.overall}</p>
+              </div>
             )}
 
             <CachedNote at={fromCache} onRefresh={refresh} busy={loading} />

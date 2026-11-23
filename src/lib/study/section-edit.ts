@@ -29,7 +29,8 @@ export function findSections(md: string): SectionSpan[] {
   let inFence = false;
   for (const line of lines) {
     if (/^\s*```/.test(line)) inFence = !inFence;
-    const m = !inFence ? HEADING.exec(line) : null;
+    // 줄 끝이 CRLF인 글(윈도우에서 저장·복사한 글)도 소제목으로 읽는다. 위치 계산은 원래 줄 길이 그대로.
+    const m = !inFence ? HEADING.exec(line.replace(/\r$/, "")) : null;
     if (m) heads.push({ level: m[1].length, line, title: m[2], start: pos });
     pos += line.length + 1;
   }

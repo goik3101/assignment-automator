@@ -10,7 +10,7 @@ import type { StudySummaryData } from "./SummaryModal";
 import { loadLocal, saveLocal, useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
 import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
-import { chipBank, firstLetterHint, quizIndexes, readiness, sameKeyword, scoreWrite, segmentLine, type SkeletonBox } from "@/lib/study/memo-skeleton";
+import { chipBank, firstLetterHint, quizIndexes, readiness, sameKeyword, sameWord, scoreWrite, segmentLine, type SkeletonBox } from "@/lib/study/memo-skeleton";
 
 // 단계: 0 시작 화면 → 1 보기에서 고르기 → 2 첫 글자 보고 입력 → 3 칸 이름만 보고 백지 → 4 결과
 // 퀴즈는 1·2단계, 암기는 3단계(와 뼈대 한 장)를 쓴다. 각 단계는 칸을 한 번씩 돌고, 막힌 칸은 그 단계 끝에 한 번 더 나온다.
@@ -35,7 +35,7 @@ function ChooseStep({ boxes, index, onDone }: { boxes: SkeletonBox[]; index: num
 
   function pick(i: number) {
     if (done || used.has(i)) return;
-    if (sameKeyword(bank[i], blanks[filled.length])) {
+    if (sameWord(bank[i], blanks[filled.length])) {
       setFilled((f) => [...f, bank[i]]);
       setUsed((u) => new Set(u).add(i));
       setWrong(null);

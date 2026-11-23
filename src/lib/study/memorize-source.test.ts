@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readMemorizeSource, memorizeBlock, orderInstruction, termInstruction } from "./memorize-source.ts";
+import { readMemorizeSource, memorizeBlock, hasNamedItems } from "./memorize-source.ts";
 
 // 2026-11-12 과학(멸치) 결과물에서 그대로 가져온 모양
 const SCIENCE = `## 멸치해부실험
@@ -10,69 +10,45 @@ const SCIENCE = `## 멸치해부실험
 ## 탐구 보고서
 
 ### 생태피라미드
-생태피라미드는 먹이 관계에 따라 생물의 위치와 에너지의 흐름을 나타낸다. 바다에서는 식물플랑크톤이 광합성으로 양분을 만들고, 동물플랑크톤이 이를 먹으며, 멸치와 같은 작은 어류가 동물플랑크톤을 먹는다.[1]
+생태피라미드는 먹이 관계에 따라 생물의 위치와 에너지의 흐름을 나타낸다.[1]
 
 ### 생태계 평형
-생태계 평형은 개체수가 전혀 변하지 않는 상태가 아니라, 여러 생물 사이의 관계가 이어지며 큰 변화가 오래 지속되지 않는 상태이다.[2]
-멸치는 바다에 사는 작은 물고기다.
+생태계 평형은 개체수가 전혀 변하지 않는 상태가 아니다.[2]
 
 ## 출처
 
 1. 국가기록원 …`;
 
-test("칸 이름을 쓰는 순서 그대로 읽는다", () => {
+test("칸 이름을 쓰는 순서 그대로 읽고, 출처는 칸이 아니다", () => {
   const src = readMemorizeSource(SCIENCE);
   assert.deepEqual(src.boxes, ["멸치해부실험", "탐구 보고서"]);
-  // 출처는 외울 칸이 아니다
   assert.ok(!src.boxes.includes("출처"));
 });
 
-test("각주가 붙은 문장만 외울 문장으로 본다", () => {
-  const src = readMemorizeSource(SCIENCE);
-  assert.equal(src.anchored.length, 2);
-  assert.ok(src.anchored[1].sentence.includes("생태계 평형은"));
-  // 각주 번호는 떼고 담는다
-  assert.ok(!src.anchored[0].sentence.includes("[1]"));
-  // **교과서 수준 일반 지식은 각주가 없어 자동으로 빠진다** — 이 규칙이 이 설계의 핵심이다.
-  assert.ok(!src.anchored.some((a) => a.sentence.includes("바다에 사는 작은 물고기")));
-});
-
-test("프롬프트 블록에 칸 순서와 외울 문장이 들어간다", () => {
+test("프롬프트 블록은 칸 순서만 담는다", () => {
   const block = memorizeBlock(readMemorizeSource(SCIENCE));
   assert.match(block, /칸 순서/);
   assert.match(block, /1\. 멸치해부실험/);
-  assert.match(block, /외울 문장/);
-  assert.match(block, /\(탐구 보고서\)/);
+  assert.doesNotMatch(block, /외울 문장/);
 });
 
-test("외울 것이 없으면 아무것도 끼우지 않는다", () => {
-  const plain = "## 머리기사\n\n광복 직후 서울은 혼란스러웠다.";
-  const src = readMemorizeSource(plain);
-  assert.equal(src.anchored.length, 0);
-  assert.equal(termInstruction(src), "");
-  // 칸이 하나뿐이면 순서를 말할 것이 없다
-  assert.equal(orderInstruction(src), "");
-  // 칸이 하나뿐이면 블록도 없다(2026-11-15: "칸 순서 1번 항목의 이름은?" 같은 무의미한 문제가 나왔다)
-  assert.equal(memorizeBlock(src), "");
-  // 단계 하나 안의 ### 항목이 둘 이상이면 그것이 칸이다
+test("칸이 하나뿐이면 블록이 없다 — 단계 하나 안의 ### 항목이 둘 이상이면 그것이 칸이다", () => {
+  const plain = readMemorizeSource("## 머리기사\n\n광복 직후 서울은 혼란스러웠다.");
+  // 2026-11-15: "칸 순서 1번 항목의 이름은?" 같은 무의미한 문제가 나왔다
+  assert.equal(memorizeBlock(plain), "");
   const items = readMemorizeSource("## 평전\n\n### 배경\n글.\n\n### 업적\n글.\n\n### 평가\n글.");
   assert.deepEqual(items.boxes, ["배경", "업적", "평가"]);
   assert.match(memorizeBlock(items), /칸 순서/);
-  assert.equal(memorizeBlock(readMemorizeSource("")), "");
 });
 
-test("칸이 둘 이상이면 요점을 칸 순서로 쓰게 한다", () => {
-  const i = orderInstruction(readMemorizeSource(SCIENCE));
-  assert.match(i, /2줄/);
-  assert.match(i, /시험지에 쓰는 순서/);
-});
-
-test("memorizeBlock: anchored:false면 [외울 문장]을 빼고 칸 순서만 준다(요약용)", () => {
-  const md = "## 가\n본문 문장입니다 열두 글자 넘게 쓴 문장이다[1].\n## 나\n다른 칸의 문장도 열두 글자를 넘긴다[2].\n";
+test("단계 아래 이름 있는 항목을 outline으로 담는다", () => {
+  const md = ["## 개요", "### 글의 목적", "목적 글.", "### 예상 독자", "독자 글.", "## 근거 자료", "근거 글.[1]", "## 스토리보드", "### 장면 1", "a", "### 장면 2", "b", "## 출처", "### 링크"].join("\n");
   const src = readMemorizeSource(md);
-  const all = memorizeBlock(src);
-  const orderOnly = memorizeBlock(src, { anchored: false });
-  assert.match(all, /외울 문장/);
-  assert.match(orderOnly, /칸 순서/);
-  assert.doesNotMatch(orderOnly, /외울 문장/);
+  assert.deepEqual(src.outline, [
+    { box: "개요", items: ["글의 목적", "예상 독자"] },
+    { box: "근거 자료", items: [] },
+    { box: "스토리보드", items: ["장면 1", "장면 2"] },
+  ]);
+  assert.ok(hasNamedItems(src));
+  assert.ok(!hasNamedItems(readMemorizeSource(["## 가", "글", "## 나", "글"].join("\n"))));
 });
