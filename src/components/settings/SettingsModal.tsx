@@ -24,7 +24,7 @@ export default function SettingsModal() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="h-[min(680px,90vh)] max-w-[880px]">
+      <DialogContent className="h-[min(680px,90dvh)] max-w-[880px]">
         <DialogTitle className="sr-only">{t("설정")}</DialogTitle>
         <SettingsPanel tab={tab} onTab={setTab} onClose={() => setOpen(false)} />
       </DialogContent>
