@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { requireAdminOrRedirect } from "@/lib/admin/session";
 import { listFeedback } from "@/lib/admin/feedback";
+import { isShareMessage } from "@/lib/feedback/share";
 
 export default async function AdminFeedbackPage() {
   await requireAdminOrRedirect();
@@ -27,7 +28,15 @@ export default async function AdminFeedbackPage() {
                 <span>{new Date(item.created_at).toLocaleString("ko-KR")}</span>
                 <span>{item.from_logged_in_user ? "로그인 사용자" : "비로그인"}</span>
               </div>
-              <p className="whitespace-pre-wrap text-sm">{item.message}</p>
+              {isShareMessage(item.message) ? (
+                // 결과물 공유는 글이 길어 앞 5줄만 보이고 나머지는 펼쳐 본다.
+                <details>
+                  <summary className="cursor-pointer whitespace-pre-wrap text-sm">{item.message.split("\n").slice(0, 5).join("\n")}</summary>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{item.message}</p>
+                </details>
+              ) : (
+                <p className="whitespace-pre-wrap text-sm">{item.message}</p>
+              )}
               {item.attachments.length > 0 && (
                 <ul className="mt-3 flex flex-wrap gap-2">
                   {item.attachments.map((a) => (

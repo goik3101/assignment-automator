@@ -61,7 +61,7 @@ const LENGTH = [
 ] as const;
 
 /** 결과를 읽은 뒤 올라오는 평가 바. `resultKey`가 바뀌면(새 결과) 다시 묻는다. */
-export function ResultRatingBar({ context, resultKey }: { context: RatingContext; resultKey: string }) {
+export function ResultRatingBar({ context, resultKey, onFinish }: { context: RatingContext; resultKey: string; onFinish?: () => void }) {
   const t = useT();
   const id = useRef("");
   const [shown, setShown] = useState(false);
@@ -110,6 +110,13 @@ export function ResultRatingBar({ context, resultKey }: { context: RatingContext
     const timer = window.setTimeout(() => setClosed(true), 2500);
     return () => window.clearTimeout(timer);
   }, [done, storageKey]);
+
+  // 평가를 마치거나 닫으면 알린다 — "개선 돕기" 창이 평가 바와 겹쳐 뜨지 않게 그 뒤에 띄운다.
+  useEffect(() => {
+    if (closed) onFinish?.();
+    // onFinish는 부모가 매 렌더 새로 만들 수 있어 의존성에서 뺀다(닫힘 한 번에 한 번만 알린다).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closed]);
 
   async function send(next: { quality?: string; length?: string }) {
     if (!id.current) return;
