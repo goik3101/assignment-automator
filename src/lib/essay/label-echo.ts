@@ -25,6 +25,9 @@ export function echoesLabel(line: string, label: string): boolean {
   if (name.length < 3 || head.length < 3) return false;
   // 머리말이 칸 이름이거나, 칸 이름으로 시작하는 경우("분석적 채점 기준표", "분석적 채점 기준표 작성")
   if (!head.startsWith(name) && !name.startsWith(head)) return false;
+  // 머리말이 칸 이름의 **앞부분만**("문제 구상" vs "문제 구상 및 알고리즘 설계")이면 칸 이름의 메아리가 아니라 그 칸 안의 진짜 내용이다 —
+  // 2026-11-23 정보: "문제 구상: …" 한 줄이 통째로 지워져 "실생활 문제" 항목이 비었다. 칸 이름의 70% 이상을 말할 때만 메아리로 본다.
+  if (name.startsWith(head) && head.length < name.length * 0.7) return false;
   // 칸 이름 뒤에 붙은 말이 **작성·표·칸 같은 군더더기**일 때만 메아리다. 그 밖의 말("인터뷰 대상", "머리기사 제목")은 그 칸 안의 **진짜 항목**이다 —
   // 2026-11-15 역사 신문: 인터뷰 칸의 "인터뷰 대상: 서울에 사는 가상의 시민입니다…"가 메아리로 지워져 인터뷰 대상 칸이 비었다.
   if (head.startsWith(name) && head.length > name.length && !/^(?:작성|표|칸|내용|설명|기준)+$/.test(head.slice(name.length))) return false;

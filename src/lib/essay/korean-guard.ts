@@ -8,7 +8,9 @@ export function koreanGuardOn(): boolean {
 
 /** 출처 줄·주소·각주 번호는 언어 판정에서 뺀다(영문 기사 제목·주소는 한국어 글에도 정상적으로 있다). */
 function stripNonProse(content: string): string {
+  // 코드 펜스는 글이 아니다 — 파이썬 코드는 거의 전부 라틴 문자라 한국어 글 판정이 뒤집혀 재작성 호출(7초)이 돌았다(2026-11-24 정보).
   return content
+    .replace(/```[\s\S]*?(?:```|$)/g, "")
     .split("\n")
     .filter((l) => !/https?:\/\//.test(l))
     .join("\n")

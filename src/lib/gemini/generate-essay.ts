@@ -68,6 +68,8 @@ import { restoreHeadingBreaks } from "@/lib/essay/heading-breaks";
 import { blankSelfEvaluationScores, stripCalculationCitations } from "@/lib/essay/self-evaluation";
 import { stripPromptLeaks } from "@/lib/essay/prompt-leak";
 import { stripFlowingItemLabels, stripNoticeEcho, stripInlineNoticeEcho } from "@/lib/essay/item-label";
+import { mapOutsideCodeFences, maskCodeFences } from "@/lib/essay/code-fence";
+import { beatsPerMeasure, checkRhythm, fixRhythm, readBeatTable, rhythmOn } from "@/lib/essay/rhythm-check";
 import { unwrapHardBreaks, dropDuplicateHeadings, dropEmptyNumberedHeading, stripCriterionParens } from "@/lib/essay/tidy-layout";
 import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
@@ -388,6 +390,11 @@ const PLACEHOLDER_PATTERN = /\[(?!\d+\])[^\]]*\]/g;
 // 라벨성 문구(예: "[2차시 원문]")는 통째로 지우고, 문장처럼 긴 내용(따옴표
 // 대신 대괄호로 감싼 인용 등)은 대괄호만 벗겨내고 내용은 살린다.
 function cleanStrayBrackets(content: string): string {
+  // 코드 펜스 안의 리스트 `[ ]`·들여쓰기는 코드의 일부다(2026-11-23 정보) — 펜스 밖만 정리한다.
+  return mapOutsideCodeFences(content, cleanStrayBracketsProse);
+}
+
+function cleanStrayBracketsProse(content: string): string {
   return content
     .replace(PLACEHOLDER_PATTERN, (match) => {
       if (match.startsWith("[자료부족")) return match; // 별도 로직이 처리하므로 건드리지 않음
@@ -2924,6 +2931,30 @@ async function generateEssayImpl(
     }
   }
 
+  // 리듬 창작 과제: 안내문 읽기 표의 박으로 마디마다 합을 세어 **코드가 바로 맞춘다**(박 합·같은 조합 되풀이, 모델 호출 없음)(rhythm-check.ts).
+  // 틀린 마디를 짚어 AI에게 다시 쓰게 해 보았으나 보완이 10자만 바꿔 거의 안 고쳐졌다(11-24 실측 3회) — 박 합은 표로 정해지는 산수라 코드가 정확하다.
+  if (fixes && rhythmOn()) {
+    const rtexts = [...input.coreTaskInfo.requirements, input.coreTaskInfo.topic, ...elements.flatMap((e) => [e.label, e.description])];
+    const per = beatsPerMeasure(rtexts);
+    const beatEntries = per && rtexts.some((t) => /마디/.test(t ?? "")) ? readBeatTable([...(input.coreTaskInfo.provided_materials ?? []), input.coreTaskInfo.notice_text]) : [];
+    if (per && beatEntries.length >= 3) {
+      attempt = {
+        ...attempt,
+        sections: attempt.sections.map((sec) => {
+          const rep = checkRhythm(sec.content, beatEntries, per);
+          if (rep.noTableWords) {
+            console.warn(`[generateEssay] 리듬 점검 label="${sec.label}": 안내문 읽기 표의 낱말을 한 마디도 안 씀(분석이 표를 자료로 못 넘긴 경우) — 코드로 못 고침`);
+            return sec;
+          }
+          const fx = fixRhythm(sec.content, beatEntries, per);
+          if (fx.fixedSums === 0 && fx.varied === 0) return sec;
+          console.warn(`[generateEssay] 리듬 점검 label="${sec.label}": 마디 ${rep.measures.length}개 중 박 합 ${rep.wrongSum.length}개를 코드로 맞추고 되풀이 ${fx.varied}개를 바꿈`);
+          return { ...sec, content: fx.content };
+        }),
+      };
+    }
+  }
+
   // 안내문이 허용하지 않은 자료(사진·영상 등)를 썼으면 그 단계만 다시 쓰게 한다(data-visual.ts).
   if (fixes) {
     const policy = visualPolicy([...input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide ?? "", ...elements.map((e) => e.description)]);
@@ -4611,7 +4642,9 @@ export function stripWeaklySourcedQuotes(
   let strippedCount = 0;
 
   const newSections = sections.map((s) => {
-    const original = s.content;
+    // 코드 펜스 안의 문자열 따옴표(`print("…")`)는 인용이 아니다 — 펜스를 가린 채 처리하고 되돌린다(2026-11-23 정보: 코드의 따옴표가 벗겨짐).
+    const fence = maskCodeFences(s.content);
+    const original = fence.masked;
     // 따옴표만 벗기면 "…던졌다.라며"처럼 문장부호·조사가 남는다 — 정리는 quote-cleanup.ts의 stripQuotesWhere가 맡는다.
     const result = stripQuotesWhere(
       original,
@@ -4639,7 +4672,7 @@ export function stripWeaklySourcedQuotes(
         )
     );
     strippedCount += result.strippedCount;
-    return result.content === original ? s : { ...s, content: result.content };
+    return result.content === original ? s : { ...s, content: fence.restore(result.content) };
   });
 
   return { sections: newSections, strippedCount };

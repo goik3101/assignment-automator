@@ -2,6 +2,7 @@ import { Type, type Schema } from "@google/genai";
 import { generate, type LlmPart } from "@/lib/llm";
 import { normalizeSubject } from "./normalize-subject";
 import { recoverFormFields } from "@/lib/essay/notice-form";
+import { recoverBeatTable, rhythmOn } from "@/lib/essay/rhythm-check";
 import { noticeFormOn } from "@/lib/essay/quality-flags";
 import { parseLengthConstraint, distributeSharedLength } from "./length-parse";
 import { withoutOtherAreaNotes, dropInterrogativeItems, dropRepeatedSiblingItems, foldSkeletonItems, soloDefault, dropNonSubmissionActivities, dropNote, ensureQuestionSteps, ensureSomeTextStep, fallbackSubject, forceTextSubmissionIfNoExternalHint, textWhenBoxesToFill } from "./analysis-normalize";
@@ -575,12 +576,16 @@ export async function analyzeAssignment(
   // 팀으로 할 때만 해당하는 칸·문장은 혼자 하는 학생에게서 뺀다(analysis-normalize.ts soloDefault).
   const solo = soloDefault({ requirements: [...coreRest.requirements, ...droppedSheets.map((d) => dropNote(d))], writing_guide: writingGuide, elements: reconciled }, [input.instructions, input.topicText].filter(Boolean).join(" "));
   if (solo.dropped.length > 0) console.warn(`[analyzeAssignment] 팀 진행 전용 칸을 뺌(학생 지침에 팀 언급 없음): ${solo.dropped.join(", ")}`);
+  // 리듬 창작 과제의 읽기 표(큐-울 2박 …)는 구조 분석이 자료로 안 넘기고 전사에만 남는 일이 있다(2026-11-23 음악) — (낱말, 박)만 한 줄로 되찾는다(rhythm-check.ts).
+  const beatLine = rhythmOn() ? recoverBeatTable(coreRest.provided_materials, noticeText, [...solo.requirements, coreRest.topic, ...solo.elements.flatMap((e) => [e.label, e.description])]) : null;
+  if (beatLine) console.warn(`[analyzeAssignment] 안내문 전사의 음표 읽기 표를 자료에 되찾음: ${beatLine.slice(0, 80)}`);
+
   return {
     ...parsed,
     // 병렬 전사는 분석 JSON 밖에서 왔으므로, 순차 모드와 같은 모양이 되게 결과에 얹는다(측정 도구·되찾기가 읽는다).
     ...(parallelTranscript && noticeText ? { notice_text: noticeText } : {}),
     subject,
-    core_task_info: { ...coreRest, ...(noticeText ? { notice_text: noticeText } : {}), requirements: withoutOtherAreaNotes({ requirements: solo.requirements }).requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
+    core_task_info: { ...coreRest, ...(beatLine ? { provided_materials: [...(coreRest.provided_materials ?? []), beatLine] } : {}), ...(noticeText ? { notice_text: noticeText } : {}), requirements: withoutOtherAreaNotes({ requirements: solo.requirements }).requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }

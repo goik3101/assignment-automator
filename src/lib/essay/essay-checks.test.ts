@@ -247,3 +247,13 @@ test("'1930년대' 같은 연대 표현은 연도 표지가 아니다(구체적�
   assert.deepEqual(extractCheckTokens("시집은 1930년대 후반부터 1941년 사이에 쓰였다.").numbers, ["1941"]);
   assert.deepEqual(extractCheckTokens("1990년대 중반에는 상황이 달랐다.").numbers, []);
 });
+
+import { koreanLanguageIssue } from "./korean-guard.ts";
+import { findUncitedFigures } from "./uncited-figures.ts";
+test("코드 펜스는 한국어 글 판정·무각주 수치 점검에서 뺀다 (2026-11-24 정보 코드 보고서)", () => {
+  const code = '```python\nkeywords = ["충격", "100%", "확정"]\nfor word in keywords:\n    if word in text:\n        found.append(word)\n    score = len(found) + len(keywords) * 100\n```';
+  const prose = "아래 코드는 키워드를 찾아 점수를 계산하는 프로그램이다. 결과는 화면에 출력된다. 입력한 문장에 따라 판정이 달라진다.";
+  assert.equal(koreanLanguageIssue(`${prose}\n\n${code}\n\n${prose}`), null);
+  assert.deepEqual(findUncitedFigures(`${prose}\n\n${code}`), []);
+  assert.equal(findUncitedFigures("2023년에 약 35만 명이 이 제도를 이용했다고 한다.").length, 1);
+});

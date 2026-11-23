@@ -127,3 +127,22 @@ test("나눠 맡는 영역에는 되풀이하지 말라고, 받아 쓰는 단계
   assert.ok(build.includes("바탕으로 쓸 것"));
   assert.ok(build.includes("새로 가져오지 말 것"));
 });
+
+import { codeReportEdges } from "./step-order.ts";
+test("코드를 싣는 보고서는 앞 단계 설계를 받아 쓴다 (2026-11-23 정보: 설계와 보고서 코드가 따로 놈)", () => {
+  const els = [
+    { label: "문제 구상 및 알고리즘 설계", description: "", required_items: ["실생활 문제", "입력 과정", "처리 과정", "출력 과정"] },
+    { label: "문제해결 과정 보고서", description: "", required_items: ["문제 제시", "알고리즘", "코드", "실행 결과"] },
+  ];
+  assert.deepEqual(codeReportEdges(els), [["문제 구상 및 알고리즘 설계", "문제해결 과정 보고서"]]);
+  assert.equal(stepWaves(els).length, 2);
+});
+test("코드 보고서가 아니면 순서를 만들지 않는다", () => {
+  const els = [
+    { label: "탐구 설계", description: "", required_items: ["입력 변인", "알고리즘"] },
+    { label: "실험 보고서", description: "", required_items: ["가설", "결과"] },
+  ];
+  assert.deepEqual(codeReportEdges(els), []);
+  assert.equal(stepWaves(els).length, 1);
+  assert.deepEqual(codeReportEdges([{ label: "보고서", description: "", required_items: ["알고리즘", "코드"] }]), []);
+});

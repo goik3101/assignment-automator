@@ -8,6 +8,7 @@
 export interface OrderElement {
   label: string;
   description: string;
+  required_items?: string[];
 }
 
 /** "앞 단계의 결과를 받아서 쓴다"는 뜻의 표현. 이 표현이 있을 때만 단계 사이에 순서를 만든다. */
@@ -60,6 +61,23 @@ function splitSentences(text: string): string[] {
   return text.split(/(?<=[.。!?])\s+|\n+/).map((s) => s.trim()).filter(Boolean);
 }
 
+/**
+ * 안내문 문장이 아니라 **산출물의 성격**에서 오는 순서 하나: 프로그램 코드를 싣는 보고서(칸에 "알고리즘"과 "코드"가 함께 있음)는
+ * 앞 단계의 설계(입력·처리·출력·알고리즘)를 옮겨 쓰는 글이다. 동시에 쓰면 두 글이 서로 다른 프로그램을 말한다(실측 2026-11-23 정보,
+ * 3/3: 설계는 점수 세 단계·패턴 규칙인데 보고서 코드는 두 단계·키워드뿐) — 앞 단계 글을 받아 쓰게 한다.
+ * 대가: 직렬이라 정보 과제 1건이 25~31초 → 47~48초(n=2). CODE_REPORT_ORDER=off로 끈다.
+ */
+export function codeReportEdges(elements: OrderElement[]): [string, string][] {
+  if (process.env.CODE_REPORT_ORDER === "off") return [];
+  const has = (e: OrderElement, re: RegExp) => (e.required_items ?? []).some((i) => re.test(i));
+  const out: [string, string][] = [];
+  elements.forEach((b, j) => {
+    if (!has(b, /코드/) || !has(b, /알고리즘/)) return;
+    for (const a of elements.slice(0, j)) if (has(a, /입력|처리|출력|알고리즘/)) out.push([a.label, b.label]);
+  });
+  return out;
+}
+
 /** 단계 사이의 의존 간선(A → B = A를 먼저 써야 B를 쓸 수 있다). */
 export function stepDependencies(elements: OrderElement[], requirements: string[] = [], guide?: string): [string, string][] {
   const labels = elements.map((e) => e.label);
@@ -77,6 +95,7 @@ export function stepDependencies(elements: OrderElement[], requirements: string[
     add([[elements[i - 1].label, el.label]]);
   }
   for (const s of [...requirements.flatMap(splitSentences), ...splitSentences(guide ?? "")]) add(edgesFromSentence(s, labels));
+  add(codeReportEdges(elements));
   return edges;
 }
 

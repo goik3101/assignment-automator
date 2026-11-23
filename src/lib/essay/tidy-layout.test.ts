@@ -53,3 +53,16 @@ test("자리표시 번호 소제목은 뒤에 일반 소제목이 와도, 글 �
   // 내용이 있는 번호 소제목은 그대로
   assert.equal(dropEmptyNumberedHeading("### 문항 1\n답이다.\n### 문항 2\n답.").dropped.length, 0);
 });
+
+test("코드 펜스 안은 줄을 잇지 않는다 (2026-11-23 정보: 파이썬 코드가 한 줄로 무너짐)", () => {
+  const code = ["```python", "def check(text):", "    score = 0", "    found = []", "", "    for w in words:", "        if w in text:", "            score += 1", "    return score", "```"].join("\n");
+  const t = `코드는 아래와 같다.\n\n${code}\n\n결과는 아래와 같다.`;
+  assert.equal(unwrapHardBreaks(t).content, t);
+  assert.equal(unwrapHardBreaks(t).joined, 0);
+});
+test("펜스 밖의 끊긴 문장은 여전히 잇는다", () => {
+  const t = "```text\na\n  b\n```\n체육 교사가 되면 학생들에게 운동 기능뿐 아니라 \n경기에서 일어나는 현상의 원리도 알기 쉽게 설명하고 싶다. \n축구 경기에서 공이 휘어 골문에 들어가는 장면을 보며, \n발로 찬 공이 왜 곧게 날아가지 않는지 궁금했다.";
+  const r = unwrapHardBreaks(t);
+  assert.match(r.content, /^```text\na\n {2}b\n```\n/);
+  assert.ok(r.joined >= 2);
+});

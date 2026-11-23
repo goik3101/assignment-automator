@@ -50,3 +50,9 @@ test("소제목을 다시 말하며 시작하는 줄의 머리말을 뗀다", ()
   assert.match(r.content, /### 답변1\n기쁩니다\./);
   assert.match(r.content, /### 제목\n광복의 날/);
 });
+
+test("칸 이름의 앞부분만 말하는 줄은 진짜 내용이라 지우지 않는다 (2026-11-23 정보 '문제 구상:')", () => {
+  assert.equal(echoesLabel("문제 구상: 온라인에서 뉴스처럼 보이는 글을 읽을 때 자극적인 표현만으로 내용을 믿기 쉽다.", "문제 구상 및 알고리즘 설계"), false);
+  assert.equal(echoesLabel("인터뷰: 서울에 사는 시민입니다.", "인터뷰 대상 및 질문"), false);
+  assert.equal(echoesLabel("분석적 채점 기준표: '평가 요소': 연속성", "분석적 채점 기준표 작성"), true);
+});
