@@ -39,6 +39,8 @@ export interface AiStartPayload {
   turnstileToken: string | null;
   /** 분석 때 올린 안내문 사진(줄인 것). 있으면 생성이 안내문을 직접 읽는다. 기록에서 불러온 과제엔 없다. */
   noticeImages?: { base64: string; mimeType: string }[];
+  /** "개선 돕기" 창이 보낼 안내문 사진. 생성 요청에는 싣지 않는다(noticeImages와 달리 서버 설정과 무관하게 화면에만 들고 있는다). */
+  shareImages?: { base64: string; mimeType: string }[];
 }
 
 const PLACEHOLDERS = [
@@ -88,6 +90,7 @@ export default function NewCreationModal({
   const [admin, setAdmin] = useState<AdministrativeInfo | null>(null);
   const [editing, setEditing] = useState(false);
   const [noticeImages, setNoticeImages] = useState<{ base64: string; mimeType: string }[]>([]);
+  const [shareImages, setShareImages] = useState<{ base64: string; mimeType: string }[]>([]);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -163,6 +166,7 @@ export default function NewCreationModal({
       const result = data as AnalyzeResult & { wantsNoticeImages?: boolean };
       // 서버가 사진 직접 읽기를 끄고 있으면 사진을 들고 있지도, 생성 요청에 싣지도 않는다(요청이 3MB 이상 커지는 것을 막는다).
       setNoticeImages(result.wantsNoticeImages ? keptImages : []);
+      setShareImages(keptImages);
       if (result.insufficient_data) {
         throw new Error(
           result.insufficient_reason ??
@@ -214,6 +218,7 @@ export default function NewCreationModal({
       instructions: mergeInstructions(instructions, answers),
       turnstileToken,
       ...(noticeImages.length > 0 ? { noticeImages } : {}),
+      ...(shareImages.length > 0 ? { shareImages } : {}),
     });
   }
 

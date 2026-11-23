@@ -51,6 +51,8 @@ interface GenerationContext {
   turnstileToken: string | null;
   /** 안내문 사진 — 완성 원고 생성에만 실어 보낸다(저장하지 않는다). */
   noticeImages?: { base64: string; mimeType: string }[];
+  /** "개선 돕기" 창이 보낼 사진 — 생성 요청에는 싣지 않는다. */
+  shareImages?: { base64: string; mimeType: string }[];
 }
 
 /** "개선 돕기"로 보낼 카드 하나: 칸이 나뉜 완성 원고는 칸별로, 아니면 본문 하나. */
@@ -78,8 +80,6 @@ export default function AssignmentFlow() {
   const [items, setItems] = useState<GeneratedItem[]>([]);
   // 완성 원고 결과의 상단 3줄 요약 — 여러 단계여도 전체를 아우르는 하나의 요약이라 카드들 위에 한 번만 보여준다.
   const [essaySummaryLines, setEssaySummaryLines] = useState<string[]>([]);
-  // 평가 바가 닫힌 결과의 키 — 그 뒤에 "개선 돕기" 창을 띄운다(두 창이 겹치지 않게).
-  const [ratingClosedKey, setRatingClosedKey] = useState<string | null>(null);
 
   useEffect(() => {
     // 사이드바의 "새 창작물"(다른 화면에서 눌러 홈으로 넘어온 경우 포함)이 모달을 연다.
@@ -446,14 +446,13 @@ export default function AssignmentFlow() {
         })}
       </div>
         {ratingContexts.length > 0 && loadingCount === 0 && (
-          <ResultRatingBar context={mergeRatingContexts(ratingContexts)} resultKey={ratingKey} onFinish={() => setRatingClosedKey(ratingKey)} />
+          <ResultRatingBar context={mergeRatingContexts(ratingContexts)} resultKey={ratingKey} />
         )}
-        {ratingContexts.length > 0 && loadingCount === 0 && (ctx?.noticeImages?.length ?? 0) > 0 && (
+        {ratingContexts.length > 0 && loadingCount === 0 && (ctx?.shareImages?.length ?? 0) > 0 && (
           <HelpImproveDialog
             key={ratingKey}
             resultKey={ratingKey}
-            ready={ratingClosedKey === ratingKey}
-            images={ctx?.noticeImages ?? []}
+            images={ctx?.shareImages ?? []}
             buildMessage={() =>
               buildShareMessage({
                 subject: ctx?.subject,

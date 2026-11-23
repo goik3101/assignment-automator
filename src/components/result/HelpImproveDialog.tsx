@@ -51,13 +51,10 @@ function toFile(img: NoticeImage, i: number): File {
 
 export default function HelpImproveDialog({
   resultKey,
-  ready,
   images,
   buildMessage,
 }: {
   resultKey: string;
-  /** 결과가 다 만들어졌고 평가 바가 닫혔을 때만 true — 두 창이 겹치지 않게 한다. */
-  ready: boolean;
   images: NoticeImage[];
   buildMessage: () => string;
 }) {
@@ -68,9 +65,9 @@ export default function HelpImproveDialog({
   const [error, setError] = useState<string | null>(null);
   const shown = useMemo(() => images.slice(0, MAX_ATTACHMENTS), [images]);
 
-  // 평가 바가 닫힌 뒤, 화면 2/3 지점을 지났을 때 한 번. 닫힌 직후 바로 겹쳐 뜨지 않게 잠깐 기다린다.
+  // 화면 2/3 지점을 지났을 때 한 번. 평가 바가 떠 있어도 이 창이 위에 뜬다(평가를 무시해도 이 창은 나온다).
   useEffect(() => {
-    if (!ready || shown.length === 0) return;
+    if (shown.length === 0) return;
     if (!shouldAskShare(readState(seenKey))) return;
     const check = () => {
       const doc = document.documentElement;
@@ -88,7 +85,7 @@ export default function HelpImproveDialog({
       window.clearTimeout(timer);
       window.removeEventListener("scroll", check);
     };
-  }, [ready, shown.length, seenKey]);
+  }, [shown.length, seenKey]);
 
   function dismiss() {
     if (phase === "sent") {
