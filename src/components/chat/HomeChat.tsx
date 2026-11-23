@@ -176,7 +176,7 @@ export default function HomeChat({ onNew }: { onNew?: (prefill?: NewPrefill) => 
         allowImage={!target}
         placeholder={target ? t("“{title}”에 대해 무엇이든 물어보세요", { title: target.title }) : t("무엇이든 물어보기")}
         footer={footer}
-        messagesClassName="max-h-[52vh] rounded-3xl bg-surface p-5"
+        messagesClassName="max-h-[52dvh] rounded-3xl bg-surface p-5"
         disabledReason={user ? null : t("로그인하면 질문할 수 있어요")}
       />
     </section>

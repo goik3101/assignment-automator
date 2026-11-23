@@ -56,7 +56,7 @@ export default function Modal({
         aria-label={title}
         style={{ maxWidth: width }}
         className={[
-          "relative max-h-[92vh] w-full animate-[popIn_0.22s_ease-out] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.25)]",
+          "relative max-h-[92dvh] w-full animate-[popIn_0.22s_ease-out] overflow-y-auto shadow-[0_24px_80px_rgba(0,0,0,0.25)]",
           compact ? "rounded-2xl border border-border-strong bg-surface p-6" : "rounded-3xl bg-background p-6 sm:p-9",
         ].join(" ")}
       >

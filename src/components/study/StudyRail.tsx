@@ -165,7 +165,7 @@ export default function StudyRail({
       className="flex-1 justify-end"
       placeholder={t("이 결과물에 대해 무엇이든 물어보세요")}
       disabledReason={locked ? t("결과물이 저장되면 쓸 수 있어요") : null}
-      messagesClassName={inSheet ? "" : "max-h-[46vh] lg:max-h-none"}
+      messagesClassName={inSheet ? "" : "max-h-[46dvh] lg:max-h-none"}
       empty={
         // 학습 자료를 하나라도 만들었으면 안내는 접고 "내 학습"에 자리를 내준다.
         !inSheet && savedTools.length > 0
@@ -211,7 +211,7 @@ export default function StudyRail({
       aria-label={t("공부 도구")}
       style={{ "--rail-top": `${pinTop ?? 24}px` } as CSSProperties}
       className={[
-        "min-h-0 lg:sticky lg:top-[var(--rail-top)] lg:h-[calc(100vh-var(--rail-top)-1.5rem)]",
+        "min-h-0 lg:sticky lg:top-[var(--rail-top)] lg:h-[calc(100dvh-var(--rail-top)-1.5rem)]",
         collapsed ? "lg:w-12" : RAIL_WIDTH,
         className,
       ].join(" ")}
