@@ -10,7 +10,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: SourceRef[];
-  /** 암기 요청에 대한 답이면 true — 답 아래에 외우는 방법(플래시카드·퀴즈·정리) 선택 버튼을 보여준다. */
+  /** 암기 요청에 대한 답이면 true — 답 아래에 외우는 방법(암기·플래시카드·퀴즈·정리) 선택 버튼을 보여준다. */
   offerMemorize?: boolean;
   /** AI 튜터가 되묻는 질문(선택 버튼용). */
   question?: { text: string; options: string[]; allowOther: boolean } | null;

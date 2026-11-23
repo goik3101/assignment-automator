@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUp, CircleHelp, ImagePlus, Layers, LoaderCircle, NotebookText, X } from "lucide-react";
+import { ArrowUp, Brain, CircleHelp, ImagePlus, Layers, LoaderCircle, NotebookText, X } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { prepareImage, type PreparedImage } from "@/lib/ui/image";
 import type { ChatMessage, useChat } from "./useChat";
@@ -11,9 +11,10 @@ import ChatEditCard, { type ApplyEdit, type UndoEdit } from "./ChatEditCard";
 
 type Chat = ReturnType<typeof useChat>;
 
-export type MemorizeTool = "flashcards" | "quiz" | "summary";
+export type MemorizeTool = "memorize" | "flashcards" | "quiz" | "summary";
 
 const MEMORIZE_CHOICES: { id: MemorizeTool; label: string; icon: typeof Layers }[] = [
+  { id: "memorize", label: "암기", icon: Brain },
   { id: "flashcards", label: "플래시카드", icon: Layers },
   { id: "quiz", label: "퀴즈", icon: CircleHelp },
   { id: "summary", label: "정리해줘", icon: NotebookText },
@@ -104,7 +105,7 @@ export default function ChatView({
   /** 입력 상자 안쪽 아래에 놓는 줄(버튼들). 있으면 상자가 더 넉넉해진다. */
   footer?: ReactNode;
   className?: string;
-  /** 있으면 암기 요청에 대한 답 아래에 "플래시카드·퀴즈·정리해줘" 버튼을 보여주고, 눌렀을 때 부른다(저장된 과제 화면에서만 넘긴다). */
+  /** 있으면 암기 요청에 대한 답 아래에 "암기·플래시카드·퀴즈·정리해줘" 버튼을 보여주고, 눌렀을 때 부른다(저장된 과제 화면에서만 넘긴다). */
   onMemorizeTool?: (tool: MemorizeTool) => void;
   /** 있으면 채팅의 칸 수정안 아래에 "결과물에 적용" 버튼을 보여 준다(저장된 AI 결과물 화면에서만 넘긴다). */
   onApplyEdit?: ApplyEdit;

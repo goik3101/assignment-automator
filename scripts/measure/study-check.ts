@@ -7,7 +7,7 @@ import path from "node:path";
 const REPO = process.cwd();
 process.loadEnvFile(path.join(REPO, ".env.local"));
 
-const { makeSummary, makeQuiz, makeExam, gradeExam } = await import("@/lib/study/tools");
+const { makeSummary, makeExam, gradeExam } = await import("@/lib/study/tools");
 const { DEFAULT_STUDY_PREFS } = await import("@/lib/study/prefs");
 const { clip } = await import("@/lib/study/context-pure");
 
@@ -41,9 +41,8 @@ for (const id of ids) {
       return null;
     }
   };
-  const [summary, quiz, exam] = await Promise.all([
+  const [summary, exam] = await Promise.all([
     run("요약", () => makeSummary(ctx, DEFAULT_STUDY_PREFS.summary)),
-    run("퀴즈", () => makeQuiz(ctx, DEFAULT_STUDY_PREFS.quiz)),
     run("가상 시험", () => makeExam(ctx)),
   ]);
   if (summary) {
@@ -53,13 +52,6 @@ for (const id of ids) {
     lines.push("\n핵심 용어:");
     for (const k of summary.keyTerms) lines.push(`- ${k.term}: ${k.meaning}`);
     for (const b of summary.skeleton) lines.push(`뼈대 ${b.box}: ${b.line} ◀ ${b.keywords.join(" · ")}`);
-  }
-  if (quiz) {
-    lines.push(`\n## 퀴즈 ${quiz.length}문 (${time["퀴즈"].toFixed(1)}초)`);
-    quiz.forEach((q, i) => {
-      const ans = q.type === "match" ? (q.pairs ?? []).map((p) => `${p.left}=${p.right}`).join(" / ") : q.choices?.length ? `${q.answerIndex + 1}번 ${q.choices[q.answerIndex] ?? ""}` : (q.accepted?.length ? q.accepted.join(" | ") : q.answer ?? "");
-      lines.push(`${i + 1}. [${q.type}] ${q.question}\n   ${q.choices?.length ? "보기: " + q.choices.map((c, k) => `${k + 1}) ${c}`).join(" / ") + "\n   " : ""}정답: ${ans}${q.explanation ? `\n   해설: ${q.explanation}` : ""}`);
-    });
   }
   if (exam) {
     lines.push(`\n## 가상 시험 (${time["가상 시험"].toFixed(1)}초)\n제목: ${exam.title} / ${exam.durationMin}분\n문제: ${exam.task}\n조건: ${exam.requirements.join(" / ")}\n힌트: ${exam.hints.map((h, i) => `${i + 1}) ${h}`).join(" ")}`);

@@ -5,7 +5,7 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 // (인스턴스마다 따로 세므로 정확하진 않지만, 표가 없다고 제한이 사라지지는 않게 한다).
 // analyze·expected_questions는 예전엔 제한이 없던 경로(비용 방어용으로 추가). study_usage_events.kind의 check 제약에
 // 아직 없는 값이라, 마이그레이션 전에는 DB 기록이 조용히 건너뛰어지고 서버 메모리 카운터가 대신 제한을 건다.
-export type StudyKind = "chat" | "summary" | "flashcards" | "quiz" | "exam" | "exam_grade" | "questions" | "analyze" | "expected_questions" | "tutor";
+export type StudyKind = "chat" | "summary" | "exam" | "exam_grade" | "questions" | "analyze" | "expected_questions" | "tutor";
 
 const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 
@@ -13,8 +13,6 @@ export const STUDY_DAILY_LIMITS: Record<StudyKind, number> = {
   chat: num(process.env.STUDY_LIMIT_CHAT, 20), // 2026-10-26 사용자 결정: 40 → 20 (관리자는 enforceStudyLimit에서 제외)
   // 출시 기준(2026-10-24 사용자 결정): 공부 자료 생성은 종류별 하루 1회. 채점·채팅은 별도.
   summary: num(process.env.STUDY_LIMIT_SUMMARY, 1),
-  flashcards: num(process.env.STUDY_LIMIT_FLASHCARDS, 1),
-  quiz: num(process.env.STUDY_LIMIT_QUIZ, 1),
   exam: num(process.env.STUDY_LIMIT_EXAM, 1),
   exam_grade: num(process.env.STUDY_LIMIT_EXAM_GRADE, 20),
   questions: num(process.env.STUDY_LIMIT_QUESTIONS, 30),
@@ -34,8 +32,6 @@ export const GUEST_IP_DAILY_LIMITS: Partial<Record<StudyKind, number>> = {
 const KIND_LABEL: Record<StudyKind, string> = {
   chat: "AI 채팅",
   summary: "요약",
-  flashcards: "플래시카드",
-  quiz: "퀴즈",
   exam: "가상 시험",
   exam_grade: "시험 채점",
   questions: "제작 전 질문",

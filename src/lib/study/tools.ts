@@ -1,13 +1,12 @@
 import { Type, type Schema } from "@google/genai";
 import { generateJson } from "@/lib/llm";
 import type { StudyContext } from "./context";
-import { validateQuizQuestion, type QuizQuestion } from "./quiz-validate";
-import { quizTypePlan, type QuizPrefs, type QuizType, type SummaryPrefs } from "./prefs";
-import { readMemorizeSource, memorizeBlock, orderInstruction, termInstruction } from "./memorize-source";
+import type { SummaryPrefs } from "./prefs";
+import { readMemorizeSource, memorizeBlock, hasNamedItems } from "./memorize-source";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { filterKeyTerms } from "./summary-terms";
-import { cleanSkeleton, skeletonLimits, type SkeletonBox } from "./memo-skeleton";
-export type { QuizQuestion };
+import { cleanSkeleton, dedupeKeywords, deriveKeywords, skeletonLimits, type SkeletonBox } from "./memo-skeleton";
+import { alignSkeleton, planBoxes } from "./box-plan";
 
 // 학습 도구: 이미 만들어진 과제 내용(AI 결과물 또는 학습 모드의 조사 자료·학생 글)을 "공부하기 좋은 형태"로 바꿔 준다.
 // 새 사실을 찾거나 지어내지 않는다 — 검색 없이 주어진 자료만 근거로 삼고, 자료에 없는 내용은 만들지 않는다.
@@ -31,15 +30,10 @@ function material(c: StudyContext): string {
   return `[자료 — 제목: ${c.title} / 과목: ${c.subject} / ${c.sourceLabel}]\n${c.text}`;
 }
 
-/**
- * 공부 도구가 **무엇을 외울 것으로 볼지**를 코드가 먼저 가려 준다(memorize-source.ts).
- * 본문 전체만 주면 "멸치: 바닷물고기" 같은 교과서 수준 낱말이 핵심 용어로 올라온다 —
- * 칸 이름과 **각주 붙은 문장**을 앞에 세우면 그 기준이 재료 자체에 들어간다.
- * 외울 것이 없는 과제(각주 없는 창작·계획형)에서는 빈 문자열이라 예전과 똑같이 돈다.
- */
-function memorize(c: StudyContext, opts?: { anchored?: boolean }) {
+/** 결과물에서 칸 순서를 읽어 프롬프트 블록으로 만든다(memorize-source.ts). 칸이 하나뿐이면 빈 문자열. */
+function memorize(c: StudyContext) {
   const src = readMemorizeSource(c.text ?? "");
-  const block = memorizeBlock(src, opts);
+  const block = memorizeBlock(src);
   return { src, block: block ? `${block}\n\n` : "" };
 }
 
@@ -53,6 +47,8 @@ export interface StudySummary {
   points: string[];
   /** 옛 저장본의 서술식 문단. */
   paragraphs: string[];
+  /** 총 정리: 결과물을 처음부터 끝까지 순서대로 이어 말하는 3~4문장(없으면 옛 저장본). */
+  overall?: string;
   /** "개념 이해" — 학생이 모를 만한 개념을 쉬운 말로. inTask는 이 결과물에서 어디에 쓰였는지, analogy는 "쉬운 설명 포함"을 켰을 때의 비유. */
   keyTerms: { term: string; meaning: string; inTask?: string; analogy?: string }[];
   /** 옛 저장본 호환용 — 새로 만들 때는 비워 둔다. */
@@ -66,17 +62,18 @@ export interface StudySummary {
  * 기준은 "교과 개념인가"가 아니라 "이 과제를 하는 고등학생이 **모를 만한가**"다 — 일상어·교과서 첫 줄 낱말을 알려 주면 요약이 쓸모없다.
  */
 const CONCEPT_PICK =
-  `**학생이 뜻을 정확히 모를 만한 말**만 고른다: 전문 용어·한자어·학술 표현·이 단원에서 처음 만나는 개념(예: 영양단계, 생물 농축, 기회비용). ` +
-  `누구나 아는 일상어·지명·사물 이름(예: 멸치, 바다, 환경, 사회)과 "관찰 지침·예상 결과·보고서 항목"처럼 과제를 진행하는 말은 개념이 아니므로 넣지 않는다. ` +
-  `이 결과물을 이해하는 데 **더 중요한 것부터**, 자료에 실제로 나온 낱말만 쓴다.`;
+  `**학생이 뜻을 정확히 모를 만한 말**만 고른다: 전문 용어·한자어·법률·제도 이름·학술 표현·이 단원에서 처음 만나는 개념(예: 영양단계, 생물 농축, 기회비용, 개인정보 자기결정권, 위헌 결정). ` +
+  `누구나 아는 일상어·지명·사물 이름(예: 멸치, 바다, 환경, 사회)과 중학생도 뜻을 아는 흔한 권리·낱말(예: 표현의 자유, 익명, 명예훼손)은 넣지 않는다. 과제를 진행하는 말("관찰 지침·예상 결과·보고서 항목")도 개념이 아니다. ` +
+  `개수를 채우려 하지 말고 정말 낯선 것만 남긴다(적어도 된다). 이 결과물을 이해하는 데 **더 중요한 것부터**, 자료에 실제로 나온 낱말만 쓴다.`;
 
 const SUMMARY_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     headline: { type: Type.STRING, description: "이 결과물이 말하는 것을 한 문장으로(35자 안팎, 명사로 끝내지 말고 결론을)" },
+    overall: { type: Type.STRING, description: "총 정리: 결과물을 처음부터 끝까지 순서대로 이어 말하는 3~4문장. 발표나 답안을 말할 때 그대로 따라 읽을 수 있게" },
     key_terms: {
       type: Type.ARRAY,
-      description: "학생이 모를 만한 개념(전문 용어·한자어·처음 만나는 개념), 중요한 순서",
+      description: "학생이 모를 만한 개념(전문 용어·한자어·법률·제도 이름), 중요한 순서. 중학생도 아는 말은 넣지 않는다",
       items: {
         type: Type.OBJECT,
         properties: {
@@ -95,56 +92,72 @@ const SUMMARY_SCHEMA: Schema = {
         type: Type.OBJECT,
         properties: {
           box: { type: Type.STRING, description: "칸 이름(안내문의 칸 이름 그대로, 없으면 덩어리 이름 2~8자)" },
-          line: { type: Type.STRING, description: "그 칸에서 말할 핵심 한 문장(40자 안팎). 아래 keywords가 이 문장 안에 그대로 들어 있어야 한다" },
-          keywords: strArr("외울 핵심어. 반드시 line 안에 있는 낱말(이름·전문 용어·수치·연도·결론 방향), 자료에 나온 표기 그대로"),
+          line: { type: Type.STRING, description: "그 칸에서 말할 핵심 한 문장(40~55자). 이름·전문 용어·수치·연도가 있으면 자료에 나온 표기 그대로 넣는다" },
         },
-        required: ["box", "line", "keywords"],
+        required: ["box", "line"],
       },
     },
   },
-  required: ["headline", "key_terms", "skeleton"],
+  required: ["headline", "overall", "key_terms", "skeleton"],
 };
 
+/** "쉬운 설명 포함"을 껐으면 비유(analogy) 필드를 스키마에서 뺀다 — 항상 빈 문자열로 채우느라 토큰만 썼다. */
+function summarySchema(easy: boolean): Schema {
+  if (easy) return SUMMARY_SCHEMA;
+  const s = JSON.parse(JSON.stringify(SUMMARY_SCHEMA)) as { properties: { key_terms: { items: { properties: Record<string, unknown>; required: string[] } } } };
+  const item = s.properties.key_terms.items;
+  delete item.properties.analogy;
+  item.required = item.required.filter((r) => r !== "analogy");
+  return s as unknown as Schema;
+}
+
 const SUMMARY_DETAIL: Record<SummaryPrefs["detail"], { terms: string; max: number }> = {
-  brief: { terms: "2~3개", max: 3 },
-  standard: { terms: "4~5개", max: 5 },
-  detailed: { terms: "6~8개", max: 8 },
+  brief: { terms: "최대 3개", max: 3 },
+  standard: { terms: "최대 5개", max: 5 },
+  detailed: { terms: "최대 8개", max: 8 },
 };
 
 export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise<StudySummary> {
   // 요약에는 칸 순서만 준다 — [외울 문장]을 앞에 세우면 "외울 것"에 끌려 요약이 문장 나열이 되고 개념이 엉뚱해졌다(2026-11-19).
-  const mem = memorize(c, { anchored: false });
+  const mem = memorize(c);
   const d = SUMMARY_DETAIL[prefs.detail];
   // 손으로 쓰는 시험이면 쓸 수 있는 글자 수에 맞춰 외울 양을 줄인다(안내문이 시간을 말했을 때만).
   const real = handwriteBudget([c.assignmentInfo]);
-  const limits = skeletonLimits(prefs.detail, real?.chars);
-  const analogy = prefs.easy ? "각 개념의 analogy에 일상 비유 한 줄을 쓴다(자료에 없는 사실은 덧붙이지 않는다)." : "analogy는 빈 문자열로 둔다.";
+  const byItem = hasNamedItems(mem.src);
+  const limits = skeletonLimits(prefs.detail, real?.chars, byItem);
+  // 칸의 이름·순서·개수는 코드가 결과물 소제목에서 정한다(box-plan.ts). 모델은 칸마다 한 줄과 핵심어만 채운다 — 프롬프트로 "합치지 마라"를 시키면 실행마다 흔들렸다.
+  // 칸을 못 정하는 결과물(소제목이 없거나 합쳐도 한도 초과)만 예전처럼 모델이 칸을 고른다.
+  const plan = c.text ? planBoxes(c.text, limits.boxes) : null;
   const { data } = await generateJson<{
     headline: string;
+    overall?: string;
     key_terms: { term: string; meaning: string; in_task?: string; analogy?: string }[];
-    skeleton: { box: string; line: string; keywords: string[] }[];
+    skeleton: { box: string; line: string }[];
   }>({
     label: "study:summary",
     role: "study",
-    schema: SUMMARY_SCHEMA,
+    schema: summarySchema(prefs.easy),
     effort: "low",
     prompt: [
       rules(c),
       "",
-      "학생은 이 결과물을 **이해한 뒤 단기 기억으로 외워서** 곧바로 수행평가를 본다. 시험장에서 문장은 이해한 대로 즉석에서 쓸 수 있으니, 외울 것은 **즉석에서 못 쓰는 것**(이름·전문 용어·수치·연도·칸 순서·결론의 방향)뿐이다. 분량을 채우려고 늘리지 말고 정말 중요한 것만 남겨.",
+      "학생은 이 결과물을 **이해한 뒤 단기 기억으로 외워서** 곧바로 수행평가를 본다. 아래를 만든다: headline·overall·key_terms는 **이해용**, skeleton은 칸별 정리다. 시험장에서 문장은 이해한 대로 즉석에서 쓸 수 있으니 외울 것은 **즉석에서 못 쓰는 것**(이름·전문 용어·수치·연도)뿐이고, 그것이 line에 들어 있으면 코드가 뽑아 외울 핵심어로 쓴다.",
       `- headline: 이 결과물이 말하는 결론을 한 문장으로.`,
+      `- overall(총 정리): headline이나 칸별 줄을 되풀이하지 말고, 결과물 전체의 흐름(무엇을 → 왜 → 근거 → 마무리)을 처음부터 끝까지 3~4문장으로 말하듯 이어 쓴다.`,
       `- key_terms(${d.terms}) — **이해용**: ${CONCEPT_PICK}`,
-      `  · meaning: 정확하되 중학생도 알아듣는 쉬운 말 한 문장. 교과서 정의를 그대로 옮기지 말고 풀어 쓴다(자료에 없는 숫자·연도·사람 이름은 덧붙이지 않는다).`,
+      `  · meaning: 정확하되 중학생도 알아듣는 쉬운 말 한 문장. **이 결과물과 상관없이 그 말 자체의 뜻**을 정의한다(결과물 속 사례·판단을 뜻풀이에 쓰지 않는다). "우회 사례"처럼 개념이 아니라 이 글의 내용인 것은 넣지 않는다. 교과서 정의를 그대로 옮기지 말고 풀어 쓴다(자료에 없는 숫자·연도·사람 이름은 덧붙이지 않는다).`,
       `  · in_task: 이 결과물에서 그 개념이 어떻게 쓰였는지 한 줄(예: "멸치가 먹이사슬 어디에 있는지 설명할 때 쓰임").`,
-      `  · ${analogy}`,
-      `- skeleton(최대 ${limits.boxes}칸) — **암기용 뼈대**: ` +
-        (mem.src.boxes.length >= 2
-          ? `[칸 순서]의 칸을 **적힌 순서대로** 한 칸씩. 마지막 칸(결론 등)은 빼지 않는다. 칸이 한도보다 많으면 외울 것이 거의 없는 칸(주제·동기 같은 소개 칸)을 이웃 칸과 묶는다.`
-          : `결과물의 큰 흐름을 시험지에 쓰는 순서대로 3~${Math.min(5, limits.boxes)}개 덩어리로 나누고 이름을 붙인다.`),
-      `  · line: 그 칸에서 쓸 핵심을 한 문장(40자 안팎)으로. 과제 설명이 아니라 **내용**이어야 한다(예: "대기압이 물을 빨대 안으로 민다").`,
-      `  · keywords: 그 문장 안에 **그대로 들어 있는** 핵심어를 칸마다 1~${limits.perBox}개. 이름·전문 용어·수치·연도·결론 방향처럼 시험에서 틀리면 안 되는 것만 고르고, 조사·서술어·누구나 쓸 말("중요하다")은 고르지 않는다. 같은 핵심어를 여러 칸에 되풀이하지 말고, 그 칸에서만 나오는 것을 고른다.`,
+      ...(prefs.easy ? [`  · analogy: 각 개념에 일상 비유 한 줄(자료에 없는 사실은 덧붙이지 않는다).`] : []),
+      plan
+        ? `- skeleton — **암기용 뼈대**: 아래 [칸 목록]의 칸마다 **정확히 하나씩, 같은 순서로** 채운다. box는 칸 이름을 그대로 쓰고(바꾸거나 합치거나 빼지 않는다), line은 결과물에서 그 칸에 실제로 적힌 내용 중 발표·답안에서 말할 핵심 두세 가지를 한 문장(50자 안팎)으로 쓴다(제목을 되풀이하거나 "~를 설명한다"로 끝내지 않는다).` + "\n[칸 목록]\n" + plan.map((p, i) => `${i + 1}. ${p.name}`).join("\n")
+        : `- skeleton(최대 ${limits.boxes}칸) — **암기용 뼈대**: ` +
+          (mem.src.boxes.length >= 2
+            ? `[칸 순서]의 칸을 **적힌 순서대로** 한 칸씩. 마지막 칸(결론 등)은 빼지 않는다. 칸이 한도보다 많으면 외울 것이 거의 없는 칸(주제·동기 같은 소개 칸)을 이웃 칸과 묶는다.`
+            : `결과물의 큰 흐름을 시험지에 쓰는 순서대로 3~${Math.min(5, limits.boxes)}개 덩어리로 나누고 이름을 붙인다.`),
+      `  · line: 그 칸에서 쓸 핵심을 한 문장으로. 과제 설명이 아니라 **내용**이어야 하고, 그 칸에 이름·전문 용어·수치·연도가 있으면 빼지 말고 넣는다(예: "대기압이 물을 빨대 안으로 민다").`,
       "",
-      mem.block + material(c),
+      // 칸 순서는 위 [칸 목록]이 대신하므로 칸 순서 블록은 칸을 코드가 못 정했을 때만 싣는다(입력을 가볍게).
+      (plan ? "" : mem.block) + material(c),
     ]
       .filter(Boolean)
       .join("\n"),
@@ -157,116 +170,24 @@ export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise
       inTask: k.in_task?.trim() || undefined,
       analogy: prefs.easy ? k.analogy?.trim() || undefined : undefined,
     }));
+  // 핵심어는 모델이 아니라 코드가 완성된 줄에서 뽑는다(memo-skeleton.ts deriveKeywords) — 모델에게 고르게 하면 출력이 두 배였다.
+  const lines = (plan ? alignSkeleton(plan, data.skeleton) : data.skeleton ?? []).map((b) => ({
+    box: b.box,
+    line: b.line ?? "",
+    keywords: deriveKeywords(b.line ?? "", c.text ?? "", terms.map((t) => t.term), limits.perBox),
+  }));
+  const kept = dedupeKeywords(lines);
+  const withKeywords = lines.map((b, i) => ({ ...b, keywords: kept[i] }));
   return {
     headline: (data.headline ?? "").trim(),
+    overall: (data.overall ?? "").trim() || undefined,
     format: "bullets",
     points: [],
     paragraphs: [],
-    keyTerms: filterKeyTerms(terms, c.text ?? "").slice(0, d.max),
+    keyTerms: filterKeyTerms(terms, c.text ?? "", { skipMaterialCheck: c.lang === "en" }).slice(0, d.max),
     easyExplanations: [],
-    skeleton: cleanSkeleton(data.skeleton, c.text ?? "", limits),
+    skeleton: cleanSkeleton(withKeywords, c.text ?? "", plan ? { ...limits, boxes: plan.length } : limits, { checkMaterial: false }),
   };
-}
-
-// ── 퀴즈 ─────────────────────────────────────────────────────────────────────
-const QUIZ_SCHEMA: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    questions: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          type: { type: Type.STRING, enum: ["choice", "ox", "short", "blank", "match"] },
-          question: { type: Type.STRING, description: "blank면 정답 자리를 ____ 로 비운 문장" },
-          choices: strArr("choice면 보기 4개, ox면 [\"O\", \"X\"], short·blank면 빈 배열"),
-          answer_index: { type: Type.INTEGER, description: "choice·ox의 정답 보기 순번(0부터). short·blank면 -1" },
-          answer_text: { type: Type.STRING, description: "short·blank의 정답(짧은 단어나 구). choice·ox면 빈 문자열" },
-          accepted_answers: strArr("short·blank에서 정답으로 인정할 다른 표기(띄어쓰기·약칭·영문 표기 등). 없으면 빈 배열"),
-          explanation: { type: Type.STRING, description: "왜 그게 정답인지 자료에 근거해 한두 문장" },
-          // 짝 맞추기만 채운다. 보기를 만들지 않으므로 **오답을 지어낼 일이 없는** 유일한 유형이다.
-          pairs: {
-            type: Type.ARRAY,
-            description: "match면 올바른 짝 3~5개. 다른 유형이면 빈 배열",
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                left: { type: Type.STRING, description: "용어·인물·개념 이름(짧게)" },
-                right: { type: Type.STRING, description: "그 뜻 한 줄" },
-              },
-              required: ["left", "right"],
-            },
-          },
-        },
-        required: ["type", "question", "choices", "answer_index", "answer_text", "accepted_answers", "explanation", "pairs"],
-      },
-    },
-  },
-  required: ["questions"],
-};
-
-const QUIZ_TYPE_TEXT: Record<QuizType, string> = {
-  // 객관식은 두 가지를 다 포함한다 — 그냥 사지선다와 **빈칸에 들어갈 말 고르기**(문장 안에서 고르므로
-  // 그냥 객관식보다 낫고, 타이핑이 없어 모바일에서 한 손으로 풀린다). 2026-11-13 결정.
-  choice: "4지선다(choice) — 절반쯤은 \"…는 ____이다\"처럼 **문장의 빈칸에 들어갈 말**을 보기에서 고르게 내고, 나머지는 보통 질문으로 낸다",
-  ox: "O/X(ox)",
-  short: "주관식(short: 정답이 한 단어나 짧은 구로 딱 떨어지는 질문)",
-  blank: "빈칸 채우기(blank: 자료의 핵심 문장에서 중요한 말 하나를 ____ 로 비운 문제)",
-  // 짝 맞추기는 **오답을 지어낼 필요가 없다** — 서로가 서로의 오답이 된다. 품질이 가장 안 나오던 부분이 빠진다.
-  match: "짝 맞추기(match: 용어 3~5개와 그 뜻을 pairs로 준다. 왼쪽은 용어·인물·개념 이름, 오른쪽은 그 뜻 한 줄. 보기는 만들지 않는다)",
-};
-
-const QUIZ_DIFFICULTY_TEXT: Record<QuizPrefs["difficulty"], string> = {
-  easy: "쉬움 — 자료에 그대로 나온 사실(이름·연도·용어)을 확인하는 문제 위주.",
-  normal: "보통 — 핵심 사실 확인과 내용 이해를 묻는 문제를 섞는다.",
-  hard: "어려움 — 여러 내용을 연결하거나 원인·결과·의미를 따져야 풀리는 문제 위주(그래도 자료만으로 풀 수 있어야 한다).",
-};
-
-type RawQuiz = { questions: (Partial<QuizQuestion> & { answer_index?: number; answer_text?: string; accepted_answers?: string[] })[] };
-
-export async function makeQuiz(c: StudyContext, prefs: QuizPrefs): Promise<QuizQuestion[]> {
-  const mem = memorize(c);
-  const plan = quizTypePlan(prefs.types, prefs.count);
-  const count = plan.reduce((sum, p) => sum + p.n, 0);
-  const maxOutputTokens = Math.min(14000, 1500 + count * 320);
-  const { data } = await generateJson<RawQuiz>({
-    label: "study:quiz",
-    role: "study",
-    schema: QUIZ_SCHEMA,
-    effort: "low",
-    maxOutputTokens,
-    prompt: `${rules(c)}\n\n아래 자료를 읽은 학생이 이해했는지 확인하는 퀴즈를 모두 ${count}문제 만들어줘.\n- 유형별 문항 수: ${plan.map((p) => `${QUIZ_TYPE_TEXT[p.type]} ${p.n}문제`).join(", ")}.\n- 난이도: ${QUIZ_DIFFICULTY_TEXT[prefs.difficulty]}\n- 자료 내용을 읽었다면 풀 수 있는 문제만 낸다(자료 밖 상식·추측 금지). 정답은 반드시 하나여야 한다.\n- choice의 오답 보기는 그럴듯하지만 자료에 비춰 분명히 틀린 것으로 만든다. 정답 위치가 한쪽으로 몰리지 않게 섞는다.\n- short·blank의 정답은 자료에 나온 표현 그대로, 15자 이내로. 같은 답을 다르게 쓸 수 있으면 accepted_answers에 넣는다.\n- 같은 내용을 두 번 묻지 않는다.\n- 설명에는 자료의 어느 내용 때문에 그 답인지 쓴다.\n- blank(빈칸)는 위 [외울 문장]의 **핵심어만 가린다** — 조사로 확인된 값이라 틀리게 쓰면 감점되는 자리다. 문장은 자료 그대로 두고 한 문장에 빈칸은 하나.\n- short(단답)도 [외울 문장]과 [칸 순서]에서 낸다.\n- match(짝 맞추기)는 **[외울 문장]의 용어와 그 뜻**으로 만든다. 왼쪽은 이름(짧게), 오른쪽은 뜻 한 줄.\n  같은 말이 두 번 나오지 않게 하고, 서로 헷갈릴 만한 것끼리 한 문제에 모은다(그래야 짝 맞추기가 문제가 된다).\n  question은 \"다음 용어와 뜻을 알맞게 이으세요\"처럼 짧게 쓰고, choices는 빈 배열로 둔다.\n\n${mem.block}${material(c)}`,
-  });
-  let questions = data.questions ?? [];
-
-  // 심층: 한 번 더 자료와 대조해 정답 오류·애매한 문항을 고치거나 뺀다. 검토가 실패하면 첫 결과를 그대로 쓴다.
-  if (prefs.depth === "deep" && questions.length) {
-    try {
-      const reviewed = await generateJson<RawQuiz>({
-        label: "study:quizReview",
-        role: "study",
-        schema: QUIZ_SCHEMA,
-        effort: "low",
-        maxOutputTokens,
-        prompt: `${rules(c)}\n\n아래 [퀴즈 초안]을 [자료]와 한 문제씩 대조해 검토하고, 고친 퀴즈 전체를 같은 형식으로 돌려줘.\n- 정답이 자료와 맞는지, 정답이 정말 하나뿐인지, 보기나 문장이 애매하지 않은지, 해설이 자료를 근거로 대는지 확인한다.\n- 문제가 있으면 고친다. 자료만으로 고칠 수 없는 문항은 뺀다.\n- 문제 유형과 난이도(${QUIZ_DIFFICULTY_TEXT[prefs.difficulty]})는 유지하고, 새 문제를 덧붙이지 않는다.\n\n[퀴즈 초안]\n${JSON.stringify({ questions })}\n\n${material(c)}`,
-      });
-      if (reviewed.data.questions?.length) questions = reviewed.data.questions;
-    } catch {
-      // 검토 실패 — 초안을 쓴다.
-    }
-  }
-
-  const seen = new Set<string>();
-  return questions
-    .map(validateQuizQuestion)
-    .filter((q): q is QuizQuestion => {
-      if (!q) return false;
-      const k = q.question.replace(/\s/g, "");
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    })
-    .slice(0, count);
 }
 
 // ── 가상 시험 ────────────────────────────────────────────────────────────────

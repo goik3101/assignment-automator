@@ -15,7 +15,7 @@ export type { ChatTurn };
 export interface ChatAnswer {
   reply: string;
   sources: SourceRef[];
-  /** true면 화면이 답변 아래에 "어떤 방법으로 외워 볼까요?"(플래시카드·퀴즈·정리) 버튼을 보여준다. 저장된 과제에서만 켠다. */
+  /** true면 화면이 답변 아래에 "어떤 방법으로 외워 볼까요?"(암기·플래시카드·퀴즈·정리) 버튼을 보여준다. 저장된 과제에서만 켠다. */
   offerMemorize?: boolean;
   /** 학생이 결과물의 한 칸을 고쳐 달라고 했을 때 AI가 낸 칸 완성본 — 화면이 "결과물에 적용" 버튼을 보여 준다(AI가 쓴 결과물에서만). */
   edit?: ChatSectionEdit;
