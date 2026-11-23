@@ -2,6 +2,8 @@
 // 모델이 무엇을 쓸지는 안내문에서 오지만, "어떤 형식으로 쓸지"는 지금까지 모든 단계에 같은 조사 자료 규칙이 적용돼 신문 과제에서도 불릿 사실 나열이 나왔다.
 // alias import 없음 — node:test에서 바로 불러올 수 있게.
 
+import { mapOutsideCodeFences } from "./code-fence.ts";
+
 export type DeliverableForm = "newspaper";
 
 const NEWSPAPER_LABEL = /신문|뉴스레터|기사문?/;
@@ -495,6 +497,16 @@ export function reduceReportedSpeech(content: string): { content: string; change
  * 본문 속 주소는 검색이 실제로 연 페이지인지 확인되지 않은 것이다(실측: 출처 0개인 글에 주소 13개가 본문에 그대로 남음).
  */
 export function stripInlineUrls(content: string): { content: string; removed: number } {
+  // 코드 펜스 안의 "http://"·빈 괄호 `()`는 코드의 일부다(실측 2026-11-23: 파이썬 코드의 "http" 비교와 `.lower()`가 지워짐) — 펜스 밖만 다듬는다.
+  if (content.includes("```")) {
+    let total = 0;
+    const out = mapOutsideCodeFences(content, (prose) => {
+      const r = stripInlineUrls(prose);
+      total += r.removed;
+      return r.content;
+    });
+    return total ? { content: out, removed: total } : { content, removed: 0 };
+  }
   let removed = 0;
   const count = () => {
     removed++;

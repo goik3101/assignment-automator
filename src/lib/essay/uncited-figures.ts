@@ -28,7 +28,9 @@ export function valuesIn(text: string): string[] {
 }
 
 function splitSentences(content: string): string[] {
+  // 코드 펜스 안의 `"100%"` 같은 문자열은 글의 수치 주장이 아니다 — 보고서 코드 때문에 정직성 보완 호출이 돌았다(2026-11-24 정보).
   return content
+    .replace(/```[\s\S]*?(?:```|$)/g, "")
     .split("\n")
     .filter((l) => !/^\s*(?:#|\|)/.test(l))
     // 각주가 마침표 뒤에 붙으면("판결했다.[1] 다음") 공백만으로는 안 나뉜다.

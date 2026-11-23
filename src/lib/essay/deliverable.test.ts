@@ -185,3 +185,30 @@ test("칸 이름이 없는 '사진은 미리 준비' 문장은 자기 설명에 
   assert.deepEqual(studentPreparedVisualsForStep("인터뷰", labels, shared, "인터뷰를 구성한다", guide), []);
   assert.deepEqual(studentPreparedVisualsForStep("사설/칼럼", labels, shared, "사설을 쓴다", guide), []);
 });
+
+test("stripInlineUrls: 코드 펜스 안의 http 비교·빈 괄호는 지우지 않고 본문 주소만 지운다", async () => {
+  const { stripInlineUrls } = await import("./deliverable.ts");
+  const code = '```python\nlower = message.lower()\nhas_link = "http://" in lower or "https://" in lower\n```';
+  const t = `자세한 내용은 https://example.com/a 에 있다.\n\n${code}`;
+  const r = stripInlineUrls(t);
+  assert.ok(r.content.includes(code));
+  assert.ok(!r.content.includes("example.com"));
+  assert.equal(r.removed, 1);
+  assert.equal(stripInlineUrls(code).removed, 0);
+});
+
+test("mapOutsideCodeFences: 펜스 밖에만 함수를 적용하고 펜스 안은 그대로 둔다", async () => {
+  const { mapOutsideCodeFences } = await import("./code-fence.ts");
+  const t = "앞 [메모]\n\n```python\nx = []\n    y = f()\n```\n\n뒤 [메모]";
+  assert.equal(mapOutsideCodeFences(t, (p) => p.replaceAll("[메모]", "")), "앞 \n\n```python\nx = []\n    y = f()\n```\n\n뒤 ");
+  assert.equal(mapOutsideCodeFences("펜스 없음 [메모]", (p) => p.replaceAll("[메모]", "")), "펜스 없음 ");
+});
+
+test("maskCodeFences: 펜스를 가렸다가 그대로 되돌린다", async () => {
+  const { maskCodeFences } = await import("./code-fence.ts");
+  const t = '앞 "따옴표 문장입니다 여덟자"\n```python\nprint("판정: ", x)\n```\n뒤';
+  const m = maskCodeFences(t);
+  assert.ok(!m.masked.includes("print("));
+  assert.equal(m.restore(m.masked), t);
+  assert.equal(maskCodeFences("펜스 없음").masked, "펜스 없음");
+});

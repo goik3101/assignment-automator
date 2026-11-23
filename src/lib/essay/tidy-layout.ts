@@ -11,8 +11,17 @@ export function unwrapHardBreaks(content: string): { content: string; joined: nu
   const out: string[] = [];
   let joined = 0;
   let i = 0;
-  const isSpecial = (l: string) => /^\s*(?:#|\||>|[-*•]\s|\d+[.)]\s)/.test(l);
+  // "1마디 | 큐-울 배 | 가사"처럼 번호+단위로 시작하거나 " | " 칸 구분이 있는 줄은 문장이 아니라 칸(목록) 줄이다 — 이으면 24마디가 한 문단이 된다(2026-11-23 음악).
+  const isSpecial = (l: string) => /^\s*(?:#|\||>|[-*•]\s|\d+[.)]\s|\d+\s*(?:마디|장면|컷|문항)\s*[|:：)])/.test(l) || / \| /.test(l);
   while (i < lines.length) {
+    // 코드 펜스 안은 줄이 곧 구조다(들여쓰기·줄바꿈). 이어 붙이면 파이썬 보고서 코드가 한 줄로 무너진다(2026-11-23 정보 2건).
+    if (/^\s*```/.test(lines[i])) {
+      let end = i + 1;
+      while (end < lines.length && !/^\s*```/.test(lines[end])) end++;
+      out.push(...lines.slice(i, Math.min(end + 1, lines.length)));
+      i = end + 1;
+      continue;
+    }
     if (!lines[i].trim() || isSpecial(lines[i])) {
       out.push(lines[i++]);
       continue;
