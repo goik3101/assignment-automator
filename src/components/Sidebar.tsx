@@ -69,8 +69,9 @@ export default function Sidebar() {
           "shrink-0 flex-col border-r border-border bg-background",
           // 모바일: 페이지 흐름 안에 끼어들어 본문을 밀어내던 메뉴를, 상단 바 아래를 덮는 화면 높이의 패널로 바꾼다(패널 전체가 스크롤된다)
           "max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-[61px] max-md:z-40 max-md:overflow-y-auto max-md:overscroll-contain",
-          // 데스크톱: 화면 높이가 모자라면(작은 노트북 등) 목록이 한 줄로 쪼그라드는 대신 사이드바 전체가 스크롤된다
-          "md:sticky md:top-0 md:h-screen md:overflow-y-auto",
+          // 데스크톱·태블릿: 화면 높이(주소창이 가리는 부분을 뺀 dvh)에 딱 맞추고, 가운데(메뉴+최근 목록)만 스크롤한다.
+          // 아래 로그인·디스코드 줄은 항상 보인다 — 예전에는 사이드바 전체가 스크롤돼서 높이가 모자란 태블릿에서 아래 줄이 잘렸다.
+          "md:sticky md:top-0 md:h-dvh md:overflow-hidden",
           collapsed ? "md:w-[68px]" : "md:w-[256px]",
           open ? "flex" : "hidden md:flex",
         ].join(" ")}
@@ -105,6 +106,7 @@ export default function Sidebar() {
           </button>
         </div>
 
+        <div className="flex flex-col md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
         <nav aria-label={t("주 메뉴")} className="mt-3 space-y-0.5 px-3">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link
@@ -138,8 +140,9 @@ export default function Sidebar() {
         ) : (
           <SidebarWorklist onNavigate={() => setOpen(false)} />
         )}
+        </div>
 
-        <div className="p-3">
+        <div className="shrink-0 p-3">
           <SidebarQuickActions collapsed={collapsed} onNavigate={() => setOpen(false)} />
           {!collapsed && <AuthBar />}
         </div>

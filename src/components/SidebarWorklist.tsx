@@ -73,10 +73,10 @@ export default function SidebarWorklist({ onNavigate }: { onNavigate?: () => voi
   if (!user || items.length === 0) return <div className="flex-1" />;
 
   return (
-    <div className="mt-6 flex min-h-0 flex-1 flex-col px-3 max-md:flex-none md:min-h-[180px]">
+    <div className="mt-6 flex flex-col px-3 pb-2">
       <p className="mb-1.5 px-3 text-xs font-medium text-faint">{t("최근")}</p>
       {/* 데스크톱: 남는 높이 안에서 이 목록만 스크롤된다. 모바일: 패널 전체가 스크롤되므로 목록은 끝까지 펼친다. */}
-      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain max-md:flex-none max-md:overflow-visible">
+      <ul className="space-y-0.5">
         {items.map((it) => {
           const Icon = KIND_ICON[it.kind];
           return (
