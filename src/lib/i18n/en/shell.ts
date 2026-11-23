@@ -213,4 +213,19 @@ export const shell: Record<string, string> = {
   "· 학습 모드(자료 조사 + 피드백): 하루 5회": "· Study mode (research + feedback): 5 per day",
   "· 요약·플래시카드·퀴즈·가상 시험: 로그인 시 종류별로 하루 1회": "· Summary, flashcards, quiz, mock exam: 1 each per day when signed in",
   "· AI 튜터(채팅): 로그인 시 하루 횟수 제한이 있어요": "· AI tutor (chat): daily limit when signed in",
+  // 개선 돕기 창 (HelpImproveDialog)
+  "STUDED AI 개선을 도와주세요": "Help improve STUDED AI",
+  "보내 주셔서 고마워요. 같은 문제가 다시 생기지 않게 고칠게요.": "Thank you for sending this. We'll fix it so it doesn't happen again.",
+  "지금은 베타 버전이라 안내문을 잘못 읽거나 글이 어색할 수 있어요. 방금 쓴 안내문 사진과 결과물을 보내 주시면, 같은 문제가 다른 친구들에게 생기지 않게 고칠게요.":
+    "STUDED AI is in beta, so it can misread a notice or write awkwardly. If you send the notice photo and the result you just made, we'll fix it so the same problem doesn't happen to other students.",
+  "이렇게 보내져요": "What gets sent",
+  "안내문 사진 {n}장": "{n} notice photo(s)",
+  "만들어진 결과물 글과 출처": "The generated text and its sources",
+  "내가 적은 추가 요청": "Any extra request I typed",
+  "안내문 사진 {n}": "Notice photo {n}",
+  "이메일·계정 정보는 함께 보내지 않아요. 안내문에 이름이나 학교가 보이면 보내지 않으셔도 돼요.": "Your email and account details are not sent. If a name or school is visible on the notice, you don't have to send it.",
+  "운영자만 볼 수 있고 서비스 개선에만 쓰며 1년간 보관해요. 보내지 않아도 서비스는 똑같이 쓸 수 있어요.": "Only the operator can see it, it is used only to improve the service, and it is kept for 1 year. You can use the service the same way without sending.",
+  "개인정보처리방침": "Privacy Policy",
+  "Discord 커뮤니티에 참가하면 더 좋은 의견을 나눌 수 있어요.": "Join our Discord community to share better feedback.",
+  "다음에": "Not now",
 };

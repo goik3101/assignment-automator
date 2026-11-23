@@ -3,6 +3,7 @@ import { getServerSupabase } from "@/lib/supabase/server-client";
 import { getServiceClient } from "@/lib/supabase/service-client";
 import { LIMITS, checkText } from "@/lib/api/validate";
 import { FEEDBACK_BUCKET, MAX_ATTACHMENTS, MAX_BYTES_EACH, sniffImage, type FeedbackAttachment } from "@/lib/feedback/attachments";
+import { SHARE_MAX_CHARS, withShareTag } from "@/lib/feedback/share";
 
 // F14: 문의/피드백 제출. 로그인 여부와 무관하게 받는다 (feedback_submissions의
 // user_id는 nullable — 서비스 전용 채널이라 개인 계정과 엮이지 않아도 됨).
@@ -10,11 +11,14 @@ import { FEEDBACK_BUCKET, MAX_ATTACHMENTS, MAX_BYTES_EACH, sniffImage, type Feed
 export async function POST(req: NextRequest) {
   let message = "";
   let files: File[] = [];
+  // "개선 돕기"(안내문 사진·결과물 공유): 학생이 직접 눌러 보낸 것만. 계정과 잇지 않고(user_id 비움) 글 한도만 넓힌다.
+  let share = false;
   if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
     const form = await req.formData().catch(() => null);
     if (!form) return NextResponse.json({ error: "요청을 읽지 못했어요." }, { status: 400 });
     const m = form.get("message");
     message = typeof m === "string" ? m : "";
+    share = form.get("kind") === "share";
     files = form.getAll("files").filter((f): f is File => typeof f !== "string" && f.size > 0);
   } else {
     const body = (await req.json().catch(() => null)) as { message?: unknown } | null;
@@ -24,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (!message.trim()) {
     return NextResponse.json({ error: "내용을 입력해주세요." }, { status: 400 });
   }
-  const tooLong = checkText(message, LIMITS.feedback, "내용");
+  const tooLong = share ? checkText(message, SHARE_MAX_CHARS + 20, "내용") : checkText(message, LIMITS.feedback, "내용");
   if (tooLong) return NextResponse.json({ error: tooLong }, { status: 400 });
   if (files.length > MAX_ATTACHMENTS) {
     return NextResponse.json({ error: `이미지는 최대 ${MAX_ATTACHMENTS}장까지 올릴 수 있어요.` }, { status: 400 });
@@ -64,7 +68,11 @@ export async function POST(req: NextRequest) {
   // 이미지가 없으면 예전과 똑같은 열만 넣는다 — attachments 열이 아직 없어도 글 피드백은 계속 받는다.
   const { error } = await supabase
     .from("feedback_submissions")
-    .insert({ user_id: user?.id ?? null, message: message.trim(), ...(uploaded.length > 0 ? { attachments: uploaded } : {}) });
+    .insert({
+      user_id: share ? null : (user?.id ?? null),
+      message: share ? withShareTag(message.trim()) : message.trim(),
+      ...(uploaded.length > 0 ? { attachments: uploaded } : {}),
+    });
   if (error) {
     console.error("[/api/feedback] 저장 실패", error);
     if (uploaded.length > 0) await getServiceClient().storage.from(FEEDBACK_BUCKET).remove(uploaded.map((u) => u.path));
