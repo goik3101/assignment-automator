@@ -5,7 +5,7 @@ import { LEGAL } from "@/lib/legal/info";
 export const metadata: Metadata = { title: "개인정보처리방침" };
 
 export default function PrivacyPage() {
-  const { serviceName, operator, contactEmail, supabaseRegion, effectiveDate } = LEGAL;
+  const { serviceName, operator, contactEmail, supabaseRegion, privacyEffectiveDate: effectiveDate } = LEGAL;
   return (
     <LegalDoc title="개인정보처리방침" effective={effectiveDate}>
       <p className="text-muted">
@@ -66,8 +66,7 @@ export default function PrivacyPage() {
             "휴지통에 넣은 결과물: 영구 삭제하거나 탈퇴할 때까지 보유합니다.",
             "AI 튜터 대화: 이용자가 대화를 지우거나 탈퇴할 때까지 보유하고, 지우면 바로 삭제합니다.",
             "이용 기록, 접속 IP(이용 제한·보안 목적): 목적을 달성한 뒤 지체 없이 파기하며, 길어도 1년을 넘기지 않습니다.",
-            "문의·의견: 처리가 끝난 뒤 1년까지 보유합니다.",
-            "개선 돕기로 보낸 안내문 사진·결과물: 받은 날부터 1년까지 보유한 뒤 파기하며, 이용자가 삭제를 요청하면 지체 없이 삭제합니다.",
+            "문의·의견과 개선 돕기로 보낸 안내문 사진·결과물: 받은 날부터 1년까지 보유하며, 1년이 지나면 매일 한 번 도는 자동 삭제로 사진 파일과 함께 파기합니다. 이용자가 삭제를 요청하면 그 전에도 지체 없이 삭제합니다.",
             "겹침 방지용 수치 벡터: 개인을 식별할 수 없는 형태로 서비스 운영 동안 보유합니다.",
             "법령에서 보존하도록 정한 정보는 그 기간 동안 보관합니다.",
           ]}
@@ -132,6 +131,7 @@ export default function PrivacyPage() {
           items={[
             "보유 기간이 지나거나 처리 목적이 달성되면 지체 없이 파기합니다.",
             "전자적 파일은 복구할 수 없는 방법으로 삭제합니다.",
+            "받은 지 1년이 지난 문의·의견과 개선 돕기 자료(첨부한 사진 포함)는 자동 삭제 작업이 매일 찾아 삭제합니다.",
             "회원 탈퇴를 하면 계정과 계정에 연결된 결과물·설정·학습 기록이 삭제됩니다.",
           ]}
         />
@@ -201,7 +201,15 @@ export default function PrivacyPage() {
       </Section>
 
       <Section title="12. 방침의 변경">
-        <p>이 방침을 바꾸면 시행일 7일 전부터 서비스 화면에 알립니다. 이용자에게 불리한 변경은 30일 전부터 알립니다.</p>
+        <p>
+          이 방침을 바꾸면 시행일 7일 전부터 서비스 화면에 알립니다. 이용자에게 불리한 변경은 30일 전부터 알립니다. 다만 이용자가 직접 선택해야만 시작되는
+          기능을 더하는 것처럼 이용자에게 불리하지 않은 변경은 시행일에 함께 알릴 수 있습니다.
+        </p>
+        <List
+          items={[
+            "2026년 11월 24일 시행: 이용자가 직접 선택해 보내는 \"개선 돕기\"(안내문 사진·결과물) 수집 항목, 보유 기간 1년과 자동 삭제, 삭제 요청 방법을 추가했습니다. 이전 방침은 운영자에게 문의하시면 확인하실 수 있습니다.",
+          ]}
+        />
       </Section>
     </LegalDoc>
   );

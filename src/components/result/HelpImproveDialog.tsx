@@ -166,7 +166,7 @@ export default function HelpImproveDialog({
           </div>
 
           <p className="text-xs text-faint">
-            {t("운영자만 볼 수 있고 서비스 개선에만 쓰며 1년간 보관해요. 보내지 않아도 서비스는 똑같이 쓸 수 있어요.")}{" "}
+            {t("운영자만 볼 수 있고 서비스 개선에만 쓰며 1년간 보관한 뒤 자동으로 지워요. 보내지 않아도 서비스는 똑같이 쓸 수 있어요.")}{" "}
             <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
               {t("개인정보처리방침")}
             </a>

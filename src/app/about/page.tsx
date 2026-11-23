@@ -87,7 +87,7 @@ export default function AboutPage() {
       <section className="mt-10 space-y-3">
         <h2 className="text-base font-semibold">올린 자료는 어떻게 다뤄지나요</h2>
         <ul className="list-disc space-y-1 pl-5 text-muted">
-          <li>안내문 사진은 분석을 위해 AI에 전달할 때만 쓰고, 운영자가 별도로 보관하지 않아요.</li>
+          <li>안내문 사진은 분석을 위해 AI에 전달할 때만 쓰고, 운영자가 별도로 보관하지 않아요. 결과 화면에서 직접 &quot;보내기&quot;를 누르면 그 사진과 결과물만 1년간 보관해 서비스 개선에 쓰고, 그 뒤 자동으로 지워요.</li>
           <li>로그인하면 만든 결과물이 내 계정에 저장되고, 결과물 삭제와 회원 탈퇴는 설정 화면에서 직접 할 수 있어요. 탈퇴하면 계정에 연결된 자료가 삭제돼요.</li>
           <li>운영자는 입력한 내용을 AI 학습용으로 제공하도록 설정하지 않았어요.</li>
           <li>광고·행태 분석용 쿠키는 쓰지 않아요.</li>

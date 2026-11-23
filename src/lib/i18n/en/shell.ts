@@ -224,7 +224,7 @@ export const shell: Record<string, string> = {
   "내가 적은 추가 요청": "Any extra request I typed",
   "안내문 사진 {n}": "Notice photo {n}",
   "이메일·계정 정보는 함께 보내지 않아요. 안내문에 이름이나 학교가 보이면 보내지 않으셔도 돼요.": "Your email and account details are not sent. If a name or school is visible on the notice, you don't have to send it.",
-  "운영자만 볼 수 있고 서비스 개선에만 쓰며 1년간 보관해요. 보내지 않아도 서비스는 똑같이 쓸 수 있어요.": "Only the operator can see it, it is used only to improve the service, and it is kept for 1 year. You can use the service the same way without sending.",
+  "운영자만 볼 수 있고 서비스 개선에만 쓰며 1년간 보관한 뒤 자동으로 지워요. 보내지 않아도 서비스는 똑같이 쓸 수 있어요.": "Only the operator can see it, it is used only to improve the service, and it is automatically deleted after 1 year. You can use the service the same way without sending.",
   "개인정보처리방침": "Privacy Policy",
   "Discord 커뮤니티에 참가하면 더 좋은 의견을 나눌 수 있어요.": "Join our Discord community to share better feedback.",
   "다음에": "Not now",
