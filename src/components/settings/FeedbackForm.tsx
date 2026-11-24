@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from "react";
-import { Check, ExternalLink, Loader2, Plus, Upload, X } from "lucide-react";
+import { Check, ImagePlus, Loader2, Mail, MessageCircle, X } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { CONTACT_EMAIL, DISCORD_URL } from "@/lib/seo/site";
 import { MAX_ATTACHMENTS } from "@/lib/feedback/attachments";
@@ -19,6 +19,7 @@ interface Picked {
 const MAX_CHARS = 2000;
 
 // 피드백/문의 탭 본문. 글(필수) + 화면 캡처 같은 이미지(선택, 최대 3장)를 /api/feedback으로 보낸다.
+// 입력은 AI 채팅 입력창처럼 카드 하나(글·이미지·보내기)로 합치고, 보내는 방식은 스위치 한 줄, 내가 보낸 글과 답변은 위쪽 탭으로 나눈다.
 // 이미지는 올리기 전에 브라우저에서 줄이고, 붙여넣기(Ctrl+V)·끌어다 놓기·선택창 모두 받는다.
 export default function FeedbackForm() {
   const t = useT();
@@ -26,6 +27,7 @@ export default function FeedbackForm() {
   // 익명이 기본. 이메일(내 계정)로 보내기를 직접 고른 경우에만 개발자가 이메일을 보고 답변을 남길 수 있다.
   const [identity, setIdentity] = useState<FeedbackIdentity>("anonymous");
   const [mine, setMine] = useState<MyFeedback[]>([]);
+  const [view, setView] = useState<"write" | "mine">("write");
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<Picked[]>([]);
   const [busy, setBusy] = useState(0); // 줄이는 중인 이미지 수
@@ -41,25 +43,36 @@ export default function FeedbackForm() {
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, []);
 
-  async function loadMine() {
-    try {
-      const res = await fetch("/api/feedback/mine");
-      if (res.ok) setMine(((await res.json()) as { items?: MyFeedback[] }).items ?? []);
-    } catch {
-      /* 목록을 못 불러와도 글 보내기는 그대로 된다 */
+  // 목록을 못 불러와도 글 보내기는 그대로 된다.
+  const [mineTick, setMineTick] = useState(0);
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    fetch("/api/feedback/mine")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { items?: MyFeedback[] } | null) => {
+        if (alive && data) setMine(data.items ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [userId, mineTick]);
+
+  // 로그아웃하면 내 글·방식·탭을 처음 상태로 돌린다(렌더 중에 한 번만 비교해서 바꾼다).
+  const [lastUser, setLastUser] = useState(userId);
+  if (lastUser !== userId) {
+    setLastUser(userId);
+    if (!userId) {
+      setMine([]);
+      setIdentity("anonymous");
+      setView("write");
     }
   }
 
-  const userId = user?.id;
-  useEffect(() => {
-    if (userId) void loadMine();
-    else {
-      setMine([]);
-      setIdentity("anonymous");
-    }
-  }, [userId]);
-
   const slotsLeft = MAX_ATTACHMENTS - picked.length - busy;
+  const showMine = view === "mine" && !!user && mine.length > 0;
 
   async function addFiles(list: FileList | File[]) {
     const images = Array.from(list).filter((f) => f.type.startsWith("image/"));
@@ -124,7 +137,7 @@ export default function FeedbackForm() {
       setPicked([]);
       setSent(true);
       setTimeout(() => setSent(false), 3000);
-      if (user && identity === "account") void loadMine();
+      if (user && identity === "account") setMineTick((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("전달하지 못했어요. 잠시 후 다시 시도해주세요."));
     } finally {
@@ -132,180 +145,180 @@ export default function FeedbackForm() {
     }
   }
 
+  const tab = "inline-flex h-8 items-center rounded-full px-3.5 text-[13px] font-medium transition-colors";
+
   return (
     <section>
       <h3 className="text-[18px] font-bold tracking-tight">{t("피드백 남기기")}</h3>
-      <p className="mt-2 text-[13px] leading-relaxed text-muted">{t("불편한 점이나 바라는 기능을 알려 주세요. 보내 주신 내용은 서비스 개선에만 써요.")}</p>
-      <p className="mt-1 text-[13px] leading-relaxed text-muted">
-        {t("Discord에 들어오시면 더 정확한 피드백을 드릴 수 있어요.")}{" "}
-        <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 font-semibold text-foreground underline underline-offset-2">
-          {t("Discord 입장")}
-          <ExternalLink size={12} strokeWidth={2} aria-hidden />
-        </a>
-      </p>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{t("불편한 점이나 바라는 기능을 알려 주세요. 서비스 개선에만 써요.")}</p>
 
-      <label htmlFor="feedback-message" className="mt-6 block text-sm font-semibold">
-        {t("문의사항 (필수)")} <span className="text-danger" aria-hidden>*</span>
-      </label>
-      <textarea
-        id="feedback-message"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onPaste={onPaste}
-        maxLength={MAX_CHARS}
-        rows={6}
-        placeholder={t("문의사항, 제안사항 또는 문제점을 자세히 설명해주세요...")}
-        className="field-sizing-content mt-2 max-h-[60vh] min-h-40 w-full resize-none rounded-xl border border-border-strong bg-surface px-3.5 py-3 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-foreground"
-      />
-      <p className="mt-1 text-right text-xs tabular-nums text-faint">{message.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}</p>
+      {user && mine.length > 0 && (
+        <div role="tablist" className="mt-4 inline-flex gap-0.5 rounded-full border border-border-strong p-0.5">
+          <button role="tab" aria-selected={view === "write"} onClick={() => setView("write")} className={[tab, view === "write" ? "bg-foreground text-background" : "text-muted hover:text-foreground"].join(" ")}>
+            {t("보내기")}
+          </button>
+          <button role="tab" aria-selected={view === "mine"} onClick={() => setView("mine")} className={[tab, view === "mine" ? "bg-foreground text-background" : "text-muted hover:text-foreground"].join(" ")}>
+            {t("보낸 피드백")} <span className="ml-1 tabular-nums opacity-70">{mine.length}</span>
+          </button>
+        </div>
+      )}
 
-      <p className="mt-4 text-sm font-semibold">{t("첨부 이미지 (화면 캡처 등)")}</p>
-      {(picked.length > 0 || busy > 0) && (
-        <ul className="mt-2 flex flex-wrap gap-3">
-          {picked.map((p) => (
-            <li key={p.id} className="relative">
-              {/* 브라우저 안에서 만든 미리보기(blob:)라 next/image를 거치지 않는다 */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.preview} alt={p.file.name} className="h-20 w-20 rounded-lg border border-border-strong object-cover" />
-              <button
-                type="button"
-                onClick={() => remove(p.id)}
-                aria-label={t("이미지 삭제")}
-                className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full border border-border-strong bg-background text-muted transition-colors hover:text-foreground"
-              >
-                <X size={13} strokeWidth={2} />
-              </button>
+      {showMine ? (
+        <ul className="mt-4 space-y-3">
+          {mine.map((m) => (
+            <li key={m.id} className="rounded-2xl border border-border bg-surface p-4">
+              <p className="text-xs text-muted">{new Date(m.created_at).toLocaleString()}</p>
+              <p className="mt-1.5 whitespace-pre-wrap text-sm">{m.message}</p>
+              {m.reply ? (
+                <div className="mt-3 rounded-xl border border-border-strong bg-background px-3.5 py-3">
+                  <p className="text-xs font-semibold text-muted">{t("개발자 답변")}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{m.reply}</p>
+                </div>
+              ) : (
+                <p className="mt-3 text-xs text-faint">{t("답변을 기다리고 있어요.")}</p>
+              )}
             </li>
           ))}
-          {Array.from({ length: busy }).map((_, i) => (
-            <li key={`busy-${i}`} className="grid h-20 w-20 place-items-center rounded-lg border border-border-strong bg-surface text-muted">
-              <Loader2 size={18} className="animate-spin" aria-label={t("이미지 줄이는 중")} />
-            </li>
-          ))}
-          {slotsLeft > 0 && (
-            <li>
+        </ul>
+      ) : (
+        <>
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            className={["mt-4 rounded-2xl border bg-surface p-3 transition-colors focus-within:border-foreground/60", dragging ? "border-foreground" : "border-border-strong"].join(" ")}
+          >
+            <label htmlFor="feedback-message" className="sr-only">
+              {t("문의사항 (필수)")}
+            </label>
+            <textarea
+              id="feedback-message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onPaste={onPaste}
+              maxLength={MAX_CHARS}
+              rows={5}
+              placeholder={t("무엇이든 적어 주세요. 화면 캡처는 붙여넣어도 돼요")}
+              className="field-sizing-content block max-h-[50vh] min-h-32 w-full resize-none bg-transparent px-1 py-1 text-sm leading-relaxed outline-none placeholder:text-faint focus-visible:outline-none!"
+            />
+            {(picked.length > 0 || busy > 0) && (
+              <ul className="mt-2 flex flex-wrap gap-2.5 px-1">
+                {picked.map((p) => (
+                  <li key={p.id} className="relative">
+                    {/* 브라우저 안에서 만든 미리보기(blob:)라 next/image를 거치지 않는다 */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.preview} alt={p.file.name} className="h-14 w-14 rounded-lg border border-border-strong object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => remove(p.id)}
+                      aria-label={t("이미지 삭제")}
+                      className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-background text-muted transition-colors hover:text-foreground"
+                    >
+                      <X size={11} strokeWidth={2} />
+                    </button>
+                  </li>
+                ))}
+                {Array.from({ length: busy }).map((_, i) => (
+                  <li key={`busy-${i}`} className="grid h-14 w-14 place-items-center rounded-lg border border-border-strong bg-background text-muted">
+                    <Loader2 size={16} className="animate-spin" aria-label={t("이미지 줄이는 중")} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
+                disabled={slotsLeft <= 0}
                 aria-label={t("이미지 추가")}
-                className="grid h-20 w-20 place-items-center rounded-lg border border-dashed border-border-strong text-muted transition-colors hover:border-foreground hover:text-foreground"
+                title={t("이미지 최대 {n}장. 큰 이미지는 자동으로 줄여서 올려요.", { n: MAX_ATTACHMENTS })}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
               >
-                <Plus size={20} strokeWidth={1.8} />
+                <ImagePlus size={16} strokeWidth={1.7} aria-hidden />
+                {t("이미지")}
+                {picked.length > 0 && <span className="tabular-nums text-faint">{picked.length}/{MAX_ATTACHMENTS}</span>}
               </button>
-            </li>
-          )}
-        </ul>
-      )}
-      {picked.length === 0 && busy === 0 && (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          className={[
-            "mt-2 flex h-20 w-full items-center justify-center gap-2 rounded-xl border border-dashed text-[13px] text-muted transition-colors hover:border-foreground hover:text-foreground",
-            dragging ? "border-foreground bg-surface text-foreground" : "border-border-strong",
-          ].join(" ")}
-        >
-          <Upload size={16} strokeWidth={1.8} aria-hidden />
-          {t("클릭하여 업로드하거나 이미지를 끌어다 놓으세요")}
-        </button>
-      )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        onChange={(e) => {
-          if (e.target.files) void addFiles(e.target.files);
-          e.target.value = "";
-        }}
-      />
-      <p className="mt-2 text-xs text-faint">{t("이미지 최대 {n}장. 큰 이미지는 자동으로 줄여서 올려요.", { n: MAX_ATTACHMENTS })}</p>
+              {message.length > 0 && (
+                <span className="text-xs tabular-nums text-faint">
+                  {message.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!message.trim() || sending || busy > 0}
+                className="ml-auto inline-flex h-9 items-center rounded-full bg-foreground px-5 text-[13px] font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {t("보내기")}
+              </button>
+            </div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files) void addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
 
-      <p className="mt-5 text-sm font-semibold">{t("보내는 방식")}</p>
-      {user ? (
-        <div role="radiogroup" aria-label={t("보내는 방식")} className="mt-2 grid gap-2 sm:grid-cols-2">
-          {(
-            [
-              ["anonymous", t("익명"), t("이름도 이메일도 저장하지 않아요. 답변은 받을 수 없어요.")],
-              ["account", t("이메일로 보내기"), t("내 계정 이메일이 개발자에게 보이고, 답변을 아래에서 받아요.")],
-            ] as const
-          ).map(([value, title, hint]) => (
-            <label
-              key={value}
-              className={[
-                "flex cursor-pointer gap-2.5 rounded-xl border px-3.5 py-3 transition-colors",
-                identity === value ? "border-foreground bg-surface" : "border-border-strong hover:border-foreground",
-              ].join(" ")}
-            >
-              <input type="radio" name="feedback-identity" value={value} checked={identity === value} onChange={() => setIdentity(value)} className="mt-1 accent-foreground" />
-              <span>
-                <span className="block text-[13px] font-semibold">{title}</span>
-                <span className="mt-0.5 block text-xs leading-relaxed text-muted">{hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      ) : (
-        <p className="mt-2 text-xs leading-relaxed text-muted">{t("익명으로 전달돼요. 로그인하면 이메일로 보내 개발자 답변을 받을 수 있어요.")}</p>
+          {(sent || error) && (
+            <div className="mt-2.5 px-1" aria-live="polite">
+              {sent && (
+                <p role="status" className="inline-flex items-center gap-1 text-xs text-muted">
+                  <Check size={13} strokeWidth={2} aria-hidden />
+                  {t("전달했어요. 감사합니다!")}
+                </p>
+              )}
+              {error && (
+                <p role="alert" className="text-xs text-danger">
+                  {error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {user ? (
+            <div className="mt-3.5 flex items-start gap-3 px-1">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={identity === "account"}
+                aria-label={t("이메일로 보내고 답변 받기")}
+                onClick={() => setIdentity((v) => (v === "account" ? "anonymous" : "account"))}
+                className={["relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors", identity === "account" ? "border-foreground bg-foreground" : "border-border-strong bg-surface"].join(" ")}
+              >
+                <span className={["absolute top-0.5 h-3.5 w-3.5 rounded-full transition-all", identity === "account" ? "left-[18px] bg-background" : "left-0.5 bg-muted"].join(" ")} />
+              </button>
+              <p className="text-[13px] leading-snug">
+                <span className="font-medium">{t("이메일로 보내고 답변 받기")}</span>
+                <span className="mt-0.5 block text-xs text-muted">
+                  {identity === "account" ? t("내 계정 이메일이 개발자에게 보여요. 답변은 '보낸 피드백'에서 받아요.") : t("지금은 익명이에요. 이름도 이메일도 저장하지 않아요.")}
+                </span>
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3.5 px-1 text-xs leading-relaxed text-muted">{t("익명으로 전달돼요. 로그인하면 이메일로 보내 개발자 답변을 받을 수 있어요.")}</p>
+          )}
+        </>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border pt-4">
-        <p className="text-xs leading-relaxed text-muted">
-          {t("이메일로 문의하셔도 돼요.")}{" "}
-          <a href={`mailto:${CONTACT_EMAIL}`} className="underline underline-offset-2 hover:text-foreground">{CONTACT_EMAIL}</a>
-        </p>
-        <div className="flex items-center gap-3">
-          {sent && (
-            <p role="status" className="inline-flex items-center gap-1 text-xs text-muted">
-              <Check size={13} strokeWidth={2} aria-hidden />
-              {t("전달했어요. 감사합니다!")}
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="max-w-[260px] text-xs text-danger">
-              {error}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!message.trim() || sending || busy > 0}
-            className="inline-flex h-10 items-center rounded-full bg-foreground px-5 text-[13px] font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            {t("피드백 제출")}
-          </button>
-        </div>
+      <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border px-1 pt-4 text-[13px] text-muted">
+        <a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground">
+          <MessageCircle size={14} strokeWidth={1.7} aria-hidden />
+          {t("Discord에서 더 자세히")}
+        </a>
+        <a href={`mailto:${CONTACT_EMAIL}`} className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground">
+          <Mail size={14} strokeWidth={1.7} aria-hidden />
+          {t("이메일 문의")}
+        </a>
       </div>
-
-      {user && mine.length > 0 && (
-        <div className="mt-10">
-          <h3 className="text-[18px] font-bold tracking-tight">{t("내가 보낸 피드백")}</h3>
-          <p className="mt-1 text-xs text-faint">{t("이메일로 보낸 것만 여기에 보여요.")}</p>
-          <ul className="mt-3 space-y-3">
-            {mine.map((m) => (
-              <li key={m.id} className="rounded-2xl border border-border bg-surface p-4">
-                <p className="text-xs text-muted">{new Date(m.created_at).toLocaleString()}</p>
-                <p className="mt-1.5 whitespace-pre-wrap text-sm">{m.message}</p>
-                {m.reply ? (
-                  <div className="mt-3 rounded-xl border border-border-strong bg-background px-3.5 py-3">
-                    <p className="text-xs font-semibold text-muted">{t("개발자 답변")}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{m.reply}</p>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-xs text-faint">{t("답변을 기다리고 있어요.")}</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </section>
   );
 }
