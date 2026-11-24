@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { acronym, chipBank, cleanSkeleton, dedupeKeywords, deriveKeywords, firstLetterHint, flowLine, quizIndexes, readiness, sameKeyword, scoreWrite, segmentLine, skeletonLimits } from "./memo-skeleton.ts";
+import { acronym, chipBank, cleanSkeleton, dedupeKeywords, markKeywords, firstLetterHint, mnemonicOf, flowLine, quizIndexes, readiness, sameKeyword, scoreWrite, segmentLine, skeletonLimits } from "./memo-skeleton.ts";
 
 const MATERIAL = "대기압이 물을 빨대 안으로 민다. 밸브는 역류를 막고 펌프는 압력을 바꾼다. 2023년 폐플라스틱은 771만 톤이다.";
 
@@ -104,8 +104,8 @@ test("cleanSkeleton: 핵심어가 하나도 안 남은 칸(결론)도 순서에�
   assert.equal(flowLine(r), "자료조사 → 결론");
 });
 
-test("skeletonLimits: 이름 있는 항목으로 된 결과물은 칸을 2개 더 허용하고 핵심어 수는 그대로", () => {
-  assert.deepEqual(skeletonLimits("standard", undefined, true), { boxes: 8, perBox: 3 });
+test("skeletonLimits: 이름 있는 항목으로 된 결과물은 칸을 2배 허용하고 핵심어 수는 그대로", () => {
+  assert.deepEqual(skeletonLimits("standard", undefined, true), { boxes: 12, perBox: 3 });
   assert.deepEqual(skeletonLimits("standard", undefined, false), { boxes: 6, perBox: 3 });
   // 짧게 손으로 쓰는 시험이면 항목 단위여도 늘리지 않는다
   assert.deepEqual(skeletonLimits("standard", 700, true), { boxes: 4, perBox: 2 });
@@ -127,32 +127,6 @@ test("cleanSkeleton: 영어 화면은 자료(한국어)에 없는 영어 핵심�
   assert.deepEqual(cleanSkeleton(raw, ko, { boxes: 6, perBox: 3 }, { checkMaterial: false })[0].keywords, ["real-name system", "July 2007"]);
 });
 
-const REPEAT = "대기압 대기압 대기압 압력 차이 압력 차이 압력 차이 개인정보 자기결정권 개인정보 자기결정권 개인정보 자기결정권 누르면 누르면 누르면 본인 확인 본인 확인 본인 확인 이용자 이용자 이용자";
-
-test("deriveKeywords: 연도·수치·조문, 기관 이름을 줄에서 뽑는다", () => {
-  assert.deepEqual(deriveKeywords("2007년 7월 전면 시행 뒤 2009년 이후 우회 사례가 있었다.", "", [], 3), ["2007년 7월", "2009년"]);
-  assert.deepEqual(deriveKeywords("법 제44조의5와 헌법재판소 판단이 근거다.", "", [], 3), ["제44조의5", "헌법재판소"]);
-  assert.deepEqual(deriveKeywords("2023년 폐플라스틱은 약 771만 톤이다.", "", [], 3), ["2023년", "771만 톤"]);
-});
-
-test("deriveKeywords: 개념 목록의 말과 결과물에 여러 번 나오는 주제어를 뽑되, 흔한 말·동사·긴 이름은 뽑지 않는다", () => {
-  const line = "누르면 이용자의 본인 확인이 개인정보 자기결정권을 해칠 수 있다.";
-  const kws = deriveKeywords(line, REPEAT, [], 3);
-  assert.ok(kws.includes("개인정보 자기결정권") && kws.includes("본인 확인"));
-  assert.ok(!kws.includes("누르면") && !kws.includes("이용자")); // 동사형·흔한 말
-  assert.ok(deriveKeywords("압력 차이로 대기압이 물을 민다.", "", ["대기압"], 3).includes("대기압")); // 개념 목록
-  // 너무 긴 이름(법률 이름 전체)은 외울 핵심어가 아니다
-  assert.deepEqual(deriveKeywords("정보통신망 이용촉진 및 정보보호 등에 관한 법률 제44조의5가 근거다.", "", ["정보통신망 이용촉진 및 정보보호 등에 관한 법률"], 3), ["제44조의5"]);
-  // 설명하는 줄(이름·수치 없음)은 핵심어가 없다
-  assert.deepEqual(deriveKeywords("발표를 듣는 중·고등학생에게 제도의 절차를 쉽게 풀어 설명한다.", REPEAT, [], 3), []);
-});
-
-test("deriveKeywords: 영어 줄은 숫자·개념 목록만, 칸당 개수 상한", () => {
-  // 영어 줄에는 한국어 낱말 규칙을 쓰지 않는다 — 개념 목록에 있는 말만
-  assert.deepEqual(deriveKeywords("The real-name system requires ID checks for every user", REPEAT, ["real-name system"], 3), ["real-name system"]);
-  assert.deepEqual(deriveKeywords("2001년, 2002년, 2003년, 2004년", "", [], 2), ["2001년", "2002년"]);
-});
-
 test("dedupeKeywords: 여러 칸에 나오는 낱말은 처음 칸에만, 칸의 절반 넘게 나오면 주제어라 뺀다", () => {
   const boxes = [
     { line: "A 헌법재판소 실명제", keywords: ["헌법재판소", "실명제"] },
@@ -167,31 +141,29 @@ test("dedupeKeywords: 여러 칸에 나오는 낱말은 처음 칸에만, 칸의
   assert.deepEqual(dedupeKeywords([{ line: "가 실명제", keywords: ["실명제"] }, { line: "나 실명제", keywords: ["실명제"] }]), [["실명제"], []]);
 });
 
-test("deriveKeywords: 조사를 겹쳐 벗기고, 두 어절을 넘는 구와 서술어 꼴은 뽑지 않는다", () => {
-  const material = "표현의 자유 표현의 자유 표현의 자유 책임 있는 책임 있는 책임 있는";
-  assert.deepEqual(deriveKeywords("표현의 자유와의 관계는 책임 있는 행동이다.", material, [], 3), ["표현의 자유"]);
+test("mnemonicOf: 숫자로 시작하는 핵심어만 있으면 두음을 만들지 않는다", () => {
+  assert.equal(mnemonicOf(["1964년", "1965년"]), null);
+  assert.equal(mnemonicOf(["대기압", "밸브", "1963년"]), "대·밸");
+  assert.equal(mnemonicOf(["대기압"]), null);
 });
 
-test("deriveKeywords: 앞 낱말에 조사가 붙은 두 어절 구('신원을 확인')는 뽑지 않는다", () => {
-  const material = "신원 확인 신원을 확인 신원을 확인 신원을 확인 본인 확인 본인 확인 본인 확인";
-  const kws = deriveKeywords("모든 이용자의 신원을 확인하는 일과 본인 확인은 다르다.", material, [], 3);
-  assert.ok(!kws.some((k) => k.includes("신원을")));
-  assert.ok(kws.includes("본인 확인"));
+test("markKeywords: 「」로 표시한 말과 연도·수치·조문, 개념 목록의 말을 모으고 표시는 줄에서 걷어 낸다", () => {
+  const r = markKeywords("「몽고메리개선협회」 지도자로 1955년 「버스 보이콧」을 이끌었고, 법 제44조의5와 약 771만 톤이 근거다.", [], 5);
+  assert.equal(r.line, "몽고메리개선협회 지도자로 1955년 버스 보이콧을 이끌었고, 법 제44조의5와 약 771만 톤이 근거다.");
+  assert.deepEqual(r.keywords, ["몽고메리개선협회", "1955년", "버스 보이콧", "제44조의5", "771만 톤"]);
+  // 개념 목록의 말은 표시가 없어도 줄에 있으면 핵심어
+  assert.deepEqual(markKeywords("압력 차이로 대기압이 물을 민다.", ["대기압"], 3).keywords, ["대기압"]);
+  // 칸당 개수 상한
+  assert.deepEqual(markKeywords("2001년, 2002년, 2003년, 2004년", [], 2).keywords, ["2001년", "2002년"]);
 });
 
-test("deriveKeywords: 동사형 앞 낱말('누르면 펌프')·조사가 남은 꼴('빨대 안으로')·잘린 어간('사용하')은 뽑지 않는다", () => {
-  const material = "누르면 펌프 누르면 펌프 누르면 펌프 빨대 안으로 빨대 안으로 빨대 안으로 사용하 사용하 사용하 밸브 밸브 밸브 밸브";
-  assert.deepEqual(deriveKeywords("누르면 펌프가 작동하고 밸브가 열린다.", material, ["밸브"], 3), ["밸브"]); // 두 글자 낱말은 개념 목록에 있을 때만
-  assert.deepEqual(deriveKeywords("물이 빨대 안으로 올라온다.", material, [], 3), []);
-  assert.deepEqual(deriveKeywords("휴대폰을 사용하고 정리한다.", material, [], 3), []);
-});
-
-test("deriveKeywords: 영어 줄은 연도·수치와 대문자 고유명사를 뽑는다(문장 첫 낱말·흔한 낱말 제외)", () => {
-  assert.deepEqual(deriveKeywords("The Constitutional Court ruled in 2010 that the rule was invalid.", "", [], 3), ["Constitutional Court", "2010"]);
-  assert.deepEqual(deriveKeywords("It started in 2007 and covered 35 million users.", "", [], 3), ["2007", "35 million"]);
-  assert.deepEqual(deriveKeywords("Students explain why this matters.", "", [], 3), []);
-});
-
-test("deriveKeywords: 관형형 어미로 끝나는 말('필요한')은 뽑지 않는다", () => {
-  assert.deepEqual(deriveKeywords("필요한 약속을 정한다.", "필요한 필요한 필요한 약속 약속 약속", [], 3), []);
+test("markKeywords: 문장째 표시·한 글자 표시·짝이 안 맞는 표시는 버리고, 표시가 없으면 숫자·개념어만", () => {
+  assert.deepEqual(markKeywords("「킹은 1955년에 몽고메리에서 버스 보이콧을 이끌었다고 알려져 있다」", [], 3).keywords, ["1955년"]);
+  assert.deepEqual(markKeywords("그는 「물」을 마셨다.", [], 3).keywords, []);
+  assert.equal(markKeywords("「열린 표시만 있다", [], 3).line, "열린 표시만 있다");
+  assert.deepEqual(markKeywords("설명하는 칸이라 외울 말이 없다.", [], 3), { line: "설명하는 칸이라 외울 말이 없다.", keywords: [] });
+  // 영어 줄도 같은 방식이다
+  assert.deepEqual(markKeywords("The 「Constitutional Court」 ruled in 2010년.", [], 3).keywords, ["Constitutional Court", "2010년"]);
+  // 긴 이름이 짧은 이름을 품으면 짧은 것은 뺀다
+  assert.deepEqual(markKeywords("「몽고메리 버스 보이콧」 곧 「버스 보이콧」", [], 3).keywords, ["몽고메리 버스 보이콧"]);
 });

@@ -5,7 +5,7 @@ import type { SummaryPrefs } from "./prefs";
 import { readMemorizeSource, memorizeBlock, hasNamedItems } from "./memorize-source";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { filterKeyTerms } from "./summary-terms";
-import { cleanSkeleton, dedupeKeywords, deriveKeywords, skeletonLimits, type SkeletonBox } from "./memo-skeleton";
+import { cleanSkeleton, dedupeKeywords, markKeywords, skeletonLimits, type SkeletonBox } from "./memo-skeleton";
 import { alignSkeleton, planBoxes } from "./box-plan";
 
 // 학습 도구: 이미 만들어진 과제 내용(AI 결과물 또는 학습 모드의 조사 자료·학생 글)을 "공부하기 좋은 형태"로 바꿔 준다.
@@ -66,7 +66,7 @@ const CONCEPT_PICK =
   `누구나 아는 일상어·지명·사물 이름(예: 멸치, 바다, 환경, 사회)과 중학생도 뜻을 아는 흔한 권리·낱말(예: 표현의 자유, 익명, 명예훼손)은 넣지 않는다. 과제를 진행하는 말("관찰 지침·예상 결과·보고서 항목")도 개념이 아니다. ` +
   `개수를 채우려 하지 말고 정말 낯선 것만 남긴다(적어도 된다). 이 결과물을 이해하는 데 **더 중요한 것부터**, 자료에 실제로 나온 낱말만 쓴다.`;
 
-const SUMMARY_SCHEMA: Schema = {
+const INSIGHT_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     headline: { type: Type.STRING, description: "이 결과물이 말하는 것을 한 문장으로(35자 안팎, 명사로 끝내지 말고 결론을)" },
@@ -78,13 +78,20 @@ const SUMMARY_SCHEMA: Schema = {
         type: Type.OBJECT,
         properties: {
           term: { type: Type.STRING, description: "개념 이름(자료에 실제로 나온 낱말)" },
-          meaning: { type: Type.STRING, description: "중학생도 알아듣는 쉬운 말 한 문장(45자 안팎). 어려운 한자어로 다시 설명하지 않는다" },
-          in_task: { type: Type.STRING, description: "이 결과물에서 이 개념이 쓰인 곳 한 줄(30자 안팎)" },
+          meaning: { type: Type.STRING, description: "교과서 수준의 정확한 뜻 한두 문장(70자 안팎): 무엇인지 + 비슷한 개념과 다른 점이나 핵심 특징 하나. 쉬운 말로, 어려운 한자어로 다시 설명하지 않는다" },
+          in_task: { type: Type.STRING, description: "이 결과물이 이 개념을 어디에 어떻게 썼는지, 이름·연도·행동 같은 구체적 사실을 넣은 한 줄(40자 안팎)" },
           analogy: { type: Type.STRING, description: "일상 비유 한 줄. 요청하지 않았으면 빈 문자열" },
         },
         required: ["term", "meaning", "in_task", "analogy"],
       },
     },
+  },
+  required: ["headline", "overall", "key_terms"],
+};
+
+const LINES_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
     skeleton: {
       type: Type.ARRAY,
       description: "암기 뼈대 — 칸(또는 큰 덩어리) 순서대로",
@@ -92,19 +99,19 @@ const SUMMARY_SCHEMA: Schema = {
         type: Type.OBJECT,
         properties: {
           box: { type: Type.STRING, description: "칸 이름(안내문의 칸 이름 그대로, 없으면 덩어리 이름 2~8자)" },
-          line: { type: Type.STRING, description: "그 칸에서 말할 핵심 한 문장(40~55자). 이름·전문 용어·수치·연도가 있으면 자료에 나온 표기 그대로 넣는다" },
+          line: { type: Type.STRING, description: "그 칸에 적힌 내용의 정리(한두 문장, 70~130자). 이름·전문 용어·수치·연도는 자료에 나온 표기 그대로 빠뜨리지 않고 넣고, 외울 이름·전문 용어는 「」로 감싼다" },
         },
         required: ["box", "line"],
       },
     },
   },
-  required: ["headline", "overall", "key_terms", "skeleton"],
+  required: ["skeleton"],
 };
 
 /** "쉬운 설명 포함"을 껐으면 비유(analogy) 필드를 스키마에서 뺀다 — 항상 빈 문자열로 채우느라 토큰만 썼다. */
-function summarySchema(easy: boolean): Schema {
-  if (easy) return SUMMARY_SCHEMA;
-  const s = JSON.parse(JSON.stringify(SUMMARY_SCHEMA)) as { properties: { key_terms: { items: { properties: Record<string, unknown>; required: string[] } } } };
+function insightSchema(easy: boolean): Schema {
+  if (easy) return INSIGHT_SCHEMA;
+  const s = JSON.parse(JSON.stringify(INSIGHT_SCHEMA)) as { properties: { key_terms: { items: { properties: Record<string, unknown>; required: string[] } } } };
   const item = s.properties.key_terms.items;
   delete item.properties.analogy;
   item.required = item.required.filter((r) => r !== "analogy");
@@ -128,40 +135,46 @@ export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise
   // 칸의 이름·순서·개수는 코드가 결과물 소제목에서 정한다(box-plan.ts). 모델은 칸마다 한 줄과 핵심어만 채운다 — 프롬프트로 "합치지 마라"를 시키면 실행마다 흔들렸다.
   // 칸을 못 정하는 결과물(소제목이 없거나 합쳐도 한도 초과)만 예전처럼 모델이 칸을 고른다.
   const plan = c.text ? planBoxes(c.text, limits.boxes) : null;
-  const { data } = await generateJson<{
-    headline: string;
-    overall?: string;
-    key_terms: { term: string; meaning: string; in_task?: string; analogy?: string }[];
-    skeleton: { box: string; line: string }[];
-  }>({
-    label: "study:summary",
-    role: "study",
-    schema: summarySchema(prefs.easy),
-    effort: "low",
-    prompt: [
-      rules(c),
-      "",
-      "학생은 이 결과물을 **이해한 뒤 단기 기억으로 외워서** 곧바로 수행평가를 본다. 아래를 만든다: headline·overall·key_terms는 **이해용**, skeleton은 칸별 정리다. 시험장에서 문장은 이해한 대로 즉석에서 쓸 수 있으니 외울 것은 **즉석에서 못 쓰는 것**(이름·전문 용어·수치·연도)뿐이고, 그것이 line에 들어 있으면 코드가 뽑아 외울 핵심어로 쓴다.",
-      `- headline: 이 결과물이 말하는 결론을 한 문장으로.`,
-      `- overall(총 정리): headline이나 칸별 줄을 되풀이하지 말고, 결과물 전체의 흐름(무엇을 → 왜 → 근거 → 마무리)을 처음부터 끝까지 3~4문장으로 말하듯 이어 쓴다.`,
-      `- key_terms(${d.terms}) — **이해용**: ${CONCEPT_PICK}`,
-      `  · meaning: 정확하되 중학생도 알아듣는 쉬운 말 한 문장. **이 결과물과 상관없이 그 말 자체의 뜻**을 정의한다(결과물 속 사례·판단을 뜻풀이에 쓰지 않는다). "우회 사례"처럼 개념이 아니라 이 글의 내용인 것은 넣지 않는다. 교과서 정의를 그대로 옮기지 말고 풀어 쓴다(자료에 없는 숫자·연도·사람 이름은 덧붙이지 않는다).`,
-      `  · in_task: 이 결과물에서 그 개념이 어떻게 쓰였는지 한 줄(예: "멸치가 먹이사슬 어디에 있는지 설명할 때 쓰임").`,
-      ...(prefs.easy ? [`  · analogy: 각 개념에 일상 비유 한 줄(자료에 없는 사실은 덧붙이지 않는다).`] : []),
-      plan
-        ? `- skeleton — **암기용 뼈대**: 아래 [칸 목록]의 칸마다 **정확히 하나씩, 같은 순서로** 채운다. box는 칸 이름을 그대로 쓰고(바꾸거나 합치거나 빼지 않는다), line은 결과물에서 그 칸에 실제로 적힌 내용 중 발표·답안에서 말할 핵심 두세 가지를 한 문장(50자 안팎)으로 쓴다(제목을 되풀이하거나 "~를 설명한다"로 끝내지 않는다).` + "\n[칸 목록]\n" + plan.map((p, i) => `${i + 1}. ${p.name}`).join("\n")
-        : `- skeleton(최대 ${limits.boxes}칸) — **암기용 뼈대**: ` +
-          (mem.src.boxes.length >= 2
-            ? `[칸 순서]의 칸을 **적힌 순서대로** 한 칸씩. 마지막 칸(결론 등)은 빼지 않는다. 칸이 한도보다 많으면 외울 것이 거의 없는 칸(주제·동기 같은 소개 칸)을 이웃 칸과 묶는다.`
-            : `결과물의 큰 흐름을 시험지에 쓰는 순서대로 3~${Math.min(5, limits.boxes)}개 덩어리로 나누고 이름을 붙인다.`),
-      `  · line: 그 칸에서 쓸 핵심을 한 문장으로. 과제 설명이 아니라 **내용**이어야 하고, 그 칸에 이름·전문 용어·수치·연도가 있으면 빼지 말고 넣는다(예: "대기압이 물을 빨대 안으로 민다").`,
-      "",
-      // 칸 순서는 위 [칸 목록]이 대신하므로 칸 순서 블록은 칸을 코드가 못 정했을 때만 싣는다(입력을 가볍게).
-      (plan ? "" : mem.block) + material(c),
-    ]
-      .filter(Boolean)
-      .join("\n"),
-  });
+  // 두 호출을 동시에 보낸다: 이해용(한 줄·총 정리·개념)과 칸별 정리. 한 호출에 다 담으면 추론이 한 번에 몰려 15~19초였다(2026-11-25 실측, 과학-02 19.1초·4.3k토큰).
+  const intro = "학생은 이 결과물을 **이해한 뒤 단기 기억으로 외워서** 곧바로 수행평가를 본다. 시험장에서 문장은 이해한 대로 즉석에서 쓸 수 있으니 외울 것은 **즉석에서 못 쓰는 것**(이름·전문 용어·수치·연도)뿐이다.";
+  const insightPrompt = [
+    rules(c),
+    "",
+    intro + " 아래는 **이해용**이다.",
+    `- headline: 이 결과물이 말하는 결론을 한 문장으로.`,
+    `- overall(총 정리): headline을 되풀이하지 말고, 결과물 전체의 흐름(무엇을 → 왜 → 근거 → 마무리)을 처음부터 끝까지 3~4문장으로 말하듯 이어 쓴다.`,
+    `- key_terms(${d.terms}): ${CONCEPT_PICK}`,
+    `  · meaning: **이 결과물과 상관없이 그 말 자체의 뜻**을 구체적으로 정의한다 — 무엇인지 한 문장 + 핵심 특징이나 비슷한 개념과의 차이 한 문장. "~하려는 법이다"처럼 어떤 개념에나 붙는 말로 끝내지 않는다(예: 민권법과 투표권법은 서로 무엇이 다른지 드러나게). 이 칸만은 위 [규칙]의 "자료에 있는 것만" 대신 교과서 수준의 일반 지식을 쓴다. 단 확실하지 않은 연도·수치·인명은 쓰지 않는다. "우회 사례"처럼 개념이 아니라 이 글의 내용인 것은 넣지 않는다.`,
+    `  · in_task: 이 결과물이 그 개념을 어디에 어떻게 썼는지 **이름·연도·행동을 넣은 한 줄**(예: "킹이 1955년 몽고메리에서 버스 이용을 거부하는 운동을 이끌었다"). "~를 설명할 때 쓰였다" 같은 말은 쓰지 않는다. 뜻이 비슷해 구별이 어려운 개념은 따로 두지 말고 하나로 묶는다.`,
+    ...(prefs.easy ? [`  · analogy: 각 개념에 일상 비유 한 줄(자료에 없는 사실은 덧붙이지 않는다).`] : []),
+    "",
+    material(c),
+  ].join("\n");
+  const linesPrompt = [
+    rules(c),
+    "",
+    intro + " 아래는 **칸별 정리**다.",
+    plan
+      ? `- skeleton: 아래 [칸 목록]의 칸마다 **정확히 하나씩, 같은 순서로** 채운다. box는 칸 이름을 그대로 쓰고(바꾸거나 합치거나 빼지 않는다), line은 결과물에서 그 칸에 **실제로 적힌 내용을 빠뜨리지 않고** 한두 문장(80~130자)으로 정리한다 — 이름·연도·수치·용어 같은 구체적 사실을 넣고, 제목을 되풀이하거나 "~를 설명한다"로 끝내지 않는다.` + "\n[칸 목록]\n" + plan.filter((p) => !p.fixed).map((p, i) => `${i + 1}. ${p.name}`).join("\n")
+      : `- skeleton(최대 ${limits.boxes}칸): ` +
+        (mem.src.boxes.length >= 2
+          ? `[칸 순서]의 칸을 **적힌 순서대로** 한 칸씩. 마지막 칸(결론 등)은 빼지 않는다. 칸이 한도보다 많으면 외울 것이 거의 없는 칸(주제·동기 같은 소개 칸)을 이웃 칸과 묶는다.`
+          : `결과물의 큰 흐름을 시험지에 쓰는 순서대로 3~${Math.min(5, limits.boxes)}개 덩어리로 나누고 이름을 붙인다.`),
+    `  · line: 그 칸의 내용을 한두 문장으로. 과제 설명이 아니라 **내용**이어야 하고, 그 칸에 이름·전문 용어·수치·연도가 있으면 빼지 말고 넣는다.`,
+    `  · 외울 말 표시: line 안에서 학생이 꼭 외워야 할 이름·전문 용어(연도·수치는 코드가 찾으니 표시하지 않아도 된다)를 「」로 감싼다 — 칸마다 0~${limits.perBox}개, 외울 말이 없는 설명 칸은 감싸지 않는다(예: "「대기압」이 물을 빨대 안으로 민다"). 「」는 그 말 둘레에만 쓴다.`,
+    "",
+    // 칸 순서는 위 [칸 목록]이 대신하므로 칸 순서 블록은 칸을 코드가 못 정했을 때만 싣는다(입력을 가볍게).
+    (plan ? "" : mem.block) + material(c),
+  ].join("\n");
+  const [insight, linesRes] = await Promise.all([
+    generateJson<{
+      headline: string;
+      overall?: string;
+      key_terms: { term: string; meaning: string; in_task?: string; analogy?: string }[];
+    }>({ label: "study:summary", role: "study", schema: insightSchema(prefs.easy), effort: "low", prompt: insightPrompt }),
+    generateJson<{ skeleton: { box: string; line: string }[] }>({ label: "study:summaryLines", role: "study", schema: LINES_SCHEMA, effort: "low", prompt: linesPrompt }),
+  ]);
+  const data = { ...insight.data, skeleton: linesRes.data.skeleton };
   const terms = (data.key_terms ?? [])
     .filter((k) => k.term?.trim() && k.meaning?.trim())
     .map((k) => ({
@@ -170,14 +183,15 @@ export async function makeSummary(c: StudyContext, prefs: SummaryPrefs): Promise
       inTask: k.in_task?.trim() || undefined,
       analogy: prefs.easy ? k.analogy?.trim() || undefined : undefined,
     }));
-  // 핵심어는 모델이 아니라 코드가 완성된 줄에서 뽑는다(memo-skeleton.ts deriveKeywords) — 모델에게 고르게 하면 출력이 두 배였다.
-  const lines = (plan ? alignSkeleton(plan, data.skeleton) : data.skeleton ?? []).map((b) => ({
-    box: b.box,
-    line: b.line ?? "",
-    keywords: deriveKeywords(b.line ?? "", c.text ?? "", terms.map((t) => t.term), limits.perBox),
-  }));
-  const kept = dedupeKeywords(lines);
-  const withKeywords = lines.map((b, i) => ({ ...b, keywords: kept[i] }));
+  // 핵심어: 모델이 줄 안에 「」로 표시한 말 + 코드가 찾은 연도·수치·개념어(markKeywords). 줄에서는 표시를 걷어 낸다. 연표처럼 코드가 만든 칸은 그대로.
+  const lines = (plan ? alignSkeleton(plan, data.skeleton) : (data.skeleton ?? []).map((b) => ({ ...b, fixed: false as boolean | undefined }))).map((b) => {
+    if (b.fixed) return { box: b.box, line: b.line ?? "", fixed: true, keywords: (b as { keywords?: string[] }).keywords ?? [] };
+    const m = markKeywords(b.line ?? "", terms.map((t) => t.term), limits.perBox);
+    return { box: b.box, line: m.line, fixed: false, keywords: m.keywords };
+  });
+  // 연표 칸의 연도는 다른 칸과 겹쳐도, 개수가 많아도 그대로 둔다.
+  const kept = dedupeKeywords(lines.map((b) => (b.fixed ? { line: "", keywords: [] } : b)));
+  const withKeywords = lines.map((b, i) => ({ box: b.box, line: b.line, keywords: b.fixed ? b.keywords : kept[i], maxKeywords: b.fixed ? b.keywords.length : undefined }));
   return {
     headline: (data.headline ?? "").trim(),
     overall: (data.overall ?? "").trim() || undefined,

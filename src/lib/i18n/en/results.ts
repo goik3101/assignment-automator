@@ -103,6 +103,8 @@ export const results: Record<string, string> = {
   "이전 카드": "Previous card",
   "결과물에서 보기": "View in result",
   "총 정리": "Overall recap",
+  "이 칸에 무엇을 쓸지 떠올려 보세요": "Recall what you would write in this section",
+  "답 확인": "Check answer",
   "수정안": "Proposed edit",
   "결과물에 적용": "Apply to result",
   "결과물에 적용했어요": "Applied to your result",

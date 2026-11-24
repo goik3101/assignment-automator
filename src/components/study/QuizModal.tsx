@@ -146,6 +146,39 @@ function TypeStep({ boxes, index, onDone }: { boxes: SkeletonBox[]; index: numbe
   );
 }
 
+/** 핵심어가 없는 칸(글의 목적·예상 독자 같은 설명 칸): 칸 이름만 보고 떠올린 뒤 정리된 줄을 보고 스스로 맞았는지 누른다. */
+function RecallStep({ boxes, index, onDone }: { boxes: SkeletonBox[]; index: number; onDone: Done }) {
+  const t = useT();
+  const b = boxes[index];
+  const [shown, setShown] = useState(false);
+  return (
+    <div>
+      <p className="text-xs font-semibold text-faint">{t("칸 이름")}</p>
+      <p className="mt-1 text-xl font-bold tracking-tight">{b.box}</p>
+      <p className="mt-4 text-sm text-muted">{t("이 칸에 무엇을 쓸지 떠올려 보세요")}</p>
+      {shown && <p className="mt-4 rounded-xl bg-surface px-4 py-3.5 text-[15px] leading-[1.8]">{b.line}</p>}
+      <div className="mt-5 flex justify-end gap-2">
+        {!shown ? (
+          <Button variant="primary" onClick={() => setShown(true)}>
+            {t("답 확인")}
+          </Button>
+        ) : (
+          <>
+            <Button onClick={() => onDone(false, 0)}>
+              <X size={15} strokeWidth={1.9} />
+              {t("헷갈려요")}
+            </Button>
+            <Button variant="primary" onClick={() => onDone(true, 1)}>
+              <Check size={15} strokeWidth={2} />
+              {t("알아요")}
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WriteStep({ boxes, index, retry, onDone }: { boxes: SkeletonBox[]; index: number; retry: boolean; onDone: Done }) {
   const t = useT();
   const b = boxes[index];
@@ -232,6 +265,8 @@ function Ladder({
     reuse: true,
   });
   const boxes = useMemo(() => data?.skeleton ?? [], [data]);
+  // 퀴즈(빈칸)는 핵심어 있는 칸만, 암기(백지 떠올리기)는 설명하는 칸까지 모든 칸을 한 번씩 돈다.
+  const practiceIndexes = () => (mode === "memorize" ? boxes.map((_, i) => i) : quizIndexes(boxes));
 
   // "외웠어요" 체크는 칸 이름으로 브라우저에 저장한다 — 창을 닫았다 열어도 이어지고, 결과물이 고쳐지면 clearSavedStudy가 같이 지운다.
   const memoKey = `${studyRef.key ?? `${studyRef.kind}:${studyRef.id}`}:memo-done`;
@@ -264,7 +299,7 @@ function Ladder({
     if (only) scope.current = only;
     else if (s === stages[0]) scope.current = null;
     // 핵심어가 없는 칸(결론 등)은 빈칸 문제가 안 되므로 건너뛴다(칸 순서에는 남아 있다).
-    const order = scope.current ?? quizIndexes(boxes);
+    const order = scope.current ?? practiceIndexes();
     retried.current = new Set();
     if (s === stages[0]) {
       for (const i of order) {
@@ -285,7 +320,8 @@ function Ladder({
     if (!tried.current.has(key)) {
       tried.current.add(key);
       if (!passed) weak.current.add(i);
-      if (stage === 3) first.current[i] = { hit: hit ?? (passed ? boxes[i].keywords.length : 0), total: boxes[i].keywords.length };
+      // 핵심어 없는 칸은 맞았는지(1/1) 아닌지(0/1)로 준비도에 센다.
+      if (stage === 3) first.current[i] = boxes[i].keywords.length ? { hit: hit ?? (passed ? boxes[i].keywords.length : 0), total: boxes[i].keywords.length } : { hit: passed ? 1 : 0, total: 1 };
     }
     // 막힌 칸은 이 단계 끝에 한 번 더 나온다.
     if (!passed && !retried.current.has(i)) {
@@ -303,7 +339,7 @@ function Ladder({
     else {
       // 암기 연습이 끝나면 이번에 처음부터 다 떠올린 칸은 "외움"으로, 막힌 칸은 "못 외움"으로 바꾼다.
       if (mode === "memorize") {
-        const run = scope.current ?? quizIndexes(boxes);
+        const run = scope.current ?? practiceIndexes();
         const nextDone = new Set(done);
         for (const i of run) {
           if (weak.current.has(i)) nextDone.delete(boxes[i].box);
@@ -315,7 +351,7 @@ function Ladder({
     }
   }); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasSkeleton = quizIndexes(boxes).length > 0;
+  const hasSkeleton = practiceIndexes().length > 0;
   const current = stage >= 1 && stage <= 3 ? queue[pos] : undefined;
   const stageNo = stage >= 1 && stage <= 3 ? stages.indexOf(stage as 1 | 2 | 3) + 1 : 0;
   const score = readiness(Object.values(first.current));
@@ -367,7 +403,7 @@ function Ladder({
                 variant="primary"
                 onClick={() => {
                   // "못 외운 것만"을 켰으면 체크 안 된 칸만 연습한다.
-                  const open = quizIndexes(boxes).filter((i) => !done.has(boxes[i].box));
+                  const open = practiceIndexes().filter((i) => !done.has(boxes[i].box));
                   if (mode === "memorize" && onlyOpen && open.length > 0) begin(stages[0], open);
                   else begin(stages[0]);
                 }}
@@ -395,7 +431,12 @@ function Ladder({
             <div key={`${stage}-${pos}`}>
               {stage === 1 && <ChooseStep boxes={boxes} index={current} onDone={onDone} />}
               {stage === 2 && <TypeStep boxes={boxes} index={current} onDone={onDone} />}
-              {stage === 3 && <WriteStep boxes={boxes} index={current} retry={pos >= runSize.current} onDone={onDone} />}
+              {stage === 3 &&
+                (boxes[current].keywords.length > 0 ? (
+                  <WriteStep boxes={boxes} index={current} retry={pos >= runSize.current} onDone={onDone} />
+                ) : (
+                  <RecallStep boxes={boxes} index={current} onDone={onDone} />
+                ))}
             </div>
           </div>
         )}

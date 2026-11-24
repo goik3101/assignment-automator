@@ -1,6 +1,6 @@
 "use client";
 
-import { acronym, flowLine, segmentLine, type SkeletonBox } from "@/lib/study/memo-skeleton";
+import { flowLine, mnemonicOf, segmentLine, type SkeletonBox } from "@/lib/study/memo-skeleton";
 import { useT } from "@/lib/i18n";
 
 /**
@@ -48,9 +48,9 @@ export default function SkeletonSheet({
                   {i + 1}. {b.box}
                 </span>
               </p>
-              {mnemonic && b.keywords.length >= 2 && (
+              {mnemonic && mnemonicOf(b.keywords) && (
                 <span title={t("핵심어 첫 글자")} className="shrink-0 rounded-full bg-raised px-2.5 py-0.5 text-xs font-bold tracking-wide">
-                  {acronym(b.keywords)}
+                  {mnemonicOf(b.keywords)}
                 </span>
               )}
             </div>

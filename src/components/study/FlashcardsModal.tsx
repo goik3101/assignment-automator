@@ -9,7 +9,7 @@ import type { StudySummaryData } from "./SummaryModal";
 import { useStudyData, type StudyRef } from "./useStudyData";
 import { useT } from "@/lib/i18n";
 import { loadStudyPrefs, prefsSignature } from "@/lib/study/prefs";
-import { acronym, segmentLine } from "@/lib/study/memo-skeleton";
+import { mnemonicOf, segmentLine } from "@/lib/study/memo-skeleton";
 
 interface Card {
   /** order = 칸 순서의 뼈대 카드, concept = 개념 이해에서 본 개념 */
@@ -42,7 +42,7 @@ function buildCards(data: StudySummaryData, mnemonic: boolean): Card[] {
     back: b.keywords.length ? b.keywords.join(" · ") : b.line,
     line: b.keywords.length ? b.line : undefined,
     keywords: b.keywords,
-    hint: mnemonic && b.keywords.length >= 2 ? acronym(b.keywords) : undefined,
+    hint: mnemonic ? (mnemonicOf(b.keywords) ?? undefined) : undefined,
   }));
   const concept: Card[] = (data.keyTerms ?? []).map((k) => ({ kind: "concept" as const, front: k.term, back: k.meaning }));
   return [...order, ...concept];

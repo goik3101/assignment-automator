@@ -10,6 +10,8 @@ export interface PlannedBox {
   name: string;
   /** 그 칸의 실제 글(각주 번호 뗌). 모델이 줄을 못 채웠을 때 코드가 첫 문장으로 대신 채우는 데 쓴다. */
   text: string;
+  /** 코드가 이미 줄과 핵심어까지 만든 칸(연표). 모델에게 맡기지 않는다. */
+  fixed?: { line: string; keywords: string[] };
 }
 
 const MAX_RUN = 4; // 번호만 다른 항목(장면 1~8)을 한 칸에 묶는 최대 개수
@@ -30,6 +32,33 @@ function numbered(name: string): { stem: string; n: number } | null {
 const bodyOf = (md: string, s: { start: number; end: number; headingLine: string }, until = s.end) =>
   stripFootnotes(md.slice(s.start + s.headingLine.length, until)).trim();
 
+const YEAR_CELL = /^(\d{4})\s*년?(?:\s*(?:[~\-–]|부터)\s*\d{4}\s*년?)?(?:\s*\d{1,2}월)?$/;
+
+/**
+ * 연도와 사건을 적은 표(연표)를 한 칸으로 만든다 — "1929년 …태어남 → 1955년 …보이콧"처럼 사건은 보이고 연도가 빈칸이 된다.
+ * 연표는 결과물에서 가장 외우기 좋고 틀리기 쉬운 부분인데, 모델에게 줄을 쓰게 하면 연도 일부만 담았다(2026-11-25 사용자 지적). 표의 행을 그대로 쓰므로 모델 호출이 없다.
+ */
+export function timelineBox(section: string): PlannedBox | null {
+  const rows: { year: string; event: string }[] = [];
+  for (const raw of section.split("\n")) {
+    const t = raw.trim();
+    if (!t.startsWith("|")) continue;
+    const cells = t.replace(/^\||\|$/g, "").split("|").map((c) => stripFootnotes(c).replace(/\s+/g, " ").trim());
+    if (cells.length < 2 || /^:?-{2,}:?$/.test(cells[0])) continue;
+    const m = YEAR_CELL.exec(cells[0]);
+    if (!m || !cells[1]) continue;
+    const year = /년|월/.test(cells[0]) ? cells[0] : `${cells[0]}년`;
+    rows.push({ year, event: cells[1].replace(/[.。]$/, "") });
+  }
+  if (rows.length < 3) return null;
+  const used = rows.slice(0, 8);
+  return {
+    name: "연표",
+    text: used.map((r) => `${r.year} ${r.event}`).join("\n"),
+    fixed: { line: used.map((r) => `${r.year} ${r.event}`).join(" → "), keywords: used.map((r) => r.year) },
+  };
+}
+
 /**
  * 결과물 마크다운에서 칸 목록을 만든다. 이름 있는 항목(글의 목적·예상 독자…)은 항목마다 한 칸, 번호만 다른 반복 항목(장면 1~8)은 4개씩 묶어 한 칸,
  * 항목 없는 단계는 단계 하나가 한 칸. 칸이 maxBoxes를 넘으면 항목이 가장 많은 단계부터 한 칸으로 합친다.
@@ -45,7 +74,10 @@ export function planBoxes(markdown: string, maxBoxes: number): PlannedBox[] | nu
     const clean = (t: string) => t.replace(/[*_`]/g, "").trim();
     const items = secs.filter((s) => s.level === 3 && s.start > g.start && s.end <= g.end && !skip(clean(s.title)));
     const joined: PlannedBox = { name: clean(g.title), text: clipText(bodyOf(markdown, g)) };
-    if (items.length < 2) return { expanded: [joined], joined };
+    // 연표는 단계를 합쳐도 따로 남긴다(합치면 연도가 사라진다).
+    const tl = timelineBox(markdown.slice(g.start, g.end));
+    const extra = tl ? [tl] : [];
+    if (items.length < 2) return { expanded: [joined], joined, extra };
 
     const expanded: PlannedBox[] = [];
     for (let i = 0; i < items.length; ) {
@@ -77,24 +109,34 @@ export function planBoxes(markdown: string, maxBoxes: number): PlannedBox[] | nu
       }
       i = j;
     }
-    return { expanded, joined };
+    return { expanded, joined, extra };
   });
 
   // 한도를 넘으면 칸이 가장 많이 펼쳐진 단계부터 한 칸으로 합친다.
   const use = perGroup.map((g) => g.expanded);
-  const total = () => use.reduce((n, b) => n + b.length, 0);
+  const total = () => use.reduce((n, b, i) => n + b.length + perGroup[i].extra.length, 0);
   while (total() > maxBoxes) {
     let worst = -1;
-    for (let i = 0; i < use.length; i++) if (use[i].length > 1 && (worst < 0 || use[i].length > use[worst].length)) worst = i;
+    for (let i = 0; i < use.length; i++) if (use[i].length > 1 && (worst < 0 || use[i].length >= use[worst].length)) worst = i;
     if (worst < 0) return null; // 더 합칠 수 없다 → 모델이 고른다
     use[worst] = [perGroup[worst].joined];
   }
-  const out = use.flat();
+  const out = use.flatMap((b, i) => [...b, ...perGroup[i].extra]);
   return out.length >= 2 ? out : null;
 }
 
 /** 모델이 정리한 칸들을 코드가 정한 칸 목록에 맞춘다: 이름(소제목)으로 먼저, 안 맞으면 같은 순번으로. 그래도 없으면 칸 글의 첫 문장. */
 export function alignSkeleton(
+  plan: PlannedBox[],
+  raw: { box?: string; line?: string; keywords?: string[] }[] | undefined
+): { box: string; line: string; keywords: string[]; fixed?: boolean }[] {
+  // 코드가 줄까지 만든 칸(연표)은 모델이 채우지 않는다 — 나머지 칸만 맞춘 뒤 제자리에 끼운다.
+  const free = alignFree(plan.filter((p) => !p.fixed), raw);
+  let k = 0;
+  return plan.map((p) => (p.fixed ? { box: p.name, line: p.fixed.line, keywords: p.fixed.keywords, fixed: true } : free[k++]));
+}
+
+function alignFree(
   plan: PlannedBox[],
   raw: { box?: string; line?: string; keywords?: string[] }[] | undefined
 ): { box: string; line: string; keywords: string[] }[] {

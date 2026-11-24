@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { alignSkeleton, firstSentence, planBoxes } from "./box-plan.ts";
+import { alignSkeleton, firstSentence, planBoxes, timelineBox } from "./box-plan.ts";
 
 const scenes = (n: number) => Array.from({ length: n }, (_, i) => `### 장면 ${i + 1}\n장면 ${i + 1} 내용이다.`).join("\n\n");
 const SILMYEONG = [
@@ -101,4 +101,26 @@ test("줄 끝이 \r\n인 글도 같은 칸 목록이다(윈도우에서 저장�
 test("이름·반 번호·날짜 같은 인적 사항 칸은 칸으로 세지 않는다", () => {
   const plan = planBoxes(["## 역할극", "### 주제", "가", "### 해결방법", "나", "### 반 번호", "1반 3번", "### 이름", "홍길동"].join("\n"), 8)!;
   assert.deepEqual(plan.map((p) => p.name), ["주제", "해결방법"]);
+});
+
+test("연표(연도|사건 표)는 단계를 합쳐도 따로 남고, 줄과 연도 핵심어를 코드가 만든다", () => {
+  const md = ["## 신문 제작", "### 기사 하나", "글.", "### 기사 둘", "글.", "| 연도 | 사건 |", "|---|---|", "| 1929 | 애틀랜타에서 태어남[1] |", "| 1955 | 몽고메리 버스 보이콧 지도[1] |", "| 1963 | 워싱턴 행진에서 연설[2] |", "## 후기", "글."].join("\n");
+  const plan = planBoxes(md, 8)!;
+  const tl = plan.find((p) => p.name === "연표")!;
+  assert.equal(tl.fixed?.line, "1929년 애틀랜타에서 태어남 → 1955년 몽고메리 버스 보이콧 지도 → 1963년 워싱턴 행진에서 연설");
+  assert.deepEqual(tl.fixed?.keywords, ["1929년", "1955년", "1963년"]);
+  // 단계를 한 칸으로 합쳐도 연표는 남는다
+  assert.deepEqual(planBoxes(md, 3)!.map((p) => p.name), ["신문 제작", "연표", "후기"]);
+  // 표가 아닌 글·행이 3개 미만이면 연표가 아니다
+  assert.equal(timelineBox("| 연도 | 사건 |\n|---|---|\n| 1929 | 가 |\n| 1955 | 나 |"), null);
+  // 모델이 채우는 칸만 맞추고 연표는 제자리에 끼운다
+  const aligned = alignSkeleton(plan, [{ box: "기사 하나", line: "하나", keywords: [] }, { box: "기사 둘", line: "둘", keywords: [] }, { box: "후기", line: "후", keywords: [] }]);
+  assert.deepEqual(aligned.map((a) => a.box), plan.map((p) => p.name));
+  assert.equal(aligned.find((a) => a.box === "연표")?.fixed, true);
+  assert.equal(aligned.find((a) => a.box === "기사 둘")?.line, "둘");
+});
+
+test("한도를 넘으면 뒤쪽 단계부터 합친다(앞 단계가 조사한 사실, 뒤는 그것을 다시 쓴 산출물)", () => {
+  const md = ["## 자료 수집", "### 인물 배경", "가", "### 주요 활동", "나", "### 활동 성과", "다", "## 신문 제작", "### 기사 하나", "라", "### 기사 둘", "마", "### 기사 셋", "바"].join("\n");
+  assert.deepEqual(planBoxes(md, 4)!.map((p) => p.name), ["인물 배경", "주요 활동", "활동 성과", "신문 제작"]);
 });
