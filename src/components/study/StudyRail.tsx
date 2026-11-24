@@ -164,6 +164,7 @@ export default function StudyRail({
       // 안내가 빠져 대화 목록이 비어도 입력창은 맨 아래에 둔다.
       className="flex-1 justify-end"
       placeholder={t("이 결과물에 대해 무엇이든 물어보세요")}
+      draft={inSheet ? (shared?.draft ?? null) : null}
       disabledReason={locked ? t("결과물이 저장되면 쓸 수 있어요") : null}
       messagesClassName={inSheet ? "" : "max-h-[46dvh] lg:max-h-none"}
       empty={

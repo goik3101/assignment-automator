@@ -3,7 +3,8 @@
 import { Children, cloneElement, createContext, isValidElement, useContext, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CircleCheck, PencilLine, TriangleAlert } from "lucide-react";
+import { CircleCheck, Pencil, PencilLine, TriangleAlert } from "lucide-react";
+import { useStudyAsk } from "@/components/study/StudyTools";
 import type { ChecklistRow } from "@/lib/essay/submit-checklist";
 import { useT } from "@/lib/i18n";
 
@@ -64,8 +65,36 @@ function MdRow({ children }: { children?: ReactNode }) {
   );
 }
 
+// 폰에서 칸 제목 옆에 붙는 "고치기" 버튼: 누르면 채팅이 열리고 그 칸을 고쳐 달라는 말이 입력칸에 채워진다.
+// 결과물이 저장되지 않았거나(잠김) 공부 도구 제공자가 없는 화면(공유 페이지 등)에서는 그리지 않는다. 넓은 화면에서는 숨긴다(lg:hidden).
+function EditChip({ title }: { title: string }) {
+  const t = useT();
+  const ask = useStudyAsk();
+  const name = title.trim();
+  if (!ask || !name) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => ask(t("‘{title}’ 칸을 이렇게 고쳐줘: ", { title: name }))}
+      aria-label={t("이 칸 고치기")}
+      className="ml-2 inline-flex h-6 items-center gap-1 rounded-full border border-border-strong px-2 align-middle text-[11px] font-medium text-muted transition-colors hover:bg-raised hover:text-foreground lg:hidden"
+    >
+      <Pencil size={11} strokeWidth={1.9} aria-hidden />
+      {t("고치기")}
+    </button>
+  );
+}
+
 export const MD_COMPONENTS: Components = {
   table: MdTable as Components["table"],
+  h2({ children, node }) {
+    return (
+      <h2>
+        {children}
+        <EditChip title={hastText(node as HastNode)} />
+      </h2>
+    );
+  },
   tr: MdRow as Components["tr"],
   // 안내문이 밑줄을 요구한 표현(영어 어법 3종 등). 눈에 확실히 보이게 두껍게 긋는다 — 학생이 그대로 밑줄을 그으면 된다.
   u({ children }) {

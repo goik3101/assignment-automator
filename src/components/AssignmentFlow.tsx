@@ -19,7 +19,7 @@ import { buildShareMessage, type ShareCard } from "@/lib/feedback/share";
 import StudyRail from "./study/StudyRail";
 import { STUDY_PAGE_WIDTH } from "./study/layout";
 import { replaceSection } from "@/lib/study/section-edit";
-import { StudyTabs, StudyToolsProvider } from "./study/StudyTools";
+import { StudyAskBar, StudySelectionMenu, StudyTabs, StudyToolsProvider } from "./study/StudyTools";
 import { useAuth } from "@/lib/supabase/use-auth";
 import { useT } from "@/lib/i18n";
 import HomeDashboard, { type NewPrefill } from "./home/HomeDashboard";
@@ -360,8 +360,8 @@ export default function AssignmentFlow() {
   const ratingKey = submissionId ?? doneItems.map((i) => i.element.label).join("|");
 
   return (
-    <StudyToolsProvider>
-    <div className={`mx-auto w-full ${STUDY_PAGE_WIDTH} px-6 py-8 md:px-10 md:py-10`}>
+    <StudyToolsProvider locked={!submissionId}>
+    <div className={`mx-auto w-full ${STUDY_PAGE_WIDTH} px-6 py-8 max-lg:pb-28 md:px-10 md:py-10`}>
       <header className="mb-8">
         <Breadcrumb title={info?.topic ?? t("새 창작물")} onHome={() => setStep("home")} />
         <h1 className="text-2xl font-bold tracking-tight">{info?.topic ?? t("새 창작물")}</h1>
@@ -375,6 +375,8 @@ export default function AssignmentFlow() {
       </header>
 
       <StudyTabs locked={!submissionId} />
+      <StudyAskBar />
+      <StudySelectionMenu />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,740px)_auto] lg:items-start">
       <div className="min-w-0 space-y-6">

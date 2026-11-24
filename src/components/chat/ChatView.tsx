@@ -88,6 +88,7 @@ export default function ChatView({
   onMemorizeTool,
   onApplyEdit,
   onUndoEdit,
+  draft,
 }: {
   chat: Chat;
   placeholder: string;
@@ -108,6 +109,8 @@ export default function ChatView({
   /** 있으면 채팅의 칸 수정안 아래에 "결과물에 적용" 버튼을 보여 준다(저장된 AI 결과물 화면에서만 넘긴다). */
   onApplyEdit?: ApplyEdit;
   onUndoEdit?: UndoEdit;
+  /** 새 번호(n)가 오면 입력칸을 이 글로 채우고 포커스를 옮긴다 — 폰의 선택 글 메뉴·고치기 버튼이 쓴다. */
+  draft?: { text: string; n: number } | null;
 }) {
   const t = useT();
   const [text, setText] = useState("");
@@ -145,6 +148,13 @@ export default function ChatView({
       el.setSelectionRange(el.value.length, el.value.length);
     }
   }, [fillTick]);
+  // 새 초안이 오면 입력칸을 그 글로 채운다(렌더 중에 번호를 비교하는 방식 — 효과 안에서 상태를 바꾸지 않는다).
+  const [seenDraft, setSeenDraft] = useState(0);
+  const draftN = draft?.n ?? 0;
+  if (draftN !== seenDraft) {
+    setSeenDraft(draftN);
+    if (draftN > 0) fill(draft?.text ?? "");
+  }
 
   async function submit() {
     const value = text.trim();
