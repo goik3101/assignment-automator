@@ -77,7 +77,7 @@ src/lib/essay/      완성 원고 품질 규칙(순수 함수, alias import 없�
 src/lib/selection/  대상 자동 선정(selection-need 판정·score·subject-selection·student-topic)   src/lib/questions/  제작 전 질문(questions-pure 규칙·next-question 호출)
 src/lib/clusters/   과제 임베딩 클러스터·쏠림 억제·결과물 임베딩 저장   src/lib/verification/ links/ research/  출처·구절·링크 검증과 조사
 src/lib/study/ tutor/ learning/   공부 도구·AI 채팅·AI 튜터·학습 모드   src/lib/admin/ usage/ auth/ turnstile/ supabase/ histories/  관리자·접근 제한·인증·DB 클라이언트·저장
-src/types/task.ts   도메인 타입      supabase/migrations/  0001~0023(Supabase 대시보드 SQL Editor에서 직접 실행, 적용 여부는 대시보드 확인)
+src/types/task.ts   도메인 타입      supabase/migrations/  0001~0024(Supabase 대시보드 SQL Editor에서 직접 실행, 적용 여부는 대시보드 확인)
 docs/               planning.md(기획 근거)·essay-pipeline-notes.md·current-goals.md·archive/   scripts/measure/  측정·감사 도구(실제 안내문 사진은 `수행평가 안내문/`, gitignore)
 ```
 
@@ -130,6 +130,7 @@ docs/               planning.md(기획 근거)·essay-pipeline-notes.md·current
 | `SIBLING_BANNER=off`(11-21, 기본 켜짐) | 같은 결과의 다른 카드가 출처를 가졌으면 이 카드의 "검증 안 됨" 배너는 연도·수치 같은 강한 사실이 있을 때만(책 제목·"평균·자료" 낱말로는 안 띄움) |
 | `PDF_TEXT=off`(11-21, 기본 켜짐) | 출처 PDF(6MB 이하)를 받아 글자를 뽑아 출처 대조에 쓴다(`links/pdf-text.ts`, unpdf 1.9.1). 80쪽·3초까지만 읽고(쪽당 300자 미만인 희박한 문서·스캔본도) 다 못 읽었으면 partial — partial에서 값을 못 찾아도 각주를 지우지 않는다(확인 불가). 저장 결과물의 PDF 인용 23건: 판정 이동 2건(1 지원·1 못 찾음, 그 1건은 "1930년대" 연대 표현 오탐이라 고침) |
 | `REFERENCE_BOOK_TASK=legacy`(11-21, 기본: 참고 목록에 적는 항목은 책 과제 아님) | 책 과제 판정(`book-hint.ts`)에서 "참고한 도서를 기록한다"·"참고문헌(도서·논문)을 정리한다"·"출처(도서…)를 밝힌다" 같은 **참고 목록 문장**을 빼는 것을 끈다. (도서관·도서산간·독서실 제외는 스위치 없이 항상.) `rule-audit.ts 책과제` 27문장 통과. 역사-05 51.7→23.5초 |
+| `PLACEHOLDER_GUARD=off` / `VALUE_FIELD_NOTE=off`(11-24, 기본 켜짐) | 빈칸뿐인 단계를 분량 바닥 보정에서 빼고 항목별 빈칸 틀로(자료부족 단계가 설명문으로 부풀던 것) / 책 제목·저자 같은 값 칸은 "이름 한 줄"이라고 필수 항목 블록에 알림(값 칸 문단이 후처리로 줄어 분량이 700자로 깎이던 것, 근거 notes 맨 아래) |
 | `ANTI_AI_TONE_VERSION`(기본 v3) | 문체 규칙 버전 |
 
 ### 지켜야 할 규칙 (생성 파이프라인)

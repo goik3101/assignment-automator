@@ -51,3 +51,21 @@ test("같은 결과물에 이미 나온 책으로 서지 빈칸을 채운다(국
   assert.equal(fillBookBlanks("### 책 제목\n\n『다른 책』", book!).filled.length, 0);
   assert.equal(findBookInTexts(["책 이야기 없음"]), null);
 });
+
+import { valueFieldItems, valueFieldNote } from "./bibliographic-fields.ts";
+
+test("값 칸 항목만 골라 글쓰기에 '이름 한 줄'이라고 알린다(2026-11-24 책 처방전)", () => {
+  const items = ["책 제목", "저자", "인상적인 구절", "책 소개와 추천 이유(고민과 연결)"];
+  assert.deepEqual(valueFieldItems(items), ["책 제목", "저자"]);
+  const note = valueFieldNote(items);
+  assert.match(note, /"책 제목"·"저자" 칸은 이름·값만 한 줄/);
+  assert.match(note, /분량은 나머지 항목에서/);
+  assert.equal(valueFieldNote(["문제 상황 요약", "원인 분석"]), "");
+  assert.equal(valueFieldNote(undefined), "");
+  process.env.VALUE_FIELD_NOTE = "off";
+  try {
+    assert.equal(valueFieldNote(items), "");
+  } finally {
+    delete process.env.VALUE_FIELD_NOTE;
+  }
+});

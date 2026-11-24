@@ -6,6 +6,9 @@ import { useT } from "@/lib/i18n";
 import { CONTACT_EMAIL, DISCORD_URL } from "@/lib/seo/site";
 import { MAX_ATTACHMENTS } from "@/lib/feedback/attachments";
 import { compressImage } from "@/lib/feedback/compress-image";
+import { useAuth } from "@/lib/supabase/use-auth";
+import type { FeedbackIdentity } from "@/lib/feedback/identity";
+import type { MyFeedback } from "@/lib/feedback/reply";
 
 interface Picked {
   id: string;
@@ -19,6 +22,10 @@ const MAX_CHARS = 2000;
 // 이미지는 올리기 전에 브라우저에서 줄이고, 붙여넣기(Ctrl+V)·끌어다 놓기·선택창 모두 받는다.
 export default function FeedbackForm() {
   const t = useT();
+  const { user } = useAuth();
+  // 익명이 기본. 이메일(내 계정)로 보내기를 직접 고른 경우에만 개발자가 이메일을 보고 답변을 남길 수 있다.
+  const [identity, setIdentity] = useState<FeedbackIdentity>("anonymous");
+  const [mine, setMine] = useState<MyFeedback[]>([]);
   const [message, setMessage] = useState("");
   const [picked, setPicked] = useState<Picked[]>([]);
   const [busy, setBusy] = useState(0); // 줄이는 중인 이미지 수
@@ -33,6 +40,24 @@ export default function FeedbackForm() {
     const urls = previews.current;
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, []);
+
+  async function loadMine() {
+    try {
+      const res = await fetch("/api/feedback/mine");
+      if (res.ok) setMine(((await res.json()) as { items?: MyFeedback[] }).items ?? []);
+    } catch {
+      /* 목록을 못 불러와도 글 보내기는 그대로 된다 */
+    }
+  }
+
+  const userId = user?.id;
+  useEffect(() => {
+    if (userId) void loadMine();
+    else {
+      setMine([]);
+      setIdentity("anonymous");
+    }
+  }, [userId]);
 
   const slotsLeft = MAX_ATTACHMENTS - picked.length - busy;
 
@@ -89,6 +114,7 @@ export default function FeedbackForm() {
     try {
       const form = new FormData();
       form.set("message", message);
+      form.set("identity", user ? identity : "anonymous");
       for (const p of picked) form.append("files", p.file);
       const res = await fetch("/api/feedback", { method: "POST", body: form });
       // 서버가 받지 못했는데 "전달했어요"를 띄우고 글을 지우면 사용자가 쓴 내용이 사라진다 — 실패하면 글을 남기고 알린다.
@@ -98,6 +124,7 @@ export default function FeedbackForm() {
       setPicked([]);
       setSent(true);
       setTimeout(() => setSent(false), 3000);
+      if (user && identity === "account") void loadMine();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("전달하지 못했어요. 잠시 후 다시 시도해주세요."));
     } finally {
@@ -201,6 +228,34 @@ export default function FeedbackForm() {
       />
       <p className="mt-2 text-xs text-faint">{t("이미지 최대 {n}장. 큰 이미지는 자동으로 줄여서 올려요.", { n: MAX_ATTACHMENTS })}</p>
 
+      <p className="mt-5 text-sm font-semibold">{t("보내는 방식")}</p>
+      {user ? (
+        <div role="radiogroup" aria-label={t("보내는 방식")} className="mt-2 grid gap-2 sm:grid-cols-2">
+          {(
+            [
+              ["anonymous", t("익명"), t("이름도 이메일도 저장하지 않아요. 답변은 받을 수 없어요.")],
+              ["account", t("이메일로 보내기"), t("내 계정 이메일이 개발자에게 보이고, 답변을 아래에서 받아요.")],
+            ] as const
+          ).map(([value, title, hint]) => (
+            <label
+              key={value}
+              className={[
+                "flex cursor-pointer gap-2.5 rounded-xl border px-3.5 py-3 transition-colors",
+                identity === value ? "border-foreground bg-surface" : "border-border-strong hover:border-foreground",
+              ].join(" ")}
+            >
+              <input type="radio" name="feedback-identity" value={value} checked={identity === value} onChange={() => setIdentity(value)} className="mt-1 accent-foreground" />
+              <span>
+                <span className="block text-[13px] font-semibold">{title}</span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-muted">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs leading-relaxed text-muted">{t("익명으로 전달돼요. 로그인하면 이메일로 보내 개발자 답변을 받을 수 있어요.")}</p>
+      )}
+
       <div className="mt-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-border pt-4">
         <p className="text-xs leading-relaxed text-muted">
           {t("이메일로 문의하셔도 돼요.")}{" "}
@@ -228,6 +283,29 @@ export default function FeedbackForm() {
           </button>
         </div>
       </div>
+
+      {user && mine.length > 0 && (
+        <div className="mt-10">
+          <h3 className="text-[18px] font-bold tracking-tight">{t("내가 보낸 피드백")}</h3>
+          <p className="mt-1 text-xs text-faint">{t("이메일로 보낸 것만 여기에 보여요.")}</p>
+          <ul className="mt-3 space-y-3">
+            {mine.map((m) => (
+              <li key={m.id} className="rounded-2xl border border-border bg-surface p-4">
+                <p className="text-xs text-muted">{new Date(m.created_at).toLocaleString()}</p>
+                <p className="mt-1.5 whitespace-pre-wrap text-sm">{m.message}</p>
+                {m.reply ? (
+                  <div className="mt-3 rounded-xl border border-border-strong bg-background px-3.5 py-3">
+                    <p className="text-xs font-semibold text-muted">{t("개발자 답변")}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{m.reply}</p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-faint">{t("답변을 기다리고 있어요.")}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

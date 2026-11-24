@@ -241,9 +241,19 @@ const MATERIAL_ACTIVITY = /실험|활동|탐구|제시문|지문|자료/;
 // 시험 범위("범위: 교과서 p29~p40")는 한 활동의 내용이 아니라 공부할 폭이다 — 쪽수를 알려 줘도 글의 내용이 정해지지 않는다.
 const SCOPE_WORDS = /범위|단원|~|∼|-\s*p?\d/;
 
+// 수업 중에 뽑거나 나눠 받아서야 정해지는 자료("무기명으로 요약된 고민 중 하나를 무작위로 뽑아 분석") — 교과서 쪽수가 없어도 우리가 볼 수 없는 자료다.
+// 2026-11-24 국어 책처방전: 뽑은 친구의 고민을 몰라 2차시가 통째로 빈칸이 되고 그 고민에 기대는 책 처방전·편지도 흔들렸다.
+const DRAWN_IN_CLASS = /무작위로\s*뽑|제비\s*뽑|추첨/;
+const DRAWN_NOUN = /고민|사연|지문|기사|글|문제|사례/;
+/** 이 줄이 "수업 중에 뽑는 자료"를 가리키는 줄인가. 질문 문구·보기 요청을 교과서 자료와 가를 때 쓴다. */
+export function isDrawnInClass(line: string): boolean {
+  return DRAWN_IN_CLASS.test(line) && DRAWN_NOUN.test(line);
+}
+
 /**
  * 안내문이 **한 활동·실험·자료를 교과서 쪽수로만 가리키는가**(예: "반응 속도 측정 실험(실험 교과서 p.217)"). 있으면 그 줄을, 없으면 null.
  * 안내문에 자료가 실려 있거나(provided_materials) 학생이 이미 그 쪽을 언급했으면 묻지 않는다.
+ * 수업 중에 뽑는 자료("고민 중 하나를 무작위로 뽑아")도 같은 질문으로 묻는다(isDrawnInClass).
  */
 export function unseenMaterialPointer(params: { info: QuestionTaskInfo; instructions: string; answers: PreAnswer[] }): string | null {
   if (!materialQuestionOn()) return null;
@@ -257,7 +267,46 @@ export function unseenMaterialPointer(params: { info: QuestionTaskInfo; instruct
       return line.trim().slice(0, 70);
     }
   }
+  // 수업 중에 뽑는 자료: 학생이 그 자료(고민·사연 등)를 이미 지침에 적었으면 묻지 않는다.
+  for (const text of taskTexts(params.info)) {
+    for (const line of text.split(/\n/)) {
+      if (!isDrawnInClass(line)) continue;
+      const noun = DRAWN_NOUN.exec(line)?.[0] ?? "";
+      if (noun && params.instructions.includes(noun)) return null;
+      return line.trim().slice(0, 70);
+    }
+  }
   return null;
+}
+
+// 학생 본인의 고민·사연을 직접 쓰는 칸("요즘 나의 고민을 구체적으로 씀"). 진로·생각은 주제 질문이 이미 다루므로 고민·사연만 본다.
+// 2026-11-24 국어 책처방전: 아무도 묻지 않아 "고민 쓰기"가 빈칸 9개로 나갔다. 모델의 자유 질문은 이 칸을 묻지 않았고(personal 모드 4번째도 "필요 없음"), 질문 한도가 2개인 기본(빠르게) 모드에서는 코드 질문에 밀려 닿지도 못했다.
+const OWN_STORY = /(?:나의|내|자신의|본인의)\s*(?:요즘\s*)?(?:고민|사연)/;
+
+/** 안내문이 학생 본인의 고민·사연을 쓰라고 하는데 아직 안 물었고 학생도 안 적었으면 그 줄을, 아니면 null. QUESTION_MATERIAL=off로 끈다. */
+export function ownStoryPointer(params: { info: QuestionTaskInfo; instructions: string; answers: PreAnswer[] }): string | null {
+  if (!materialQuestionOn()) return null;
+  if (params.answers.some((a) => a.key === "own_story")) return null;
+  if (/고민|사연/.test(params.instructions)) return null;
+  for (const e of params.info.task_elements) {
+    for (const line of [e.label, ...(e.description ?? "").split(/\n/)]) {
+      if (OWN_STORY.test(line)) return e.label.trim().slice(0, 30);
+    }
+  }
+  return null;
+}
+
+export function buildOwnStoryQuestion(pointer: string, asked: PreAnswer[]): PreQuestion {
+  return {
+    id: `q${asked.length + 1}`,
+    key: "own_story",
+    text: `직접 쓰는 칸("${pointer.slice(0, 36)}")에 넣을 내 이야기가 있나요? 적어 주면 그대로 반영해요.`.slice(0, 140),
+    kind: "personal",
+    options: [],
+    allowOther: true,
+    allowLater: true,
+    why: "본인의 고민·사연은 우리가 알 수 없어서 지어내지 않아요. 적지 않으면 직접 쓸 빈칸으로 남겨요.",
+  };
 }
 
 /** 보기 문구를 화면에 보여도 되는 형태로(중복·너무 긴 것·화면이 따로 주는 보기 제거, 최대 5개). */
@@ -300,7 +349,9 @@ export function buildExcerptQuestion(asked: PreAnswer[]): PreQuestion {
 }
 
 export function buildMaterialQuestion(pointer: string, asked: PreAnswer[], options: string[] = []): PreQuestion {
-  const text = `안내문에는 "${pointer.slice(0, 40)}"이라고만 적혀 있어요. 실제로 하는 내용이 무엇인가요?`;
+  const text = isDrawnInClass(pointer)
+    ? `수업 시간에 뽑게 되는 내용("${pointer.slice(0, 40)}")을 이미 알고 있나요? 알려 주면 그 내용으로 만들어요.`
+    : `안내문에는 "${pointer.slice(0, 40)}"이라고만 적혀 있어요. 실제로 하는 내용이 무엇인가요?`;
   return {
     id: `q${asked.length + 1}`,
     key: "unseen_material",
@@ -309,7 +360,9 @@ export function buildMaterialQuestion(pointer: string, asked: PreAnswer[], optio
     options,
     allowOther: true,
     allowLater: true,
-    why: "교과서·배부 자료는 우리가 볼 수 없어요. 내용을 지어내지 않으려고 물어봐요.",
+    why: isDrawnInClass(pointer)
+      ? "수업 중에 뽑는 내용은 우리가 볼 수 없어요. 모르면 나중에 직접 쓸 빈칸으로 두고, 연습용 예시를 고르면 그 내용으로 만들어요."
+      : "교과서·배부 자료는 우리가 볼 수 없어요. 내용을 지어내지 않으려고 물어봐요.",
   };
 }
 

@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { requireAdminOrRedirect } from "@/lib/admin/session";
 import { listFeedback } from "@/lib/admin/feedback";
 import { isShareMessage } from "@/lib/feedback/share";
+import FeedbackReply from "@/components/admin/FeedbackReply";
 
 export default async function AdminFeedbackPage() {
   await requireAdminOrRedirect();
@@ -26,7 +27,7 @@ export default async function AdminFeedbackPage() {
             <li key={item.id} className="rounded-2xl border border-border bg-surface p-4">
               <div className="mb-2 flex items-center justify-between text-xs text-muted">
                 <span>{new Date(item.created_at).toLocaleString("ko-KR")}</span>
-                <span>{item.from_logged_in_user ? "로그인 사용자" : "비로그인"}</span>
+                <span>{item.from_logged_in_user ? (item.email ?? "이메일로 보냄") : "익명"}</span>
               </div>
               {isShareMessage(item.message) ? (
                 // 결과물 공유는 글이 길어 앞 5줄만 보이고 나머지는 펼쳐 본다.
@@ -50,6 +51,8 @@ export default async function AdminFeedbackPage() {
                   ))}
                 </ul>
               )}
+              {/* 답변은 이메일(계정)로 보낸 피드백에만 달 수 있다 — 익명에는 보여 줄 대상이 없다. */}
+              {item.from_logged_in_user && <FeedbackReply id={item.id} initial={item.reply} />}
             </li>
           ))}
         </ul>

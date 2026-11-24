@@ -164,3 +164,10 @@ test("답안지 단계의 항목 줄 블록은 '구체적으로 길게' 대신 '
   // 줄을 나눠 각각 쓰라는 핵심 지시는 두 경우 모두 남는다
   assert.match(sheet, /"독음: …"/);
 });
+
+test("쉼표가 문장을 잇는 절은 나열 항목이 아니다(2026-11-25 책처방전 '…사용하고·상황', 사회-02 '…선정하고·…이유')", () => {
+  assert.deepEqual(compoundItemsFromText(["1차시: 줄 쳐진 A4 용지를 사용하고, 상황을 구체적으로 작성할 것."]), []);
+  assert.deepEqual(compoundItemsFromText(["해결할 환경 문제 주제를 선정하고, 해당 주제를 선정한 이유를 쓴다."]), []);
+  // 진짜 나열은 그대로 읽는다
+  assert.ok(compoundItemsFromText(["글의 목적, 주제, 예상 독자를 구체적으로 설정한다."]).length >= 1);
+});

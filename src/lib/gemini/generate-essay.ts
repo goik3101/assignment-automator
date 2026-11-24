@@ -79,7 +79,7 @@ import { mainBookTitle, isPlausibleBookTitle } from "@/lib/essay/book-title";
 import { studentExcerptState } from "@/lib/questions/questions-pure";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
-import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
+import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields, valueFieldNote } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
 import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
@@ -89,6 +89,7 @@ import { adminLeakOn, dedupeOn, finalReviewOn, leanWriteOn, evidenceSlotsOn, for
 import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankInventedChatLog, isAiChatRecordLabel, isActionLogLabel, blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
+import { blockedStepContent, isPlaceholderStep } from "@/lib/essay/placeholder-step";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
 import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
@@ -931,7 +932,7 @@ ${input.previousOutputText}
         .map(
           (el) =>
             `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}` +
-            (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
+            (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).${valueFieldNote(el.required_items)}` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
         )
         .join("\n") +
       (materialEls.length ? `\n${RESEARCH_MATERIAL_RULES}` : "") +
@@ -2597,7 +2598,7 @@ async function generateEssayImpl(
         insufficientReasons: [],
         sections: attempt.sections.map((s) =>
           blockedLabels.includes(s.label)
-            ? { ...s, content: `[직접 작성: 이 부분은 시험 당일 제시되는 자료가 있어야 답할 수 있어요 — ${reasons.find((r) => r.startsWith(`${s.label}:`))?.slice(s.label.length + 1).trim() ?? "자료 필요"}]` }
+            ? { ...s, content: blockedStepContent(elements.find((e) => e.label === s.label)?.required_items, reasons.find((r) => r.startsWith(`${s.label}:`))?.slice(s.label.length + 1).trim() ?? "자료 필요") }
             : s
         ),
       };
@@ -3581,7 +3582,7 @@ async function generateEssayImpl(
     const pending = checkLengthCompliance(attempt.sections, elements, lengthFloors);
     // 바닥(역할 목표의 절반) 미달도 예산을 무시한다 — 거의 빈 칸은 그 칸 점수를 통째로 잃는다.
     const hardMiss = pending.some((i) => !i.softOnly || i.floorOnly || i.ceilingOnly);
-    const remaining = overBudget("분량 보정", hardMiss ? "critical" : "optional") ? [] : pending;
+    const remaining = pending.length > 0 && overBudget("분량 보정", hardMiss ? "critical" : "optional") ? [] : pending;
     if (remaining.length > 0) {
       const adjusted = await Promise.all(
         attempt.sections.map(async (sec) => {
@@ -4886,6 +4887,8 @@ function checkLengthCompliance(
       // **칸이 통째로 없는 것**이 가장 비싼 실패다(그 칸 점수를 다 잃는다). 실측(2026-11-12): 신문 한 실행이
       // 네 칸 중 세 칸만 돌아와 8/11이 됐고(만평 누락), 다른 실행들은 만평 칸이 0자였다.
       // 없는 칸은 0자로 보고 바닥 미달로 올린다 — 그러면 아래 보완이 예산을 무시하고 그 칸만 다시 쓴다.
+      // 학생이 채울 빈칸뿐인 단계(자료가 없어 못 쓴 단계)는 "짧다"고 늘리지 않는다 — 늘리면 빈칸을 설명하는 군더더기 글이 된다(placeholder-step.ts).
+      if (sec && isPlaceholderStep(sec.content)) continue;
       const actual = sec ? countChars(sec.content, true) : 0;
       if (actual < f.floor) {
         issues.push({ label: el.label, actual, min: f.planned, max: 0, countsSpaces: true, floorOnly: true });

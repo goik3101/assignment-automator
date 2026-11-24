@@ -8,12 +8,15 @@ import {
   buildBookQuestion,
   buildExcerptQuestion,
   buildMaterialQuestion,
+  isDrawnInClass,
   buildTopicQuestion,
   cleanOptions,
   excerptQuestionOpen,
   QUESTION_CAP,
   sanitizeQuestion,
   topicStillOpen,
+  buildOwnStoryQuestion,
+  ownStoryPointer,
   unseenMaterialPointer,
   type AiMode,
   type PreAnswer,
@@ -152,8 +155,12 @@ async function proposeMaterialQuestion(params: { subject: string; info: CoreTask
     [
       describeTask(params.subject, params.info, params.instructions),
       "",
-      `안내문은 "${pointer}"이라고만 적었고 그 교과서·자료의 내용은 우리가 볼 수 없다. 고등학교 ${params.subject || "해당 교과"} 교과서에서 **가능성이 높은 내용 후보 3~4개**를 제시해라.`,
-      "- 서로 다른 후보(다른 실험·다른 활동)로, 각각 한 줄(60자 이내)에 핵심 재료나 방법이 드러나게.",
+      isDrawnInClass(pointer)
+        ? `안내문은 "${pointer}"이라고 적었고, 그 내용은 수업 시간에 뽑아서야 정해져 우리가 볼 수 없다. 학생이 **연습용으로 가정해 볼 만한 예시 후보 3~4개**를 제시해라.`
+        : `안내문은 "${pointer}"이라고만 적었고 그 교과서·자료의 내용은 우리가 볼 수 없다. 고등학교 ${params.subject || "해당 교과"} 교과서에서 **가능성이 높은 내용 후보 3~4개**를 제시해라.`,
+      isDrawnInClass(pointer)
+        ? "- 서로 다른 예시(다른 상황·원인)로, 각각 한 줄(60자 이내)에 구체적인 상황이 드러나게. 특정 실존 인물·학교가 떠오르게 쓰지 말 것."
+        : "- 서로 다른 후보(다른 실험·다른 활동)로, 각각 한 줄(60자 이내)에 핵심 재료나 방법이 드러나게.",
       "- 확실하지 않은 세부 수치·시약 농도는 쓰지 말 것. 후보일 뿐이라는 점을 학생이 알아서 고르게 한다.",
     ].join("\n")
   );
@@ -232,13 +239,16 @@ export async function nextQuestion(params: {
   }
 
   // 안내문만으로 정할 수 없는 것(책·구절·못 보는 자료)은 모델의 자유 판단보다 먼저 코드가 묻는다 — 모델은 "조사로 해결 가능"이라며 건너뛰곤 했다.
-  // 순서: 책 → (학생이 책을 정했고 구절을 요구하면) 구절 → 쪽수로만 가리킨 자료. 개수 상한은 위에서 이미 강제한다.
+  // 순서: 우리가 볼 수 없는 자료(쪽수로만 가리킨 자료·수업에서 뽑는 고민) → 학생 본인의 고민·사연 → 책 → (책을 정했고 구절을 요구하면) 구절. 개수 상한은 위에서 이미 강제한다.
+  // 왜 이 순서(2026-11-25): 기본 모드는 질문이 2개뿐인데, AI가 대신 정할 수 있는 책·구절이 앞에 있어 AI가 알 수 없는 것(친구의 고민·내 고민)이 한도에 밀려 한 번도 안 물렸다.
   const asked = { info: params.info, instructions: params.instructions, answers: params.answers };
   if (!topicOpen) {
-    if (bookQuestionOpen(asked)) return { question: await proposeBookQuestion(params), remaining: left - 1 };
-    if (excerptQuestionOpen(asked)) return { question: buildExcerptQuestion(params.answers), remaining: left - 1 };
     const pointer = unseenMaterialPointer(asked);
     if (pointer) return { question: await proposeMaterialQuestion(params, pointer), remaining: left - 1 };
+    const story = ownStoryPointer(asked);
+    if (story) return { question: buildOwnStoryQuestion(story, params.answers), remaining: left - 1 };
+    if (bookQuestionOpen(asked)) return { question: await proposeBookQuestion(params), remaining: left - 1 };
+    if (excerptQuestionOpen(asked)) return { question: buildExcerptQuestion(params.answers), remaining: left - 1 };
   }
 
   const { data } = await generateJson<{ needed: boolean; reason: string; question?: unknown }>({

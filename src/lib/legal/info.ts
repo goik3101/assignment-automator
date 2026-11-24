@@ -6,5 +6,5 @@ export const LEGAL = {
   supabaseRegion: "일본(도쿄)",
   effectiveDate: "2026년 10월 25일",
   /** 개인정보처리방침만 따로 고쳤으므로 약관 시행일(effectiveDate)과 나눈다. */
-  privacyEffectiveDate: "2026년 11월 24일",
+  privacyEffectiveDate: "2026년 11월 25일",
 } as const;

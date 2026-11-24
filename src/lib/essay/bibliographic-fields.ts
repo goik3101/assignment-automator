@@ -14,6 +14,25 @@ const PUBLISHER_HEAD = /^(?:출판사|출판\s*사항)$/;
 /** 출판사 칸에 이름 대신 들어간 "확인해서 적어야 한다" 식 안내. */
 const PUBLISHER_META = /판권|표지|판본|직접\s*확인|확인해|확인하여|옮겨\s*적|적어야|밝혀|기준으로/;
 
+/**
+ * 이름·값만 적는 칸(책 제목·저자·출판사…)인 항목 이름들.
+ *
+ * 왜(2026-11-24, 국어 책 처방전 "글자수가 적다"): 글쓰기는 "항목마다 문단으로" 규칙 때문에 책 제목·저자 칸에도 설명 문단을 쓰고, 그 문단은 아래 후처리가
+ * 이름 한 줄로 줄인다. 그런데 말해 준 분량(1,300자)에는 그 문단이 들어 있어서 **줄고 나면 약 700자만 남았다**(같은 프롬프트 12회 재생: 값 칸 정리 뒤 중앙 694자).
+ * 글쓰기에 "이 칸은 이름 한 줄"이라고 미리 알려 주면 분량이 나머지 항목으로 가서 중앙 961자(+38%)가 남았다. 같은 낱말 목록(FIELD_HEAD)을 후처리와 함께 쓴다.
+ */
+export function valueFieldItems(items: string[]): string[] {
+  return items.filter((i) => FIELD_HEAD.test(i.replace(/\*\*/g, "").trim()));
+}
+
+/** 필수 항목 블록에 덧붙일 한 줄 — 값 칸이 없으면 빈 글. VALUE_FIELD_NOTE=off로 끈다. */
+export function valueFieldNote(items: string[] | undefined): string {
+  if (process.env.VALUE_FIELD_NOTE === "off") return "";
+  const names = valueFieldItems(items ?? []);
+  if (names.length === 0) return "";
+  return `\n  단, ${names.map((n) => `"${n}"`).join("·")} 칸은 이름·값만 한 줄로 쓴다(설명 문단 금지). 단계 분량은 나머지 항목에서 채운다.`;
+}
+
 /** 첫 문장(뒤따르는 각주까지)만 남긴다. 문장이 하나뿐이면 그대로. */
 function firstSentence(text: string): string {
   const m = text.match(/^[\s\S]*?[.!?。](?:\[\d+(?:,\s*\d+)*\])*(?=\s|$)/);

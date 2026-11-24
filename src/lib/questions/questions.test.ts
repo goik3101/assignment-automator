@@ -166,3 +166,37 @@ test("못 보는 자료를 AI에게 맡겨도 하나의 실험을 단정하지 �
   const t = answersToInstructions([{ question: "실제로 하는 내용이 무엇인가요?", key: "unseen_material", answer: "", state: "delegate" }]);
   assert.match(t, /실제 내용을 우리는 모른다[\s\S]*단정하지 말고[\s\S]*\[직접 작성: 무엇\]/);
 });
+
+import { isDrawnInClass } from "./questions-pure.ts";
+
+test("수업 중에 뽑는 자료도 묻는다(2026-11-24 국어 책처방전): 고민을 이미 적었거나 뽑는 대상이 글감이 아니면 묻지 않는다", () => {
+  const ptr = (info: ReturnType<typeof task>, instructions = "") => unseenMaterialPointer({ info, instructions, answers: [] });
+  const drawn = task("책 처방전", ["2차시: 무기명으로 요약된 고민 중 하나를 무작위로 뽑아 분석하고 해결책을 제안함."]);
+  const p = ptr(drawn);
+  assert.ok(p && /무작위로 뽑아/.test(p));
+  assert.ok(isDrawnInClass(p!));
+  assert.equal(ptr(drawn, "2차시에서 뽑은 친구의 고민은 소심해서 친구 사귀기 어렵다는 거야"), null); // 학생이 이미 고민을 적었다
+  // 글감이 아닌 것을 뽑는 안내(발표 순서·자리 추첨)는 묻지 않는다
+  assert.equal(ptr(task("발표", ["발표 순서는 추첨으로 정한다."])), null);
+  assert.equal(ptr(task("모둠", ["모둠원은 무작위로 뽑는다."])), null);
+  // 문구는 교과서 자료와 다르게 나온다
+  const q = buildMaterialQuestion(p!, [], ["a"]);
+  assert.match(q.text, /수업 시간에 뽑게 되는 내용/);
+  assert.ok(q.allowLater && q.allowOther && q.key === "unseen_material");
+  assert.equal(buildMaterialQuestion("반응 속도 측정 실험(실험 교과서 p.217)", [], []).text.includes("이라고만 적혀 있어요"), true);
+});
+
+import { ownStoryPointer, buildOwnStoryQuestion } from "./questions-pure.ts";
+
+test("본인의 고민·사연을 직접 쓰는 칸은 지어내지 않고 묻는다(진로·생각은 주제 질문이 맡으므로 제외)", () => {
+  const own = (info: ReturnType<typeof task>, instructions = "", answers: PreAnswer[] = []) => ownStoryPointer({ info, instructions, answers });
+  const rx = task("책 처방전", [], [{ label: "고민 쓰기", description: "요즘 나의 고민, 해결하고 싶은 문제를 구체적으로 씀." }]);
+  const p = own(rx);
+  assert.equal(p, "고민 쓰기"); // 질문에는 칸 이름만 인용한다(긴 설명은 문장 중간에서 잘린다)
+  assert.equal(own(rx, "요즘 시험 때문에 잠을 못 자는 게 고민이야"), null); // 학생이 이미 적었다
+  assert.equal(own(rx, "", [{ question: "내 이야기가 있나요?", key: "own_story", answer: "", state: "later" }]), null); // 이미 물었다
+  assert.equal(own(task("진로", [], [{ label: "진로 서술", description: "자신의 진로와 선택한 이유를 서술한다." }])), null);
+  assert.equal(own(task("토론", [], [{ label: "고민 해결", description: "친구의 고민을 듣고 해결책을 쓴다." }])), null); // 남의 고민
+  const q = buildOwnStoryQuestion(p!, []);
+  assert.ok(q.kind === "personal" && q.allowLater && q.allowOther && q.key === "own_story" && q.text.length <= 140 && q.options.length === 0);
+});

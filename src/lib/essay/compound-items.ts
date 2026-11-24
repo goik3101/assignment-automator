@@ -186,6 +186,8 @@ function stripLead(part: string): string {
   return t;
 }
 
+const CLAUSE_END = /(?:하고|하며|하여|해서|으며|이며|이고|되고|하면)$/;
+
 /** 안내문 문장에서 "A·B·C를 …한다" 꼴로 나열된 항목 이름을 찾는다. */
 export function compoundItemsFromText(texts: (string | undefined)[]): CompoundItem[] {
   const out: CompoundItem[] = [];
@@ -204,6 +206,10 @@ export function compoundItemsFromText(texts: (string | undefined)[]): CompoundIt
       if (parts.some((p) => splitCompoundItem(p))) continue;
       // 조각이 항목 이름이라기엔 너무 길면 문장을 잘못 끊은 것이다 — 글에서 그 이름을 찾을 수 없어 헛보완만 부른다.
       if (parts.some((p) => p.length > 24)) continue;
+      // 서술어로 끝나는 조각("…를 사용하고"·"…를 선정하고")은 이름이 아니라 **절**이다 — 쉼표는 나열이 아니라 문장을 잇고 있다.
+      // 저장된 안내문 39종: 글에서 뽑은 나열 항목 9개 중 3개가 이 꼴이었고(책처방전 "1차시: 줄 쳐진 A4 용지를 사용하고·상황",
+      // 사회-02 "…주제를 선정하고·해당 주제를 선정한 이유"), 책처방전은 그 때문에 카드 첫 줄에 "1차시: 줄 쳐진 A4 용지를 사용하고:"가 찍혔다(18회 중 13회).
+      if (parts.some((p) => CLAUSE_END.test(p) || /차시\s*[:：]/.test(p))) continue;
       seen.add(joined);
       out.push({ name: parts.join("·"), parts });
     }

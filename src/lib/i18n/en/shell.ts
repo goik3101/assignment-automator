@@ -164,6 +164,16 @@ export const shell: Record<string, string> = {
   "이미지 추가": "Add image",
   "이미지 줄이는 중": "Shrinking image",
   "피드백 제출": "Submit feedback",
+  "보내는 방식": "How to send",
+  "익명": "Anonymous",
+  "이름도 이메일도 저장하지 않아요. 답변은 받을 수 없어요.": "We don't store your name or email. You won't be able to receive a reply.",
+  "이메일로 보내기": "Send with email",
+  "내 계정 이메일이 개발자에게 보이고, 답변을 아래에서 받아요.": "The developer can see your account email, and you'll get replies below.",
+  "익명으로 전달돼요. 로그인하면 이메일로 보내 개발자 답변을 받을 수 있어요.": "Sent anonymously. Sign in to send with your email and receive a reply from the developer.",
+  "내가 보낸 피드백": "My feedback",
+  "이메일로 보낸 것만 여기에 보여요.": "Only feedback sent with email appears here.",
+  "개발자 답변": "Developer reply",
+  "답변을 기다리고 있어요.": "Waiting for a reply.",
   "이용약관 · 개인정보처리방침 (준비 중)": "Terms of Service · Privacy Policy (coming soon)",
 
   // 설정: 계정

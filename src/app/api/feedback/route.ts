@@ -4,25 +4,30 @@ import { getServiceClient } from "@/lib/supabase/service-client";
 import { LIMITS, checkText } from "@/lib/api/validate";
 import { FEEDBACK_BUCKET, MAX_ATTACHMENTS, MAX_BYTES_EACH, sniffImage, type FeedbackAttachment } from "@/lib/feedback/attachments";
 import { SHARE_MAX_CHARS, withShareTag } from "@/lib/feedback/share";
+import { feedbackUserId, parseIdentity, type FeedbackIdentity } from "@/lib/feedback/identity";
 
 // F14: 문의/피드백 제출. 로그인 여부와 무관하게 받는다 (feedback_submissions의
-// user_id는 nullable — 서비스 전용 채널이라 개인 계정과 엮이지 않아도 됨).
+// user_id는 nullable — 익명이 기본이고, 이메일(계정)로 보내기를 고른 경우에만 user_id를 저장한다).
 // 글만 보내면 JSON, 이미지가 있으면 multipart(message + files)로 받는다.
 export async function POST(req: NextRequest) {
   let message = "";
   let files: File[] = [];
   // "개선 돕기"(안내문 사진·결과물 공유): 학생이 직접 눌러 보낸 것만. 계정과 잇지 않고(user_id 비움) 글 한도만 넓힌다.
   let share = false;
+  // 익명이 기본. "이메일(계정)로 보내기"를 직접 고른 로그인 사용자만 user_id를 저장하고, 그래야 답변을 받아 볼 수 있다.
+  let identity: FeedbackIdentity = "anonymous";
   if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
     const form = await req.formData().catch(() => null);
     if (!form) return NextResponse.json({ error: "요청을 읽지 못했어요." }, { status: 400 });
     const m = form.get("message");
     message = typeof m === "string" ? m : "";
     share = form.get("kind") === "share";
+    identity = parseIdentity(form.get("identity"));
     files = form.getAll("files").filter((f): f is File => typeof f !== "string" && f.size > 0);
   } else {
-    const body = (await req.json().catch(() => null)) as { message?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { message?: unknown; identity?: unknown } | null;
     message = typeof body?.message === "string" ? body.message : "";
+    identity = parseIdentity(body?.identity);
   }
 
   if (!message.trim()) {
@@ -38,6 +43,10 @@ export async function POST(req: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  // 이메일로 보내겠다고 했는데 로그인이 풀려 있으면 조용히 익명으로 보내지 않는다(답변을 못 받는다) — 알려서 다시 고르게 한다.
+  if (identity === "account" && !share && !user) {
+    return NextResponse.json({ error: "로그인이 풀렸어요. 다시 로그인하거나 익명으로 보내 주세요." }, { status: 401 });
+  }
 
   const uploaded: FeedbackAttachment[] = [];
   if (files.length > 0) {
@@ -69,7 +78,7 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase
     .from("feedback_submissions")
     .insert({
-      user_id: share ? null : (user?.id ?? null),
+      user_id: feedbackUserId(identity, share, user?.id),
       message: share ? withShareTag(message.trim()) : message.trim(),
       ...(uploaded.length > 0 ? { attachments: uploaded } : {}),
     });
