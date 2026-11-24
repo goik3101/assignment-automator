@@ -352,6 +352,16 @@ export function isResearchMaterialStep(el: { label: string }): boolean {
   return MATERIAL_STEP_LABEL.test(el.label) && !REPORT_LABEL.test(el.label);
 }
 
+// 재료 단계를 한 줄 불릿 메모로 쓸지(메모형), 항목별 문단으로 쓸지(문단형, 기본).
+// 안내문이 메모·키워드·개조식·한 줄씩을 **직접** 말할 때만 메모형이다 — "기록한다"·"정리한다"만으로는 메모로 보지 않는다
+// (인권 저널은 "수행평가지에 기록"이라고만 했는데 메모형으로 나와 분량이 목표의 60~79%에 그쳤다. 저장된 분석 53종 중 재료 단계가 있는 것은 이 안내문과 역사-05 둘뿐).
+// 이름이 "~노트"·"~메모"인 단계도 메모형이다. MATERIAL_FORM=notes면 항상 메모형(예전 방식).
+const NOTE_STYLE = /개조식|메모|키워드|핵심\s*(?:어|낱말|단어)|불릿|글머리|한\s*줄씩|요점|노트/;
+export function isNoteStyleMaterial(el: { label: string; description?: string }, noticeTexts: (string | undefined)[] = []): boolean {
+  if (process.env.MATERIAL_FORM === "notes") return true;
+  return NOTE_STYLE.test([el.label, el.description ?? "", ...noticeTexts].join("\n"));
+}
+
 // 필수 항목 중 "신뢰할 수 있는 출처 3개 이상", "참고 문헌" 같은 출처 목록 항목 — 글쓰기 모델에게 맡기면 확인 안 된 주소를 지어내거나(실측) 출처 목록 금지 규칙과 부딪혀 누락으로 잡힌다.
 // 2026-11-15 정보-01: 안내문이 "참고한 기사 제목과 URL을 보고서 맨 아래에"라고 했고 분석이 "참고한 기사 제목"·"URL" 두 칸으로 냈다.
 // 낱말(출처·참고문헌…)이 없어 출처 목록 항목으로 안 잡혔고, 모델이 **존재하지 않는 기사 제목 세 개**를 지어 쓰고 URL 칸은 비웠다.

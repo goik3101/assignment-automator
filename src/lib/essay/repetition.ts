@@ -58,6 +58,9 @@ export function toStatements(label: string, content: string): Statement[] {
       continue;
     }
     if (line.startsWith("|") || /^#{1,2}\s/.test(line)) continue;
+    // 빈칸 표시만 적힌 줄은 글이 아니다 — 자료가 없어 빈칸이 된 두 단계가 같은 안내 문구를 가져도 "되풀이"로 보지 않는다
+    // (실측 2026-11-24: 책 처방전↔친구의 고민 분석의 빈칸 두 줄이 같은 산출물의 쪼개짐으로 오판되어 지워졌다). 문장으로 나누기 전에 줄 단위로 본다.
+    if (/\[(?:직접\s*작성|자료부족)/.test(line) && line.replace(/\[(?:직접\s*작성|자료부족)[^\]]*\]/g, "").replace(/[.。\s]/g, "") === "") continue;
     // 한 줄 안에 문장이 여러 개면 문장 끝 기호(마침표 뒤 공백, 각주 뒤)로 나눈다.
     for (const part of line.split(/(?<=[.!?다요][\]]*)\s+(?=\S)/)) {
       if (normalize(part).length >= MIN_LEN) out.push({ label, item, text: part.trim() });

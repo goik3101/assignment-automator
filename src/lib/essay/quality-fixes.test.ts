@@ -240,3 +240,44 @@ test("모델이 글 끝에 남긴 항목 이름만의 줄('출처', '### 출처'
   assert.equal(stripTrailingItemHeading("### 출처\n- 내용이 있는 목록", "출처"), "### 출처\n- 내용이 있는 목록");
   assert.equal(stripTrailingItemHeading("본문이다.", "출처"), "본문이다.");
 });
+
+import { isNoteStyleMaterial } from "./deliverable.ts";
+import { researchMaterialRules } from "../gemini/prompts.ts";
+import { findRepeatedStatements } from "./repetition.ts";
+
+test("재료 단계는 안내문이 메모 형식을 직접 말할 때만 불릿 메모형, 아니면 항목별 문단형(2026-11-25 인권 저널)", () => {
+  const humanRights = { label: "자료 수집", description: "인권 선구자를 선정하고 이유를 작성한 뒤 자료를 수집하여 수행평가지에 기록한다." };
+  const texts = ["인물 배경, 주요 활동에 대한 자료를 정확한 사실을 기반으로 구체적이고 체계적으로 수집한다.", "자료 수집은 항목별로 정리한다."];
+  assert.equal(isNoteStyleMaterial(humanRights, texts), false);
+  assert.equal(isNoteStyleMaterial({ label: "자료 수집", description: "핵심어 중심으로 간단히 메모한다." }), true);
+  assert.equal(isNoteStyleMaterial({ label: "조사 노트" }), true);
+  assert.equal(isNoteStyleMaterial(humanRights, ["각 항목은 개조식으로 쓴다."]), true);
+  process.env.MATERIAL_FORM = "notes";
+  try {
+    assert.equal(isNoteStyleMaterial(humanRights, texts), true);
+  } finally {
+    delete process.env.MATERIAL_FORM;
+  }
+});
+
+test("문단형 규칙은 불릿·(해석) 표기 지시를 빼고, 메모형은 그대로다", () => {
+  const notes = researchMaterialRules("notes");
+  const prose = researchMaterialRules("prose");
+  assert.match(notes, /불릿\("- "\)/);
+  assert.match(notes, /"\(해석\)"이라고 표시/);
+  assert.doesNotMatch(prose, /불릿\("- "\)/);
+  assert.doesNotMatch(prose, /"\(해석\)"이라고 표시/);
+  assert.match(prose, /2~4문장으로\s+이어 쓰고/);
+  assert.match(prose, /"\(해석\)" 같은 표기는\s+붙이지 말고/);
+  // 나머지 규칙(층위·인과·학생 감상 초안·실험 결과 지어내기 금지)은 두 형식 모두 같다
+  for (const rule of [notes, prose]) {
+    assert.match(rule, /항목의 층위를 섞지 말 것/);
+    assert.match(rule, /학생 감상 초안/);
+    assert.match(rule, /결과값/);
+  }
+});
+
+test("빈칸 표시만 적힌 줄은 되풀이 문장으로 세지 않는다(두 단계가 같은 빈칸 안내를 가져도 한 산출물의 쪼개짐이 아니다)", () => {
+  const blank = "[직접 작성: 이 부분은 시험 당일 제시되는 자료가 있어야 답할 수 있어요 — 실제 자료를 보고 직접 쓰기]";
+  assert.deepEqual(findRepeatedStatements([{ label: "고민 분석", content: `### 문제 상황 요약\n${blank}` }, { label: "책 처방전", content: `### 이유\n${blank}` }]), []);
+});

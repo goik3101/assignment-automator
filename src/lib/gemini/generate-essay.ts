@@ -15,7 +15,7 @@ import {
   REAL_PERSON_NAME_RULE,
   FACTUAL_RIGOR_RULES,
   ACHIEVEMENT_INTERPRETATION_RULES,
-  RESEARCH_MATERIAL_RULES,
+  researchMaterialRules,
   REPORT_SECTION_RULES,
   FORM_FIDELITY_RULES,
   writingGuideBlock,
@@ -35,6 +35,7 @@ import {
   isFinalReportForm,
   isProseForm,
   isResearchMaterialStep,
+  isNoteStyleMaterial,
   isSourceListItem,
   isUrlOnlyItem,
   placeSourceList,
@@ -935,7 +936,11 @@ ${input.previousOutputText}
             (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).${valueFieldNote(el.required_items)}` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
         )
         .join("\n") +
-      (materialEls.length ? `\n${RESEARCH_MATERIAL_RULES}` : "") +
+      (materialEls.length
+        ? `\n${researchMaterialRules(
+            materialEls.some((el) => isNoteStyleMaterial(el, [input.coreTaskInfo.writing_guide, ...input.coreTaskInfo.requirements])) ? "notes" : "prose"
+          )}`
+        : "") +
       (reportEls.some((el) => !answerSheetEls.includes(el)) ? `\n${REPORT_SECTION_RULES}` : "") +
       "\n"
     : "";
@@ -3010,8 +3015,11 @@ async function generateEssayImpl(
     const sharedPage = newspaperSectionLabels(input.coreTaskInfo.topic, elements.map((e) => ({ label: e.label, description: e.description })));
     // 분석이 같은 산출물을 두 단계로 쪼개 놓은 경우도 한 지면으로 본다 — 이름으로는 가릴 수 없어 글로 판정한다.
     // 실측(2026-11-10, 국어 발표): "스토리보드"와 "발표용 그림 자료"가 따로 생겨 되풀이가 8쌍이었고 전부 그 둘 사이였다.
+    // 자료 수집 같은 재료 단계는 뒤 단계(신문 등)가 **그것을 바탕으로** 쓰는 별개 제출물이라 사실이 겹치는 것이 자연스럽다 — 한 산출물의 쪼개짐으로 보지 않는다.
+    // 실측(2026-11-25, 인권 저널 3회): "신문 ↔ 자료 수집"으로 잘못 묶여 신문 문장 6개가 지워지고 기사 두 칸이 각주만 남았다. 빈칸 표시([직접 작성…])도 같은 이유로 되풀이 판정에서 뺀다(repetition.ts).
+    const materialLabels = new Set(elements.filter((e) => isResearchMaterialStep(e)).map((e) => e.label));
     const sections0 = attempt.sections.map((s) => ({ label: s.label, content: s.content }));
-    const dupSteps = duplicateStepLabels(sections0);
+    const dupSteps = duplicateStepLabels(sections0.filter((s) => !materialLabels.has(s.label)));
     if (dupSteps.length > 0) console.warn(`[generateEssay] 같은 산출물이 두 단계로 쪼개짐: ${dupSteps.join(" ↔ ")}`);
     const { sections: deduped, removed } = dropRepeatedSentences(sections0, [...new Set([...sharedPage, ...dupSteps])]);
     if (removed.length > 0) {
