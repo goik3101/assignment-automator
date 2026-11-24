@@ -43,9 +43,10 @@ export default function FeedbackReply({ id, initial }: { id: string; initial: st
         value={text}
         onChange={(e) => setText(e.target.value)}
         maxLength={REPLY_MAX}
-        rows={3}
+        rows={6}
         placeholder="이 사용자의 문의·피드백 화면에 그대로 보여요"
-        className="mt-1.5 w-full resize-none rounded-xl border border-border-strong bg-background px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-foreground"
+        // 길게 써도 안에서 스크롤되지 않게 글에 맞춰 늘어나고(field-sizing), 손잡이로 직접 키울 수도 있다.
+        className="field-sizing-content mt-1.5 max-h-[70vh] min-h-40 w-full resize-y rounded-xl border border-border-strong bg-background px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-foreground"
       />
       <div className="mt-1.5 flex items-center justify-between gap-3">
         <p role="status" className="text-xs text-muted">

@@ -52,7 +52,11 @@ export default async function AdminFeedbackPage() {
                 </ul>
               )}
               {/* 답변은 이메일(계정)로 보낸 피드백에만 달 수 있다 — 익명에는 보여 줄 대상이 없다. */}
-              {item.from_logged_in_user && <FeedbackReply id={item.id} initial={item.reply} />}
+              {item.from_logged_in_user ? (
+                <FeedbackReply id={item.id} initial={item.reply} />
+              ) : (
+                !isShareMessage(item.message) && <p className="mt-3 border-t border-border pt-3 text-xs text-faint">익명으로 보낸 글이라 답변을 달 수 없어요. (이메일로 보낸 글에만 답변 칸이 나와요)</p>
+              )}
             </li>
           ))}
         </ul>

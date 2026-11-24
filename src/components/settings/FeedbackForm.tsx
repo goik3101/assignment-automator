@@ -155,7 +155,7 @@ export default function FeedbackForm() {
         maxLength={MAX_CHARS}
         rows={6}
         placeholder={t("문의사항, 제안사항 또는 문제점을 자세히 설명해주세요...")}
-        className="mt-2 w-full resize-none rounded-xl border border-border-strong bg-surface px-3.5 py-3 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-foreground"
+        className="field-sizing-content mt-2 max-h-[60vh] min-h-40 w-full resize-none rounded-xl border border-border-strong bg-surface px-3.5 py-3 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-foreground"
       />
       <p className="mt-1 text-right text-xs tabular-nums text-faint">{message.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}</p>
 
