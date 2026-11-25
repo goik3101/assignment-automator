@@ -265,8 +265,8 @@ function Ladder({
     reuse: true,
   });
   const boxes = useMemo(() => data?.skeleton ?? [], [data]);
-  // 퀴즈(빈칸)는 핵심어 있는 칸만, 암기(백지 떠올리기)는 설명하는 칸까지 모든 칸을 한 번씩 돈다.
-  const practiceIndexes = () => (mode === "memorize" ? boxes.map((_, i) => i) : quizIndexes(boxes));
+  // 두 모드 모두 모든 칸을 한 번씩 돈다. 퀴즈는 핵심어 있는 칸이 하나라도 있어야 열리고, 핵심어 없는 칸은 1단계에서 떠올리기 문제가 된다(2단계 빈칸 쓰기에서는 빠진다).
+  const practiceIndexes = () => (mode === "memorize" || quizIndexes(boxes).length > 0 ? boxes.map((_, i) => i) : []);
 
   // "외웠어요" 체크는 칸 이름으로 브라우저에 저장한다 — 창을 닫았다 열어도 이어지고, 결과물이 고쳐지면 clearSavedStudy가 같이 지운다.
   const memoKey = `${studyRef.key ?? `${studyRef.kind}:${studyRef.id}`}:memo-done`;
@@ -299,7 +299,7 @@ function Ladder({
     if (only) scope.current = only;
     else if (s === stages[0]) scope.current = null;
     // 핵심어가 없는 칸(결론 등)은 빈칸 문제가 안 되므로 건너뛴다(칸 순서에는 남아 있다).
-    const order = scope.current ?? practiceIndexes();
+    const order = (scope.current ?? practiceIndexes()).filter((i) => s !== 2 || boxes[i].keywords.length > 0);
     retried.current = new Set();
     if (s === stages[0]) {
       for (const i of order) {
@@ -429,7 +429,12 @@ function Ladder({
               <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${(Math.min(pos, queue.length) / Math.max(1, queue.length)) * 100}%` }} />
             </div>
             <div key={`${stage}-${pos}`}>
-              {stage === 1 && <ChooseStep boxes={boxes} index={current} onDone={onDone} />}
+              {stage === 1 &&
+                (boxes[current].keywords.length > 0 ? (
+                  <ChooseStep boxes={boxes} index={current} onDone={onDone} />
+                ) : (
+                  <RecallStep boxes={boxes} index={current} onDone={onDone} />
+                ))}
               {stage === 2 && <TypeStep boxes={boxes} index={current} onDone={onDone} />}
               {stage === 3 &&
                 (boxes[current].keywords.length > 0 ? (

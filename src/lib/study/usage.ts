@@ -11,8 +11,8 @@ const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) &&
 
 export const STUDY_DAILY_LIMITS: Record<StudyKind, number> = {
   chat: num(process.env.STUDY_LIMIT_CHAT, 20), // 2026-10-26 사용자 결정: 40 → 20 (관리자는 enforceStudyLimit에서 제외)
-  // 출시 기준(2026-10-24 사용자 결정): 공부 자료 생성은 종류별 하루 1회. 채점·채팅은 별도.
-  summary: num(process.env.STUDY_LIMIT_SUMMARY, 1),
+  // 출시 기준(2026-10-24 사용자 결정): 공부 자료 생성은 종류별 하루 1회(요약만 2026-11-26 사용자 결정으로 3회 — 여섯 도구가 요약 하나를 같이 쓴다). 채점·채팅은 별도.
+  summary: num(process.env.STUDY_LIMIT_SUMMARY, 3),
   exam: num(process.env.STUDY_LIMIT_EXAM, 1),
   exam_grade: num(process.env.STUDY_LIMIT_EXAM_GRADE, 20),
   questions: num(process.env.STUDY_LIMIT_QUESTIONS, 30),
