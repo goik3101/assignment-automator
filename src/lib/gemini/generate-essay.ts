@@ -76,7 +76,7 @@ import { trimItemSentences, trimToCeiling } from "@/lib/essay/hard-trim";
 import { handwriteBudget } from "@/lib/essay/handwrite-budget";
 import { withoutOtherAreaNotes } from "@/lib/gemini/analysis-normalize";
 import { withBookBodyItem } from "@/lib/essay/book-body-item";
-import { mainBookTitle, isPlausibleBookTitle } from "@/lib/essay/book-title";
+import { mainBookTitle, isPlausibleBookTitle, looksHedgedBookTitle } from "@/lib/essay/book-title";
 import { studentExcerptState } from "@/lib/questions/questions-pure";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
@@ -92,6 +92,7 @@ import { blankInventedChatLog, isAiChatRecordLabel, isActionLogLabel, blankOveru
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { blockedStepContent, isPlaceholderStep } from "@/lib/essay/placeholder-step";
 import { itemShareNote } from "@/lib/essay/item-share";
+import { itemBoxPlan } from "@/lib/essay/box-pct";
 import { assignWorks, distinctWorkCount, distinctWorkLine } from "@/lib/essay/distinct-works";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
@@ -191,6 +192,7 @@ import { rewriteUnquoted, findQuoteResidue, stripQuotesWhere } from "@/lib/gemin
 import { postprocessStyle, STYLE_POSTPROCESS_FLAGS } from "@/lib/gemini/style-postprocess";
 import { selectFromCandidates, type HistoryEntry } from "@/lib/selection/score";
 import { selectSubjectForTask, type SelectedSubject } from "@/lib/selection/subject-selection";
+import { hasCandidateStep } from "@/lib/selection/selection-need";
 import type { ClaimCheckSummary, CoreTaskInfo, EssayResult, InsufficientDataResult, SourceRef } from "@/types/task";
 
 // 기획서 5-1: 완성 원고 경로는 그라운딩 켠 상태로 마크다운을 바로 받는다.
@@ -662,6 +664,7 @@ function lengthCtxOf(core: CoreTaskInfo, elements: CoreTaskInfo["task_elements"]
     siblings: elements.map((e) => ({ label: e.label, description: e.description })),
     notice: core.notice_text,
     elements: core.task_elements,
+    formBoxes: core.form_boxes,
   };
 }
 
@@ -940,7 +943,7 @@ ${input.previousOutputText}
         .map(
           (el) =>
             `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}` +
-            (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).${itemShareNote(el.required_items, { boxLimited: formRequirementsOn() && hasSizeLimit(requirementsForElement(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.map((e) => e.label))) })}` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
+            (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).${itemShareNote(el.required_items, { boxes: input.coreTaskInfo.form_boxes, requirements: input.coreTaskInfo.requirements, boxLimited: formRequirementsOn() && hasSizeLimit(requirementsForElement(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.map((e) => e.label))) })}` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
         )
         .join("\n") +
       (materialEls.length
@@ -1015,7 +1018,7 @@ ${fixes ? writingGuideBlock(guideText) : ""}${defaultLengthBlock}${boxBlock}${fo
 ${(notes?.book ?? input.presetBook) ? `[처방/추천할 책이 이미 정해짐 — 반드시 그대로 따를 것] 책을 언급/추천/처방하는 단계에서는 반드시 다음 책을 그대로 쓸 것: 『${(notes?.book ?? input.presetBook)!.title}』${(notes?.book ?? input.presetBook)!.author ? ` (저자: ${(notes?.book ?? input.presetBook)!.author})` : ""}. 이미 주제 적합성과 추천 다양성을 함께 고려해 선택된 책이니 다른 책으로 바꾸지 말 것.` : ""}
 ${input.avoidanceInstruction ? `[다양성 확보를 위한 회피 지시 — 반드시 반영할 것]\n${input.avoidanceInstruction}` : ""}
 ${input.recentBookGuidance && !input.presetBook ? `\n${input.recentBookGuidance}\n` : ""}
-${input.presetSubject?.additional?.length ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 서로 다른 ${1 + input.presetSubject.additional.length}개로, ${[input.presetSubject.name, ...input.presetSubject.additional].join(", ")}이다(조건 검증과 다양성을 함께 고려해 이미 선정됨). 이름은 이 표기 그대로만 쓰고, **모든 단계에서 이 같은 대상들**을 쓸 것(단계마다 다른 대상으로 바꾸거나 한 대상을 둘로 쪼개 쓰지 말 것). 안내문이 대상마다 따로 쓰라고 하면 위 순서대로 하나씩 맡긴다(예: 첫째 대상은 앞의 것, 둘째 대상은 뒤의 것). confirmed_subject는 첫째 대상이다.\n` : input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 ${input.presetSubject.name}${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이 줄의 괄호 설명과 「」·"" 같은 표시는 이 지시문의 것이니 글에 옮겨 적지 말 것. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지${englishNameNote}), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것. confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
+${input.presetSubject?.additional?.length ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 서로 다른 ${1 + input.presetSubject.additional.length}개로, ${[input.presetSubject.name, ...input.presetSubject.additional].join(", ")}이다(조건 검증과 다양성을 함께 고려해 이미 선정됨). 이름은 이 표기 그대로만 쓰고, **모든 단계에서 이 같은 대상들**을 쓸 것(단계마다 다른 대상으로 바꾸거나 한 대상을 둘로 쪼개 쓰지 말 것). 안내문이 대상마다 따로 쓰라고 하면 위 순서대로 하나씩 맡긴다(예: 첫째 대상은 앞의 것, 둘째 대상은 뒤의 것). confirmed_subject는 첫째 대상이다.\n` : input.presetSubject ? `\n[이미 정해진 다룰 대상 — 반드시 그대로 따를 것] 이 과제에서 다룰 대상은 ${input.presetSubject.name}${input.presetSubject.userSpecified ? " (학생이 직접 지정함)" : " (조건 검증과 다양성을 함께 고려해 이미 선정됨)"}이다. 이 줄의 괄호 설명과 「」·"" 같은 표시는 이 지시문의 것이니 글에 옮겨 적지 말 것. 이름은 이 표기 그대로만 쓰고(다른 음역·표기 금지${englishNameNote}), 대상을 선정한 이유를 쓰는 단계를 포함해 모든 단계를 이 대상 기준으로 쓰고, 다른 대상으로 바꾸거나 다른 후보를 함께 다루지 말 것.${hasCandidateStep(input.coreTaskInfo) ? " 단, 안내문이 후보 여러 개를 먼저 정하라는 단계(예: 후보 3개 선정)가 있으면 그 단계에서만 이 대상을 후보 중 하나로 넣고 나머지 후보도 같은 종류의 실제 대상으로 함께 적은 뒤 최종으로 이 대상을 고른다고 쓴다." : ""} confirmed_subject도 이 대상이다.\n` : input.recentSubjectGuidance && !input.presetBook ? `\n${input.recentSubjectGuidance}\n` : ""}
 ${input.personalization ? `[학생 개인화 정보 — 자연스럽게 녹여낼 것]\n${input.personalization}` : ""}
 ${input.revisionInstructions ? `[재생성 요청 — 학생이 이전 결과물에 만족하지 못해 다시 요청함. 아래 방향을 반드시 반영해 새로 작성할 것]\n${input.revisionInstructions}` : ""}
 
@@ -1241,7 +1244,11 @@ ${
       return null;
     }
     console.log(`[generateEssay] 책 후보(검색 없이 제안): ${JSON.stringify(parsed.candidates.map((c) => c.title))}`);
-    return pickBookFromCandidates(input, parsed.candidates);
+    // 모르는 책을 얼버무린 후보("…번역본(…설명서류)", "…(또는 …교양서)")는 뺀다 — 남는 게 없으면 검색 기반 선정으로 넘어간다(book-title.ts).
+    const real = parsed.candidates.filter((c) => !looksHedgedBookTitle(c.title));
+    if (real.length < parsed.candidates.length) console.warn(`[generateEssay] 얼버무린 책 후보 ${parsed.candidates.length - real.length}개 제외: ${JSON.stringify(parsed.candidates.filter((c) => looksHedgedBookTitle(c.title)).map((c) => c.title))}`);
+    if (real.length === 0) return null;
+    return pickBookFromCandidates(input, real);
   } catch (err) {
     console.error("[generateEssay] 빠른 책 후보 제안 실패(검색 기반 선정으로 폴백)", err);
     return null;
@@ -2505,7 +2512,7 @@ async function generateEssayImpl(
       .filter((el) => !el.target_length)
       .map((el) => {
         const plan = planLength(el, lengthCtxOf(input.coreTaskInfo));
-        const boxMin = taskBoxLengths(elements, input.coreTaskInfo).find((x) => x.label === el.label)?.min ?? 0;
+        const boxMin = taskBoxLengths(elements, input.coreTaskInfo).find((x) => x.label === el.label)?.min ?? itemBoxPlan(el.required_items, input.coreTaskInfo.form_boxes)?.min ?? 0;
         // 바닥은 역할 목표 최소값의 절반, 천장은 **최대값의 1.4배**(그 아래는 손대지 않는다 — 점수가 길이를
         // 따라가지 않으므로 어설픈 줄이기는 시간만 쓴다). 줄일 때 말해 줄 목표는 역할 최대값 그대로다.
         return [

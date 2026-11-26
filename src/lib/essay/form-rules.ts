@@ -95,11 +95,22 @@ export function inferFormKinds(el: { label: string; description: string }): Form
 }
 
 /** 단계별 유형 규칙 블록. 해당하는 유형이 없으면 빈 문자열. */
-export function buildFormRulesBlock(elements: { label: string; description: string }[]): string {
+// "가설-변인-방법-예상 결과" 틀은 안내문이 가설·변인·설계를 **직접** 요구할 때만 맞다. "실험" 낱말만으로 붙이면 "원리를 설명하시오"에도 "가설은 … 독립 변인은 …"으로 답이 나온다
+// (2026-11-27 과학-02 사진 대조 4/4단계). 저장된 안내문 17단계 중 16단계가 틀만 붙고 설계를 요구하지 않았다. EXPERIMENT_SCAFFOLD=legacy로 예전처럼.
+const DESIGN_WORDS = /가설|변인|탐구s*설계|실험s*설계|탐구s*계획|실험s*계획/;
+const SCAFFOLD = "가설-변인(독립·종속·통제)-방법-예상 결과의 논리가 이어지게 쓸 것.";
+const EXPLAIN_ONLY = '학생이 직접 한 실험·관찰의 측정값·응답 수·평균은 지어내지 말고, 현상이 일어나는 원리를 과학 개념으로 직접 설명할 것. "예상"·"가설" 같은 말로 돌려 쓰지 말 것.';
+function formRuleText(kind: FormKind, text: string, el: { label: string; description: string; required_items?: string[] }): string {
+  if (kind !== "experiment" || process.env.EXPERIMENT_SCAFFOLD === "legacy") return text;
+  if (DESIGN_WORDS.test(`${el.label} ${el.description} ${(el.required_items ?? []).join(" ")}`)) return text;
+  return text.includes(SCAFFOLD) ? EXPLAIN_ONLY : text;
+}
+
+export function buildFormRulesBlock(elements: { label: string; description: string; required_items?: string[] }[]): string {
   const rules = activeRules();
   const lines: string[] = [];
   for (const el of elements) {
-    for (const kind of inferFormKinds(el)) lines.push(`- "${el.label}" 단계: ${rules[kind].text}`);
+    for (const kind of inferFormKinds(el)) lines.push(`- "${el.label}" 단계: ${formRuleText(kind, rules[kind].text, el)}`);
   }
   if (lines.length === 0) return "";
   return `\n【글의 종류별 작성 방식 — 안내문의 요구가 이와 다르면 안내문을 따를 것】\n${lines.join("\n")}\n`;

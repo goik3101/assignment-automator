@@ -28,7 +28,7 @@ test("SELECTION_TRIGGER=legacy면 예전 규칙", () => {
   delete process.env.SELECTION_TRIGGER;
 });
 
-import { selectionCount } from "./selection-need.ts";
+import { hasCandidateStep, selectionCount } from "./selection-need.ts";
 
 test("안내문이 서로 다른 대상 여러 개를 고르라고 하면 개수를 읽는다(2026-11-22 가정-01·역사-05·역사-03이 대상 하나로만 써서 틀렸다)", () => {
   const withReqs = (...reqs: string[]) => ({ topic: "t", requirements: reqs, task_elements: [] });
@@ -45,6 +45,10 @@ test("안내문이 서로 다른 대상 여러 개를 고르라고 하면 개수
     selectionCount(withReqs("자료의 정책 중 효과적이라고 생각하는 것 한 가지를 골라 정책 명칭을 작성한다.", "자료의 정책 중 보완이 필요하다고 생각하는 것 한 가지를 골라 정책 명칭을 작성한다.")),
     2
   );
+  // 한 문장에 둘이 같이 와도 서로 다른 선정이다(2026-11-27 가정-01 재분석)
+  assert.equal(selectionCount(withReqs("우리나라 일·가정 양립 정책 중 효과적인 것 한 가지와 보완이 필요한 것 한 가지를 골라 각각 정책 명칭을 작성한다.")), 2);
+  // "한 가지 이상"은 선정이 아니다
+  assert.equal(selectionCount(withReqs("가치는 한 가지 이상, 방안은 한 가지 이상 골라 제시한다.")), 1);
   // 한 개 선정이거나, 후보를 고른 뒤 다시 고르는 과제는 1
   assert.equal(selectionCount(withReqs("탐구할 인물 한 명을 선정하여 보고서를 쓴다")), 1);
   assert.equal(selectionCount(withReqs("지질명소 후보 3개를 선정한다.", "후보 중 하나를 골라 조사한다.")), 1);
@@ -52,4 +56,17 @@ test("안내문이 서로 다른 대상 여러 개를 고르라고 하면 개수
   assert.equal(selectionCount(withReqs("대상을 한 가지 골라 작성한다.", "대상을 한 가지 골라 작성한다.")), 1);
   // 활동 개수("3가지씩 찾아")는 대상 선정이 아니다
   assert.equal(selectionCount(withReqs("선정한 인물의 주요 활동을 3가지 찾아 기록한다.")), 1);
+});
+
+test("후보 여러 개를 먼저 정하는 단계가 있는 안내문만 잡는다(2026-11-27 과학-06)", () => {
+  const info = (...reqs: string[]) => ({ topic: "t", requirements: reqs, task_elements: [] });
+  assert.equal(hasCandidateStep(info("사전 활동에서 지질명소 후보 3개를 선정한다.")), true);
+  assert.equal(hasCandidateStep(info("후보 중 하나를 골라 조사한다.")), false);
+  assert.equal(hasCandidateStep(info("인물 한 명을 선정하여 보고서를 쓴다.")), false);
+  process.env.CANDIDATE_STEP = "off";
+  try {
+    assert.equal(hasCandidateStep(info("지질명소 후보 3개를 선정한다.")), false);
+  } finally {
+    delete process.env.CANDIDATE_STEP;
+  }
 });

@@ -11,6 +11,7 @@ import { reconcileItemLabels } from "@/lib/essay/item-reconcile";
 import { formRequirementsOn, qualityFixesOn } from "@/lib/essay/quality-flags";
 import { lengthFromAnalyzeOn, sanitizeLengthEstimate } from "@/lib/essay/length-estimate";
 import type { AnalyzeResult } from "@/types/task";
+import { formBoxesOn, sanitizeFormBoxes, type FormBox } from "@/lib/essay/box-pct";
 
 // 기획서 6-0 1단계: 안내문에서 administrative_info(제출기한 등)와
 // core_task_info(주제·요구사항 등)를 "물리적으로 분리"해서 추출한다.
@@ -19,6 +20,17 @@ import type { AnalyzeResult } from "@/types/task";
 // 양식 칸의 빈 줄 수를 writing_guide(1)에 적게 하는 한 줄. 같은 지시가 아래 프롬프트에도 있는데 같은 사진을 3번 분석하면 1번만 따랐다(수학-02, 2026-11-26) —
 // 출력 칸의 설명에도 두면 따르는 비율이 오르는지 본다. ANALYZE_LINES=off로 뺀다.
 const LINE_COUNT_NOTE = process.env.ANALYZE_LINES === "off" ? "" : "(양식 칸에 학생이 쓸 빈 줄이 보이면 **칸마다 '칸 이름 약 N줄'**도 반드시 적을 것, 한 줄 25~35자)";
+// 양식 사진의 빈 칸 크기만 묻는 전용 질문(essay/box-pct.ts의 근거). 이름표는 그대로, 높이는 사진 전체 높이 대비 %, 안내는 뜻만(예시 내용 제외).
+const FORM_BOXES_QUESTION =
+  "이 사진이 학생이 **손으로 글을 쓰는 빈 칸이 있는 양식**이면, 그 빈 칸들을 위에서 아래 순서로 모두 적어라(사진이 여러 장이면 장마다 위에서 아래로 이어서). 칸마다: name(칸 이름표 그대로), " +
+  "pct(그 칸의 세로 높이가 **이 사진 전체 높이의 몇 %인지** 정수, 이름표·안내 문구가 차지한 높이 포함), hint(칸 안에 인쇄된 안내 문구에서 '무엇을 쓰라는 뜻인지'만 25자 이내로 — 예시 내용은 빼라). " +
+  "빈 칸 양식이 아니면(안내문·채점표·문제지만 있으면) boxes를 빈 배열로 둔다.";
+const FORM_BOXES_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: { boxes: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, pct: { type: Type.INTEGER }, hint: { type: Type.STRING } }, required: ["name", "pct", "hint"] } } },
+  required: ["boxes"],
+};
+
 export const ANALYZE_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
@@ -431,6 +443,17 @@ export async function analyzeAssignment(
           return null;
         })
     : Promise.resolve(null);
+  // 칸 크기만 묻는 전용 질문을 분석·전사와 **동시에** 돌린다(시간 추가 없음, 호출 1건 ≈ $0.001). 양식이 아닌 안내문은 빈 목록이라 아무것도 안 붙는다.
+  // 같은 사진에서 분석 한 호출은 칸 줄 수를 절반쯤 놓치거나 큰 칸을 줄여 읽었고, 이 질문은 사진에서 직접 잰 값과 거의 같았다(box-pct.ts).
+  const boxesPromise: Promise<FormBox[]> =
+    formBoxesOn() && input.imageBase64
+      ? generate({ label: "analyze:boxes", role: "analyze", prompt: [...parts.filter((p) => "image" in p), { text: FORM_BOXES_QUESTION }], schema: FORM_BOXES_SCHEMA })
+          .then((r) => sanitizeFormBoxes((JSON.parse(r.text || "{}") as { boxes?: unknown }).boxes))
+          .catch((err) => {
+            console.warn("[analyzeAssignment] 칸 크기 호출 실패(칸 크기 없이 진행)", err instanceof Error ? err.message : err);
+            return [] as FormBox[];
+          })
+      : Promise.resolve([] as FormBox[]);
   let response = await runAnalyze();
   // 실측(같은 안내문 4회 분석 중 1회): 항목 나열이 통째로 8~9개의 별개 "단계"로 쪼개지는 오분석. 이런 모양(5개 이상, 항목 나열 없음)이면 한 번만 다시 분석하고 단계가 더 적은 쪽을 쓴다.
   try {
@@ -552,6 +575,7 @@ export async function analyzeAssignment(
 
   // 안내문 원문의 표 구조에서 **분석이 흘린 양식 칸**을 되찾는다(notice-form.ts).
   // 분석이 만든 구조는 실행마다 흔들리고(2026-11-01 측정) 흘린 칸은 아래 어디서도 복구되지 않는다.
+  const formBoxes = await boxesPromise;
   const noticeText = parallelTranscript ? ((await transcriptPromise) ?? undefined) : (parsed as { notice_text?: string }).notice_text;
   const recovered = noticeFormOn() ? recoverFormFields(task_elements, noticeText) : null;
   const withRecovered = recovered
@@ -588,7 +612,7 @@ export async function analyzeAssignment(
     // 병렬 전사는 분석 JSON 밖에서 왔으므로, 순차 모드와 같은 모양이 되게 결과에 얹는다(측정 도구·되찾기가 읽는다).
     ...(parallelTranscript && noticeText ? { notice_text: noticeText } : {}),
     subject,
-    core_task_info: { ...coreRest, ...(beatLine ? { provided_materials: [...(coreRest.provided_materials ?? []), beatLine] } : {}), ...(noticeText ? { notice_text: noticeText } : {}), requirements: withoutOtherAreaNotes({ requirements: solo.requirements }).requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
+    core_task_info: { ...coreRest, ...(beatLine ? { provided_materials: [...(coreRest.provided_materials ?? []), beatLine] } : {}), ...(noticeText ? { notice_text: noticeText } : {}), ...(formBoxes.length >= 2 ? { form_boxes: formBoxes } : {}), requirements: withoutOtherAreaNotes({ requirements: solo.requirements }).requirements, task_elements: solo.elements, ...(solo.writing_guide ? { writing_guide: solo.writing_guide } : {}) },
     insufficient_reason: parsed.insufficient_reason || null,
   };
 }

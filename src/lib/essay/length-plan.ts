@@ -11,6 +11,7 @@ import { isTableForm, tableColumns, tableRowLabels, PER_CELL_MIN, PER_CELL_MAX, 
 import { handwriteBudget, clampToHandwrite, stepHandwriteBudget } from "./handwrite-budget.ts";
 import { lengthFromAnalyzeOn, type LengthEstimate } from "./length-estimate.ts";
 import { newspaperSectionLabels } from "./deliverable.ts";
+import { itemBoxPlan, type FormBox } from "./box-pct.ts";
 
 export type LengthRole =
   | "material" // 항목별 조사 자료(소제목 구조)
@@ -376,6 +377,8 @@ export type GuideCtx = {
   siblings?: { label: string; description: string }[];
   notice?: string;
   elements?: RoleCtx["elements"];
+  /** 양식 사진의 빈 칸 크기(analyze의 form_boxes). 있으면 항목별 칸 합계가 이 단계의 목표다(box-pct.ts). */
+  formBoxes?: FormBox[];
 };
 
 const roleCtx = (ctx?: GuideCtx): RoleCtx | undefined =>
@@ -398,6 +401,7 @@ function hasFormBox(e: GuideElement, ctx?: GuideCtx): boolean {
 /** 이 단계에 분량 가이드를 줄 수 있는가(= lengthGuideLines가 이 단계를 다루는가). */
 function guided(e: GuideElement, ctx?: GuideCtx): boolean {
   if (e.target_length) return false;
+  if (ctx?.formBoxes && itemBoxPlan(e.required_items, ctx.formBoxes)) return false; // 항목별 칸 크기가 숫자를 말한다(effectiveTarget이 같은 숫자를 돌려준다)
   if (lengthTargetOn() && isDrawingBox(e.label)) return false;
   if (hasFormBox(e, ctx)) return false;
   if (ctx && formRequirementsOn() && hasSizeLimit(requirementsForElement(e, ctx.requirements, ctx.guide, ctx.labels))) return false;
@@ -410,6 +414,9 @@ function guided(e: GuideElement, ctx?: GuideCtx): boolean {
  * 가이드 줄과 같은 사다리를 타야 한다 — 프롬프트에 적힌 숫자와 나눠 주는 숫자가 다르면 안 된다.
  */
 export function effectiveTarget(el: GuideElement, ctx?: GuideCtx): number | null {
+  // 양식의 칸마다 크기를 읽은 단계(사회-03·수학-02·국어-01 같은 빈 양식): 단계 총량은 칸 크기 합계다 — 항목별 문장과 같은 숫자여야 두 숫자가 안 싸운다.
+  const itemBoxes = ctx?.formBoxes ? itemBoxPlan(el.required_items, ctx.formBoxes) : null;
+  if (itemBoxes) return itemBoxes.total;
   // 칸을 아는 단계의 숫자는 **칸에서 나온다**. 가이드 글은 그 단계를 말하지 않지만(`guided`가 false),
   // "이 단계는 몇 자인가"에 대한 답은 한 군데여야 한다 — 호출하는 쪽이 따로 계산하면 또 갈린다.
   const box = ctx && boxLengthOn() ? boxLengths(ctx.labels, ctx.guide, ctx.requirements).find((b) => b.label === el.label) : undefined;

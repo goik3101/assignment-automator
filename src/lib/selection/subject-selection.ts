@@ -8,7 +8,7 @@ import { selectionCount, MULTI_TYPES } from "./selection-need";
 import { selectFromCandidates, type HistoryEntry, type ScoredCandidate, type SelectionCandidate, type SelectionTier } from "./score";
 import { cleanSubjectName, findStudentTopic, isMediumOnly } from "./student-topic";
 import { DOMESTIC_CONSTRAINT, isDomesticScope } from "./domestic-scope";
-import { recentConstraint, wantsRecent } from "./recency";
+import { recentConstraint, TEXTBOOK_CONSTRAINT, wantsRecent, wantsTextbookFree } from "./recency";
 import type { CoreTaskInfo } from "@/types/task";
 
 // 자동 선정 공통 흐름(인물·사건·탐구 대상·발표 주제 등 "학생이 고르는 대상"):
@@ -89,13 +89,13 @@ ${instructions ? `[학생 지침]\n${instructions}\n` : ""}
 - fit은 (조건 충족도 + 자료 확보 가능성 + 고등학생이 다루기 적절한지 + 학생이 알 만한 인지도)의 종합이다. 인지도가 낮은 대상은 fit을 낮게 매겨라.
 - 같은 대상을 다른 표기로 두 번 넣지 마라.
 `.trim();
-  const res = await generate({
-      label: "selection:candidates",
-      role: "main",
-      prompt: prompt,
-      schema: CANDIDATE_SCHEMA,
-    });
-  const parsed = JSON.parse(res.text ?? "{}") as { candidates?: { name: string; canonical_id: string; candidate_type: string; fit: number; group: string }[] };
+  type Raw = { candidates?: { name: string; canonical_id: string; candidate_type: string; fit: number; group: string }[] };
+  // 구조화 응답이 가끔 {"candidates":[]}로 비어 온다(과학-06 실측 1/8) — 비었을 때만 한 번 더 부른다(폴백하면 단계마다 대상이 갈린다).
+  let parsed: Raw = {};
+  for (let i = 0; i < 2 && !(parsed.candidates ?? []).length; i++) {
+    const res = await generate({ label: "selection:candidates", role: "main", prompt, schema: CANDIDATE_SCHEMA });
+    parsed = JSON.parse(res.text ?? "{}") as Raw;
+  }
   const anyType = spec.subject_type === "other" || spec.subject_type === "unspecified" || spec.subject_type === "concept";
   const seen = new Set<string>();
   const out: SelectionCandidate[] = [];
@@ -150,9 +150,16 @@ export async function selectSubjectForTask(
     isDomesticScope(params.subject, [params.info.topic, ...params.info.requirements, ...params.info.task_elements.map((e) => e.description)]);
   // 안내문이 최신·트렌드를 요구하면 후보를 최근 대상으로 좁힌다(recency.ts — 정보-01에서 2011년 사건이 뽑혔다).
   const recent = wantsRecent([params.info.topic, ...params.info.requirements, ...params.info.task_elements.map((e) => e.description)]);
+  // 교과서 문제를 고르라는 안내문이면 후보가 존재하지 않는 교과서 위치(예제 번호)가 되지 않게 한다(recency.ts — 수학-01).
+  const textbookFree = wantsTextbookFree([params.info.topic, ...params.info.requirements, ...params.info.task_elements.map((e) => e.description)]);
   const spec: SubjectSpec = {
     ...specBase,
-    constraints: [...specBase.constraints, ...(domestic ? [DOMESTIC_CONSTRAINT] : []), ...(recent ? [recentConstraint()] : [])],
+    constraints: [
+      ...specBase.constraints,
+      ...(domestic ? [DOMESTIC_CONSTRAINT] : []),
+      ...(recent ? [recentConstraint()] : []),
+      ...(textbookFree ? [TEXTBOOK_CONSTRAINT] : []),
+    ],
   };
   if (recent) console.log("[selection] 최신·트렌드 요구 과제 → 후보를 최근 대상으로 제한");
   if (domestic) console.log("[selection] 한국 범위 과제 → 후보를 한국 대상으로 제한");
@@ -229,6 +236,6 @@ export async function selectSubjectForTask(
       ranking: sel.ranking.map((r) => ({ name: r.name, fit: r.fit, penalty: r.penalty, score: r.score })),
     };
   }
-  console.warn("[selection] 검증을 통과한 후보가 없어 기존 방식으로 폴백");
+  console.warn(`[selection] 검증을 통과한 후보가 없어 기존 방식으로 폴백 — 탈락: ${JSON.stringify(rejected)}`);
   return null;
 }

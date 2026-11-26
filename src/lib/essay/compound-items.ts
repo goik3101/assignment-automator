@@ -12,6 +12,19 @@
 
 const TRIM = (s: string) => s.replace(/^[\s·,、]+|[\s·,、]+$/g, "").trim();
 
+/**
+ * "어려움을 해결·보완할 수 있는 방법"의 "·"는 항목을 가르는 기호가 아니라 **한 서술어의 두 낱말**(해결하거나 보완할)이다.
+ * 가정-01(2026-11-27): "어려움을 해결: …", "보완할 수 있는 방법: …" 두 줄로 쪼개져 학생 글에 이 라벨이 찍혔다.
+ * 양쪽이 모두 동작 이름이고 오른쪽에 서술 어미(~할·~하는)가 바로 이어질 때만 막는다 — "목적·주제·예상 독자"는 그대로 나뉜다. VERB_PAIR=off로 끈다.
+ */
+const ACTION_STEM = /^(?:해결|보완|수정|개선|분석|평가|비교|정리|설명|탐구|조사|확인|점검|활용|적용|제시|검토|보강|발전|대체|예방|극복|대응|실천|해석|추론|판단|선택)$/;
+function isVerbPair(left: string, rest: string): boolean {
+  if (process.env.VERB_PAIR === "off") return false;
+  const l = /([가-힣]{2,3})$/.exec(left)?.[1];
+  const r = /^([가-힣]{2,3})(?:하|할|한|해|함|되|될|된)/.exec(rest)?.[1];
+  return !!l && !!r && ACTION_STEM.test(l) && ACTION_STEM.test(r);
+}
+
 /** 괄호 **밖**의 나열 기호에서만 나눈다 — 괄호 안의 "·"·","는 그 항목의 설명이지 항목을 가르는 기호가 아니다. */
 function splitOutsideParens(name: string): string[] {
   const out: string[] = [];
@@ -22,7 +35,7 @@ function splitOutsideParens(name: string): string[] {
     if (ch === "(" || ch === "（") depth++;
     else if (ch === ")" || ch === "）") depth = Math.max(0, depth - 1);
     const comma = ch === "," && /\s/.test(name[i + 1] ?? " ");
-    if (depth === 0 && (ch === "·" || ch === "・" || ch === "、" || comma)) {
+    if (depth === 0 && (ch === "·" || ch === "・" || ch === "、" || comma) && !((ch === "·" || ch === "・") && isVerbPair(cur, name.slice(i + 1)))) {
       out.push(cur);
       cur = "";
       continue;

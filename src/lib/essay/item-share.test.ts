@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { itemShareNote, nameOnlyItems, reflectionItems, topicItems } from "./item-share.ts";
+import { itemShareNote, namedAsItems, nameOnlyItems, reflectionItems, topicItems } from "./item-share.ts";
 
 const MATH = ["단원명", "경제수학 내용", "나의 탐구 주제", "나의 탐구 동기", "탐구 내용", "탐구 결과", "탐구를 통해 느낀 점", "성장한 점", "변화한 점", "깨달은 점"];
 
@@ -42,4 +42,21 @@ test("주제를 적는 작은 칸은 한두 문장 — '정확히 주제'(서지
   assert.deepEqual(topicItems(["주제", "주제 선정 동기", "주제 선정의 배경(이유)", "토론 주제 분석"]), []);
   assert.match(itemShareNote(["생명과학 연구주제", "연구과정"]), /"생명과학 연구주제" 칸은 주제를 한두 문장으로 분명히 쓴다/);
   assert.equal(itemShareNote(["탐구 주제", "자료조사"], { boxLimited: true }), ""); // 칸 줄 수 상한이면 안내문이 우선
+});
+
+test("안내문이 '○○을 명칭으로 작성'이라 한 칸은 이름 한 줄 — 칸 이름이 '문제 설정'이어도 대상이 같으면 잡고 긴 칸 이름은 건드리지 않는다(2026-11-27 가정-01)", () => {
+  const items = ["문제 설정", "정책의 이름(명칭)", "정책이 위의 문제를 해결할 수 있다고 생각한 이유", "정책의 내용"];
+  const reqs = ["일·가정 양립 과정에서 나타날 수 있는 문제를 포트폴리오 명칭으로 작성한다.", "정책의 이름은 내용을 암시하는 명사형으로 작성한다."];
+  assert.deepEqual(namedAsItems(items, reqs), ["문제 설정"]);
+  assert.deepEqual(namedAsItems(items, ["정책 내용을 구체적으로 작성한다."]), []);
+  assert.deepEqual(namedAsItems(items, undefined), []);
+  assert.match(itemShareNote(items, { requirements: reqs }), /"문제 설정" 칸은 안내문이 이름\(명칭\)으로 쓰라고 한 칸/);
+  assert.equal(itemShareNote(items, { requirements: [] }), "");
+  assert.equal(itemShareNote(items, { requirements: reqs, boxLimited: true }), "");
+  process.env.ITEM_SHARE_NOTE = "off";
+  try {
+    assert.equal(itemShareNote(items, { requirements: reqs }), "");
+  } finally {
+    delete process.env.ITEM_SHARE_NOTE;
+  }
 });

@@ -137,6 +137,12 @@ export function selectionCount(info: SelectionNeedInfo): number {
   for (const r of reqs) {
     for (const s of r.split(/[.。\n]/)) {
       if (/후보/.test(s)) continue;
+      // 한 문장에 "효과적인 것 한 가지와 보완이 필요한 것 한 가지를 골라"처럼 둘이 같이 올 때(2026-11-27 가정-01 재분석: 문장이 하나로 합쳐져 한 정책으로 둘을 썼다).
+      const pairs = [...s.matchAll(/([^.\n,]{2,25}?)\s*(?:을|를|와|과|및)?\s*(?:한|1)\s*가지(?!\s*(?:이상|씩))/g)];
+      if (pairs.length >= 2 && /골라|선정|선택|고르/.test(s)) {
+        for (const pr of pairs) singles.add(pr[1].replace(/[\s·,]/g, ""));
+        continue;
+      }
       // 키는 "한 가지" 앞 25자 — 두 낱말만 보면 "효과적이라고 생각하는 것"과 "보완이 필요하다고 생각하는 것"이 같은 키("생각하는 것")로 합쳐진다(2026-11-22 재실행).
       const m = /([^.\n]{2,25}?)\s*(?:을|를)?\s*(?:한|1)\s*가지[^.\n]{0,12}(?:골라|선정|선택)/.exec(s);
       if (m) singles.add(m[1].replace(/[\s·,]/g, ""));
@@ -146,4 +152,16 @@ export function selectionCount(info: SelectionNeedInfo): number {
 }
 
 /** 이 유형에서만 서로 다른 대상 여러 개를 고른다 — 작품(시집 속 작품 고르기)·개념(관심 요소로 주제 잡기)은 한 개 선정이 맞다. */
-export const MULTI_TYPES = new Set<string>(["person", "system", "event", "organization", "other"]);
+// 국가·지역(place)도 포함(2026-11-27 사회-01 "내가 선정한 두 국가의 인구 피라미드"): 빠져 있어 중국 한 나라만 골랐고 두 번째 국가 칸이 [자료부족]·비교 불가 문장으로 나갔다. MULTI_PLACE=off로 뺀다.
+export const MULTI_TYPES = new Set<string>(["person", "system", "event", "organization", "other", ...(process.env.MULTI_PLACE === "off" ? [] : ["place"])]);
+
+/**
+ * 안내문이 "지질명소 후보 3개를 선정한다"처럼 **후보 여러 개를 먼저 정하는 단계**를 따로 요구하는가.
+ * 왜(2026-11-27 과학-06): 자동 선정이 한 곳을 정하면 글쓰기 프롬프트가 "다른 후보를 함께 다루지 말 것"이라 말해, 사전 활동 칸이 후보 3곳 대신 한 곳의 세 가지 주제로 바뀌었다
+ * (후보 3개를 요구한 안내문 위반). 저장된 분석 92종 중 이 모양은 이 안내문 하나. CANDIDATE_STEP=off로 끈다.
+ */
+export function hasCandidateStep(info: SelectionNeedInfo): boolean {
+  if (process.env.CANDIDATE_STEP === "off") return false;
+  const texts = [...(info.requirements ?? []), ...(info.task_elements ?? []).map((e) => e.description ?? "")];
+  return texts.some((t) => /후보[^.\n]{0,14}(?:선정|고르|골라|제시|정한|정하)|(?:선정|고르|골라|제시)[^.\n]{0,14}후보/.test(t) && /\d|두|세|여러/.test(t));
+}

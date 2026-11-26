@@ -77,6 +77,11 @@ export interface CoreTaskInfo {
    * 운영 문장을 요구사항에서 빼 버려, 분석 요약만 보면 34종 중 1종만 "현장 작성"으로 읽혔다(2026-11-15). 생성 프롬프트에는 넣지 않는다(배점·일시가 들어 있다).
    */
   notice_text?: string;
+  /**
+   * 양식 사진의 **빈 칸 목록**(칸 이름·높이 %·칸이 요구하는 뜻). 칸 크기만 묻는 전용 질문(analyze의 form_boxes 호출)이 낸다 — 거대한 분석 한 호출은 큰 칸을 줄여 읽었다.
+   * 양식이 아닌 안내문은 없다. 생성에서 항목(칸)마다 글자 수를 내는 데만 쓴다(essay/box-pct.ts, FORM_BOXES=off).
+   */
+  form_boxes?: { name: string; pct: number; hint?: string }[];
 }
 
 export interface AnalyzeResult {

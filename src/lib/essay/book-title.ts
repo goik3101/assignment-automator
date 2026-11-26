@@ -21,3 +21,14 @@ export function isPlausibleBookTitle(title: string): boolean {
   if (/^(?:예시|안내|요청|죄송|알겠)/.test(s)) return false;
   return true;
 }
+
+/**
+ * 모델이 모르는 책을 얼버무린 후보("넬슨의 화학이야기 번역본(일상 속 화학 설명서류)", "원소로 보는 세계사(또는 원소 중심 교양서)").
+ * 실제 제목에는 "또는"·"~류)"·"번역본"이 안 붙는다 — 이런 후보를 책으로 골랐다가 지은이·출판사·구절을 하나도 못 찾아 빈칸 2개·출처 0개·54초·$0.15가 됐다(2026-11-27 과학-03 화학II, 사진 대조).
+ * "주기율표(The Periodic Table)"처럼 영어 원제 괄호는 그대로 둔다. BOOK_HEDGE=off로 끈다.
+ */
+export function looksHedgedBookTitle(title: string): boolean {
+  if (process.env.BOOK_HEDGE === "off") return false;
+  const s = (title ?? "").trim();
+  return /또는|[(（][^)）]*(?:류|종류|등|설명서|입문서|교양서|추천서|시리즈물)[)）]|번역본\s*$|번역본\s*[(（]/.test(s);
+}

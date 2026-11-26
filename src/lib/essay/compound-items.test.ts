@@ -190,3 +190,19 @@ test("'…을 기준으로' 자리말은 항목 이름에 붙지 않는다(2026-
   assert.equal(items.length, 1);
   assert.deepEqual(items[0].parts, ["나이", "성별", "직업", "가족관계"]);
 });
+
+test("'해결·보완할'처럼 한 서술어의 두 동작 낱말은 나열이 아니다 — 쪼개지 않는다(2026-11-27 가정-01)", () => {
+  assert.equal(splitCompoundItem("어려움을 해결·보완할 수 있는 방법"), null);
+  assert.deepEqual(splitCompoundItem("글의 목적·주제·예상 독자"), ["글의 목적", "주제", "예상 독자"]);
+  assert.deepEqual(splitCompoundItem("문제점·해결·보완 방안"), ["문제점", "해결", "보완 방안"]);
+  assert.deepEqual(
+    compoundItemsFromText(["문제를 해결할 수 있다고 생각한 이유, 정책 시행 과정에서 예상되는 어려움, 어려움을 해결·보완할 수 있는 현실적이고 구체적인 방법을 작성한다."]),
+    []
+  );
+  process.env.VERB_PAIR = "off";
+  try {
+    assert.deepEqual(splitCompoundItem("어려움을 해결·보완할 수 있는 방법"), ["어려움을 해결", "보완할 수 있는 방법"]);
+  } finally {
+    delete process.env.VERB_PAIR;
+  }
+});
