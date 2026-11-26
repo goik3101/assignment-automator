@@ -210,3 +210,17 @@ test("회고록·실험 절차는 작은 답이 아니다(표시 동작·다른 
   const lab = { label: "실험 1: 용액의 액성 판별하기", description: "A, B, C 스포이드에 표시하고 각 용액을 6홈판에 1mL씩 넣는다. 각 용액에 BTB 용액을 떨어뜨려 색을 관찰한다.", required_items: [] };
   assert.notEqual(planLength(lab as never, { requirements: [], labels: ["실험 1: 용액의 액성 판별하기"] } as never).role, "short_answer");
 });
+
+test("영어 결과물은 역할별 기본 분량을 2.5배로 키운다 — 한국어는 그대로(2026-11-27 영어 UI 논증 에세이가 한국어 상한에 갇힘)", () => {
+  const el = { label: "논증 에세이", description: "주장과 근거를 갖춘 논증 에세이를 작성한다." };
+  const ko = planLength(el);
+  const en = planLength(el, { english: true });
+  assert.equal(en.min, Math.round(ko.min * 2.5));
+  assert.equal(en.max, Math.round(ko.max * 2.5));
+  process.env.ENGLISH_PLAN_SCALE = "off";
+  try {
+    assert.equal(planLength(el, { english: true }).max, ko.max);
+  } finally {
+    delete process.env.ENGLISH_PLAN_SCALE;
+  }
+});

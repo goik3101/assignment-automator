@@ -63,6 +63,8 @@ export interface RoleCtx {
   notice?: string;
   /** 안내문의 모든 단계 — 글 단계들의 계획 총량을 맞추려면 형제 단계의 항목·유형까지 알아야 한다(planLength). */
   elements?: (PlanElement & { type?: string; target_length?: unknown })[];
+  /** 결과물을 영어로 쓴다(화면 언어 English) — 역할별 기본 글자 수는 한국어 기준이라 영어는 약 2.5배로 키운다(planLength). */
+  english?: boolean;
 }
 
 /**
@@ -281,7 +283,18 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
 // 이미 한계가 정해져 있어 줄이지 않는다. LENGTH_TOTAL_CAP=off로 끈다.
 const TOTAL_CAP = 3500;
 
+/**
+ * 역할별 기본 분량(글자 수)은 한국어 기준이다. 영어로 쓰면 같은 내용이 약 2.5배 글자라(output-lang.ts ENGLISH_CHAR_RATIO) 그대로 두면 영어 에세이가 한국어 상한에 갇힌다.
+ * 2026-11-27 웹 안내문 4종(영어 UI): 논증 에세이 "서론 10~12줄·본문 3×15줄·결론 8줄"(약 650단어)이 426단어로, 대학 보고서가 270단어로 잘렸다. ENGLISH_PLAN_SCALE=off로 끈다.
+ */
+const EN_RATIO = 2.5;
 export function planLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
+  const p = planLengthKo(el, ctx);
+  if (!ctx?.english || process.env.ENGLISH_PLAN_SCALE === "off") return p;
+  return { ...p, min: Math.round(p.min * EN_RATIO), max: Math.round(p.max * EN_RATIO), basis: p.basis + " → 영어는 글자 수가 약 2.5배" };
+}
+
+function planLengthKo(el: PlanElement, ctx?: RoleCtx): LengthPlan {
   const own = planOne(el, ctx);
   const all = (ctx?.elements ?? []).filter((e) => !e.type || e.type === "text_submission");
   if (process.env.LENGTH_TOTAL_CAP === "off" || all.length < 2) return own;

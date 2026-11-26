@@ -295,6 +295,8 @@ export function factSheetText(facts: Fact[]): string {
  * 노트에 없는 번호는 지운다. 반환 sources는 실제로 쓰인 것만.
  */
 export function mapFactMarkers(text: string, facts: Fact[]): { text: string; sources: { n: number; title: string; url: string }[]; unknown: number } {
+  // 모델이 가끔 [F3]을 ⟦F3⟧·【F3】처럼 다른 괄호로 쓴다(2026-11-27 영어 초고에 그대로 남았다) — 같은 표기로 본다.
+  text = text.replace(/[⟦［【〔]\s*(F\d+)\s*[⟧］】〕]/g, "[$1]");
   const byId = new Map(facts.map((f) => [f.id, f]));
   const urlToN = new Map<string, number>();
   const sources: { n: number; title: string; url: string }[] = [];

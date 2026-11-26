@@ -54,3 +54,29 @@ test("발표 시간 범위(\"2분30초~3분\")는 양 끝을 모두 쓴다", () 
   assert.deepEqual(p("2분~3분"), { min: 540, max: 990, unit: undefined });
   assert.deepEqual(p("2분30초~3분", true), { min: 250, max: 390, unit: "words" });
 });
+
+test("요구사항이 '각 에세이는 800-1000 words'라 하면 전체 분량으로 나누지 않는다 — 글마다 800~1000(2026-11-27 UCSD 에세이 2편이 400~500으로 줄었다)", () => {
+  const els = [
+    { label: "첫 번째 에세이", target_length: { min: 800, max: 1000, unit: "words" as const, counts_spaces: true }, _lengthText: "800-1000 words" },
+    { label: "두 번째 에세이", target_length: { min: 800, max: 1000, unit: "words" as const, counts_spaces: true }, _lengthText: "800-1000 words" },
+  ];
+  // 요구사항에 '각'이 없으면 예전처럼 나눈다
+  assert.deepEqual(distributeSharedLength(els, ["분량은 800-1000 words이다."]).map((e) => e.target_length?.max), [500, 500]);
+  assert.deepEqual(distributeSharedLength(els).map((e) => e.target_length?.max), [500, 500]);
+  // 글마다 적용이면 그대로
+  assert.deepEqual(distributeSharedLength(els, ["각 에세이는 800-1000 words로 작성한다."]).map((e) => e.target_length?.max), [1000, 1000]);
+  assert.deepEqual(distributeSharedLength(els, ["Each paper is 800-1000 words."]).map((e) => e.target_length?.max), [1000, 1000]);
+  process.env.LENGTH_EACH = "off";
+  try {
+    assert.deepEqual(distributeSharedLength(els, ["각 에세이는 800-1000 words로 작성한다."]).map((e) => e.target_length?.max), [500, 500]);
+  } finally {
+    delete process.env.LENGTH_EACH;
+  }
+});
+
+test("'각 단계를 합해 전체 1500자'는 글마다가 아니라 합계다 — 계속 나눈다", () => {
+  const tl = { min: 1350, max: 1650, counts_spaces: true };
+  const els = ["a", "b", "c"].map((label) => ({ label, target_length: { ...tl }, _lengthText: "공백 포함 1500자 내외" }));
+  const out = distributeSharedLength(els, ["각 단계의 글을 합쳐 전체 공백 포함 1500자 내외로 작성한다."]);
+  assert.deepEqual(out.map((e) => e.target_length?.max), [550, 550, 550]);
+});

@@ -143,3 +143,12 @@ test("뉴스 재배포 포털은 뒤로 미룬다 — 원 언론사 주소가 �
   // 포털의 비뉴스 페이지는 건드리지 않는다
   assert.equal(isSecondChoicePage("https://dic.daum.net/word/view.do?wordid=1"), false);
 });
+
+test("다른 괄호로 쓴 사실 번호(⟦F1⟧·【F1】)도 출처 번호로 바꾼다 — 글에 그대로 남지 않는다(2026-11-27)", () => {
+  const facts = [{ id: "F1", fact: "x", url: "https://a.example/1", title: "A" }] as never;
+  const r = mapFactMarkers("Text ends here.⟦F1⟧ Another【F1】.", facts);
+  assert.equal(r.text.includes("⟦"), false);
+  assert.equal(r.text.includes("【"), false);
+  assert.match(r.text, /\[1\]/);
+  assert.equal(r.sources.length, 1);
+});

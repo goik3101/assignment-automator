@@ -265,7 +265,7 @@ const BASE_SYSTEM_INSTRUCTION = `
   본문")에만 적용되는 게 명확하면 그 단계에만 채우고, 다른 단계(예: "1차시
   개요")에 별도로 다른 분량 기준이 있으면 그 단계에는 그 표현을 따로 채울
   것 — 안내문 전체에 적용되는 공통 분량이면 해당하는 모든 단계에 같은
-  표현을 채울 것.
+  표현을 채울 것. 단 "각 글(에세이)은 800-1000 words"처럼 **글마다 따로** 적용되는 분량이면 표현 앞에 "각각"을 붙일 것(예: "각각 800-1000 words").
 - required_items는 그 단계에 대해 안내문이 "이 항목들을 조사/작성하라"고 **직접
   나열한 세부 항목**만 안내문 순서대로 짧은 항목명으로 담을 것. 안내문 문장에
   "A, B, C, D에 대한 자료를 수집", "가설·준비물·방법을 쓰고"처럼 항목이 실제로
@@ -537,7 +537,7 @@ export async function analyzeAssignment(
   // 채점 기준의 "누가·언제·어디서…"는 칸 목록이 아니라 글에 담길 내용 안내다 — 소제목 구조로 쓰이지 않게 뺀다.
   // 칸이 있는 제작물(카드뉴스·신문 등)은 글 단계로 올린다 — 칸에 들어갈 말은 학생이 써야 하고,
   // 산출물 이름만 보고 external_production에 두면 같은 안내문인데 실행마다 글을 받았다 못 받았다 한다.
-  const distributedRaw = distributeSharedLength(task_elements_raw).map((e) =>
+  const distributedRaw = distributeSharedLength(task_elements_raw, parsed.core_task_info.requirements).map((e) =>
     foldSkeletonItems(dropInterrogativeItems(textWhenBoxesToFill(forceTextSubmissionIfNoExternalHint(e, parsed.core_task_info.topic))))
   );
   // 앞 단계와 같은 칸 목록을 또 가진 뒤 단계의 중복 칸을 뺀다(analysis-normalize.ts dropRepeatedSiblingItems).

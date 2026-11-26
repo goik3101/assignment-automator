@@ -109,8 +109,22 @@ function parseCharLength(t: string): { min: number; max: number } | null {
  * 결과가 단계 수배로 부풀고 재시도가 폭주한다(실측: 7개 단계 × 1350~1650자 재시도). 같은 표현이 2개 이상 단계에 복사돼 있고 "각각/단계별"이 아니면
  * 전체 분량으로 보고 단계 수로 나눠 배분한다. 단계별 분량이 서로 다른 안내문(1차시 200자, 2차시 800자)은 건드리지 않는다.
  */
+/**
+ * 안내문 요구사항 문장이 그 분량을 **글마다** 적용한다고 말하는가("각 에세이는 800-1000 words", "Each paper 800-1000 words").
+ * 왜(2026-11-27 UCSD 사회학 에세이 2편): 같은 분량이 두 단계에 복사됐다고 전체 분량으로 보고 반씩 나눠 400~500단어가 됐다(분석 6회 중 4회). 분석이 "각각"을 붙이면 나누지 않지만 6회 중 2회뿐이었다.
+ * 분량의 숫자가 그 문장에 있고 "각/각각/each/per/마다"가 앞에 있으면 나누지 않는다. LENGTH_EACH=off로 끈다.
+ */
+export function perElementLength(lengthText: string, requirements: string[] | undefined): boolean {
+  if (process.env.LENGTH_EACH === "off") return false;
+  const nums = (lengthText.match(/\d{2,5}/g) ?? []).slice(0, 2);
+  if (nums.length === 0) return false;
+  // "각 단계를 합해 전체 1500자"처럼 합계를 말하는 문장은 글마다가 아니다.
+  return (requirements ?? []).some((r) => /(?:각각?|마다|\beach\b|\bper\b)/i.test(r) && !/합|전체|총|\btotal\b|\bcombined\b|\boverall\b/i.test(r) && nums.every((n) => r.includes(n)));
+}
+
 export function distributeSharedLength<T extends { target_length?: ParsedLength & { counts_spaces: boolean }; _lengthText?: string }>(
-  elements: T[]
+  elements: T[],
+  requirements?: string[]
 ): Omit<T, "_lengthText">[] {
   const groups = new Map<string, number[]>();
   elements.forEach((e, i) => {
@@ -121,6 +135,7 @@ export function distributeSharedLength<T extends { target_length?: ParsedLength 
   const out = elements.map((e) => ({ ...e }));
   for (const [key, idxs] of groups) {
     if (idxs.length < 2 || /각각|각\s?단계|단계별|항목별|마다|각\s?\d/.test(key)) continue;
+    if (perElementLength(elements[idxs[0]]._lengthText ?? key, requirements)) continue;
     // 하한만/상한만 있는 값("200자 이상")은 단계별 기준일 가능성이 커서 나누지 않는다. 범위("1500자 내외")만 전체 분량으로 본다.
     if (idxs.some((i) => !(out[i].target_length!.min > 0 && out[i].target_length!.max > 0))) continue;
     for (const i of idxs) {

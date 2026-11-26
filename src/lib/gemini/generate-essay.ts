@@ -665,6 +665,7 @@ function lengthCtxOf(core: CoreTaskInfo, elements: CoreTaskInfo["task_elements"]
     notice: core.notice_text,
     elements: core.task_elements,
     formBoxes: core.form_boxes,
+    english: currentOutputLang() === "en",
   };
 }
 
