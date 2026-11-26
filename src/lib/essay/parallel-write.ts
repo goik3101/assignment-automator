@@ -30,14 +30,26 @@ function stepLengthLine(label: string, target?: number): string {
 `;
 }
 
-export function parallelWriteInstruction(label: string, labels: string[], withSummary: boolean, target?: number): string {
+export function parallelWriteInstruction(label: string, labels: string[], withSummary: boolean, target?: number, materialItems = 0): string {
   const others = labels.filter((l) => l !== label).map((l) => `"${l}"`).join(", ");
   return `
 【이번 호출에서 쓸 부분 — 반드시 지킬 것】
 이 과제의 단계(${labels.map((l) => `"${l}"`).join(", ")})는 여러 사람이 나눠서 동시에 쓴다. 너는 "## ${label}" 단계 하나만 쓴다.
 ${others ? `${others} 단계는 쓰지 말 것(그 단계의 내용은 위 단계 설명을 참고해 흐름만 맞춘다). ` : ""}책·인물·대상 이름과 사실은 위에 정해진 것만 쓴다(다른 단계와 어긋나지 않게).
 ${withSummary ? "맨 위에 과제 전체(모든 단계)를 요약한 불릿 3줄을 먼저 쓰고, 바로 이어서" : "맨 위 요약은 쓰지 말고 곧바로"} "## ${label}" 제목 줄부터 그 단계 본문을 쓴다.
-${stepLengthLine(label, target)}`.trim();
+${stepLengthLine(label, target)}${materialShareLine(target, materialItems)}`.trim();
+}
+
+/**
+ * 재료 단계(자료 수집)는 단계 총량만 말하면 항목당 170~210자로 끝나 목표의 60~77%에 그쳤다(인권 저널 7회, 2026-11-25).
+ * 항목마다 몫을 숫자로 말해 주면 같은 프롬프트 8회 재전송에서 중앙 862 → 1,088자(목표 1,350의 0.64 → 0.81), 최소 795 → 970자였다.
+ * 보고서형 단계에는 걸지 않는다(수학-02 두 단계는 이미 0.9~0.95라 +5~19%뿐, 넘칠 위험). MATERIAL_ITEM_SHARE=off로 끈다.
+ */
+function materialShareLine(target: number | undefined, items: number): string {
+  if (process.env.MATERIAL_ITEM_SHARE === "off" || !target || !Number.isFinite(target) || items < 3) return "";
+  const share = Math.round(target / items / 10) * 10;
+  if (share < 100) return "";
+  return `\n항목 ${items}개라 **항목마다 공백 포함 약 ${share}자**씩(사실 3~5문장) 쓴다.`;
 }
 
 /**

@@ -171,3 +171,22 @@ test("쉼표가 문장을 잇는 절은 나열 항목이 아니다(2026-11-25 �
   // 진짜 나열은 그대로 읽는다
   assert.ok(compoundItemsFromText(["글의 목적, 주제, 예상 독자를 구체적으로 설정한다."]).length >= 1);
 });
+
+test("양식 칸 크기가 정해진 과제는 '구체적으로 길게' 대신 칸에 들어갈 길이를 말한다(2026-11-26 사회-03)", () => {
+  const items = [{ name: "통계자료·정책자료", parts: ["통계자료", "정책자료"] }];
+  assert.match(compoundItemBlock(items), /구체적으로 쓴다/);
+  assert.match(compoundItemBlock(items, false, false, true), /양식 칸에 들어갈 만큼 한두 문장/);
+  assert.doesNotMatch(compoundItemBlock(items, false, false, true), /구체적으로 쓴다/);
+  process.env.COMPOUND_BOX = "off";
+  try {
+    assert.match(compoundItemBlock(items, false, false, true), /구체적으로 쓴다/);
+  } finally {
+    delete process.env.COMPOUND_BOX;
+  }
+});
+
+test("'…을 기준으로' 자리말은 항목 이름에 붙지 않는다(2026-11-26 역사-04 '1950년을 기준으로 나이')", () => {
+  const items = compoundItemsFromText(["1950년을 기준으로 나이, 성별, 직업, 가족관계 등을 포함해 가상의 인물을 설정할 것."]);
+  assert.equal(items.length, 1);
+  assert.deepEqual(items[0].parts, ["나이", "성별", "직업", "가족관계"]);
+});

@@ -46,3 +46,16 @@ test("단계별 호출에 그 단계의 목표 분량을 적는다 (전수 측�
   assert.equal(parallelWriteInstruction("만평/광고", ["머리기사", "만평/광고"], false), parallelWriteInstruction("만평/광고", ["머리기사", "만평/광고"], false, undefined));
   assert.ok(!parallelWriteInstruction("만평/광고", ["머리기사", "만평/광고"], false, 50).includes("분량:"));
 });
+
+test("재료 단계(문단형)에는 항목별 몫을 한 줄로 말하고, 항목이 적거나 스위치가 꺼지면 말하지 않는다(2026-11-26)", () => {
+  const withShare = parallelWriteInstruction("자료 수집", ["자료 수집", "신문"], true, 1350, 5);
+  assert.match(withShare, /항목 5개라 \*\*항목마다 공백 포함 약 270자\*\*씩\(사실 3~5문장\)/);
+  assert.doesNotMatch(parallelWriteInstruction("신문", ["자료 수집", "신문"], false, 1620), /항목마다 공백 포함/);
+  assert.doesNotMatch(parallelWriteInstruction("자료 수집", ["자료 수집", "신문"], true, 1350, 2), /항목마다 공백 포함/);
+  process.env.MATERIAL_ITEM_SHARE = "off";
+  try {
+    assert.doesNotMatch(parallelWriteInstruction("자료 수집", ["자료 수집", "신문"], true, 1350, 5), /항목마다 공백 포함/);
+  } finally {
+    delete process.env.MATERIAL_ITEM_SHARE;
+  }
+});

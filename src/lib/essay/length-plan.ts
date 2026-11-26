@@ -181,7 +181,7 @@ function rolePlanLength(el: PlanElement, ctx?: RoleCtx): LengthPlan {
       return { role, min: 300, max: 500, basis: "짧은 서술형 답변" };
     case "material": {
       const n = Math.max(items, 2);
-      return { role, min: n * 160, max: n * 380, basis: `조사 항목 ${n}개 × 항목당 사실 2~4문장` };
+      return { role, min: n * 160, max: n * 380, basis: `조사 항목 ${n}개 × 항목당 사실 3~5문장` };
     }
     case "qa_list": {
       const n = Math.max(items, 2);

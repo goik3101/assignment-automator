@@ -8,6 +8,7 @@ import { selectionCount, MULTI_TYPES } from "./selection-need";
 import { selectFromCandidates, type HistoryEntry, type ScoredCandidate, type SelectionCandidate, type SelectionTier } from "./score";
 import { cleanSubjectName, findStudentTopic, isMediumOnly } from "./student-topic";
 import { DOMESTIC_CONSTRAINT, isDomesticScope } from "./domestic-scope";
+import { recentConstraint, wantsRecent } from "./recency";
 import type { CoreTaskInfo } from "@/types/task";
 
 // 자동 선정 공통 흐름(인물·사건·탐구 대상·발표 주제 등 "학생이 고르는 대상"):
@@ -147,7 +148,13 @@ export async function selectSubjectForTask(
   const domestic =
     process.env.SELECTION_DOMESTIC_SCOPE !== "off" &&
     isDomesticScope(params.subject, [params.info.topic, ...params.info.requirements, ...params.info.task_elements.map((e) => e.description)]);
-  const spec: SubjectSpec = domestic ? { ...specBase, constraints: [...specBase.constraints, DOMESTIC_CONSTRAINT] } : specBase;
+  // 안내문이 최신·트렌드를 요구하면 후보를 최근 대상으로 좁힌다(recency.ts — 정보-01에서 2011년 사건이 뽑혔다).
+  const recent = wantsRecent([params.info.topic, ...params.info.requirements, ...params.info.task_elements.map((e) => e.description)]);
+  const spec: SubjectSpec = {
+    ...specBase,
+    constraints: [...specBase.constraints, ...(domestic ? [DOMESTIC_CONSTRAINT] : []), ...(recent ? [recentConstraint()] : [])],
+  };
+  if (recent) console.log("[selection] 최신·트렌드 요구 과제 → 후보를 최근 대상으로 제한");
   if (domestic) console.log("[selection] 한국 범위 과제 → 후보를 한국 대상으로 제한");
 
   const candidates = await generateCandidates(spec, params.subject, params.instructions, domestic);

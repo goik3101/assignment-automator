@@ -80,7 +80,7 @@ import { mainBookTitle, isPlausibleBookTitle } from "@/lib/essay/book-title";
 import { studentExcerptState } from "@/lib/questions/questions-pure";
 import { acceptReviewedSection } from "@/lib/essay/review-accept";
 import { dropDeadSourceFigures } from "@/lib/essay/dead-source-figures";
-import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields, valueFieldNote } from "@/lib/essay/bibliographic-fields";
+import { fillBookBlanks, findBookInTexts, findValueFieldOverflows, replaceValueFields, trimBibliographicFields } from "@/lib/essay/bibliographic-fields";
 import { wantsSourceList, sourceListHeading } from "@/lib/essay/source-list-need";
 import { fillPlaceholderSourceLine } from "@/lib/essay/source-line";
 import { withHanjaScope, hanjaAllowed, isHanjaTask } from "@/lib/essay/hanja-scope";
@@ -91,6 +91,8 @@ import { stripPlanCitations } from "@/lib/essay/plan-citations";
 import { blankInventedChatLog, isAiChatRecordLabel, isActionLogLabel, blankOveruseRepairText, countBlanks, findOwnActivitySentences, isOwnRecordStep, ownActivityRepairText, removeOwnActivitySentences } from "@/lib/essay/own-activity";
 import { findRefusalSentences, refusalRepairText } from "@/lib/essay/refusal";
 import { blockedStepContent, isPlaceholderStep } from "@/lib/essay/placeholder-step";
+import { itemShareNote } from "@/lib/essay/item-share";
+import { assignWorks, distinctWorkCount, distinctWorkLine } from "@/lib/essay/distinct-works";
 import { renumberAcrossSections } from "@/lib/essay/section-citations";
 import { countEvidenceItems, evidenceItemsRepairText, evidenceSectionText, evidenceWritingBlock, findSourceSubjectSentences, findUsePlanSentences, sourceSubjectRepairText, evidenceDepthOn, thinEvidenceItems, thinEvidenceRepairText, usePlanRepairText } from "@/lib/essay/evidence-items";
 import { allCompoundItemsByStep, compoundItemBlock, compoundRepairText, missingParts, sectionTextFor } from "@/lib/essay/compound-items";
@@ -835,7 +837,12 @@ ${input.previousOutputText}
   // 문제마다 답을 적는 답안지(문제 1…N)는 항목 줄을 "구체적으로 길게" 쓰라고 하면 독음·한자쓰기 칸에까지 해설이 붙는다(한문-01 실측 2026-11-21) — 그 단계의 항목 줄만 답만 쓰게 한다.
   const answerSheetLabels = new Set(elements.filter((el) => lengthRoleOf(el, formCtx) === "qa_list").map((el) => el.label));
   const answerSheetOnly = answerSheetLabels.size > 0 && compoundAll.length > 0 && compoundAll.every((it) => (it.owner ? answerSheetLabels.has(it.owner) : answerSheetLabels.size === elements.length));
-  const compoundBlock = compoundItemBlock(compoundAll, elements.length > 1, answerSheetOnly && process.env.ANSWER_SHEET_RULES !== "off");
+  const compoundBlock = compoundItemBlock(
+    compoundAll,
+    elements.length > 1,
+    answerSheetOnly && process.env.ANSWER_SHEET_RULES !== "off",
+    formRequirementsOn() && elements.some((el) => hasSizeLimit(requirementsForElement(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.map((e) => e.label))))
+  );
   // 안내문이 다룰 기간을 못 박은 과제(역사 신문 등)는 그 시점에서 쓰는 글이다 — 뒤에 일어난 일을 알 수 없다.
   const timeRange = findTimeRange([
     ...input.coreTaskInfo.requirements,
@@ -933,7 +940,7 @@ ${input.previousOutputText}
         .map(
           (el) =>
             `- "${el.label}" 단계의 필수 항목(이 순서대로): ${el.required_items!.join(" → ")}` +
-            (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).${valueFieldNote(el.required_items)}` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
+            (!fixes || sceneEls.includes(el) ? "" : answerSheetEls.includes(el) ? `\n  이 단계는 문제마다 답을 적는 답안지다. 문제마다 요구된 답을 쓴다(문제가 요구하지 않은 해설·배경은 덧붙이지 말 것. 이 설명을 소제목에 적지 말 것).` : reportEls.includes(el) ? `\n  이 단계는 제출용 글이다. 항목마다 문단으로 쓴다(이 설명을 소제목에 적지 말 것).${itemShareNote(el.required_items, { boxLimited: formRequirementsOn() && hasSizeLimit(requirementsForElement(el, input.coreTaskInfo.requirements, input.coreTaskInfo.writing_guide, elements.map((e) => e.label))) })}` : `\n  이 단계는 조사 자료다. 항목마다 사실을 정리한다(이 설명을 소제목에 적지 말 것).`)
         )
         .join("\n") +
       (materialEls.length
@@ -1389,6 +1396,7 @@ export function researchForTask(input: GenerateEssayInput, elements: CoreTaskInf
 }
 
 async function researchOnce(input: GenerateEssayInput, elements: CoreTaskInfo["task_elements"]): Promise<ResearchNotes | null> {
+  const workCount = distinctWorkCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]);
   const items = elements
     .map((e) => `- "${e.label}": ${e.description}${e.required_items?.length ? ` (다룰 항목: ${e.required_items.join(" / ")})` : ""}`)
     .join("\n");
@@ -1442,7 +1450,7 @@ ${bookBlock}${input.presetSubject ? `[다룰 대상 — 이 대상만 조사할 
 - 고등학교 교과서·수업에서 다루는 수준의 사실을 고를 것. 대학 교재 수준의 이론·수치(예: 반응 엔탈피 값, 전문 학술 용어)는 안내문이 요구하지 않으면 담지 말 것.`
       : ""
   }
-- 검색으로 확인한 사실만 쓴다. 사실 10~14개를, 위 각 단계·항목마다 최소 2개씩 고르게 담을 것.${evidenceBlock ? "" : " 논설·토론이면 찬성·반대 양쪽 근거를 함께 담을 것."}
+- 검색으로 확인한 사실만 쓴다. 사실 10~14개를, 위 각 단계·항목마다 최소 2개씩 고르게 담을 것.${evidenceBlock ? "" : " 논설·토론이면 찬성·반대 양쪽 근거를 함께 담을 것."}${workCount > 0 ? `\n- 이 과제는 작품 ${workCount}개를 골라 차시마다 각각 쓴다. 그 책에 **실제로 수록된 작품의 제목 ${workCount}개 이상**을 서로 다른 사실로 담고(출처 페이지에 적힌 제목만), 작품 제목은 「」로 감쌀 것.` : ""}
 - 각 사실은 한국어 한 문장으로, 연도·수치·이름 같은 확인 가능한 값을 포함한다. 출처에 없는 값은 쓰지 않는다.${
     qualityFixesOn()
       ? `
@@ -1761,6 +1769,19 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
         const el = elements.find((e) => e.label === l);
         return el ? (effectiveTarget(el, guideCtx) ?? undefined) : undefined;
       };
+      // 안내문이 "작품 N개를 골라 각각"이라고 하면 차시마다 서로 다른 작품을 미리 배정한다 — 단계들이 동시에 쓰이면 서로의 선택을 못 봐 셋 다 같은 작품을 골랐다(distinct-works.ts, DISTINCT_WORKS=off).
+      const workPlan = assignWorks(
+        labels,
+        distinctWorkCount([...input.coreTaskInfo.requirements, ...input.coreTaskInfo.task_elements.map((e) => e.description)]),
+        input.instructions ? [input.instructions] : [],
+        notes.facts.map((f) => f.fact)
+      );
+      if (workPlan.size > 0) console.log(`[generateEssay] 차시별 작품 배정: ${[...workPlan.entries()].map(([l, w]) => `${l}=${w}`).join(" / ")}`);
+      // 자료 수집류(문단형)만 항목별 몫을 알려 준다 — 메모형(불릿)과 보고서형은 해당 없음(parallel-write.ts materialShareLine).
+      const materialItemCount = (l: string): number => {
+        const el = elements.find((e) => e.label === l);
+        return el && el.items_format === "sections" && isResearchMaterialStep(el) && !isNoteStyleMaterial(el, [input.coreTaskInfo.writing_guide, ...input.coreTaskInfo.requirements]) ? (el.required_items?.length ?? 0) : 0;
+      };
       const byLabel = new Map<string, Awaited<ReturnType<typeof generate>>>();
       const done: { label: string; content: string }[] = [];
       for (const wave of waves) {
@@ -1773,7 +1794,7 @@ ${itemWriteInstruction(labels[0], group, all, i === 0, stepTarget)}`,
               role: "write",
               prompt: `${prompt}
 
-${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l))}\n${tableStepLine(l, tables)}${prev ? `\n\n${prev}` : ""}`,
+${parallelWriteInstruction(l, labels, l === labels[0], targetOf(l), materialItemCount(l))}\n${tableStepLine(l, tables)}${workPlan.size ? `\n${distinctWorkLine(l, workPlan)}` : ""}${prev ? `\n\n${prev}` : ""}`,
               effort: writeEffort(),
             })
           )

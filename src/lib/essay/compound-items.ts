@@ -107,7 +107,9 @@ export function compoundItems(names: string[]): CompoundItem[] {
  * `multiStep`이 참이면 주인이 있는 항목에 **그 단계 이름을 적어** 다른 단계가 가져가지 않게 한다.
  * 단계가 하나면 적을 필요가 없다(그 단계 것이 분명하다).
  */
-export function compoundItemBlock(items: CompoundItem[], multiStep = false, answerSheet = false): string {
+// boxLimited: 안내문이 양식 칸 크기(줄·문장 상한)를 정한 과제 — "구체적으로 길게"가 칸 크기와 부딪히므로 칸에 들어갈 길이로 말한다.
+// 실측(2026-11-26, 사회-03 사진 대조): 자료조사 칸이 크기 비슷한 다른 칸의 3~4배(376자) — 문장을 바꾸면 291자(−23%, 8회). COMPOUND_BOX=off로 끈다.
+export function compoundItemBlock(items: CompoundItem[], multiStep = false, answerSheet = false, boxLimited = false): string {
   if (items.length === 0) return "";
   const owned = multiStep && items.some((it) => it.owner);
   return (
@@ -125,7 +127,9 @@ export function compoundItemBlock(items: CompoundItem[], multiStep = false, answ
       .join("\n") +
     (answerSheet
       ? `\n각 줄에는 그 항목이 요구한 답만 쓴다(독음·한자처럼 값이 정해진 항목은 그 값만 적고 해설을 덧붙이지 말 것. 비워 두지는 말 것).\n`
-      : `\n각 줄의 내용은 한 문장으로 끝내지 말고 과제에 맞게 구체적으로 쓴다(이름만 적고 비워 두지 말 것).\n`)
+      : boxLimited && process.env.COMPOUND_BOX !== "off"
+        ? `\n각 줄은 양식 칸에 들어갈 만큼 한두 문장으로 쓴다(칸 크기를 넘기지 말 것. 이름만 적고 비워 두지는 말 것).\n`
+        : `\n각 줄의 내용은 한 문장으로 끝내지 말고 과제에 맞게 구체적으로 쓴다(이름만 적고 비워 두지 말 것).\n`)
   );
 }
 
@@ -174,7 +178,9 @@ export function compoundRepairText(name: string, parts: string[], missing: strin
 const ENUM_CLAUSE =
   /([^.。\n]{4,60}?)(?:을|를)\s*(?:각각\s*|구체적으로\s*|모두\s*)?(?:설정|구상|작성|기록|제시|정리|밝히|담|쓴다|써야|구분|나누)/g;
 /** 앞에 붙은 자리말("개요에는", "그에 맞게")을 뗀다. */
-const LEAD = /^(?:[가-힣A-Za-z0-9]+(?:\s+[가-힣A-Za-z0-9]+){0,2}\s*(?:에\s*대해|에\s*관해|에\s*대하여|을\s*위해)\s+|[가-힣A-Za-z0-9]+(?:에는|에서는|에게|에|게|서는|서|로는|로|고는|고|며)\s+)/;
+const LEAD = /^(?:[가-힣A-Za-z0-9]+(?:\s+[가-힣A-Za-z0-9]+){0,2}\s*(?:에\s*대해|에\s*관해|에\s*대하여|을\s*위해)\s+|[가-힣A-Za-z0-9]+(?:에는|에서는|에게|에|게|서는|서|로는|로|고는|고|며)\s+|[가-힣A-Za-z0-9]+\s*(?:을|를)\s*(?:기준으로|바탕으로|토대로)\s+)/;
+// "…을 기준으로"·"…을 바탕으로"도 자리말이다(2026-11-26 역사-04: "1950년을 기준으로 나이, 성별, 직업, 가족관계 등을 포함해 가상의 인물을 설정할 것"이
+// 항목 이름 "1950년을 기준으로 나이"가 되어 학생 글 첫 줄에 라벨로 찍혔다).
 
 function stripLead(part: string): string {
   let t = TRIM(part);
@@ -198,7 +204,9 @@ export function compoundItemsFromText(texts: (string | undefined)[]): CompoundIt
       const clause = TRIM(TRIM(m[1]).replace(/^(?:하고|하며|하여|해서|한\s*뒤|한\s*다음|그리고)[,\s]*/, ""));
       const raw = splitCompoundItem(clause);
       if (!raw) continue;
-      const parts = [stripLead(raw[0]), ...raw.slice(1).map(TRIM)].filter((p) => p.length >= 2);
+      // 마지막 조각에 "가족관계 등을 포함해 가상의 인물"처럼 나열 뒤 꼬리("등을 포함해 …")가 붙는다 — 이름만 남긴다.
+      const cutTail = (p: string) => TRIM(p.replace(/\s*등(?:을|를)?\s*(?:포함|비롯)[\s\S]*$/, ""));
+      const parts = [stripLead(raw[0]), ...raw.slice(1).map(TRIM)].map(cutTail).filter((p) => p.length >= 2);
       if (parts.length < 2) continue;
       const joined = parts.join("|");
       if (seen.has(joined)) continue;
